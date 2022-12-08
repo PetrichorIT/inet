@@ -1,3 +1,5 @@
+#![allow(unused)]
+
 use std::{
     collections::{BinaryHeap, HashMap},
     net::{IpAddr, Ipv4Addr},
@@ -7,7 +9,7 @@ use std::{
 
 use super::{DNSResourceRecord, DNSType};
 use des::{runtime::random, time::SimTime};
-use tokio::net::{ToSocketAddrs, UdpSocket};
+use tokio::net::UdpSocket;
 
 #[derive(Clone, Debug)]
 pub struct DNSResolver {
@@ -51,11 +53,11 @@ impl DNSResolver {
         }
     }
 
-    pub async fn lookup_host(&mut self, domain_name: &str) -> Vec<IpAddr> {
+    pub async fn lookup_host(&mut self, domain_name: &str) -> std::io::Result<Vec<IpAddr>> {
         let task = tokio::spawn(async move {
-            let socket = UdpSocket::bind("0.0.0.0:0");
+            let socket = UdpSocket::bind("0.0.0.0:0").await?;
 
-            Vec::new()
+            Ok(Vec::new())
         });
         task.await.unwrap()
     }

@@ -1,10 +1,10 @@
 #![allow(unused)]
 use super::DNSString;
-use crate::common::{split_off_front, FromBytestreamDepc, IntoBytestreamDepc};
+use crate::{common::split_off_front, FromBytestream, IntoBytestream};
 use bytestream::{ByteOrder::*, StreamReader, StreamWriter};
 use std::{
     fmt::Display,
-    io::Cursor,
+    io::{Cursor, Write},
     net::{Ipv4Addr, Ipv6Addr},
     ops::{Deref, DerefMut},
 };
@@ -84,9 +84,9 @@ impl DNSMessage {
     }
 }
 
-impl IntoBytestreamDepc for DNSMessage {
+impl IntoBytestream for DNSMessage {
     type Error = std::io::Error;
-    fn into_bytestream(&self, bytestream: &mut Vec<u8>) -> Result<(), Self::Error> {
+    fn into_bytestream(&self, bytestream: &mut impl Write) -> Result<(), Self::Error> {
         self.transaction.write_to(bytestream, BigEndian)?;
 
         let mut b0 = self.opcode.to_raw() << 3;
@@ -132,13 +132,12 @@ impl IntoBytestreamDepc for DNSMessage {
     }
 }
 
-impl FromBytestreamDepc for DNSMessage {
+impl FromBytestream for DNSMessage {
     type Error = std::io::Error;
-    fn from_bytestream(bytestream: Vec<u8>) -> Result<Self, Self::Error> {
-        let mut cursor = Cursor::new(bytestream);
-        let transaction = u16::read_from(&mut cursor, BigEndian)?;
-        let b0 = u8::read_from(&mut cursor, BigEndian)?;
-        let b1 = u8::read_from(&mut cursor, BigEndian)?;
+    fn from_bytestream(bytestream: &mut Cursor<Vec<u8>>) -> Result<Self, Self::Error> {
+        let transaction = u16::read_from(bytestream, BigEndian)?;
+        let b0 = u8::read_from(bytestream, BigEndian)?;
+        let b1 = u8::read_from(bytestream, BigEndian)?;
 
         let qr = (0b1000_0000 & b0) != 0;
         let aa = (0b0000_0100 & b0) != 0;
@@ -149,46 +148,38 @@ impl FromBytestreamDepc for DNSMessage {
         let ra = (0b1000_0000 & b1) != 0;
         let rcode = DNSResponseCode::from_raw((b1 & 0b1111) as u16).unwrap();
 
-        let nquestions = u16::read_from(&mut cursor, BigEndian)?;
-        let nanwsers = u16::read_from(&mut cursor, BigEndian)?;
-        let nauth = u16::read_from(&mut cursor, BigEndian)?;
-        let nadditional = u16::read_from(&mut cursor, BigEndian)?;
+        let nquestions = u16::read_from(bytestream, BigEndian)?;
+        let nanwsers = u16::read_from(bytestream, BigEndian)?;
+        let nauth = u16::read_from(bytestream, BigEndian)?;
+        let nadditional = u16::read_from(bytestream, BigEndian)?;
 
-        let pos = cursor.position() as usize;
-        let mut bytestream = split_off_front(cursor.into_inner(), pos);
         let mut questions = Vec::new();
 
-        // println!("{} {} {} {}", nquestions, nanwsers, nauth, nadditional);
-
         for _ in 0..nquestions {
-            let (v, mem) = <(DNSQuestion, Vec<u8>)>::from_bytestream(bytestream)?;
+            let v = DNSQuestion::from_bytestream(bytestream)?;
             questions.push(v);
-            bytestream = mem;
         }
 
         // println!("> done q");
 
         let mut anwsers = Vec::new();
         for _ in 0..nanwsers {
-            let (v, mem) = <(DNSResourceRecord, Vec<u8>)>::from_bytestream(bytestream)?;
+            let v = DNSResourceRecord::from_bytestream(bytestream)?;
             anwsers.push(v);
-            bytestream = mem;
         }
 
         // println!("> done a");
 
         let mut auths = Vec::new();
         for _ in 0..nauth {
-            let (v, mem) = <(DNSResourceRecord, Vec<u8>)>::from_bytestream(bytestream)?;
+            let v = DNSResourceRecord::from_bytestream(bytestream)?;
             auths.push(v);
-            bytestream = mem;
         }
 
         let mut additional = Vec::new();
         for _ in 0..nadditional {
-            let (v, mem) = <(DNSResourceRecord, Vec<u8>)>::from_bytestream(bytestream)?;
+            let v = DNSResourceRecord::from_bytestream(bytestream)?;
             additional.push(v);
-            bytestream = mem;
         }
 
         Ok(DNSMessage {
@@ -260,9 +251,9 @@ pub struct DNSQuestion {
     pub qclass: DNSClass,
 }
 
-impl IntoBytestreamDepc for DNSQuestion {
+impl IntoBytestream for DNSQuestion {
     type Error = std::io::Error;
-    fn into_bytestream(&self, bytestream: &mut Vec<u8>) -> Result<(), Self::Error> {
+    fn into_bytestream(&self, bytestream: &mut impl Write) -> Result<(), Self::Error> {
         self.qname.into_bytestream(bytestream)?;
         self.qtyp.to_raw().write_to(bytestream, BigEndian)?;
         self.qclass.to_raw().write_to(bytestream, BigEndian)?;
@@ -271,27 +262,19 @@ impl IntoBytestreamDepc for DNSQuestion {
     }
 }
 
-impl FromBytestreamDepc for (DNSQuestion, Vec<u8>) {
+impl FromBytestream for DNSQuestion {
     type Error = std::io::Error;
-    fn from_bytestream(bytestream: Vec<u8>) -> Result<Self, Self::Error> {
-        let (qname, rem) = <(DNSString, Vec<u8>)>::from_bytestream(bytestream)?;
+    fn from_bytestream(bytestream: &mut Cursor<Vec<u8>>) -> Result<Self, Self::Error> {
+        let qname = DNSString::from_bytestream(bytestream)?;
 
-        let mut cursor = Cursor::new(rem);
+        let qtyp = DNSType::from_raw(u16::read_from(bytestream, BigEndian)?).unwrap();
+        let qclass = DNSClass::from_raw(u16::read_from(bytestream, BigEndian)?).unwrap();
 
-        let qtyp = DNSType::from_raw(u16::read_from(&mut cursor, BigEndian)?).unwrap();
-        let qclass = DNSClass::from_raw(u16::read_from(&mut cursor, BigEndian)?).unwrap();
-
-        let pos = cursor.position() as usize;
-        let bytestream = split_off_front(cursor.into_inner(), pos);
-
-        Ok((
-            DNSQuestion {
-                qname,
-                qtyp,
-                qclass,
-            },
-            bytestream,
-        ))
+        Ok(DNSQuestion {
+            qname,
+            qtyp,
+            qclass,
+        })
     }
 }
 
@@ -307,9 +290,9 @@ pub struct DNSResourceRecord {
     pub rdata: Vec<u8>,
 }
 
-impl IntoBytestreamDepc for DNSResourceRecord {
+impl IntoBytestream for DNSResourceRecord {
     type Error = std::io::Error;
-    fn into_bytestream(&self, bytestream: &mut Vec<u8>) -> Result<(), Self::Error> {
+    fn into_bytestream(&self, bytestream: &mut impl Write) -> Result<(), Self::Error> {
         self.name.into_bytestream(bytestream)?;
 
         self.typ.to_raw().write_to(bytestream, BigEndian)?;
@@ -325,37 +308,27 @@ impl IntoBytestreamDepc for DNSResourceRecord {
     }
 }
 
-impl FromBytestreamDepc for (DNSResourceRecord, Vec<u8>) {
+impl FromBytestream for DNSResourceRecord {
     type Error = std::io::Error;
-    fn from_bytestream(bytestream: Vec<u8>) -> Result<Self, Self::Error> {
-        // println!("Parsing from {:?}", bytestream);
-        let (name, rem) = <(DNSString, Vec<u8>)>::from_bytestream(bytestream)?;
-        // println!("{} at {:?}", *name, rem);
+    fn from_bytestream(bytestream: &mut Cursor<Vec<u8>>) -> Result<Self, Self::Error> {
+        let name = DNSString::from_bytestream(bytestream)?;
 
-        let mut cursor = Cursor::new(rem);
-
-        let typ = DNSType::from_raw(u16::read_from(&mut cursor, BigEndian)?).unwrap();
-        let class = DNSClass::from_raw(u16::read_from(&mut cursor, BigEndian)?).unwrap();
-        let ttl = i32::read_from(&mut cursor, BigEndian)?;
-        let len = u16::read_from(&mut cursor, BigEndian)? as usize;
+        let typ = DNSType::from_raw(u16::read_from(bytestream, BigEndian)?).unwrap();
+        let class = DNSClass::from_raw(u16::read_from(bytestream, BigEndian)?).unwrap();
+        let ttl = i32::read_from(bytestream, BigEndian)?;
+        let len = u16::read_from(bytestream, BigEndian)? as usize;
         let mut rdata = Vec::with_capacity(len);
         for _ in 0..len {
-            rdata.push(u8::read_from(&mut cursor, BigEndian)?)
+            rdata.push(u8::read_from(bytestream, BigEndian)?)
         }
 
-        let pos = cursor.position() as usize;
-        let bytestream = split_off_front(cursor.into_inner(), pos);
-
-        Ok((
-            DNSResourceRecord {
-                name,
-                typ,
-                class,
-                ttl,
-                rdata,
-            },
-            bytestream,
-        ))
+        Ok(DNSResourceRecord {
+            name,
+            typ,
+            class,
+            ttl,
+            rdata,
+        })
     }
 }
 
@@ -376,7 +349,7 @@ impl DNSResourceRecord {
                 format!("{}", Ipv6Addr::from(octets))
             }
             DNSType::NS | DNSType::CNAME | DNSType::PTR => {
-                let (dnsstring, _) = <(DNSString, Vec<u8>)>::from_bytestream(self.rdata.clone())
+                let dnsstring = DNSString::from_buffer(self.rdata.clone())
                     .expect("Failed to reparse DNS String");
                 dnsstring.into_inner()
             }

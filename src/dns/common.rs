@@ -1,21 +1,22 @@
 use crate::{
-    common::{split_off_front, FromBytestreamDepc, IntoBytestreamDepc},
-    FromBytestream, IntoBytestream,
+    // common::{split_off_front, FromBytestreamDepc, IntoBytestreamDepc},
+    FromBytestream,
+    IntoBytestream,
 };
-use bytestream::{ByteOrder::BigEndian, StreamReader, StreamWriter};
+use bytestream::{ByteOrder::BigEndian, StreamReader};
 use std::{
     fmt::Display,
     io::{Cursor, Write},
-    ops::{Deref, DerefMut},
+    ops::Deref,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct DNSString2 {
+pub struct DNSString {
     string: String,
     labels: Vec<usize>,
 }
 
-impl DNSString2 {
+impl DNSString {
     /// Converts a string into a dns encoded string.
     ///
     /// Node that this constructor removes port specifications
@@ -47,9 +48,13 @@ impl DNSString2 {
         }
 
         assert!(string.is_ascii());
-        assert!(string
-            .chars()
-            .all(|c| c.is_alphanumeric() || c == '.' || c == '-'));
+        assert!(
+            string
+                .chars()
+                .all(|c| c.is_alphanumeric() || c == '.' || c == '-' || c == '@'),
+            "Failed to encoding DNSString: '{}' contains invalid characters",
+            string
+        );
 
         let mut labels = Vec::with_capacity(string.len() + string.len() / 4);
         let mut chars = string.chars();
@@ -98,17 +103,28 @@ impl DNSString2 {
         }
         c
     }
+
+    pub fn into_inner(self) -> String {
+        self.string
+    }
 }
 
-impl Display for DNSString2 {
+impl Display for DNSString {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.string.fmt(f)
     }
 }
 
-impl IntoBytestream for DNSString2 {
+impl Deref for DNSString {
+    type Target = String;
+    fn deref(&self) -> &Self::Target {
+        &self.string
+    }
+}
+
+impl IntoBytestream for DNSString {
     type Error = std::io::Error;
-    fn into_bytestream(&self, bytestream: &mut dyn Write) -> Result<(), Self::Error> {
+    fn into_bytestream(&self, bytestream: &mut impl Write) -> Result<(), Self::Error> {
         for i in 0..self.labels() {
             let label_str = self.label(i);
             bytestream.write(&[label_str.len() as u8])?;
@@ -119,7 +135,7 @@ impl IntoBytestream for DNSString2 {
     }
 }
 
-impl FromBytestream for DNSString2 {
+impl FromBytestream for DNSString {
     type Error = std::io::Error;
     fn from_bytestream(bytestream: &mut Cursor<Vec<u8>>) -> Result<Self, Self::Error> {
         let mut string = String::new();
@@ -145,131 +161,131 @@ impl FromBytestream for DNSString2 {
     }
 }
 
-impl<T: AsRef<str>> From<T> for DNSString2 {
+impl<T: AsRef<str>> From<T> for DNSString {
     fn from(value: T) -> Self {
         Self::new(value)
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct DNSString {
-    opaque: String,
-}
+// #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+// pub struct DNSString {
+//     opaque: String,
+// }
 
-impl DNSString {
-    pub fn new(string: String) -> Self {
-        Self { opaque: string }
-    }
+// impl DNSString {
+//     pub fn new(string: String) -> Self {
+//         Self { opaque: string }
+//     }
 
-    pub fn into_inner(self) -> String {
-        self.opaque
-    }
-}
+//     pub fn into_inner(self) -> String {
+//         self.opaque
+//     }
+// }
 
-impl Deref for DNSString {
-    type Target = String;
-    fn deref(&self) -> &Self::Target {
-        &self.opaque
-    }
-}
+// impl Deref for DNSString {
+//     type Target = String;
+//     fn deref(&self) -> &Self::Target {
+//         &self.opaque
+//     }
+// }
 
-impl DerefMut for DNSString {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.opaque
-    }
-}
+// impl DerefMut for DNSString {
+//     fn deref_mut(&mut self) -> &mut Self::Target {
+//         &mut self.opaque
+//     }
+// }
 
-impl IntoBytestreamDepc for DNSString {
-    type Error = std::io::Error;
-    fn into_bytestream(&self, bytestream: &mut Vec<u8>) -> Result<(), Self::Error> {
-        let mut s = self.opaque.as_bytes();
-        while s.len() > 0 {
-            let len = s.len().min(255);
-            (len as u8).write_to(bytestream, BigEndian)?;
-            let (lhs, rhs) = s.split_at(len);
-            for byte in lhs {
-                byte.write_to(bytestream, BigEndian)?
-            }
-            s = rhs;
-        }
-        bytestream.push(0);
-        Ok(())
-    }
-}
+// impl IntoBytestreamDepc for DNSString {
+//     type Error = std::io::Error;
+//     fn into_bytestream(&self, bytestream: &mut Vec<u8>) -> Result<(), Self::Error> {
+//         let mut s = self.opaque.as_bytes();
+//         while s.len() > 0 {
+//             let len = s.len().min(255);
+//             (len as u8).write_to(bytestream, BigEndian)?;
+//             let (lhs, rhs) = s.split_at(len);
+//             for byte in lhs {
+//                 byte.write_to(bytestream, BigEndian)?
+//             }
+//             s = rhs;
+//         }
+//         bytestream.push(0);
+//         Ok(())
+//     }
+// }
 
-impl FromBytestreamDepc for (DNSString, Vec<u8>) {
-    type Error = std::io::Error;
-    fn from_bytestream(bytestream: Vec<u8>) -> Result<Self, Self::Error> {
-        let mut cursor = Cursor::new(bytestream);
-        let mut bytes = Vec::new();
-        loop {
-            let label = u8::read_from(&mut cursor, BigEndian)?;
-            if label == 0 {
-                break;
-            }
+// impl FromBytestreamDepc for (DNSString, Vec<u8>) {
+//     type Error = std::io::Error;
+//     fn from_bytestream(bytestream: Vec<u8>) -> Result<Self, Self::Error> {
+//         let mut cursor = Cursor::new(bytestream);
+//         let mut bytes = Vec::new();
+//         loop {
+//             let label = u8::read_from(&mut cursor, BigEndian)?;
+//             if label == 0 {
+//                 break;
+//             }
 
-            for _ in 0..label {
-                bytes.push(u8::read_from(&mut cursor, BigEndian)?);
-            }
-        }
+//             for _ in 0..label {
+//                 bytes.push(u8::read_from(&mut cursor, BigEndian)?);
+//             }
+//         }
 
-        let pos = cursor.position() as usize;
-        let bytestream = cursor.into_inner();
-        let mem = split_off_front(bytestream, pos);
+//         let pos = cursor.position() as usize;
+//         let bytestream = cursor.into_inner();
+//         let mem = split_off_front(bytestream, pos);
 
-        Ok((
-            DNSString {
-                opaque: String::from_utf8(bytes).expect("Failed to get utf8"),
-            },
-            mem,
-        ))
-    }
-}
+//         Ok((
+//             DNSString {
+//                 opaque: String::from_utf8(bytes).expect("Failed to get utf8"),
+//             },
+//             mem,
+//         ))
+//     }
+// }
 
-impl From<String> for DNSString {
-    fn from(value: String) -> Self {
-        Self { opaque: value }
-    }
-}
+// impl From<String> for DNSString {
+//     fn from(value: String) -> Self {
+//         Self { opaque: value }
+//     }
+// }
 
-impl From<&str> for DNSString {
-    fn from(value: &str) -> Self {
-        Self {
-            opaque: value.to_string(),
-        }
-    }
-}
+// impl From<&str> for DNSString {
+//     fn from(value: &str) -> Self {
+//         Self {
+//             opaque: value.to_string(),
+//         }
+//     }
+// }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct URI<'a> {
-    value: &'a DNSString,
-    split: Vec<&'a str>,
-}
+// #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+// pub struct URI<'a> {
+//     value: &'a DNSString,
+//     split: Vec<&'a str>,
+// }
 
-impl<'a> URI<'a> {
-    pub fn new(value: &'a DNSString) -> Self {
-        Self {
-            split: value.split(".").filter(|v| v.len() > 0).collect::<Vec<_>>(),
-            value,
-        }
-    }
+// impl<'a> URI<'a> {
+// pub fn new(value: &'a DNSString) -> Self {
+//     Self {
+//         split: value.split(".").filter(|v| v.len() > 0).collect::<Vec<_>>(),
+//         value,
+//     }
+// }
 
-    pub fn parts(&self) -> usize {
-        self.split.len()
-    }
+// pub fn parts(&self) -> usize {
+//     self.split.len()
+// }
 
-    pub fn part(&self, i: usize) -> &str {
-        self.split[i]
-    }
+// pub fn part(&self, i: usize) -> &str {
+//     self.split[i]
+// }
 
-    pub fn suffix(&self, len: usize) -> &str {
-        let mut sum = 0;
-        for i in 0..len {
-            let i = self.split.len() - i - 1;
-            sum += self.split[i].len() + 1;
-        }
+// pub fn suffix(&self, len: usize) -> &str {
+//     let mut sum = 0;
+//     for i in 0..len {
+//         let i = self.split.len() - i - 1;
+//         sum += self.split[i].len() + 1;
+//     }
 
-        let start = self.value.len() - sum;
-        &self.value[start..]
-    }
-}
+//     let start = self.value.len() - sum;
+//     &self.value[start..]
+// }
+// }

@@ -1,5 +1,5 @@
 use des::{net::hooks::*, prelude::*, tokio::net::IOContext};
-use inet::{dns::*, FromBytestreamDepc, IntoBytestreamDepc};
+use inet::{dns::*, FromBytestream, IntoBytestream};
 use std::str::FromStr;
 
 /*
@@ -32,8 +32,7 @@ impl AsyncModule for Client {
             2334 => {
                 let msg = DNSMessage::question_aaaa(7523, "www.example.org.");
 
-                let mut buf = Vec::new();
-                msg.into_bytestream(&mut buf).unwrap();
+                let buf = msg.into_buffer().unwrap();
                 // println!("{:?}", buf);
                 send(
                     Message::new()
@@ -46,7 +45,7 @@ impl AsyncModule for Client {
             }
             _ => {
                 let content = msg.cast::<Vec<u8>>().0;
-                let msg = DNSMessage::from_bytestream(content).unwrap();
+                let msg = DNSMessage::from_buffer(content).unwrap();
                 // log::info!("{:?}", msg)
                 for record in msg.response() {
                     log::info!("> {}", record);
@@ -118,7 +117,7 @@ impl AsyncModule for DNSServer0 {
 
     async fn handle_message(&mut self, msg: Message) {
         if let Ok((content, header)) = msg.try_cast::<Vec<u8>>() {
-            let msg = DNSMessage::from_bytestream(content).unwrap();
+            let msg = DNSMessage::from_buffer(content).unwrap();
             let resp = self.server.handle(msg);
             let Some(resp) = resp else { return };
 

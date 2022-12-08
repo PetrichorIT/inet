@@ -2,9 +2,9 @@ use tokio::{net::UdpSocket, task::JoinHandle};
 
 use super::{
     DNSClass, DNSMessage, DNSOpCode, DNSQuestion, DNSResourceRecord, DNSResponseCode, DNSString,
-    DNSType, URI,
+    DNSType,
 };
-use crate::common::{FromBytestreamDepc, IntoBytestreamDepc};
+use crate::{FromBytestream, IntoBytestream};
 use std::{
     collections::VecDeque,
     net::{IpAddr, Ipv4Addr, SocketAddr},
@@ -199,7 +199,7 @@ impl DNSNameserver {
 
                 while let Ok((n, client)) = socket.recv_from(&mut buf).await {
                     let vec = Vec::from(&buf[..n]);
-                    let Ok(msg) = DNSMessage::from_bytestream(vec) else { continue };
+                    let Ok(msg) = DNSMessage::from_buffer(vec) else { continue };
 
                     let Some(resp) = self.handle(msg) else { continue };
                     let mut buf = Vec::with_capacity(512);
@@ -247,18 +247,13 @@ impl DNSNameserver {
                         qname,
                         qtyp,
                     } = question;
-                    let uri = URI::new(&qname);
 
                     // Check whether this server is even relevant
-                    let zone_uri = URI::new(&self.soa.name);
-                    let k = zone_uri.parts();
+                    let zone_uri = &self.soa.name;
+                    let k = zone_uri.labels();
 
-                    if zone_uri.suffix(k) != uri.suffix(k) {
-                        log::warn!(
-                            "ill directed request for {} in zone {}",
-                            uri.suffix(k),
-                            zone_uri.suffix(k)
-                        );
+                    if DNSString::suffix_match_len(&zone_uri, &qname) < k {
+                        log::warn!("ill directed request for {} in zone {}", qname, zone_uri);
                         continue;
                     }
 
@@ -277,7 +272,7 @@ impl DNSNameserver {
                     if a_res.is_empty() {
                         // println!("{} k = {} ")
 
-                        let next_param = uri.part(uri.parts() - k - 1);
+                        let next_param = qname.label(qname.labels() - k - 1);
                         log::info!("Referral to next zone {} of {}", next_param, *qname);
 
                         let ns = self
@@ -298,7 +293,7 @@ impl DNSNameserver {
 
                         for nameserver in ns {
                             let nsbytes = nameserver.rdata.clone();
-                            let (uri, _) = <(DNSString, Vec<u8>)>::from_bytestream(nsbytes)
+                            let uri = DNSString::from_buffer(nsbytes)
                                 .expect("Failed to parse bytestring");
                             self.add_node_information_to(
                                 &[DNSType::A, DNSType::AAAA],
@@ -339,18 +334,13 @@ impl DNSNameserver {
                         qname,
                         qtyp,
                     } = question;
-                    let uri = URI::new(&qname);
 
                     // Check whether this server is even relevant
-                    let zone_uri = URI::new(&self.soa.name);
-                    let k = zone_uri.parts();
+                    let zone_uri = &self.soa.name;
+                    let k = zone_uri.labels();
 
-                    if zone_uri.suffix(k) != uri.suffix(k) {
-                        log::warn!(
-                            "ill directed request for {} in zone {}",
-                            uri.suffix(k),
-                            zone_uri.suffix(k)
-                        );
+                    if DNSString::suffix_match_len(&qname, &zone_uri) < k {
+                        log::warn!("ill directed request for {} in zone {}", qname, zone_uri);
                         continue;
                     }
 
@@ -369,7 +359,7 @@ impl DNSNameserver {
                     if a_res.is_empty() {
                         // println!("{} k = {} ")
 
-                        let next_param = uri.part(uri.parts() - k - 1);
+                        let next_param = qname.label(qname.labels() - k - 1);
                         log::info!("Referral to next zone {} of {}", next_param, *qname);
 
                         let ns = self
@@ -390,7 +380,7 @@ impl DNSNameserver {
 
                         for nameserver in ns {
                             let nsbytes = nameserver.rdata.clone();
-                            let (uri, _) = <(DNSString, Vec<u8>)>::from_bytestream(nsbytes)
+                            let uri = DNSString::from_buffer(nsbytes)
                                 .expect("Failed to parse bytestring");
                             self.add_node_information_to(
                                 &[DNSType::A, DNSType::AAAA],

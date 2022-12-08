@@ -39,6 +39,8 @@ pub(crate) fn split_off_front(mut buf: Vec<u8>, pos: usize) -> Vec<u8> {
     // let ptr = unsafe { ptr.add(pos) };
     // unsafe { Vec::from_raw_parts(ptr, len - pos, cap - pos) }
 }
+
+#[deprecated]
 pub trait IntoBytestreamDepc {
     type Error;
     fn into_bytestream(&self, bytestream: &mut Vec<u8>) -> Result<(), Self::Error>;
@@ -52,7 +54,7 @@ pub trait IntoBytestreamDepc {
 
 pub trait IntoBytestream {
     type Error;
-    fn into_bytestream(&self, bytestream: &mut dyn Write) -> Result<(), Self::Error>;
+    fn into_bytestream(&self, bytestream: &mut impl Write) -> Result<(), Self::Error>;
 
     fn into_buffer(&self) -> Result<Vec<u8>, Self::Error> {
         let mut buffer = Vec::new();
@@ -61,6 +63,7 @@ pub trait IntoBytestream {
     }
 }
 
+#[deprecated]
 pub trait FromBytestreamDepc: Sized {
     type Error;
     fn from_bytestream(bytestream: Vec<u8>) -> Result<Self, Self::Error>;
