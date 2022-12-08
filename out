@@ -1,0 +1,2491 @@
+#![feature(prelude_import)]
+#[prelude_import]
+use std::prelude::rust_2021::*;
+#[macro_use]
+extern crate std;
+mod common {
+    use des::prelude::MessageKind;
+    pub const MESSAGE_KIND_DHCP: MessageKind = 0x63_82_53_63;
+    pub(crate) fn split_off_front(mut buf: Vec<u8>, pos: usize) -> Vec<u8> {
+        let cap = buf.capacity();
+        let len = buf.len();
+        let ptr = buf.as_mut_ptr();
+        if !(pos <= len) {
+            ::core::panicking::panic("assertion failed: pos <= len")
+        };
+        std::mem::forget(buf);
+        drop(unsafe { Vec::from_raw_parts(ptr, pos, pos) });
+        let ptr = unsafe { ptr.add(pos) };
+        unsafe { Vec::from_raw_parts(ptr, len - pos, cap - pos) }
+    }
+    pub trait IntoBytestream {
+        type Error;
+        fn into_bytestream(&self, bytestream: &mut Vec<u8>) -> Result<(), Self::Error>;
+        fn as_bytestream(&self) -> Result<Vec<u8>, Self::Error> {
+            let mut result = Vec::new();
+            self.into_bytestream(&mut result)?;
+            Ok(result)
+        }
+    }
+    pub trait FromBytestream: Sized {
+        type Error;
+        fn from_bytestream(bytestream: Vec<u8>) -> Result<Self, Self::Error>;
+    }
+}
+mod macros {
+    #[repr(u8)]
+    pub enum A {
+        A = 1,
+        B = 2,
+        C = 3,
+    }
+    impl A {
+        pub fn to_raw(self) -> u8 {
+            self as u8
+        }
+        pub fn from_raw(raw: u8) -> Option<Self> {
+            match raw {
+                1 => Some(Self::A),
+                2 => Some(Self::B),
+                3 => Some(Self::C),
+                _ => None,
+            }
+        }
+    }
+}
+pub mod dhcp {
+    mod client {
+        use std::{
+            net::{Ipv4Addr, SocketAddr},
+            str::FromStr,
+        };
+        use des::{
+            prelude::*,
+            tokio::net::{get_mac_address, IOContext},
+        };
+        use super::common::{DHCPMessage, DHCPOpsTyp};
+        use crate::{common::MESSAGE_KIND_DHCP, dhcp::common::DHCPParameter};
+        pub struct DHCPClient {
+            mac: [u8; 8],
+            addr: Ipv4Addr,
+            subnet: Ipv4Addr,
+            dns: Ipv4Addr,
+            router: Ipv4Addr,
+            xid: u32,
+            server_choosen: Ipv4Addr,
+            gate: Option<GateRef>,
+            start: SimTime,
+            done: bool,
+        }
+        impl DHCPClient {
+            pub fn new() -> Self {
+                Self {
+                    mac: [0; 8],
+                    addr: Ipv4Addr::UNSPECIFIED,
+                    subnet: Ipv4Addr::UNSPECIFIED,
+                    dns: Ipv4Addr::UNSPECIFIED,
+                    router: Ipv4Addr::UNSPECIFIED,
+                    xid: 0,
+                    server_choosen: Ipv4Addr::UNSPECIFIED,
+                    gate: gate("out", 0),
+                    start: SimTime::MAX,
+                    done: false,
+                }
+            }
+            pub fn output_gate(&mut self, gate: GateRef) {
+                self.gate = Some(gate)
+            }
+            pub fn start(&mut self, req_addr: Option<Ipv4Addr>) {
+                let mac = get_mac_address()
+                    .expect("Failed to fetch MAC address for DHCP")
+                    .expect("No MAC address found for DHCP");
+                self.mac = [0, 0, mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]];
+                self.start = SimTime::now();
+                self.done = false;
+                let discover = DHCPMessage::discover(req_addr);
+                self.xid = discover.xid;
+                let udp_message = (
+                    SocketAddr::from_str("0.0.0.0:68").unwrap(),
+                    SocketAddr::from_str("255.255.255.255:67").unwrap(),
+                    discover,
+                );
+                {
+                    let lvl = ::log::Level::Trace;
+                    if lvl <= ::log::STATIC_MAX_LEVEL && lvl <= ::log::max_level() {
+                        ::log::__private_api_log(
+                            ::core::fmt::Arguments::new_v1(
+                                &["<DHCPClient> Starting handshake "],
+                                &[::core::fmt::ArgumentV1::new_lower_hex(&self.xid)],
+                            ),
+                            lvl,
+                            &(
+                                "inet::dhcp::client",
+                                "inet::dhcp::client",
+                                "src/dhcp/client.rs",
+                                69u32,
+                            ),
+                            ::log::__private_api::Option::None,
+                        );
+                    }
+                };
+                send(
+                    Message::new()
+                        .kind(MESSAGE_KIND_DHCP)
+                        .content(udp_message)
+                        .build(),
+                    self.gate.as_ref().expect("Failed to provide valid gate"),
+                )
+            }
+            pub fn handle_message(&mut self, udp: (SocketAddr, SocketAddr), msg: DHCPMessage) {
+                match msg.ops.typ {
+                    DHCPOpsTyp::Offer => {
+                        if !self.addr.is_unspecified() {
+                            return;
+                        }
+                        if msg.xid != self.xid {
+                            return;
+                        }
+                        match (&udp.0.ip(), &IpAddr::V4(msg.siaddr)) {
+                            (left_val, right_val) => {
+                                if !(*left_val == *right_val) {
+                                    let kind = ::core::panicking::AssertKind::Eq;
+                                    ::core::panicking::assert_failed(
+                                        kind,
+                                        &*left_val,
+                                        &*right_val,
+                                        ::core::option::Option::None,
+                                    );
+                                }
+                            }
+                        };
+                        match (&udp.1.ip(), &IpAddr::V4(msg.yiaddr)) {
+                            (left_val, right_val) => {
+                                if !(*left_val == *right_val) {
+                                    let kind = ::core::panicking::AssertKind::Eq;
+                                    ::core::panicking::assert_failed(
+                                        kind,
+                                        &*left_val,
+                                        &*right_val,
+                                        ::core::option::Option::None,
+                                    );
+                                }
+                            }
+                        };
+                        self.addr = msg.yiaddr;
+                        for op in &msg.ops.pars {
+                            match op {
+                                DHCPParameter::SubnetMask(mask) => self.subnet = *mask,
+                                DHCPParameter::Router(router) => self.router = *router,
+                                DHCPParameter::DomainNameServer(dns) => self.dns = *dns,
+                                DHCPParameter::DomainName() => {}
+                                _ => {}
+                            }
+                        }
+                        let req = DHCPMessage::request(msg);
+                        self.server_choosen = req.siaddr;
+                        {
+                            let lvl = ::log::Level::Trace;
+                            if lvl <= ::log::STATIC_MAX_LEVEL && lvl <= ::log::max_level() {
+                                ::log::__private_api_log(
+                                    ::core::fmt::Arguments::new_v1(
+                                        &["<DHCPClient> Accepted offer ", " of ", " for addr "],
+                                        &[
+                                            ::core::fmt::ArgumentV1::new_lower_hex(&req.xid),
+                                            ::core::fmt::ArgumentV1::new_debug(&req.siaddr),
+                                            ::core::fmt::ArgumentV1::new_debug(&req.ciaddr),
+                                        ],
+                                    ),
+                                    lvl,
+                                    &(
+                                        "inet::dhcp::client",
+                                        "inet::dhcp::client",
+                                        "src/dhcp/client.rs",
+                                        109u32,
+                                    ),
+                                    ::log::__private_api::Option::None,
+                                );
+                            }
+                        };
+                        let udp = (
+                            SocketAddr::new(IpAddr::V4(self.addr), 68),
+                            SocketAddr::new(IpAddr::V4(req.siaddr), 67),
+                            req,
+                        );
+                        send(
+                            Message::new().kind(MESSAGE_KIND_DHCP).content(udp).build(),
+                            self.gate.as_ref().expect("Failed to provide valid gate"),
+                        );
+                    }
+                    DHCPOpsTyp::Ack => {
+                        if msg.xid != self.xid || msg.siaddr != self.server_choosen {
+                            return;
+                        }
+                        if self.done {
+                            return;
+                        }
+                        match (&msg.yiaddr, &self.addr) {
+                            (left_val, right_val) => {
+                                if !(*left_val == *right_val) {
+                                    let kind = ::core::panicking::AssertKind::Eq;
+                                    ::core::panicking::assert_failed(
+                                        kind,
+                                        &*left_val,
+                                        &*right_val,
+                                        ::core::option::Option::None,
+                                    );
+                                }
+                            }
+                        };
+                        {
+                            let lvl = ::log::Level::Info;
+                            if lvl <= ::log::STATIC_MAX_LEVEL && lvl <= ::log::max_level() {
+                                ::log::__private_api_log(
+                                    ::core::fmt::Arguments::new_v1(
+                                        &["DHCP config complete: now known as ", " from "],
+                                        &[
+                                            ::core::fmt::ArgumentV1::new_debug(&self.addr),
+                                            ::core::fmt::ArgumentV1::new_debug(&msg.siaddr),
+                                        ],
+                                    ),
+                                    lvl,
+                                    &(
+                                        "inet::dhcp::client",
+                                        "inet::dhcp::client",
+                                        "src/dhcp/client.rs",
+                                        137u32,
+                                    ),
+                                    ::log::__private_api::Option::None,
+                                );
+                            }
+                        };
+                        let mac = get_mac_address().unwrap();
+                        let mac = mac.unwrap_or(random());
+                        IOContext::new(mac, self.addr).set();
+                        self.done = true;
+                        send(Message::new().kind(1000).content(self.addr).build(), "out")
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+    mod common {
+        use std::{io::Cursor, net::Ipv4Addr};
+        use bytestream::{ByteOrder::BigEndian, StreamReader, StreamWriter};
+        use des::{prelude::MessageBody, runtime::random, tokio::net::get_mac_address};
+        pub struct DHCPMessage {
+            pub op: DHCPOp,
+            pub htype: u8,
+            pub hlen: u8,
+            pub hops: u8,
+            pub xid: u32,
+            pub secs: u16,
+            pub flags: u16,
+            pub ciaddr: Ipv4Addr,
+            pub yiaddr: Ipv4Addr,
+            pub siaddr: Ipv4Addr,
+            pub giaddr: Ipv4Addr,
+            pub chaddr: [u8; 8],
+            pub ops: DHCPOps,
+        }
+        #[automatically_derived]
+        impl ::core::fmt::Debug for DHCPMessage {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+                let names: &'static _ = &[
+                    "op", "htype", "hlen", "hops", "xid", "secs", "flags", "ciaddr", "yiaddr",
+                    "siaddr", "giaddr", "chaddr", "ops",
+                ];
+                let values: &[&dyn ::core::fmt::Debug] = &[
+                    &&self.op,
+                    &&self.htype,
+                    &&self.hlen,
+                    &&self.hops,
+                    &&self.xid,
+                    &&self.secs,
+                    &&self.flags,
+                    &&self.ciaddr,
+                    &&self.yiaddr,
+                    &&self.siaddr,
+                    &&self.giaddr,
+                    &&self.chaddr,
+                    &&self.ops,
+                ];
+                ::core::fmt::Formatter::debug_struct_fields_finish(f, "DHCPMessage", names, values)
+            }
+        }
+        #[automatically_derived]
+        impl ::core::clone::Clone for DHCPMessage {
+            #[inline]
+            fn clone(&self) -> DHCPMessage {
+                DHCPMessage {
+                    op: ::core::clone::Clone::clone(&self.op),
+                    htype: ::core::clone::Clone::clone(&self.htype),
+                    hlen: ::core::clone::Clone::clone(&self.hlen),
+                    hops: ::core::clone::Clone::clone(&self.hops),
+                    xid: ::core::clone::Clone::clone(&self.xid),
+                    secs: ::core::clone::Clone::clone(&self.secs),
+                    flags: ::core::clone::Clone::clone(&self.flags),
+                    ciaddr: ::core::clone::Clone::clone(&self.ciaddr),
+                    yiaddr: ::core::clone::Clone::clone(&self.yiaddr),
+                    siaddr: ::core::clone::Clone::clone(&self.siaddr),
+                    giaddr: ::core::clone::Clone::clone(&self.giaddr),
+                    chaddr: ::core::clone::Clone::clone(&self.chaddr),
+                    ops: ::core::clone::Clone::clone(&self.ops),
+                }
+            }
+        }
+        #[automatically_derived]
+        impl ::core::marker::StructuralPartialEq for DHCPMessage {}
+        #[automatically_derived]
+        impl ::core::cmp::PartialEq for DHCPMessage {
+            #[inline]
+            fn eq(&self, other: &DHCPMessage) -> bool {
+                self.op == other.op
+                    && self.htype == other.htype
+                    && self.hlen == other.hlen
+                    && self.hops == other.hops
+                    && self.xid == other.xid
+                    && self.secs == other.secs
+                    && self.flags == other.flags
+                    && self.ciaddr == other.ciaddr
+                    && self.yiaddr == other.yiaddr
+                    && self.siaddr == other.siaddr
+                    && self.giaddr == other.giaddr
+                    && self.chaddr == other.chaddr
+                    && self.ops == other.ops
+            }
+        }
+        #[automatically_derived]
+        impl ::core::marker::StructuralEq for DHCPMessage {}
+        #[automatically_derived]
+        impl ::core::cmp::Eq for DHCPMessage {
+            #[inline]
+            #[doc(hidden)]
+            #[no_coverage]
+            fn assert_receiver_is_total_eq(&self) -> () {
+                let _: ::core::cmp::AssertParamIsEq<DHCPOp>;
+                let _: ::core::cmp::AssertParamIsEq<u8>;
+                let _: ::core::cmp::AssertParamIsEq<u32>;
+                let _: ::core::cmp::AssertParamIsEq<u16>;
+                let _: ::core::cmp::AssertParamIsEq<Ipv4Addr>;
+                let _: ::core::cmp::AssertParamIsEq<[u8; 8]>;
+                let _: ::core::cmp::AssertParamIsEq<DHCPOps>;
+            }
+        }
+        #[automatically_derived]
+        impl ::core::hash::Hash for DHCPMessage {
+            fn hash<__H: ::core::hash::Hasher>(&self, state: &mut __H) -> () {
+                ::core::hash::Hash::hash(&self.op, state);
+                ::core::hash::Hash::hash(&self.htype, state);
+                ::core::hash::Hash::hash(&self.hlen, state);
+                ::core::hash::Hash::hash(&self.hops, state);
+                ::core::hash::Hash::hash(&self.xid, state);
+                ::core::hash::Hash::hash(&self.secs, state);
+                ::core::hash::Hash::hash(&self.flags, state);
+                ::core::hash::Hash::hash(&self.ciaddr, state);
+                ::core::hash::Hash::hash(&self.yiaddr, state);
+                ::core::hash::Hash::hash(&self.siaddr, state);
+                ::core::hash::Hash::hash(&self.giaddr, state);
+                ::core::hash::Hash::hash(&self.chaddr, state);
+                ::core::hash::Hash::hash(&self.ops, state)
+            }
+        }
+        impl ::des::net::message::MessageBody for DHCPMessage {
+            fn byte_len(&self) -> usize {
+                <DHCPOp as ::des::net::message::MessageBody>::byte_len(&self.op)
+                    + <u8 as ::des::net::message::MessageBody>::byte_len(&self.htype)
+                    + <u8 as ::des::net::message::MessageBody>::byte_len(&self.hlen)
+                    + <u8 as ::des::net::message::MessageBody>::byte_len(&self.hops)
+                    + <u32 as ::des::net::message::MessageBody>::byte_len(&self.xid)
+                    + <u16 as ::des::net::message::MessageBody>::byte_len(&self.secs)
+                    + <u16 as ::des::net::message::MessageBody>::byte_len(&self.flags)
+                    + <Ipv4Addr as ::des::net::message::MessageBody>::byte_len(&self.ciaddr)
+                    + <Ipv4Addr as ::des::net::message::MessageBody>::byte_len(&self.yiaddr)
+                    + <Ipv4Addr as ::des::net::message::MessageBody>::byte_len(&self.siaddr)
+                    + <Ipv4Addr as ::des::net::message::MessageBody>::byte_len(&self.giaddr)
+                    + <[u8; 8] as ::des::net::message::MessageBody>::byte_len(&self.chaddr)
+                    + <DHCPOps as ::des::net::message::MessageBody>::byte_len(&self.ops)
+                    + 0
+            }
+        }
+        #[repr(u8)]
+        pub enum DHCPOp {
+            BootRequest = 1,
+            BootReply = 2,
+            Wakeup = 3,
+        }
+        #[automatically_derived]
+        impl ::core::fmt::Debug for DHCPOp {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+                match self {
+                    DHCPOp::BootRequest => ::core::fmt::Formatter::write_str(f, "BootRequest"),
+                    DHCPOp::BootReply => ::core::fmt::Formatter::write_str(f, "BootReply"),
+                    DHCPOp::Wakeup => ::core::fmt::Formatter::write_str(f, "Wakeup"),
+                }
+            }
+        }
+        #[automatically_derived]
+        impl ::core::clone::Clone for DHCPOp {
+            #[inline]
+            fn clone(&self) -> DHCPOp {
+                *self
+            }
+        }
+        #[automatically_derived]
+        impl ::core::marker::Copy for DHCPOp {}
+        #[automatically_derived]
+        impl ::core::marker::StructuralPartialEq for DHCPOp {}
+        #[automatically_derived]
+        impl ::core::cmp::PartialEq for DHCPOp {
+            #[inline]
+            fn eq(&self, other: &DHCPOp) -> bool {
+                let __self_tag = ::core::intrinsics::discriminant_value(self);
+                let __arg1_tag = ::core::intrinsics::discriminant_value(other);
+                __self_tag == __arg1_tag
+            }
+        }
+        #[automatically_derived]
+        impl ::core::marker::StructuralEq for DHCPOp {}
+        #[automatically_derived]
+        impl ::core::cmp::Eq for DHCPOp {
+            #[inline]
+            #[doc(hidden)]
+            #[no_coverage]
+            fn assert_receiver_is_total_eq(&self) -> () {}
+        }
+        #[automatically_derived]
+        impl ::core::hash::Hash for DHCPOp {
+            fn hash<__H: ::core::hash::Hasher>(&self, state: &mut __H) -> () {
+                let __self_tag = ::core::intrinsics::discriminant_value(self);
+                ::core::hash::Hash::hash(&__self_tag, state)
+            }
+        }
+        impl ::des::net::message::MessageBody for DHCPOp {
+            fn byte_len(&self) -> usize {
+                match self {
+                    DHCPOp::BootRequest => 0,
+                    DHCPOp::BootReply => 0,
+                    DHCPOp::Wakeup => 0,
+                }
+            }
+        }
+        pub struct DHCPOps {
+            pub typ: DHCPOpsTyp,
+            pub pars: Vec<DHCPParameter>,
+        }
+        #[automatically_derived]
+        impl ::core::fmt::Debug for DHCPOps {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+                ::core::fmt::Formatter::debug_struct_field2_finish(
+                    f,
+                    "DHCPOps",
+                    "typ",
+                    &&self.typ,
+                    "pars",
+                    &&self.pars,
+                )
+            }
+        }
+        #[automatically_derived]
+        impl ::core::clone::Clone for DHCPOps {
+            #[inline]
+            fn clone(&self) -> DHCPOps {
+                DHCPOps {
+                    typ: ::core::clone::Clone::clone(&self.typ),
+                    pars: ::core::clone::Clone::clone(&self.pars),
+                }
+            }
+        }
+        #[automatically_derived]
+        impl ::core::marker::StructuralPartialEq for DHCPOps {}
+        #[automatically_derived]
+        impl ::core::cmp::PartialEq for DHCPOps {
+            #[inline]
+            fn eq(&self, other: &DHCPOps) -> bool {
+                self.typ == other.typ && self.pars == other.pars
+            }
+        }
+        #[automatically_derived]
+        impl ::core::marker::StructuralEq for DHCPOps {}
+        #[automatically_derived]
+        impl ::core::cmp::Eq for DHCPOps {
+            #[inline]
+            #[doc(hidden)]
+            #[no_coverage]
+            fn assert_receiver_is_total_eq(&self) -> () {
+                let _: ::core::cmp::AssertParamIsEq<DHCPOpsTyp>;
+                let _: ::core::cmp::AssertParamIsEq<Vec<DHCPParameter>>;
+            }
+        }
+        #[automatically_derived]
+        impl ::core::hash::Hash for DHCPOps {
+            fn hash<__H: ::core::hash::Hasher>(&self, state: &mut __H) -> () {
+                ::core::hash::Hash::hash(&self.typ, state);
+                ::core::hash::Hash::hash(&self.pars, state)
+            }
+        }
+        impl ::des::net::message::MessageBody for DHCPOps {
+            fn byte_len(&self) -> usize {
+                <DHCPOpsTyp as ::des::net::message::MessageBody>::byte_len(&self.typ)
+                    + <Vec<DHCPParameter> as ::des::net::message::MessageBody>::byte_len(&self.pars)
+                    + 0
+            }
+        }
+        #[repr(u8)]
+        pub enum DHCPOpsTyp {
+            Discover = 1,
+            Offer = 2,
+            Request = 3,
+            Ack = 4,
+        }
+        #[automatically_derived]
+        impl ::core::fmt::Debug for DHCPOpsTyp {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+                match self {
+                    DHCPOpsTyp::Discover => ::core::fmt::Formatter::write_str(f, "Discover"),
+                    DHCPOpsTyp::Offer => ::core::fmt::Formatter::write_str(f, "Offer"),
+                    DHCPOpsTyp::Request => ::core::fmt::Formatter::write_str(f, "Request"),
+                    DHCPOpsTyp::Ack => ::core::fmt::Formatter::write_str(f, "Ack"),
+                }
+            }
+        }
+        #[automatically_derived]
+        impl ::core::clone::Clone for DHCPOpsTyp {
+            #[inline]
+            fn clone(&self) -> DHCPOpsTyp {
+                *self
+            }
+        }
+        #[automatically_derived]
+        impl ::core::marker::Copy for DHCPOpsTyp {}
+        #[automatically_derived]
+        impl ::core::marker::StructuralPartialEq for DHCPOpsTyp {}
+        #[automatically_derived]
+        impl ::core::cmp::PartialEq for DHCPOpsTyp {
+            #[inline]
+            fn eq(&self, other: &DHCPOpsTyp) -> bool {
+                let __self_tag = ::core::intrinsics::discriminant_value(self);
+                let __arg1_tag = ::core::intrinsics::discriminant_value(other);
+                __self_tag == __arg1_tag
+            }
+        }
+        #[automatically_derived]
+        impl ::core::marker::StructuralEq for DHCPOpsTyp {}
+        #[automatically_derived]
+        impl ::core::cmp::Eq for DHCPOpsTyp {
+            #[inline]
+            #[doc(hidden)]
+            #[no_coverage]
+            fn assert_receiver_is_total_eq(&self) -> () {}
+        }
+        #[automatically_derived]
+        impl ::core::hash::Hash for DHCPOpsTyp {
+            fn hash<__H: ::core::hash::Hasher>(&self, state: &mut __H) -> () {
+                let __self_tag = ::core::intrinsics::discriminant_value(self);
+                ::core::hash::Hash::hash(&__self_tag, state)
+            }
+        }
+        impl ::des::net::message::MessageBody for DHCPOpsTyp {
+            fn byte_len(&self) -> usize {
+                match self {
+                    DHCPOpsTyp::Discover => 0,
+                    DHCPOpsTyp::Offer => 0,
+                    DHCPOpsTyp::Request => 0,
+                    DHCPOpsTyp::Ack => 0,
+                }
+            }
+        }
+        #[repr(u8)]
+        pub enum DHCPParameter {
+            ReqSubnetMask,
+            SubnetMask(Ipv4Addr),
+            ReqRouter,
+            Router(Ipv4Addr),
+            ReqDomainName,
+            DomainName(),
+            ReqDomainNameServer,
+            DomainNameServer(Ipv4Addr),
+            AddressRequested(Ipv4Addr),
+            Server(Ipv4Addr),
+        }
+        #[automatically_derived]
+        impl ::core::fmt::Debug for DHCPParameter {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+                match self {
+                    DHCPParameter::ReqSubnetMask => {
+                        ::core::fmt::Formatter::write_str(f, "ReqSubnetMask")
+                    }
+                    DHCPParameter::SubnetMask(__self_0) => {
+                        ::core::fmt::Formatter::debug_tuple_field1_finish(
+                            f,
+                            "SubnetMask",
+                            &__self_0,
+                        )
+                    }
+                    DHCPParameter::ReqRouter => ::core::fmt::Formatter::write_str(f, "ReqRouter"),
+                    DHCPParameter::Router(__self_0) => {
+                        ::core::fmt::Formatter::debug_tuple_field1_finish(f, "Router", &__self_0)
+                    }
+                    DHCPParameter::ReqDomainName => {
+                        ::core::fmt::Formatter::write_str(f, "ReqDomainName")
+                    }
+                    DHCPParameter::DomainName() => {
+                        ::core::fmt::Formatter::write_str(f, "DomainName")
+                    }
+                    DHCPParameter::ReqDomainNameServer => {
+                        ::core::fmt::Formatter::write_str(f, "ReqDomainNameServer")
+                    }
+                    DHCPParameter::DomainNameServer(__self_0) => {
+                        ::core::fmt::Formatter::debug_tuple_field1_finish(
+                            f,
+                            "DomainNameServer",
+                            &__self_0,
+                        )
+                    }
+                    DHCPParameter::AddressRequested(__self_0) => {
+                        ::core::fmt::Formatter::debug_tuple_field1_finish(
+                            f,
+                            "AddressRequested",
+                            &__self_0,
+                        )
+                    }
+                    DHCPParameter::Server(__self_0) => {
+                        ::core::fmt::Formatter::debug_tuple_field1_finish(f, "Server", &__self_0)
+                    }
+                }
+            }
+        }
+        #[automatically_derived]
+        impl ::core::clone::Clone for DHCPParameter {
+            #[inline]
+            fn clone(&self) -> DHCPParameter {
+                match self {
+                    DHCPParameter::ReqSubnetMask => DHCPParameter::ReqSubnetMask,
+                    DHCPParameter::SubnetMask(__self_0) => {
+                        DHCPParameter::SubnetMask(::core::clone::Clone::clone(__self_0))
+                    }
+                    DHCPParameter::ReqRouter => DHCPParameter::ReqRouter,
+                    DHCPParameter::Router(__self_0) => {
+                        DHCPParameter::Router(::core::clone::Clone::clone(__self_0))
+                    }
+                    DHCPParameter::ReqDomainName => DHCPParameter::ReqDomainName,
+                    DHCPParameter::DomainName() => DHCPParameter::DomainName(),
+                    DHCPParameter::ReqDomainNameServer => DHCPParameter::ReqDomainNameServer,
+                    DHCPParameter::DomainNameServer(__self_0) => {
+                        DHCPParameter::DomainNameServer(::core::clone::Clone::clone(__self_0))
+                    }
+                    DHCPParameter::AddressRequested(__self_0) => {
+                        DHCPParameter::AddressRequested(::core::clone::Clone::clone(__self_0))
+                    }
+                    DHCPParameter::Server(__self_0) => {
+                        DHCPParameter::Server(::core::clone::Clone::clone(__self_0))
+                    }
+                }
+            }
+        }
+        #[automatically_derived]
+        impl ::core::marker::StructuralPartialEq for DHCPParameter {}
+        #[automatically_derived]
+        impl ::core::cmp::PartialEq for DHCPParameter {
+            #[inline]
+            fn eq(&self, other: &DHCPParameter) -> bool {
+                let __self_tag = ::core::intrinsics::discriminant_value(self);
+                let __arg1_tag = ::core::intrinsics::discriminant_value(other);
+                __self_tag == __arg1_tag
+                    && match (self, other) {
+                        (
+                            DHCPParameter::SubnetMask(__self_0),
+                            DHCPParameter::SubnetMask(__arg1_0),
+                        ) => *__self_0 == *__arg1_0,
+                        (DHCPParameter::Router(__self_0), DHCPParameter::Router(__arg1_0)) => {
+                            *__self_0 == *__arg1_0
+                        }
+                        (
+                            DHCPParameter::DomainNameServer(__self_0),
+                            DHCPParameter::DomainNameServer(__arg1_0),
+                        ) => *__self_0 == *__arg1_0,
+                        (
+                            DHCPParameter::AddressRequested(__self_0),
+                            DHCPParameter::AddressRequested(__arg1_0),
+                        ) => *__self_0 == *__arg1_0,
+                        (DHCPParameter::Server(__self_0), DHCPParameter::Server(__arg1_0)) => {
+                            *__self_0 == *__arg1_0
+                        }
+                        _ => true,
+                    }
+            }
+        }
+        #[automatically_derived]
+        impl ::core::marker::StructuralEq for DHCPParameter {}
+        #[automatically_derived]
+        impl ::core::cmp::Eq for DHCPParameter {
+            #[inline]
+            #[doc(hidden)]
+            #[no_coverage]
+            fn assert_receiver_is_total_eq(&self) -> () {
+                let _: ::core::cmp::AssertParamIsEq<Ipv4Addr>;
+            }
+        }
+        #[automatically_derived]
+        impl ::core::hash::Hash for DHCPParameter {
+            fn hash<__H: ::core::hash::Hasher>(&self, state: &mut __H) -> () {
+                let __self_tag = ::core::intrinsics::discriminant_value(self);
+                ::core::hash::Hash::hash(&__self_tag, state);
+                match self {
+                    DHCPParameter::SubnetMask(__self_0) => {
+                        ::core::hash::Hash::hash(__self_0, state)
+                    }
+                    DHCPParameter::Router(__self_0) => ::core::hash::Hash::hash(__self_0, state),
+                    DHCPParameter::DomainNameServer(__self_0) => {
+                        ::core::hash::Hash::hash(__self_0, state)
+                    }
+                    DHCPParameter::AddressRequested(__self_0) => {
+                        ::core::hash::Hash::hash(__self_0, state)
+                    }
+                    DHCPParameter::Server(__self_0) => ::core::hash::Hash::hash(__self_0, state),
+                    _ => {}
+                }
+            }
+        }
+        impl ::des::net::message::MessageBody for DHCPParameter {
+            fn byte_len(&self) -> usize {
+                match self {
+                    DHCPParameter::ReqSubnetMask => 0,
+                    DHCPParameter::SubnetMask(v0) => {
+                        <Ipv4Addr as ::des::net::message::MessageBody>::byte_len(v0) + 0
+                    }
+                    DHCPParameter::ReqRouter => 0,
+                    DHCPParameter::Router(v0) => {
+                        <Ipv4Addr as ::des::net::message::MessageBody>::byte_len(v0) + 0
+                    }
+                    DHCPParameter::ReqDomainName => 0,
+                    DHCPParameter::DomainName() => 0,
+                    DHCPParameter::ReqDomainNameServer => 0,
+                    DHCPParameter::DomainNameServer(v0) => {
+                        <Ipv4Addr as ::des::net::message::MessageBody>::byte_len(v0) + 0
+                    }
+                    DHCPParameter::AddressRequested(v0) => {
+                        <Ipv4Addr as ::des::net::message::MessageBody>::byte_len(v0) + 0
+                    }
+                    DHCPParameter::Server(v0) => {
+                        <Ipv4Addr as ::des::net::message::MessageBody>::byte_len(v0) + 0
+                    }
+                }
+            }
+        }
+        impl DHCPMessage {
+            pub fn wakeup() -> DHCPMessage {
+                Self {
+                    op: DHCPOp::Wakeup,
+                    htype: 0x01,
+                    hlen: 0x06,
+                    hops: 0x00,
+                    xid: 0x0000_0000,
+                    secs: 0x0000,
+                    flags: 0x0000,
+                    ciaddr: Ipv4Addr::UNSPECIFIED,
+                    yiaddr: Ipv4Addr::UNSPECIFIED,
+                    siaddr: Ipv4Addr::UNSPECIFIED,
+                    giaddr: Ipv4Addr::UNSPECIFIED,
+                    chaddr: [0; 8],
+                    ops: DHCPOps {
+                        typ: DHCPOpsTyp::Discover,
+                        pars: Vec::new(),
+                    },
+                }
+            }
+            /// Creates a DHCP DISCOVER message.
+            ///
+            /// Send with src: 0.0.0.0:68 dest:255.255.255.255:67
+            /// eth: client_addr -> ff:ff:ff:ff:ff:ff
+            pub fn discover(req_addr: Option<Ipv4Addr>) -> DHCPMessage {
+                let mac = get_mac_address()
+                    .expect("Failed to fetch hardware address")
+                    .expect("Module has no hardware address");
+                let mut ops = <[_]>::into_vec(
+                    #[rustc_box]
+                    ::alloc::boxed::Box::new([
+                        DHCPParameter::ReqSubnetMask,
+                        DHCPParameter::ReqRouter,
+                        DHCPParameter::ReqDomainName,
+                        DHCPParameter::ReqDomainNameServer,
+                    ]),
+                );
+                if let Some(addr) = req_addr {
+                    ops.push(DHCPParameter::AddressRequested(addr))
+                }
+                DHCPMessage {
+                    op: DHCPOp::BootRequest,
+                    htype: 0x01,
+                    hlen: 0x06,
+                    hops: 0x00,
+                    xid: random::<u32>(),
+                    secs: 0x0000,
+                    flags: 0x0000,
+                    ciaddr: Ipv4Addr::UNSPECIFIED,
+                    yiaddr: Ipv4Addr::UNSPECIFIED,
+                    siaddr: Ipv4Addr::UNSPECIFIED,
+                    giaddr: Ipv4Addr::UNSPECIFIED,
+                    chaddr: [0, 0, mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]],
+                    ops: DHCPOps {
+                        typ: DHCPOpsTyp::Discover,
+                        pars: ops,
+                    },
+                }
+            }
+            /// Creates an offer
+            ///
+            /// Full headers
+            pub fn offer(
+                discover: DHCPMessage,
+                server_ip: Ipv4Addr,
+                assigned_ip: Ipv4Addr,
+                ops_response: Vec<DHCPParameter>,
+            ) -> DHCPMessage {
+                DHCPMessage {
+                    op: DHCPOp::BootReply,
+                    htype: 0x01,
+                    hlen: 0x06,
+                    hops: 0x00,
+                    xid: discover.xid,
+                    secs: 0x0000,
+                    flags: 0x0000,
+                    ciaddr: discover.ciaddr,
+                    yiaddr: assigned_ip,
+                    siaddr: server_ip,
+                    giaddr: Ipv4Addr::UNSPECIFIED,
+                    chaddr: discover.chaddr,
+                    ops: DHCPOps {
+                        typ: DHCPOpsTyp::Offer,
+                        pars: ops_response,
+                    },
+                }
+            }
+            pub fn request(offer: DHCPMessage) -> DHCPMessage {
+                DHCPMessage {
+                    op: DHCPOp::BootRequest,
+                    htype: 0x01,
+                    hlen: 0x06,
+                    hops: 0x00,
+                    xid: offer.xid,
+                    secs: 0x00,
+                    flags: 0x0000,
+                    ciaddr: offer.yiaddr,
+                    yiaddr: Ipv4Addr::UNSPECIFIED,
+                    siaddr: offer.siaddr,
+                    giaddr: Ipv4Addr::UNSPECIFIED,
+                    chaddr: offer.chaddr,
+                    ops: DHCPOps {
+                        typ: DHCPOpsTyp::Request,
+                        pars: <[_]>::into_vec(
+                            #[rustc_box]
+                            ::alloc::boxed::Box::new([
+                                DHCPParameter::AddressRequested(offer.yiaddr),
+                                DHCPParameter::Server(offer.siaddr),
+                            ]),
+                        ),
+                    },
+                }
+            }
+            pub fn ack(request: DHCPMessage, ops_response: Vec<DHCPParameter>) -> DHCPMessage {
+                DHCPMessage {
+                    op: DHCPOp::BootReply,
+                    htype: 0x01,
+                    hlen: 0x06,
+                    hops: 0x00,
+                    xid: request.xid,
+                    secs: 0x0000,
+                    flags: 0x0000,
+                    ciaddr: Ipv4Addr::UNSPECIFIED,
+                    yiaddr: request.ciaddr,
+                    siaddr: request.siaddr,
+                    giaddr: Ipv4Addr::UNSPECIFIED,
+                    chaddr: request.chaddr,
+                    ops: DHCPOps {
+                        typ: DHCPOpsTyp::Ack,
+                        pars: ops_response,
+                    },
+                }
+            }
+        }
+        impl DHCPMessage {
+            pub fn into_bytestream(&self) -> Result<Vec<u8>, std::io::Error> {
+                let mut res = Vec::with_capacity(256);
+                (self.op as u8).write_to(&mut res, BigEndian)?;
+                self.htype.write_to(&mut res, BigEndian)?;
+                self.hlen.write_to(&mut res, BigEndian)?;
+                self.hops.write_to(&mut res, BigEndian)?;
+                self.xid.write_to(&mut res, BigEndian)?;
+                self.secs.write_to(&mut res, BigEndian)?;
+                self.flags.write_to(&mut res, BigEndian)?;
+                u32::from_be_bytes(self.ciaddr.octets()).write_to(&mut res, BigEndian)?;
+                u32::from_be_bytes(self.yiaddr.octets()).write_to(&mut res, BigEndian)?;
+                u32::from_be_bytes(self.siaddr.octets()).write_to(&mut res, BigEndian)?;
+                u32::from_be_bytes(self.giaddr.octets()).write_to(&mut res, BigEndian)?;
+                for byte in self.chaddr {
+                    byte.write_to(&mut res, BigEndian)?;
+                }
+                (self.ops.typ as u8).write_to(&mut res, BigEndian)?;
+                for p in &self.ops.pars {
+                    p.append_to_bytestream(&mut res)?
+                }
+                Ok(res)
+            }
+        }
+        impl DHCPParameter {
+            fn append_to_bytestream(&self, w: &mut Vec<u8>) -> std::io::Result<()> {
+                match self {
+                    Self::ReqSubnetMask => 0x10u8.write_to(w, BigEndian)?,
+                    Self::SubnetMask(ip) => {
+                        0x11u8.write_to(w, BigEndian)?;
+                        u32::from_be_bytes(ip.octets()).write_to(w, BigEndian)?;
+                    }
+                    Self::ReqRouter => 0x20u8.write_to(w, BigEndian)?,
+                    Self::Router(ip) => {
+                        0x21u8.write_to(w, BigEndian)?;
+                        u32::from_be_bytes(ip.octets()).write_to(w, BigEndian)?;
+                    }
+                    Self::ReqDomainName => 0x30u8.write_to(w, BigEndian)?,
+                    Self::DomainName() => 0x31u8.write_to(w, BigEndian)?,
+                    Self::ReqDomainNameServer => 0x40u8.write_to(w, BigEndian)?,
+                    Self::DomainNameServer(ip) => {
+                        0x41u8.write_to(w, BigEndian)?;
+                        u32::from_be_bytes(ip.octets()).write_to(w, BigEndian)?;
+                    }
+                    Self::AddressRequested(ip) => {
+                        0x50u8.write_to(w, BigEndian)?;
+                        u32::from_be_bytes(ip.octets()).write_to(w, BigEndian)?;
+                    }
+                    Self::Server(ip) => {
+                        0x60u8.write_to(w, BigEndian)?;
+                        u32::from_be_bytes(ip.octets()).write_to(w, BigEndian)?;
+                    }
+                }
+                Ok(())
+            }
+        }
+        impl TryFrom<&[u8]> for DHCPMessage {
+            type Error = std::io::Error;
+            fn try_from(ptr: &[u8]) -> Result<Self, Self::Error> {
+                let mut ptr = Cursor::new(ptr);
+                let op = u8::read_from(&mut ptr, BigEndian)?;
+                let op = match op {
+                    1 => DHCPOp::BootRequest,
+                    2 => DHCPOp::BootReply,
+                    3 => DHCPOp::Wakeup,
+                    _ => ::core::panicking::panic("not implemented"),
+                };
+                let htype = u8::read_from(&mut ptr, BigEndian)?;
+                let hlen = u8::read_from(&mut ptr, BigEndian)?;
+                let hops = u8::read_from(&mut ptr, BigEndian)?;
+                let xid = u32::read_from(&mut ptr, BigEndian)?;
+                let secs = u16::read_from(&mut ptr, BigEndian)?;
+                let flags = u16::read_from(&mut ptr, BigEndian)?;
+                let ciaddr = Ipv4Addr::from(u32::read_from(&mut ptr, BigEndian)?);
+                let yiaddr = Ipv4Addr::from(u32::read_from(&mut ptr, BigEndian)?);
+                let siaddr = Ipv4Addr::from(u32::read_from(&mut ptr, BigEndian)?);
+                let giaddr = Ipv4Addr::from(u32::read_from(&mut ptr, BigEndian)?);
+                let chaddr_vec = std::iter::repeat_with(|| u8::read_from(&mut ptr, BigEndian))
+                    .take(8)
+                    .collect::<Vec<_>>();
+                let mut chaddr = [0; 8];
+                for (i, v) in chaddr_vec.into_iter().enumerate() {
+                    chaddr[i] = v?;
+                }
+                let pos = ptr.position() as usize;
+                let stream = ptr.into_inner();
+                let ops = DHCPOps::try_from(&stream[pos..])?;
+                Ok(Self {
+                    op,
+                    htype,
+                    hlen,
+                    hops,
+                    xid,
+                    secs,
+                    flags,
+                    ciaddr,
+                    yiaddr,
+                    siaddr,
+                    giaddr,
+                    chaddr,
+                    ops,
+                })
+            }
+        }
+        impl TryFrom<&[u8]> for DHCPOps {
+            type Error = std::io::Error;
+            fn try_from(ptr: &[u8]) -> Result<Self, Self::Error> {
+                let mut ptr = Cursor::new(ptr);
+                let typ = u8::read_from(&mut ptr, BigEndian)?;
+                let typ = match typ {
+                    1 => DHCPOpsTyp::Discover,
+                    2 => DHCPOpsTyp::Offer,
+                    3 => DHCPOpsTyp::Request,
+                    4 => DHCPOpsTyp::Ack,
+                    _ => ::core::panicking::panic("not implemented"),
+                };
+                let mut pars = Vec::new();
+                while let Ok(tag) = u8::read_from(&mut ptr, BigEndian) {
+                    match tag {
+                        0x10 => pars.push(DHCPParameter::ReqSubnetMask),
+                        0x11 => pars.push(DHCPParameter::SubnetMask(Ipv4Addr::from(
+                            u32::read_from(&mut ptr, BigEndian)?,
+                        ))),
+                        0x20 => pars.push(DHCPParameter::ReqRouter),
+                        0x21 => pars.push(DHCPParameter::Router(Ipv4Addr::from(u32::read_from(
+                            &mut ptr, BigEndian,
+                        )?))),
+                        0x30 => pars.push(DHCPParameter::ReqDomainName),
+                        0x31 => pars.push(DHCPParameter::DomainName()),
+                        0x40 => pars.push(DHCPParameter::ReqDomainNameServer),
+                        0x41 => pars.push(DHCPParameter::DomainNameServer(Ipv4Addr::from(
+                            u32::read_from(&mut ptr, BigEndian)?,
+                        ))),
+                        0x50 => pars.push(DHCPParameter::AddressRequested(Ipv4Addr::from(
+                            u32::read_from(&mut ptr, BigEndian)?,
+                        ))),
+                        0x60 => pars.push(DHCPParameter::Server(Ipv4Addr::from(u32::read_from(
+                            &mut ptr, BigEndian,
+                        )?))),
+                        _ => ::core::panicking::panic("not implemented"),
+                    }
+                }
+                Ok(Self { typ, pars })
+            }
+        }
+    }
+    mod server {
+        use std::{
+            collections::HashMap,
+            hash::Hash,
+            net::{IpAddr, Ipv4Addr, SocketAddr},
+            ops::{Deref, DerefMut},
+            str::FromStr,
+        };
+        use des::prelude::*;
+        use des::tokio::net::get_ip;
+        use crate::common::MESSAGE_KIND_DHCP;
+        use super::common::{DHCPMessage, DHCPOp, DHCPOpsTyp, DHCPParameter};
+        pub struct DHCPServer {
+            transactions: HashMap<u32, (SimTime, TransactionState)>,
+            addr: Ipv4Addr,
+            gate: Option<GateRef>,
+            reserved: HashMap<Ipv4Addr, [u8; 8]>,
+            config: DHCPServerConfig,
+        }
+        #[automatically_derived]
+        impl ::core::fmt::Debug for DHCPServer {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+                ::core::fmt::Formatter::debug_struct_field5_finish(
+                    f,
+                    "DHCPServer",
+                    "transactions",
+                    &&self.transactions,
+                    "addr",
+                    &&self.addr,
+                    "gate",
+                    &&self.gate,
+                    "reserved",
+                    &&self.reserved,
+                    "config",
+                    &&self.config,
+                )
+            }
+        }
+        #[automatically_derived]
+        impl ::core::clone::Clone for DHCPServer {
+            #[inline]
+            fn clone(&self) -> DHCPServer {
+                DHCPServer {
+                    transactions: ::core::clone::Clone::clone(&self.transactions),
+                    addr: ::core::clone::Clone::clone(&self.addr),
+                    gate: ::core::clone::Clone::clone(&self.gate),
+                    reserved: ::core::clone::Clone::clone(&self.reserved),
+                    config: ::core::clone::Clone::clone(&self.config),
+                }
+            }
+        }
+        #[automatically_derived]
+        impl ::core::marker::StructuralPartialEq for DHCPServer {}
+        #[automatically_derived]
+        impl ::core::cmp::PartialEq for DHCPServer {
+            #[inline]
+            fn eq(&self, other: &DHCPServer) -> bool {
+                self.transactions == other.transactions
+                    && self.addr == other.addr
+                    && self.gate == other.gate
+                    && self.reserved == other.reserved
+                    && self.config == other.config
+            }
+        }
+        #[automatically_derived]
+        impl ::core::marker::StructuralEq for DHCPServer {}
+        #[automatically_derived]
+        impl ::core::cmp::Eq for DHCPServer {
+            #[inline]
+            #[doc(hidden)]
+            #[no_coverage]
+            fn assert_receiver_is_total_eq(&self) -> () {
+                let _: ::core::cmp::AssertParamIsEq<HashMap<u32, (SimTime, TransactionState)>>;
+                let _: ::core::cmp::AssertParamIsEq<Ipv4Addr>;
+                let _: ::core::cmp::AssertParamIsEq<Option<GateRef>>;
+                let _: ::core::cmp::AssertParamIsEq<HashMap<Ipv4Addr, [u8; 8]>>;
+                let _: ::core::cmp::AssertParamIsEq<DHCPServerConfig>;
+            }
+        }
+        struct NodeConfig {
+            pub addr: Ipv4Addr,
+            pub dns: Ipv4Addr,
+            pub router: Ipv4Addr,
+            pub subnet: Ipv4Addr,
+            pub name: String,
+        }
+        #[automatically_derived]
+        impl ::core::fmt::Debug for NodeConfig {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+                ::core::fmt::Formatter::debug_struct_field5_finish(
+                    f,
+                    "NodeConfig",
+                    "addr",
+                    &&self.addr,
+                    "dns",
+                    &&self.dns,
+                    "router",
+                    &&self.router,
+                    "subnet",
+                    &&self.subnet,
+                    "name",
+                    &&self.name,
+                )
+            }
+        }
+        #[automatically_derived]
+        impl ::core::clone::Clone for NodeConfig {
+            #[inline]
+            fn clone(&self) -> NodeConfig {
+                NodeConfig {
+                    addr: ::core::clone::Clone::clone(&self.addr),
+                    dns: ::core::clone::Clone::clone(&self.dns),
+                    router: ::core::clone::Clone::clone(&self.router),
+                    subnet: ::core::clone::Clone::clone(&self.subnet),
+                    name: ::core::clone::Clone::clone(&self.name),
+                }
+            }
+        }
+        #[automatically_derived]
+        impl ::core::marker::StructuralPartialEq for NodeConfig {}
+        #[automatically_derived]
+        impl ::core::cmp::PartialEq for NodeConfig {
+            #[inline]
+            fn eq(&self, other: &NodeConfig) -> bool {
+                self.addr == other.addr
+                    && self.dns == other.dns
+                    && self.router == other.router
+                    && self.subnet == other.subnet
+                    && self.name == other.name
+            }
+        }
+        #[automatically_derived]
+        impl ::core::marker::StructuralEq for NodeConfig {}
+        #[automatically_derived]
+        impl ::core::cmp::Eq for NodeConfig {
+            #[inline]
+            #[doc(hidden)]
+            #[no_coverage]
+            fn assert_receiver_is_total_eq(&self) -> () {
+                let _: ::core::cmp::AssertParamIsEq<Ipv4Addr>;
+                let _: ::core::cmp::AssertParamIsEq<String>;
+            }
+        }
+        #[automatically_derived]
+        impl ::core::hash::Hash for NodeConfig {
+            fn hash<__H: ::core::hash::Hasher>(&self, state: &mut __H) -> () {
+                ::core::hash::Hash::hash(&self.addr, state);
+                ::core::hash::Hash::hash(&self.dns, state);
+                ::core::hash::Hash::hash(&self.router, state);
+                ::core::hash::Hash::hash(&self.subnet, state);
+                ::core::hash::Hash::hash(&self.name, state)
+            }
+        }
+        struct TransactionState {
+            offered: NodeConfig,
+        }
+        #[automatically_derived]
+        impl ::core::fmt::Debug for TransactionState {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+                ::core::fmt::Formatter::debug_struct_field1_finish(
+                    f,
+                    "TransactionState",
+                    "offered",
+                    &&self.offered,
+                )
+            }
+        }
+        #[automatically_derived]
+        impl ::core::clone::Clone for TransactionState {
+            #[inline]
+            fn clone(&self) -> TransactionState {
+                TransactionState {
+                    offered: ::core::clone::Clone::clone(&self.offered),
+                }
+            }
+        }
+        #[automatically_derived]
+        impl ::core::marker::StructuralPartialEq for TransactionState {}
+        #[automatically_derived]
+        impl ::core::cmp::PartialEq for TransactionState {
+            #[inline]
+            fn eq(&self, other: &TransactionState) -> bool {
+                self.offered == other.offered
+            }
+        }
+        #[automatically_derived]
+        impl ::core::marker::StructuralEq for TransactionState {}
+        #[automatically_derived]
+        impl ::core::cmp::Eq for TransactionState {
+            #[inline]
+            #[doc(hidden)]
+            #[no_coverage]
+            fn assert_receiver_is_total_eq(&self) -> () {
+                let _: ::core::cmp::AssertParamIsEq<NodeConfig>;
+            }
+        }
+        #[automatically_derived]
+        impl ::core::hash::Hash for TransactionState {
+            fn hash<__H: ::core::hash::Hasher>(&self, state: &mut __H) -> () {
+                ::core::hash::Hash::hash(&self.offered, state)
+            }
+        }
+        pub struct DHCPServerConfig {
+            static_ow: HashMap<[u8; 8], Ipv4Addr>,
+            subnet_mask: Ipv4Addr,
+            subnet_range_start: Ipv4Addr,
+            subnet_range_end: Ipv4Addr,
+            dns: Ipv4Addr,
+            router: Ipv4Addr,
+            timeout: Duration,
+            lease_time: Duration,
+        }
+        #[automatically_derived]
+        impl ::core::fmt::Debug for DHCPServerConfig {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+                let names: &'static _ = &[
+                    "static_ow",
+                    "subnet_mask",
+                    "subnet_range_start",
+                    "subnet_range_end",
+                    "dns",
+                    "router",
+                    "timeout",
+                    "lease_time",
+                ];
+                let values: &[&dyn ::core::fmt::Debug] = &[
+                    &&self.static_ow,
+                    &&self.subnet_mask,
+                    &&self.subnet_range_start,
+                    &&self.subnet_range_end,
+                    &&self.dns,
+                    &&self.router,
+                    &&self.timeout,
+                    &&self.lease_time,
+                ];
+                ::core::fmt::Formatter::debug_struct_fields_finish(
+                    f,
+                    "DHCPServerConfig",
+                    names,
+                    values,
+                )
+            }
+        }
+        #[automatically_derived]
+        impl ::core::clone::Clone for DHCPServerConfig {
+            #[inline]
+            fn clone(&self) -> DHCPServerConfig {
+                DHCPServerConfig {
+                    static_ow: ::core::clone::Clone::clone(&self.static_ow),
+                    subnet_mask: ::core::clone::Clone::clone(&self.subnet_mask),
+                    subnet_range_start: ::core::clone::Clone::clone(&self.subnet_range_start),
+                    subnet_range_end: ::core::clone::Clone::clone(&self.subnet_range_end),
+                    dns: ::core::clone::Clone::clone(&self.dns),
+                    router: ::core::clone::Clone::clone(&self.router),
+                    timeout: ::core::clone::Clone::clone(&self.timeout),
+                    lease_time: ::core::clone::Clone::clone(&self.lease_time),
+                }
+            }
+        }
+        #[automatically_derived]
+        impl ::core::marker::StructuralPartialEq for DHCPServerConfig {}
+        #[automatically_derived]
+        impl ::core::cmp::PartialEq for DHCPServerConfig {
+            #[inline]
+            fn eq(&self, other: &DHCPServerConfig) -> bool {
+                self.static_ow == other.static_ow
+                    && self.subnet_mask == other.subnet_mask
+                    && self.subnet_range_start == other.subnet_range_start
+                    && self.subnet_range_end == other.subnet_range_end
+                    && self.dns == other.dns
+                    && self.router == other.router
+                    && self.timeout == other.timeout
+                    && self.lease_time == other.lease_time
+            }
+        }
+        #[automatically_derived]
+        impl ::core::marker::StructuralEq for DHCPServerConfig {}
+        #[automatically_derived]
+        impl ::core::cmp::Eq for DHCPServerConfig {
+            #[inline]
+            #[doc(hidden)]
+            #[no_coverage]
+            fn assert_receiver_is_total_eq(&self) -> () {
+                let _: ::core::cmp::AssertParamIsEq<HashMap<[u8; 8], Ipv4Addr>>;
+                let _: ::core::cmp::AssertParamIsEq<Ipv4Addr>;
+                let _: ::core::cmp::AssertParamIsEq<Duration>;
+            }
+        }
+        impl DHCPServerConfig {
+            pub fn add_static_entry(&mut self, mac: [u8; 8], addr: Ipv4Addr) -> &mut Self {
+                self.static_ow.insert(mac, addr);
+                self
+            }
+            pub fn remove_static_entry(&mut self, mac: [u8; 8]) -> &mut Self {
+                self.static_ow.remove(&mac);
+                self
+            }
+            pub fn subnet_range(&mut self, start: Ipv4Addr, end: Ipv4Addr) -> &mut Self {
+                self.subnet_range_start = start;
+                self.subnet_range_end = end;
+                self
+            }
+            pub fn subnet_mask(&mut self, mask: Ipv4Addr) -> &mut Self {
+                self.subnet_mask = mask;
+                self
+            }
+            pub fn dns(&mut self, dns: Ipv4Addr) -> &mut Self {
+                self.dns = dns;
+                self
+            }
+            pub fn router(&mut self, router: Ipv4Addr) -> &mut Self {
+                self.router = router;
+                self
+            }
+            pub fn timeouts(&mut self, timeout: Duration, lease_time: Duration) -> &mut Self {
+                self.timeout = timeout;
+                self.lease_time = lease_time;
+                self
+            }
+        }
+        impl Default for DHCPServerConfig {
+            fn default() -> Self {
+                Self {
+                    static_ow: HashMap::new(),
+                    subnet_mask: Ipv4Addr::UNSPECIFIED,
+                    subnet_range_start: Ipv4Addr::UNSPECIFIED,
+                    subnet_range_end: Ipv4Addr::UNSPECIFIED,
+                    dns: Ipv4Addr::UNSPECIFIED,
+                    router: Ipv4Addr::UNSPECIFIED,
+                    timeout: Duration::new(10, 0),
+                    lease_time: Duration::new(100_000, 0),
+                }
+            }
+        }
+        impl DHCPServer {
+            pub fn new() -> Self {
+                let addr = if let IpAddr::V4(v4) = get_ip().unwrap() {
+                    v4
+                } else {
+                    Ipv4Addr::UNSPECIFIED
+                };
+                let mut reserved = HashMap::new();
+                reserved.insert(addr, [0; 8]);
+                DHCPServer {
+                    transactions: HashMap::new(),
+                    addr,
+                    reserved,
+                    gate: gate("out", 0),
+                    config: DHCPServerConfig::default(),
+                }
+            }
+            pub fn handle_message(&mut self, udp: (SocketAddr, SocketAddr), msg: DHCPMessage) {
+                if msg.op == DHCPOp::Wakeup {
+                    for key in self.transactions.keys().copied().collect::<Vec<_>>() {
+                        let (timestamp, _) = self.transactions.get(&key).unwrap();
+                        if SimTime::now().duration_since(*timestamp) >= self.config.timeout {
+                            let (_, transaction) = self.transactions.remove(&key).unwrap();
+                            {
+                                let lvl = ::log::Level::Trace;
+                                if lvl <= ::log::STATIC_MAX_LEVEL && lvl <= ::log::max_level() {
+                                    ::log::__private_api_log(
+                                        ::core::fmt::Arguments::new_v1(
+                                            &[
+                                                "<DHCPServer> Canceled handshake ",
+                                                " due to timeout",
+                                            ],
+                                            &[::core::fmt::ArgumentV1::new_lower_hex(&key)],
+                                        ),
+                                        lvl,
+                                        &(
+                                            "inet::dhcp::server",
+                                            "inet::dhcp::server",
+                                            "src/dhcp/server.rs",
+                                            142u32,
+                                        ),
+                                        ::log::__private_api::Option::None,
+                                    );
+                                }
+                            };
+                            self.reserved.remove(&transaction.offered.addr).unwrap();
+                        }
+                    }
+                    return;
+                }
+                match msg.ops.typ {
+                    DHCPOpsTyp::Discover => {
+                        match (&udp.0, &SocketAddr::from_str("0.0.0.0:68").unwrap()) {
+                            (left_val, right_val) => {
+                                if !(*left_val == *right_val) {
+                                    let kind = ::core::panicking::AssertKind::Eq;
+                                    ::core::panicking::assert_failed(
+                                        kind,
+                                        &*left_val,
+                                        &*right_val,
+                                        ::core::option::Option::None,
+                                    );
+                                }
+                            }
+                        };
+                        match (&udp.1, &SocketAddr::from_str("255.255.255.255:67").unwrap()) {
+                            (left_val, right_val) => {
+                                if !(*left_val == *right_val) {
+                                    let kind = ::core::panicking::AssertKind::Eq;
+                                    ::core::panicking::assert_failed(
+                                        kind,
+                                        &*left_val,
+                                        &*right_val,
+                                        ::core::option::Option::None,
+                                    );
+                                }
+                            }
+                        };
+                        let config = self.config_for_discover(&msg);
+                        let ops = self.ops_from_config_for_offer(&msg, &config);
+                        let offer = DHCPMessage::offer(msg, self.addr, config.addr, ops);
+                        {
+                            let lvl = ::log::Level::Trace;
+                            if lvl <= ::log::STATIC_MAX_LEVEL && lvl <= ::log::max_level() {
+                                ::log::__private_api_log(
+                                    ::core::fmt::Arguments::new_v1(
+                                        &["<DHCPServer> Initiated handshake ", " with offer "],
+                                        &[
+                                            ::core::fmt::ArgumentV1::new_lower_hex(&offer.xid),
+                                            ::core::fmt::ArgumentV1::new_debug(&offer.yiaddr),
+                                        ],
+                                    ),
+                                    lvl,
+                                    &(
+                                        "inet::dhcp::server",
+                                        "inet::dhcp::server",
+                                        "src/dhcp/server.rs",
+                                        160u32,
+                                    ),
+                                    ::log::__private_api::Option::None,
+                                );
+                            }
+                        };
+                        schedule_in(
+                            Message::new()
+                                .kind(MESSAGE_KIND_DHCP)
+                                .content((
+                                    SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), 0),
+                                    SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), 0),
+                                    DHCPMessage::wakeup(),
+                                ))
+                                .build(),
+                            self.config.timeout,
+                        );
+                        let udp = (
+                            SocketAddr::new(IpAddr::V4(self.addr), 67),
+                            SocketAddr::new(IpAddr::V4(offer.yiaddr), 68),
+                            offer,
+                        );
+                        send(
+                            Message::new().kind(MESSAGE_KIND_DHCP).content(udp).build(),
+                            self.gate.as_ref().expect("Failed to fetch gate"),
+                        );
+                    }
+                    DHCPOpsTyp::Request => {
+                        let config = self.transactions.remove_entry(&msg.xid);
+                        let Some ((_ , (_timestamp , config))) = config else { return ; } ;
+                        if msg.siaddr != self.addr {
+                            {
+                                let lvl = ::log::Level::Trace;
+                                if lvl <= ::log::STATIC_MAX_LEVEL && lvl <= ::log::max_level() {
+                                    ::log::__private_api_log(
+                                        ::core::fmt::Arguments::new_v1(
+                                            &[
+                                                "<DHCPServer> Canceled handshake ",
+                                                ". Handled by other instance ",
+                                            ],
+                                            &[
+                                                ::core::fmt::ArgumentV1::new_lower_hex(&msg.xid),
+                                                ::core::fmt::ArgumentV1::new_debug(&msg.siaddr),
+                                            ],
+                                        ),
+                                        lvl,
+                                        &(
+                                            "inet::dhcp::server",
+                                            "inet::dhcp::server",
+                                            "src/dhcp/server.rs",
+                                            195u32,
+                                        ),
+                                        ::log::__private_api::Option::None,
+                                    );
+                                }
+                            };
+                            self.reserved.remove(&config.offered.addr);
+                            return;
+                        }
+                        match (&config.offered.addr, &msg.ciaddr) {
+                            (left_val, right_val) => {
+                                if !(*left_val == *right_val) {
+                                    let kind = ::core::panicking::AssertKind::Eq;
+                                    ::core::panicking::assert_failed(
+                                        kind,
+                                        &*left_val,
+                                        &*right_val,
+                                        ::core::option::Option::None,
+                                    );
+                                }
+                            }
+                        };
+                        match (&config.offered.addr, &msg.ciaddr) {
+                            (left_val, right_val) => {
+                                if !(*left_val == *right_val) {
+                                    let kind = ::core::panicking::AssertKind::Eq;
+                                    ::core::panicking::assert_failed(
+                                        kind,
+                                        &*left_val,
+                                        &*right_val,
+                                        ::core::option::Option::None,
+                                    );
+                                }
+                            }
+                        };
+                        let ops = self.ops_from_config_for_offer(&msg, &config.offered);
+                        let ack = DHCPMessage::ack(msg, ops);
+                        {
+                            let lvl = ::log::Level::Trace;
+                            if lvl <= ::log::STATIC_MAX_LEVEL && lvl <= ::log::max_level() {
+                                ::log::__private_api_log(
+                                    ::core::fmt::Arguments::new_v1(
+                                        &["<DHCPServer> Finished handshake ", " with binding "],
+                                        &[
+                                            ::core::fmt::ArgumentV1::new_lower_hex(&ack.xid),
+                                            ::core::fmt::ArgumentV1::new_debug(&ack.yiaddr),
+                                        ],
+                                    ),
+                                    lvl,
+                                    &(
+                                        "inet::dhcp::server",
+                                        "inet::dhcp::server",
+                                        "src/dhcp/server.rs",
+                                        209u32,
+                                    ),
+                                    ::log::__private_api::Option::None,
+                                );
+                            }
+                        };
+                        let udp = (
+                            SocketAddr::new(IpAddr::V4(self.addr), 67),
+                            SocketAddr::new(IpAddr::V4(ack.ciaddr), 68),
+                            ack,
+                        );
+                        send(
+                            Message::new().kind(MESSAGE_KIND_DHCP).content(udp).build(),
+                            self.gate.as_ref().expect("Failed to fetch gate"),
+                        );
+                    }
+                    _ => {}
+                }
+            }
+            fn config_for_discover(&mut self, discover: &DHCPMessage) -> NodeConfig {
+                let req_ip = discover
+                    .ops
+                    .pars
+                    .iter()
+                    .filter_map(|v| {
+                        if let DHCPParameter::AddressRequested(addr) = v {
+                            Some(*addr)
+                        } else {
+                            None
+                        }
+                    })
+                    .next();
+                if let Some(overwrite) = self.config.static_ow.get(&discover.chaddr) {
+                    NodeConfig {
+                        addr: *overwrite,
+                        dns: self.config.dns,
+                        router: self.config.router,
+                        subnet: self.config.subnet_mask,
+                        name: String::new(),
+                    }
+                } else {
+                    if let Some(req_ip) = req_ip {
+                        let possible = self.reserved.get(&req_ip).is_none();
+                        let possible = possible && self.dynamic_ip_in_range(req_ip);
+                        if possible {
+                            let config = NodeConfig {
+                                addr: req_ip,
+                                dns: self.config.dns,
+                                router: self.config.router,
+                                subnet: self.config.subnet_mask,
+                                name: String::new(),
+                            };
+                            self.reserved.insert(req_ip, discover.chaddr);
+                            self.transactions.insert(
+                                discover.xid,
+                                (
+                                    SimTime::now(),
+                                    TransactionState {
+                                        offered: config.clone(),
+                                    },
+                                ),
+                            );
+                            return config;
+                        }
+                    }
+                    let mut ip = u32::from_be_bytes(self.config.subnet_range_start.octets());
+                    let bound = u32::from_be_bytes(self.config.subnet_range_end.octets());
+                    let res = loop {
+                        if ip >= bound {
+                            break None;
+                        }
+                        let bytes = ip.to_be_bytes();
+                        let addr = Ipv4Addr::from(bytes);
+                        if self.reserved.get(&addr).is_none() {
+                            break Some(addr);
+                        }
+                        ip += 1;
+                    };
+                    if let Some(res) = res {
+                        let config = NodeConfig {
+                            addr: res,
+                            dns: self.config.dns,
+                            router: self.config.router,
+                            subnet: self.config.subnet_mask,
+                            name: String::new(),
+                        };
+                        self.reserved.insert(res, discover.chaddr);
+                        self.transactions.insert(
+                            discover.xid,
+                            (
+                                SimTime::now(),
+                                TransactionState {
+                                    offered: config.clone(),
+                                },
+                            ),
+                        );
+                        config
+                    } else {
+                        ::core::panicking::panic("not implemented")
+                    }
+                }
+            }
+            fn ops_from_config_for_offer(
+                &self,
+                discover: &DHCPMessage,
+                config: &NodeConfig,
+            ) -> Vec<DHCPParameter> {
+                let mut res = Vec::new();
+                if discover.ops.pars.iter().any(|v| match v {
+                    DHCPParameter::ReqDomainName => true,
+                    _ => false,
+                }) {
+                    res.push(DHCPParameter::DomainName());
+                }
+                if discover.ops.pars.iter().any(|v| match v {
+                    DHCPParameter::ReqDomainNameServer => true,
+                    _ => false,
+                }) {
+                    res.push(DHCPParameter::DomainNameServer(config.dns));
+                }
+                if discover.ops.pars.iter().any(|v| match v {
+                    DHCPParameter::ReqRouter => true,
+                    _ => false,
+                }) {
+                    res.push(DHCPParameter::Router(config.router));
+                }
+                if discover.ops.pars.iter().any(|v| match v {
+                    DHCPParameter::ReqSubnetMask => true,
+                    _ => false,
+                }) {
+                    res.push(DHCPParameter::SubnetMask(config.subnet));
+                }
+                res
+            }
+            fn dynamic_ip_in_range(&self, ip: Ipv4Addr) -> bool {
+                let lower = u32::from_be_bytes(self.config.subnet_range_start.octets());
+                let upper = u32::from_be_bytes(self.config.subnet_range_end.octets());
+                let ip = u32::from_be_bytes(ip.octets());
+                lower <= ip && ip < upper
+            }
+        }
+        impl Deref for DHCPServer {
+            type Target = DHCPServerConfig;
+            fn deref(&self) -> &Self::Target {
+                &self.config
+            }
+        }
+        impl DerefMut for DHCPServer {
+            fn deref_mut(&mut self) -> &mut Self::Target {
+                &mut self.config
+            }
+        }
+        impl Default for NodeConfig {
+            fn default() -> Self {
+                Self {
+                    addr: Ipv4Addr::UNSPECIFIED,
+                    dns: Ipv4Addr::UNSPECIFIED,
+                    subnet: Ipv4Addr::UNSPECIFIED,
+                    router: Ipv4Addr::UNSPECIFIED,
+                    name: String::new(),
+                }
+            }
+        }
+    }
+    pub use client::DHCPClient;
+    pub use common::DHCPMessage;
+    pub use server::DHCPServer;
+    pub use server::DHCPServerConfig;
+}
+pub mod dns {
+    mod pkt {
+        #![allow(unused)]
+        pub struct DNSMessage {
+            qr: bool,
+            opcode: DNSOpCode,
+            aa: bool,
+            tc: bool,
+            rd: bool,
+            ra: bool,
+            rcode: DNSResponseCode,
+        }
+        #[repr(u8)]
+        pub enum DNSOpCode {
+            Query = 0,
+            IQuery = 1,
+            Status = 2,
+        }
+        #[automatically_derived]
+        impl ::core::fmt::Debug for DNSOpCode {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+                match self {
+                    DNSOpCode::Query => ::core::fmt::Formatter::write_str(f, "Query"),
+                    DNSOpCode::IQuery => ::core::fmt::Formatter::write_str(f, "IQuery"),
+                    DNSOpCode::Status => ::core::fmt::Formatter::write_str(f, "Status"),
+                }
+            }
+        }
+        #[automatically_derived]
+        impl ::core::clone::Clone for DNSOpCode {
+            #[inline]
+            fn clone(&self) -> DNSOpCode {
+                *self
+            }
+        }
+        #[automatically_derived]
+        impl ::core::marker::Copy for DNSOpCode {}
+        #[automatically_derived]
+        impl ::core::marker::StructuralPartialEq for DNSOpCode {}
+        #[automatically_derived]
+        impl ::core::cmp::PartialEq for DNSOpCode {
+            #[inline]
+            fn eq(&self, other: &DNSOpCode) -> bool {
+                let __self_tag = ::core::intrinsics::discriminant_value(self);
+                let __arg1_tag = ::core::intrinsics::discriminant_value(other);
+                __self_tag == __arg1_tag
+            }
+        }
+        #[automatically_derived]
+        impl ::core::marker::StructuralEq for DNSOpCode {}
+        #[automatically_derived]
+        impl ::core::cmp::Eq for DNSOpCode {
+            #[inline]
+            #[doc(hidden)]
+            #[no_coverage]
+            fn assert_receiver_is_total_eq(&self) -> () {}
+        }
+        #[automatically_derived]
+        impl ::core::hash::Hash for DNSOpCode {
+            fn hash<__H: ::core::hash::Hasher>(&self, state: &mut __H) -> () {
+                let __self_tag = ::core::intrinsics::discriminant_value(self);
+                ::core::hash::Hash::hash(&__self_tag, state)
+            }
+        }
+        #[repr(u16)]
+        pub enum DNSResponseCode {
+            NoError = 0,
+            FormError = 1,
+            ServFail = 2,
+            NxDomain = 3,
+            NotImpl = 4,
+            Refused = 5,
+            YXDomain = 6,
+            YXRRSet = 7,
+            NXRRSet = 8,
+            NotAuth = 9,
+            NotZone = 10,
+            DSOTypeNotImplemented = 11,
+            BadOPTVersionOrSignature = 16,
+            BadKey = 17,
+            BadTime = 18,
+            BadMode = 19,
+            BadName = 20,
+            BadAlgo = 21,
+            BadTrunc = 22,
+            BadCookie = 23,
+        }
+        #[automatically_derived]
+        impl ::core::fmt::Debug for DNSResponseCode {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+                match self {
+                    DNSResponseCode::NoError => ::core::fmt::Formatter::write_str(f, "NoError"),
+                    DNSResponseCode::FormError => ::core::fmt::Formatter::write_str(f, "FormError"),
+                    DNSResponseCode::ServFail => ::core::fmt::Formatter::write_str(f, "ServFail"),
+                    DNSResponseCode::NxDomain => ::core::fmt::Formatter::write_str(f, "NxDomain"),
+                    DNSResponseCode::NotImpl => ::core::fmt::Formatter::write_str(f, "NotImpl"),
+                    DNSResponseCode::Refused => ::core::fmt::Formatter::write_str(f, "Refused"),
+                    DNSResponseCode::YXDomain => ::core::fmt::Formatter::write_str(f, "YXDomain"),
+                    DNSResponseCode::YXRRSet => ::core::fmt::Formatter::write_str(f, "YXRRSet"),
+                    DNSResponseCode::NXRRSet => ::core::fmt::Formatter::write_str(f, "NXRRSet"),
+                    DNSResponseCode::NotAuth => ::core::fmt::Formatter::write_str(f, "NotAuth"),
+                    DNSResponseCode::NotZone => ::core::fmt::Formatter::write_str(f, "NotZone"),
+                    DNSResponseCode::DSOTypeNotImplemented => {
+                        ::core::fmt::Formatter::write_str(f, "DSOTypeNotImplemented")
+                    }
+                    DNSResponseCode::BadOPTVersionOrSignature => {
+                        ::core::fmt::Formatter::write_str(f, "BadOPTVersionOrSignature")
+                    }
+                    DNSResponseCode::BadKey => ::core::fmt::Formatter::write_str(f, "BadKey"),
+                    DNSResponseCode::BadTime => ::core::fmt::Formatter::write_str(f, "BadTime"),
+                    DNSResponseCode::BadMode => ::core::fmt::Formatter::write_str(f, "BadMode"),
+                    DNSResponseCode::BadName => ::core::fmt::Formatter::write_str(f, "BadName"),
+                    DNSResponseCode::BadAlgo => ::core::fmt::Formatter::write_str(f, "BadAlgo"),
+                    DNSResponseCode::BadTrunc => ::core::fmt::Formatter::write_str(f, "BadTrunc"),
+                    DNSResponseCode::BadCookie => ::core::fmt::Formatter::write_str(f, "BadCookie"),
+                }
+            }
+        }
+        #[automatically_derived]
+        impl ::core::clone::Clone for DNSResponseCode {
+            #[inline]
+            fn clone(&self) -> DNSResponseCode {
+                *self
+            }
+        }
+        #[automatically_derived]
+        impl ::core::marker::Copy for DNSResponseCode {}
+        #[automatically_derived]
+        impl ::core::marker::StructuralPartialEq for DNSResponseCode {}
+        #[automatically_derived]
+        impl ::core::cmp::PartialEq for DNSResponseCode {
+            #[inline]
+            fn eq(&self, other: &DNSResponseCode) -> bool {
+                let __self_tag = ::core::intrinsics::discriminant_value(self);
+                let __arg1_tag = ::core::intrinsics::discriminant_value(other);
+                __self_tag == __arg1_tag
+            }
+        }
+        #[automatically_derived]
+        impl ::core::marker::StructuralEq for DNSResponseCode {}
+        #[automatically_derived]
+        impl ::core::cmp::Eq for DNSResponseCode {
+            #[inline]
+            #[doc(hidden)]
+            #[no_coverage]
+            fn assert_receiver_is_total_eq(&self) -> () {}
+        }
+        #[automatically_derived]
+        impl ::core::hash::Hash for DNSResponseCode {
+            fn hash<__H: ::core::hash::Hasher>(&self, state: &mut __H) -> () {
+                let __self_tag = ::core::intrinsics::discriminant_value(self);
+                ::core::hash::Hash::hash(&__self_tag, state)
+            }
+        }
+        pub struct DNSQuestion {
+            name: (),
+            typ: DNSQuestionType,
+        }
+        #[repr(u16)]
+        pub enum DNSQuestionType {
+            A = 1,
+            AAAA = 28,
+            AFSDB = 18,
+            APL = 42,
+            CAA = 257,
+            CDNSKEY = 60,
+            CDS = 59,
+            CERT = 37,
+            CNAME = 5,
+            CSYNC = 62,
+            DHCID = 49,
+            DLV = 32769,
+            DNAME = 39,
+            DNSKEY = 48,
+            DS = 43,
+            EUI48 = 108,
+            EUI64 = 109,
+            HINFO = 13,
+            HIP = 55,
+            HTTPS = 65,
+            IPSECKEY = 45,
+            KEY = 25,
+            KX = 36,
+            LOC = 29,
+            MX = 15,
+            NAPTR = 35,
+            NS = 2,
+            NSEC = 47,
+            NSEC3 = 50,
+            NSEC3PARAM = 51,
+            OPENPGPKEY = 61,
+            PTR = 12,
+            RRSIG = 46,
+            RP = 17,
+            SIG = 24,
+            SMIMEA = 53,
+            SOA = 6,
+            SRV = 33,
+            SSHFP = 44,
+            SVCB = 64,
+            TA = 32768,
+            TKEY = 249,
+            TLSA = 52,
+            TSIG = 250,
+            TXT = 16,
+            URI = 256,
+            ZONEMD = 63,
+        }
+        #[automatically_derived]
+        impl ::core::fmt::Debug for DNSQuestionType {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+                match self {
+                    DNSQuestionType::A => ::core::fmt::Formatter::write_str(f, "A"),
+                    DNSQuestionType::AAAA => ::core::fmt::Formatter::write_str(f, "AAAA"),
+                    DNSQuestionType::AFSDB => ::core::fmt::Formatter::write_str(f, "AFSDB"),
+                    DNSQuestionType::APL => ::core::fmt::Formatter::write_str(f, "APL"),
+                    DNSQuestionType::CAA => ::core::fmt::Formatter::write_str(f, "CAA"),
+                    DNSQuestionType::CDNSKEY => ::core::fmt::Formatter::write_str(f, "CDNSKEY"),
+                    DNSQuestionType::CDS => ::core::fmt::Formatter::write_str(f, "CDS"),
+                    DNSQuestionType::CERT => ::core::fmt::Formatter::write_str(f, "CERT"),
+                    DNSQuestionType::CNAME => ::core::fmt::Formatter::write_str(f, "CNAME"),
+                    DNSQuestionType::CSYNC => ::core::fmt::Formatter::write_str(f, "CSYNC"),
+                    DNSQuestionType::DHCID => ::core::fmt::Formatter::write_str(f, "DHCID"),
+                    DNSQuestionType::DLV => ::core::fmt::Formatter::write_str(f, "DLV"),
+                    DNSQuestionType::DNAME => ::core::fmt::Formatter::write_str(f, "DNAME"),
+                    DNSQuestionType::DNSKEY => ::core::fmt::Formatter::write_str(f, "DNSKEY"),
+                    DNSQuestionType::DS => ::core::fmt::Formatter::write_str(f, "DS"),
+                    DNSQuestionType::EUI48 => ::core::fmt::Formatter::write_str(f, "EUI48"),
+                    DNSQuestionType::EUI64 => ::core::fmt::Formatter::write_str(f, "EUI64"),
+                    DNSQuestionType::HINFO => ::core::fmt::Formatter::write_str(f, "HINFO"),
+                    DNSQuestionType::HIP => ::core::fmt::Formatter::write_str(f, "HIP"),
+                    DNSQuestionType::HTTPS => ::core::fmt::Formatter::write_str(f, "HTTPS"),
+                    DNSQuestionType::IPSECKEY => ::core::fmt::Formatter::write_str(f, "IPSECKEY"),
+                    DNSQuestionType::KEY => ::core::fmt::Formatter::write_str(f, "KEY"),
+                    DNSQuestionType::KX => ::core::fmt::Formatter::write_str(f, "KX"),
+                    DNSQuestionType::LOC => ::core::fmt::Formatter::write_str(f, "LOC"),
+                    DNSQuestionType::MX => ::core::fmt::Formatter::write_str(f, "MX"),
+                    DNSQuestionType::NAPTR => ::core::fmt::Formatter::write_str(f, "NAPTR"),
+                    DNSQuestionType::NS => ::core::fmt::Formatter::write_str(f, "NS"),
+                    DNSQuestionType::NSEC => ::core::fmt::Formatter::write_str(f, "NSEC"),
+                    DNSQuestionType::NSEC3 => ::core::fmt::Formatter::write_str(f, "NSEC3"),
+                    DNSQuestionType::NSEC3PARAM => {
+                        ::core::fmt::Formatter::write_str(f, "NSEC3PARAM")
+                    }
+                    DNSQuestionType::OPENPGPKEY => {
+                        ::core::fmt::Formatter::write_str(f, "OPENPGPKEY")
+                    }
+                    DNSQuestionType::PTR => ::core::fmt::Formatter::write_str(f, "PTR"),
+                    DNSQuestionType::RRSIG => ::core::fmt::Formatter::write_str(f, "RRSIG"),
+                    DNSQuestionType::RP => ::core::fmt::Formatter::write_str(f, "RP"),
+                    DNSQuestionType::SIG => ::core::fmt::Formatter::write_str(f, "SIG"),
+                    DNSQuestionType::SMIMEA => ::core::fmt::Formatter::write_str(f, "SMIMEA"),
+                    DNSQuestionType::SOA => ::core::fmt::Formatter::write_str(f, "SOA"),
+                    DNSQuestionType::SRV => ::core::fmt::Formatter::write_str(f, "SRV"),
+                    DNSQuestionType::SSHFP => ::core::fmt::Formatter::write_str(f, "SSHFP"),
+                    DNSQuestionType::SVCB => ::core::fmt::Formatter::write_str(f, "SVCB"),
+                    DNSQuestionType::TA => ::core::fmt::Formatter::write_str(f, "TA"),
+                    DNSQuestionType::TKEY => ::core::fmt::Formatter::write_str(f, "TKEY"),
+                    DNSQuestionType::TLSA => ::core::fmt::Formatter::write_str(f, "TLSA"),
+                    DNSQuestionType::TSIG => ::core::fmt::Formatter::write_str(f, "TSIG"),
+                    DNSQuestionType::TXT => ::core::fmt::Formatter::write_str(f, "TXT"),
+                    DNSQuestionType::URI => ::core::fmt::Formatter::write_str(f, "URI"),
+                    DNSQuestionType::ZONEMD => ::core::fmt::Formatter::write_str(f, "ZONEMD"),
+                }
+            }
+        }
+        #[automatically_derived]
+        impl ::core::clone::Clone for DNSQuestionType {
+            #[inline]
+            fn clone(&self) -> DNSQuestionType {
+                *self
+            }
+        }
+        #[automatically_derived]
+        impl ::core::marker::Copy for DNSQuestionType {}
+        #[automatically_derived]
+        impl ::core::marker::StructuralPartialEq for DNSQuestionType {}
+        #[automatically_derived]
+        impl ::core::cmp::PartialEq for DNSQuestionType {
+            #[inline]
+            fn eq(&self, other: &DNSQuestionType) -> bool {
+                let __self_tag = ::core::intrinsics::discriminant_value(self);
+                let __arg1_tag = ::core::intrinsics::discriminant_value(other);
+                __self_tag == __arg1_tag
+            }
+        }
+        #[automatically_derived]
+        impl ::core::marker::StructuralEq for DNSQuestionType {}
+        #[automatically_derived]
+        impl ::core::cmp::Eq for DNSQuestionType {
+            #[inline]
+            #[doc(hidden)]
+            #[no_coverage]
+            fn assert_receiver_is_total_eq(&self) -> () {}
+        }
+        #[automatically_derived]
+        impl ::core::hash::Hash for DNSQuestionType {
+            fn hash<__H: ::core::hash::Hasher>(&self, state: &mut __H) -> () {
+                let __self_tag = ::core::intrinsics::discriminant_value(self);
+                ::core::hash::Hash::hash(&__self_tag, state)
+            }
+        }
+    }
+}
+pub mod ip {
+    use bytestream::{ByteOrder::BigEndian, StreamReader, StreamWriter};
+    use std::{io::Cursor, net::Ipv4Addr};
+    use crate::common::{split_off_front, FromBytestream, IntoBytestream};
+    pub struct IPPacket {
+        pub version: IPVersion,
+        pub ihl: u8,
+        pub dscp: u8,
+        pub enc: u8,
+        pub len: u16,
+        pub identification: u16,
+        pub flags: IPFlags,
+        pub fragment_offset: u16,
+        pub ttl: u8,
+        pub proto: u8,
+        pub checksum: u16,
+        pub src: Ipv4Addr,
+        pub dest: Ipv4Addr,
+        pub content: Vec<u8>,
+    }
+    #[automatically_derived]
+    impl ::core::fmt::Debug for IPPacket {
+        fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+            let names: &'static _ = &[
+                "version",
+                "ihl",
+                "dscp",
+                "enc",
+                "len",
+                "identification",
+                "flags",
+                "fragment_offset",
+                "ttl",
+                "proto",
+                "checksum",
+                "src",
+                "dest",
+                "content",
+            ];
+            let values: &[&dyn ::core::fmt::Debug] = &[
+                &&self.version,
+                &&self.ihl,
+                &&self.dscp,
+                &&self.enc,
+                &&self.len,
+                &&self.identification,
+                &&self.flags,
+                &&self.fragment_offset,
+                &&self.ttl,
+                &&self.proto,
+                &&self.checksum,
+                &&self.src,
+                &&self.dest,
+                &&self.content,
+            ];
+            ::core::fmt::Formatter::debug_struct_fields_finish(f, "IPPacket", names, values)
+        }
+    }
+    #[automatically_derived]
+    impl ::core::clone::Clone for IPPacket {
+        #[inline]
+        fn clone(&self) -> IPPacket {
+            IPPacket {
+                version: ::core::clone::Clone::clone(&self.version),
+                ihl: ::core::clone::Clone::clone(&self.ihl),
+                dscp: ::core::clone::Clone::clone(&self.dscp),
+                enc: ::core::clone::Clone::clone(&self.enc),
+                len: ::core::clone::Clone::clone(&self.len),
+                identification: ::core::clone::Clone::clone(&self.identification),
+                flags: ::core::clone::Clone::clone(&self.flags),
+                fragment_offset: ::core::clone::Clone::clone(&self.fragment_offset),
+                ttl: ::core::clone::Clone::clone(&self.ttl),
+                proto: ::core::clone::Clone::clone(&self.proto),
+                checksum: ::core::clone::Clone::clone(&self.checksum),
+                src: ::core::clone::Clone::clone(&self.src),
+                dest: ::core::clone::Clone::clone(&self.dest),
+                content: ::core::clone::Clone::clone(&self.content),
+            }
+        }
+    }
+    #[automatically_derived]
+    impl ::core::marker::StructuralPartialEq for IPPacket {}
+    #[automatically_derived]
+    impl ::core::cmp::PartialEq for IPPacket {
+        #[inline]
+        fn eq(&self, other: &IPPacket) -> bool {
+            self.version == other.version
+                && self.ihl == other.ihl
+                && self.dscp == other.dscp
+                && self.enc == other.enc
+                && self.len == other.len
+                && self.identification == other.identification
+                && self.flags == other.flags
+                && self.fragment_offset == other.fragment_offset
+                && self.ttl == other.ttl
+                && self.proto == other.proto
+                && self.checksum == other.checksum
+                && self.src == other.src
+                && self.dest == other.dest
+                && self.content == other.content
+        }
+    }
+    #[automatically_derived]
+    impl ::core::marker::StructuralEq for IPPacket {}
+    #[automatically_derived]
+    impl ::core::cmp::Eq for IPPacket {
+        #[inline]
+        #[doc(hidden)]
+        #[no_coverage]
+        fn assert_receiver_is_total_eq(&self) -> () {
+            let _: ::core::cmp::AssertParamIsEq<IPVersion>;
+            let _: ::core::cmp::AssertParamIsEq<u8>;
+            let _: ::core::cmp::AssertParamIsEq<u16>;
+            let _: ::core::cmp::AssertParamIsEq<IPFlags>;
+            let _: ::core::cmp::AssertParamIsEq<Ipv4Addr>;
+            let _: ::core::cmp::AssertParamIsEq<Vec<u8>>;
+        }
+    }
+    #[automatically_derived]
+    impl ::core::hash::Hash for IPPacket {
+        fn hash<__H: ::core::hash::Hasher>(&self, state: &mut __H) -> () {
+            ::core::hash::Hash::hash(&self.version, state);
+            ::core::hash::Hash::hash(&self.ihl, state);
+            ::core::hash::Hash::hash(&self.dscp, state);
+            ::core::hash::Hash::hash(&self.enc, state);
+            ::core::hash::Hash::hash(&self.len, state);
+            ::core::hash::Hash::hash(&self.identification, state);
+            ::core::hash::Hash::hash(&self.flags, state);
+            ::core::hash::Hash::hash(&self.fragment_offset, state);
+            ::core::hash::Hash::hash(&self.ttl, state);
+            ::core::hash::Hash::hash(&self.proto, state);
+            ::core::hash::Hash::hash(&self.checksum, state);
+            ::core::hash::Hash::hash(&self.src, state);
+            ::core::hash::Hash::hash(&self.dest, state);
+            ::core::hash::Hash::hash(&self.content, state)
+        }
+    }
+    #[repr(u8)]
+    pub enum IPVersion {
+        V4 = 4,
+        V6 = 6,
+    }
+    #[automatically_derived]
+    impl ::core::fmt::Debug for IPVersion {
+        fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+            match self {
+                IPVersion::V4 => ::core::fmt::Formatter::write_str(f, "V4"),
+                IPVersion::V6 => ::core::fmt::Formatter::write_str(f, "V6"),
+            }
+        }
+    }
+    #[automatically_derived]
+    impl ::core::clone::Clone for IPVersion {
+        #[inline]
+        fn clone(&self) -> IPVersion {
+            *self
+        }
+    }
+    #[automatically_derived]
+    impl ::core::marker::Copy for IPVersion {}
+    #[automatically_derived]
+    impl ::core::marker::StructuralPartialEq for IPVersion {}
+    #[automatically_derived]
+    impl ::core::cmp::PartialEq for IPVersion {
+        #[inline]
+        fn eq(&self, other: &IPVersion) -> bool {
+            let __self_tag = ::core::intrinsics::discriminant_value(self);
+            let __arg1_tag = ::core::intrinsics::discriminant_value(other);
+            __self_tag == __arg1_tag
+        }
+    }
+    #[automatically_derived]
+    impl ::core::marker::StructuralEq for IPVersion {}
+    #[automatically_derived]
+    impl ::core::cmp::Eq for IPVersion {
+        #[inline]
+        #[doc(hidden)]
+        #[no_coverage]
+        fn assert_receiver_is_total_eq(&self) -> () {}
+    }
+    #[automatically_derived]
+    impl ::core::hash::Hash for IPVersion {
+        fn hash<__H: ::core::hash::Hasher>(&self, state: &mut __H) -> () {
+            let __self_tag = ::core::intrinsics::discriminant_value(self);
+            ::core::hash::Hash::hash(&__self_tag, state)
+        }
+    }
+    pub struct IPFlags {
+        df: bool,
+        mf: bool,
+    }
+    #[automatically_derived]
+    impl ::core::fmt::Debug for IPFlags {
+        fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+            ::core::fmt::Formatter::debug_struct_field2_finish(
+                f, "IPFlags", "df", &&self.df, "mf", &&self.mf,
+            )
+        }
+    }
+    #[automatically_derived]
+    impl ::core::clone::Clone for IPFlags {
+        #[inline]
+        fn clone(&self) -> IPFlags {
+            let _: ::core::clone::AssertParamIsClone<bool>;
+            *self
+        }
+    }
+    #[automatically_derived]
+    impl ::core::marker::Copy for IPFlags {}
+    #[automatically_derived]
+    impl ::core::marker::StructuralPartialEq for IPFlags {}
+    #[automatically_derived]
+    impl ::core::cmp::PartialEq for IPFlags {
+        #[inline]
+        fn eq(&self, other: &IPFlags) -> bool {
+            self.df == other.df && self.mf == other.mf
+        }
+    }
+    #[automatically_derived]
+    impl ::core::marker::StructuralEq for IPFlags {}
+    #[automatically_derived]
+    impl ::core::cmp::Eq for IPFlags {
+        #[inline]
+        #[doc(hidden)]
+        #[no_coverage]
+        fn assert_receiver_is_total_eq(&self) -> () {
+            let _: ::core::cmp::AssertParamIsEq<bool>;
+        }
+    }
+    #[automatically_derived]
+    impl ::core::hash::Hash for IPFlags {
+        fn hash<__H: ::core::hash::Hasher>(&self, state: &mut __H) -> () {
+            ::core::hash::Hash::hash(&self.df, state);
+            ::core::hash::Hash::hash(&self.mf, state)
+        }
+    }
+    impl IPFlags {
+        fn as_u16(&self) -> u16 {
+            (if self.df { 0x010 } else { 0 } | if self.mf { 0x100 } else { 0 }) << 15
+        }
+    }
+    impl IPPacket {}
+    impl IntoBytestream for IPPacket {
+        type Error = std::io::Error;
+        fn into_bytestream(&self, bytestream: &mut Vec<u8>) -> Result<(), Self::Error> {
+            let byte0 = ((self.version as u8) << 4) | self.ihl;
+            byte0.write_to(bytestream, BigEndian)?;
+            let byte1 = (self.dscp << 2) | self.enc;
+            byte1.write_to(bytestream, BigEndian)?;
+            self.len.write_to(bytestream, BigEndian)?;
+            self.identification.write_to(bytestream, BigEndian)?;
+            let fbyte = self.flags.as_u16() | self.fragment_offset;
+            fbyte.write_to(bytestream, BigEndian)?;
+            self.ttl.write_to(bytestream, BigEndian)?;
+            self.proto.write_to(bytestream, BigEndian)?;
+            self.checksum.write_to(bytestream, BigEndian)?;
+            u32::from_be_bytes(self.src.octets()).write_to(bytestream, BigEndian)?;
+            u32::from_be_bytes(self.dest.octets()).write_to(bytestream, BigEndian)?;
+            bytestream.extend(&self.content);
+            Ok(())
+        }
+    }
+    impl FromBytestream for IPPacket {
+        type Error = std::io::Error;
+        fn from_bytestream(bytestream: Vec<u8>) -> Result<Self, Self::Error> {
+            let mut cursor = Cursor::new(bytestream);
+            let byte0 = u8::read_from(&mut cursor, BigEndian)?;
+            let version = byte0 >> 4;
+            let version = match version {
+                4 => IPVersion::V4,
+                6 => IPVersion::V6,
+                _ => ::core::panicking::panic("not implemented"),
+            };
+            let ihl = byte0 & 0x0f;
+            let byte1 = u8::read_from(&mut cursor, BigEndian)?;
+            let dscp = byte1 >> 2;
+            let enc = byte1 & 0x03;
+            let len = u16::read_from(&mut cursor, BigEndian)?;
+            let identification = u16::read_from(&mut cursor, BigEndian)?;
+            let fword = u16::read_from(&mut cursor, BigEndian)?;
+            let flags = {
+                let fbyte = fword >> 15;
+                let mut flags = IPFlags {
+                    mf: false,
+                    df: false,
+                };
+                if fbyte & 0b010 != 0 {
+                    flags.df = true;
+                }
+                if fbyte & 0b001 != 0 {
+                    flags.mf = true;
+                }
+                flags
+            };
+            let fragment_offset = fword & 0x1fff;
+            let ttl = u8::read_from(&mut cursor, BigEndian)?;
+            let proto = u8::read_from(&mut cursor, BigEndian)?;
+            let checksum = u16::read_from(&mut cursor, BigEndian)?;
+            let src = Ipv4Addr::from(u32::read_from(&mut cursor, BigEndian)?);
+            let dest = Ipv4Addr::from(u32::read_from(&mut cursor, BigEndian)?);
+            let pos = cursor.position() as usize;
+            Ok(Self {
+                version,
+                ihl,
+                dscp,
+                enc,
+                len,
+                identification,
+                flags,
+                fragment_offset,
+                ttl,
+                proto,
+                checksum,
+                src,
+                dest,
+                content: split_off_front(cursor.into_inner(), pos),
+            })
+        }
+    }
+}
+pub mod udp {
+    use std::io::Cursor;
+    use bytestream::{ByteOrder::BigEndian, StreamReader, StreamWriter};
+    use crate::common::{split_off_front, FromBytestream, IntoBytestream};
+    pub struct UDPPacket {
+        pub src_port: u16,
+        pub dest_port: u16,
+        pub length: u16,
+        pub checksum: u16,
+        pub content: Vec<u8>,
+    }
+    #[automatically_derived]
+    impl ::core::fmt::Debug for UDPPacket {
+        fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+            ::core::fmt::Formatter::debug_struct_field5_finish(
+                f,
+                "UDPPacket",
+                "src_port",
+                &&self.src_port,
+                "dest_port",
+                &&self.dest_port,
+                "length",
+                &&self.length,
+                "checksum",
+                &&self.checksum,
+                "content",
+                &&self.content,
+            )
+        }
+    }
+    #[automatically_derived]
+    impl ::core::clone::Clone for UDPPacket {
+        #[inline]
+        fn clone(&self) -> UDPPacket {
+            UDPPacket {
+                src_port: ::core::clone::Clone::clone(&self.src_port),
+                dest_port: ::core::clone::Clone::clone(&self.dest_port),
+                length: ::core::clone::Clone::clone(&self.length),
+                checksum: ::core::clone::Clone::clone(&self.checksum),
+                content: ::core::clone::Clone::clone(&self.content),
+            }
+        }
+    }
+    #[automatically_derived]
+    impl ::core::marker::StructuralPartialEq for UDPPacket {}
+    #[automatically_derived]
+    impl ::core::cmp::PartialEq for UDPPacket {
+        #[inline]
+        fn eq(&self, other: &UDPPacket) -> bool {
+            self.src_port == other.src_port
+                && self.dest_port == other.dest_port
+                && self.length == other.length
+                && self.checksum == other.checksum
+                && self.content == other.content
+        }
+    }
+    #[automatically_derived]
+    impl ::core::marker::StructuralEq for UDPPacket {}
+    #[automatically_derived]
+    impl ::core::cmp::Eq for UDPPacket {
+        #[inline]
+        #[doc(hidden)]
+        #[no_coverage]
+        fn assert_receiver_is_total_eq(&self) -> () {
+            let _: ::core::cmp::AssertParamIsEq<u16>;
+            let _: ::core::cmp::AssertParamIsEq<Vec<u8>>;
+        }
+    }
+    #[automatically_derived]
+    impl ::core::hash::Hash for UDPPacket {
+        fn hash<__H: ::core::hash::Hasher>(&self, state: &mut __H) -> () {
+            ::core::hash::Hash::hash(&self.src_port, state);
+            ::core::hash::Hash::hash(&self.dest_port, state);
+            ::core::hash::Hash::hash(&self.length, state);
+            ::core::hash::Hash::hash(&self.checksum, state);
+            ::core::hash::Hash::hash(&self.content, state)
+        }
+    }
+    impl IntoBytestream for UDPPacket {
+        type Error = std::io::Error;
+        fn into_bytestream(&self, bytestream: &mut Vec<u8>) -> Result<(), Self::Error> {
+            self.src_port.write_to(bytestream, BigEndian)?;
+            self.dest_port.write_to(bytestream, BigEndian)?;
+            self.length.write_to(bytestream, BigEndian)?;
+            self.checksum.write_to(bytestream, BigEndian)?;
+            bytestream.extend(&self.content);
+            Ok(())
+        }
+    }
+    impl FromBytestream for UDPPacket {
+        type Error = std::io::Error;
+        fn from_bytestream(bytestream: Vec<u8>) -> Result<Self, Self::Error> {
+            let mut cursor = Cursor::new(bytestream);
+            let src_port = u16::read_from(&mut cursor, BigEndian)?;
+            let dest_port = u16::read_from(&mut cursor, BigEndian)?;
+            let length = u16::read_from(&mut cursor, BigEndian)?;
+            let checksum = u16::read_from(&mut cursor, BigEndian)?;
+            let pos = cursor.position() as usize;
+            Ok(Self {
+                src_port,
+                dest_port,
+                length,
+                checksum,
+                content: split_off_front(cursor.into_inner(), pos),
+            })
+        }
+    }
+}
