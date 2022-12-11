@@ -7,6 +7,7 @@ use std::{
     io::{Cursor, Write},
     net::{Ipv4Addr, Ipv6Addr},
     ops::{Deref, DerefMut},
+    str::FromStr,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -81,6 +82,13 @@ impl DNSMessage {
             .iter()
             .chain(self.auths.iter())
             .chain(self.additional.iter())
+    }
+
+    pub fn into_records(self) -> impl Iterator<Item = DNSResourceRecord> {
+        self.anwsers
+            .into_iter()
+            .chain(self.auths.into_iter())
+            .chain(self.additional.into_iter())
     }
 }
 
@@ -429,6 +437,20 @@ primitve_enum_repr! {
     };
 }
 
+impl FromStr for DNSType {
+    type Err = &'static str;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match &s.to_uppercase()[..] {
+            "A" => Ok(Self::A),
+            "AAAA" => Ok(Self::AAAA),
+            "SOA" => Ok(Self::SOA),
+            "NS" => Ok(Self::NS),
+            "PTR" => Ok(Self::PTR),
+            _ => Err("Not supported"),
+        }
+    }
+}
+
 impl Display for DNSType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -457,6 +479,20 @@ primitve_enum_repr! {
         QClassNone = 254,
         QClassAny = 255,
     };
+}
+
+impl FromStr for DNSClass {
+    type Err = &'static str;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match &s.to_uppercase()[..] {
+            "IN" => Ok(DNSClass::Internet),
+            "CH" => Ok(DNSClass::Chaos),
+            "HS" => Ok(DNSClass::Hesoid),
+            "QN" => Ok(DNSClass::QClassNone),
+            "QA" => Ok(DNSClass::QClassAny),
+            _ => Err("Not supported"),
+        }
+    }
 }
 
 impl Display for DNSClass {

@@ -1,20 +1,19 @@
-use tokio::{net::UdpSocket, task::JoinHandle};
+use tokio::net::UdpSocket;
 
 use super::{
     DNSClass, DNSMessage, DNSOpCode, DNSQuestion, DNSResourceRecord, DNSResponseCode, DNSString,
-    DNSType,
+    DNSType, DNSZoneFile,
 };
 use crate::{FromBytestream, IntoBytestream};
 use std::{
     collections::VecDeque,
     net::{IpAddr, Ipv4Addr, SocketAddr},
-    sync::{atomic::AtomicBool, Arc},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct DNSNameserver {
+    zone: DNSString,
     soa: DNSSOAResourceRecord,
-    ns: DNSNSResourceRecord,
     records: Vec<DNSResourceRecord>,
 }
 
@@ -42,11 +41,26 @@ pub struct DNSNSResourceRecord {
 }
 
 impl DNSNameserver {
-    pub fn new(soa: DNSSOAResourceRecord, ns: DNSNSResourceRecord) -> Self {
+    pub fn new(zone: impl Into<DNSString>, soa: DNSSOAResourceRecord) -> Self {
         Self {
+            zone: zone.into(),
             soa,
-            ns,
             records: Vec::new(),
+        }
+    }
+
+    pub fn from_zonefile(
+        zone: impl Into<DNSString>,
+        zone_filedir: impl AsRef<str>,
+    ) -> std::io::Result<Self> {
+        let DNSZoneFile { zone, soa, records } = DNSZoneFile::new(zone, zone_filedir)?;
+        Ok(Self { zone, soa, records })
+    }
+
+    pub fn info(&self) {
+        println!("{} soa {:?}", self.zone, self.soa);
+        for record in &self.records {
+            println!("{}", record);
         }
     }
 
@@ -166,9 +180,7 @@ impl DNSNameserver {
         let ttl = ttl.unwrap_or(self.soa.ttl);
         let class = class.unwrap_or(DNSClass::Internet);
 
-        let mut ns_bytes = Vec::new();
-        ns.into_bytestream(&mut ns_bytes)
-            .expect("Failed to encode DNSString");
+        let ns_bytes = ns.into_buffer().expect("Failed to parse ns to DNSStirng");
 
         let entry = DNSResourceRecord {
             name,
@@ -187,30 +199,26 @@ impl DNSNameserver {
         true
     }
 
-    pub async fn launch(mut self) -> (JoinHandle<std::io::Result<Self>>, Arc<AtomicBool>) {
-        let flag = Arc::new(AtomicBool::new(true));
-        let flag_c = flag.clone();
-        (
-            tokio::spawn(async move {
-                let socket =
-                    UdpSocket::bind(SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), 0)).await?;
+    pub async fn launch(&mut self) -> std::io::Result<()> {
+        let socket =
+            UdpSocket::bind(SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), 53)).await?;
 
-                let mut buf = [0u8; 512];
+        log::trace!("Created socket at {}", socket.local_addr().unwrap());
 
-                while let Ok((n, client)) = socket.recv_from(&mut buf).await {
-                    let vec = Vec::from(&buf[..n]);
-                    let Ok(msg) = DNSMessage::from_buffer(vec) else { continue };
+        let mut buf = [0u8; 512];
 
-                    let Some(resp) = self.handle(msg) else { continue };
-                    let mut buf = Vec::with_capacity(512);
-                    resp.into_bytestream(&mut buf)?;
-                    socket.send_to(&buf, client).await?;
-                }
+        while let Ok((n, client)) = socket.recv_from(&mut buf).await {
+            log::trace!("Got request from {} ({} bytes)", client, n);
+            let vec = Vec::from(&buf[..n]);
+            let Ok(msg) = DNSMessage::from_buffer(vec) else { continue };
 
-                Ok(self)
-            }),
-            flag_c,
-        )
+            let Some(resp) = self.handle(msg) else { continue };
+            let mut buf = Vec::with_capacity(512);
+            resp.into_bytestream(&mut buf)?;
+            socket.send_to(&buf, client).await?;
+        }
+
+        Ok(())
     }
 
     pub fn handle(&mut self, mut req: DNSMessage) -> Option<DNSMessage> {
@@ -272,7 +280,7 @@ impl DNSNameserver {
                     if a_res.is_empty() {
                         // println!("{} k = {} ")
 
-                        let next_param = qname.label(qname.labels() - k - 1);
+                        let next_param = qname.suffix(qname.labels() - k - 1);
                         log::info!("Referral to next zone {} of {}", next_param, *qname);
 
                         let ns = self
@@ -281,7 +289,7 @@ impl DNSNameserver {
                             .filter(|record| {
                                 record.class == qclass
                                     && record.typ == DNSType::NS
-                                    && *record.name == next_param
+                                    && record.name.suffix(0) == next_param
                             })
                             .cloned()
                             .collect::<Vec<_>>();
@@ -328,93 +336,93 @@ impl DNSNameserver {
                         qclass,
                     });
                 }
-                DNSType::AAAA => {
-                    let DNSQuestion {
-                        qclass,
-                        qname,
-                        qtyp,
-                    } = question;
+                // DNSType::AAAA => {
+                //     let DNSQuestion {
+                //         qclass,
+                //         qname,
+                //         qtyp,
+                //     } = question;
 
-                    // Check whether this server is even relevant
-                    let zone_uri = &self.soa.name;
-                    let k = zone_uri.labels();
+                //     // Check whether this server is even relevant
+                //     let zone_uri = &self.soa.name;
+                //     let k = zone_uri.labels();
 
-                    if DNSString::suffix_match_len(&qname, &zone_uri) < k {
-                        log::warn!("ill directed request for {} in zone {}", qname, zone_uri);
-                        continue;
-                    }
+                //     if DNSString::suffix_match_len(&qname, &zone_uri) < k {
+                //         log::warn!("ill directed request for {} in zone {}", qname, zone_uri);
+                //         continue;
+                //     }
 
-                    // Check for A entries
-                    let mut a_res = self
-                        .records
-                        .iter()
-                        .filter(|record| {
-                            record.class == qclass
-                                && record.typ == DNSType::AAAA
-                                && record.name == qname
-                        })
-                        .collect::<VecDeque<_>>();
+                //     // Check for A entries
+                //     let mut a_res = self
+                //         .records
+                //         .iter()
+                //         .filter(|record| {
+                //             record.class == qclass
+                //                 && record.typ == DNSType::AAAA
+                //                 && record.name == qname
+                //         })
+                //         .collect::<VecDeque<_>>();
 
-                    // Check whether we return a record or a referral
-                    if a_res.is_empty() {
-                        // println!("{} k = {} ")
+                //     // Check whether we return a record or a referral
+                //     if a_res.is_empty() {
+                //         // println!("{} k = {} ")
 
-                        let next_param = qname.label(qname.labels() - k - 1);
-                        log::info!("Referral to next zone {} of {}", next_param, *qname);
+                //         let next_param = qname.label(qname.labels() - k - 1);
+                //         log::info!("Referral to next zone {} of {}", next_param, *qname);
 
-                        let ns = self
-                            .records
-                            .iter()
-                            .filter(|record| {
-                                record.class == qclass
-                                    && record.typ == DNSType::NS
-                                    && record.name.trim_end_matches(|c| c == '.') == next_param
-                            })
-                            .cloned()
-                            .collect::<Vec<_>>();
+                //         let ns = self
+                //             .records
+                //             .iter()
+                //             .filter(|record| {
+                //                 record.class == qclass
+                //                     && record.typ == DNSType::NS
+                //                     && record.name.trim_end_matches(|c| c == '.') == next_param
+                //             })
+                //             .cloned()
+                //             .collect::<Vec<_>>();
 
-                        if ns.is_empty() {
-                            log::error!("Cannot anweser question");
-                            continue;
-                        }
+                //         if ns.is_empty() {
+                //             log::error!("Cannot anweser question");
+                //             continue;
+                //         }
 
-                        for nameserver in ns {
-                            let nsbytes = nameserver.rdata.clone();
-                            let uri = DNSString::from_buffer(nsbytes)
-                                .expect("Failed to parse bytestring");
-                            self.add_node_information_to(
-                                &[DNSType::A, DNSType::AAAA],
-                                &uri,
-                                &mut response.additional,
-                            );
-                            response.auths.push(nameserver);
-                        }
-                    } else {
-                        let anwser = a_res.pop_front().unwrap().clone();
-                        log::info!(
-                            "Responding with {} and {} additionaly records",
-                            anwser,
-                            a_res.len()
-                        );
+                //         for nameserver in ns {
+                //             let nsbytes = nameserver.rdata.clone();
+                //             let uri = DNSString::from_buffer(nsbytes)
+                //                 .expect("Failed to parse bytestring");
+                //             self.add_node_information_to(
+                //                 &[DNSType::A, DNSType::AAAA],
+                //                 &uri,
+                //                 &mut response.additional,
+                //             );
+                //             response.auths.push(nameserver);
+                //         }
+                //     } else {
+                //         let anwser = a_res.pop_front().unwrap().clone();
+                //         log::info!(
+                //             "Responding with {} and {} additionaly records",
+                //             anwser,
+                //             a_res.len()
+                //         );
 
-                        response.anwsers.push(anwser);
-                        for a in a_res {
-                            response.additional.push(a.clone())
-                        }
+                //         response.anwsers.push(anwser);
+                //         for a in a_res {
+                //             response.additional.push(a.clone())
+                //         }
 
-                        self.add_node_information_to(
-                            &[DNSType::A],
-                            &qname,
-                            &mut response.additional,
-                        );
-                    }
+                //         self.add_node_information_to(
+                //             &[DNSType::A],
+                //             &qname,
+                //             &mut response.additional,
+                //         );
+                //     }
 
-                    response.questions.push(DNSQuestion {
-                        qname,
-                        qtyp,
-                        qclass,
-                    });
-                }
+                //     response.questions.push(DNSQuestion {
+                //         qname,
+                //         qtyp,
+                //         qclass,
+                //     });
+                // }
                 _ => unimplemented!(),
             }
         }

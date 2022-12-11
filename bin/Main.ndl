@@ -40,7 +40,7 @@ subsystem Main {
         dns0: DNSServer0
         dns1: DNSServer1
         dns1alt: DNSServer1
-        dns2: DNSServer1
+        dns2: DNSServer2
         router: Router
 
     connections:

@@ -8,6 +8,7 @@ use std::{
     fmt::Display,
     io::{Cursor, Write},
     ops::Deref,
+    str::FromStr,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -104,6 +105,11 @@ impl DNSString {
         c
     }
 
+    pub fn suffix(&self, i: usize) -> &str {
+        let label_start = if i == 0 { 0 } else { self.labels[i - 1] + 1 };
+        &self.string[label_start..]
+    }
+
     pub fn into_inner(self) -> String {
         self.string
     }
@@ -164,6 +170,13 @@ impl FromBytestream for DNSString {
 impl<T: AsRef<str>> From<T> for DNSString {
     fn from(value: T) -> Self {
         Self::new(value)
+    }
+}
+
+impl FromStr for DNSString {
+    type Err = ();
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(Self::new(s))
     }
 }
 
