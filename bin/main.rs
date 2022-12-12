@@ -36,7 +36,7 @@ impl AsyncModule for Client {
             2334 => {
                 let lookup = self
                     .resolver
-                    ._lookup_host("www.example.org")
+                    ._lookup_host("www.Example.Org")
                     .await
                     .solve_with_socket()
                     .await
@@ -97,6 +97,7 @@ impl AsyncModule for DNSServer0 {
                 DNSNameserver::from_zonefile(
                     "org",
                     "/Users/mk_dev/Developer/rust/inet/bin/zonefiles/",
+                    "ns0.namservers.org.",
                 )
                 .unwrap(),
             ),
@@ -133,6 +134,11 @@ impl AsyncModule for DNSServer1 {
                 DNSNameserver::from_zonefile(
                     "example.org.",
                     "/Users/mk_dev/Developer/rust/inet/bin/zonefiles/",
+                    if module_name() == "dns1" {
+                        "ns1.example.org."
+                    } else {
+                        "ns2.example.org."
+                    },
                 )
                 .unwrap(),
             ),
@@ -168,6 +174,7 @@ impl AsyncModule for DNSServer2 {
                 DNSNameserver::from_zonefile(
                     ".",
                     "/Users/mk_dev/Developer/rust/inet/bin/zonefiles/",
+                    "a.root-servers.net.",
                 )
                 .unwrap(),
             ),

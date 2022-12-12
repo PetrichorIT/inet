@@ -34,7 +34,7 @@ impl DNSString {
             _ => panic!("Invalid network name for DNSString encoding"),
         };
 
-        let mut string = string.to_string();
+        let mut string = string.to_string().to_ascii_lowercase();
 
         if !string.ends_with(".") {
             string.push('.')

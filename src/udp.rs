@@ -1,8 +1,8 @@
-use std::io::Cursor;
+use std::io::{Cursor, Read, Write};
 
 use bytestream::{ByteOrder::BigEndian, StreamReader, StreamWriter};
 
-use crate::common::{split_off_front, FromBytestreamDepc, IntoBytestreamDepc};
+use crate::{FromBytestream, IntoBytestream};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct UDPPacket {
@@ -14,37 +14,36 @@ pub struct UDPPacket {
     pub content: Vec<u8>,
 }
 
-impl IntoBytestreamDepc for UDPPacket {
+impl IntoBytestream for UDPPacket {
     type Error = std::io::Error;
-    fn into_bytestream(&self, bytestream: &mut Vec<u8>) -> Result<(), Self::Error> {
+    fn into_bytestream(&self, bytestream: &mut impl Write) -> Result<(), Self::Error> {
         self.src_port.write_to(bytestream, BigEndian)?;
         self.dest_port.write_to(bytestream, BigEndian)?;
         self.length.write_to(bytestream, BigEndian)?;
         self.checksum.write_to(bytestream, BigEndian)?;
 
-        bytestream.extend(&self.content);
+        bytestream.write_all(&self.content)?;
         Ok(())
     }
 }
 
-impl FromBytestreamDepc for UDPPacket {
+impl FromBytestream for UDPPacket {
     type Error = std::io::Error;
-    fn from_bytestream(bytestream: Vec<u8>) -> Result<Self, Self::Error> {
-        let mut cursor = Cursor::new(bytestream);
-        let src_port = u16::read_from(&mut cursor, BigEndian)?;
-        let dest_port = u16::read_from(&mut cursor, BigEndian)?;
-        let length = u16::read_from(&mut cursor, BigEndian)?;
-        let checksum = u16::read_from(&mut cursor, BigEndian)?;
+    fn from_bytestream(bytestream: &mut Cursor<Vec<u8>>) -> Result<Self, Self::Error> {
+        let src_port = u16::read_from(bytestream, BigEndian)?;
+        let dest_port = u16::read_from(bytestream, BigEndian)?;
+        let length = u16::read_from(bytestream, BigEndian)?;
+        let checksum = u16::read_from(bytestream, BigEndian)?;
 
-        let pos = cursor.position() as usize;
+        let mut buf = Vec::new();
+        bytestream.read_to_end(&mut buf)?;
 
         Ok(Self {
             src_port,
             dest_port,
             length,
             checksum,
-
-            content: split_off_front(cursor.into_inner(), pos),
+            content: buf,
         })
     }
 }

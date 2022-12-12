@@ -25,8 +25,6 @@ impl DNSZoneFile {
         let mut path = PathBuf::from(zone_file_dir.as_ref());
         path.push(format!("{}dns", *zone));
 
-        println!("path: {:?}", path);
-
         let file = File::open(path)?;
         let file = BufReader::new(file);
 

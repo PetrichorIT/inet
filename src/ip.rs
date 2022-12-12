@@ -1,7 +1,10 @@
 use bytestream::{ByteOrder::BigEndian, StreamReader, StreamWriter};
-use std::{io::Cursor, net::Ipv4Addr};
+use std::{
+    io::{Cursor, Write},
+    net::Ipv4Addr,
+};
 
-use crate::common::{split_off_front, FromBytestreamDepc, IntoBytestreamDepc};
+use crate::{FromBytestream, IntoBytestream};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct IPPacket {
@@ -46,9 +49,9 @@ impl IPFlags {
 
 impl IPPacket {}
 
-impl IntoBytestreamDepc for IPPacket {
+impl IntoBytestream for IPPacket {
     type Error = std::io::Error;
-    fn into_bytestream(&self, bytestream: &mut Vec<u8>) -> Result<(), Self::Error> {
+    fn into_bytestream(&self, bytestream: &mut impl Write) -> Result<(), Self::Error> {
         let byte0 = ((self.version as u8) << 4) | self.ihl;
         byte0.write_to(bytestream, BigEndian)?;
 
@@ -68,16 +71,15 @@ impl IntoBytestreamDepc for IPPacket {
         u32::from_be_bytes(self.src.octets()).write_to(bytestream, BigEndian)?;
         u32::from_be_bytes(self.dest.octets()).write_to(bytestream, BigEndian)?;
 
-        bytestream.extend(&self.content);
+        bytestream.write_all(&self.content)?;
         Ok(())
     }
 }
 
-impl FromBytestreamDepc for IPPacket {
+impl FromBytestream for IPPacket {
     type Error = std::io::Error;
-    fn from_bytestream(bytestream: Vec<u8>) -> Result<Self, Self::Error> {
-        let mut cursor = Cursor::new(bytestream);
-        let byte0 = u8::read_from(&mut cursor, BigEndian)?;
+    fn from_bytestream(bytestream: &mut Cursor<Vec<u8>>) -> Result<Self, Self::Error> {
+        let byte0 = u8::read_from(bytestream, BigEndian)?;
         let version = byte0 >> 4;
         let version = match version {
             4 => IPVersion::V4,
@@ -86,14 +88,14 @@ impl FromBytestreamDepc for IPPacket {
         };
         let ihl = byte0 & 0x0f;
 
-        let byte1 = u8::read_from(&mut cursor, BigEndian)?;
+        let byte1 = u8::read_from(bytestream, BigEndian)?;
         let dscp = byte1 >> 2;
         let enc = byte1 & 0x03;
 
-        let len = u16::read_from(&mut cursor, BigEndian)?;
-        let identification = u16::read_from(&mut cursor, BigEndian)?;
+        let len = u16::read_from(bytestream, BigEndian)?;
+        let identification = u16::read_from(bytestream, BigEndian)?;
 
-        let fword = u16::read_from(&mut cursor, BigEndian)?;
+        let fword = u16::read_from(bytestream, BigEndian)?;
         let flags = {
             let fbyte = fword >> 15;
             let mut flags = IPFlags {
@@ -110,15 +112,19 @@ impl FromBytestreamDepc for IPPacket {
         };
         let fragment_offset = fword & 0x1fff;
 
-        let ttl = u8::read_from(&mut cursor, BigEndian)?;
-        let proto = u8::read_from(&mut cursor, BigEndian)?;
+        let ttl = u8::read_from(bytestream, BigEndian)?;
+        let proto = u8::read_from(bytestream, BigEndian)?;
 
-        let checksum = u16::read_from(&mut cursor, BigEndian)?;
+        let checksum = u16::read_from(bytestream, BigEndian)?;
 
-        let src = Ipv4Addr::from(u32::read_from(&mut cursor, BigEndian)?);
-        let dest = Ipv4Addr::from(u32::read_from(&mut cursor, BigEndian)?);
+        let src = Ipv4Addr::from(u32::read_from(bytestream, BigEndian)?);
+        let dest = Ipv4Addr::from(u32::read_from(bytestream, BigEndian)?);
 
-        let pos = cursor.position() as usize;
+        // fetch rest
+        let mut content = Vec::with_capacity(len as usize - 20);
+        for _ in 0..(len - 20) {
+            content.push(u8::read_from(bytestream, BigEndian)?);
+        }
 
         Ok(Self {
             version,
@@ -134,7 +140,7 @@ impl FromBytestreamDepc for IPPacket {
             checksum,
             src,
             dest,
-            content: split_off_front(cursor.into_inner(), pos),
+            content,
         })
     }
 }
