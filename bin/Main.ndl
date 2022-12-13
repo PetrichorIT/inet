@@ -22,10 +22,16 @@ module DNSServer2 {
         out @output
 }
 
+module DNSLocal {
+    gates:
+        in @input
+        out @output
+}
+
 module Router {
     gates:
-        in[5] @input
-        out[5] @output
+        in[10] @input
+        out[10] @output
 }
 
 link LANLink {
@@ -37,6 +43,7 @@ link LANLink {
 subsystem Main {
     nodes:  
         client: Client
+        local: DNSLocal,
         dns0: DNSServer0
         dns1: DNSServer1
         dns1alt: DNSServer1
@@ -56,4 +63,7 @@ subsystem Main {
 
         dns1alt/out --> LANLink --> router/in[4]
         dns1alt/in <-- LANLink <-- router/out[4]
+
+        local/out --> LANLink --> router/in[5]
+        local/in <-- LANLink <-- router/out[5]
 }

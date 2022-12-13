@@ -1,5 +1,8 @@
+use std::str::FromStr;
+
 use des::{net::hooks::*, prelude::*, tokio::net::IOContext};
-use inet::{dns::*, FromBytestream};
+use inet::{dns::*, FromBytestream, IntoBytestream, IpMask};
+use tokio::net::UdpSocket;
 
 /*
 Concept
@@ -10,6 +13,8 @@ DNS2 = www
 
 
 */
+
+// # CLIENT
 
 #[NdlModule("bin")]
 struct Client {
@@ -34,44 +39,82 @@ impl AsyncModule for Client {
         let kind = msg.header().kind;
         match kind {
             2334 => {
-                let lookup = self
-                    .resolver
-                    ._lookup_host("www.Example.Org")
-                    .await
-                    .solve_with_socket()
+                // let lookup = self
+                //     .resolver
+                //     ._lookup_host("www.Example.Org")
+                //     .await
+                //     .solve_with_socket()
+                //     .await
+                //     .unwrap();
+                // // let lookup = self.resolver.lookup_host("www.example.org").await.unwrap();
+                // for ip in lookup {
+                //     log::info!(">>>>> {}", ip)
+                // }
+
+                // log::warn!("Staring second resolve");
+
+                // let lookup = self
+                //     .resolver
+                //     ._lookup_host("www.example.org")
+                //     .await
+                //     .solve_with_socket()
+                //     .await
+                //     .unwrap();
+
+                // for ip in lookup {
+                //     log::info!(">>>>> {}", ip)
+                // }
+
+                // // let msg = DNSMessage::question_a(7523, "www.example.org.");
+
+                // // let buf = msg.into_buffer().unwrap();
+                // // // println!("{:?}", buf);
+                // // send(
+                // //     Message::new()
+                // //         .src_node(tokio::net::get_ip().unwrap())
+                // //         .dest_node(IpAddr::V4(Ipv4Addr::from_str("100.3.43.125").unwrap()))
+                // //         .content(buf)
+                // //         .build(),
+                // //     "out",
+                // // )
+
+                let socket = UdpSocket::bind("0.0.0.0:0").await.unwrap();
+                let mut msg = DNSMessage::question_a(123, "www.example.org");
+                msg.rd = true;
+                let buf = msg.into_buffer().unwrap();
+                socket
+                    .send_to(&buf, SocketAddr::from_str("192.168.2.178:53").unwrap())
                     .await
                     .unwrap();
-                // let lookup = self.resolver.lookup_host("www.example.org").await.unwrap();
-                for ip in lookup {
-                    log::info!(">>>>> {}", ip)
+
+                let mut buf = vec![0u8; 512];
+                let (n, _) = socket.recv_from(&mut buf).await.unwrap();
+                buf.truncate(n);
+                let resp = DNSMessage::from_buffer(buf).unwrap();
+
+                for response in resp.response() {
+                    log::info!(">>> {}", response);
                 }
 
-                log::warn!("Staring second resolve");
+                tokio::time::sleep(Duration::from_secs(100000)).await;
 
-                let lookup = self
-                    .resolver
-                    ._lookup_host("www.example.org")
-                    .await
-                    .solve_with_socket()
+                let socket = UdpSocket::bind("0.0.0.0:0").await.unwrap();
+                let mut msg = DNSMessage::question_a(812, "www.example.org");
+                msg.rd = true;
+                let buf = msg.into_buffer().unwrap();
+                socket
+                    .send_to(&buf, SocketAddr::from_str("192.168.2.178:53").unwrap())
                     .await
                     .unwrap();
 
-                for ip in lookup {
-                    log::info!(">>>>> {}", ip)
+                let mut buf = vec![0u8; 512];
+                let (n, _) = socket.recv_from(&mut buf).await.unwrap();
+                buf.truncate(n);
+                let resp = DNSMessage::from_buffer(buf).unwrap();
+
+                for response in resp.response() {
+                    log::info!(">>> {}", response);
                 }
-
-                // let msg = DNSMessage::question_a(7523, "www.example.org.");
-
-                // let buf = msg.into_buffer().unwrap();
-                // // println!("{:?}", buf);
-                // send(
-                //     Message::new()
-                //         .src_node(tokio::net::get_ip().unwrap())
-                //         .dest_node(IpAddr::V4(Ipv4Addr::from_str("100.3.43.125").unwrap()))
-                //         .content(buf)
-                //         .build(),
-                //     "out",
-                // )
             }
             _ => {
                 let content = msg.cast::<Vec<u8>>().0;
@@ -84,6 +127,47 @@ impl AsyncModule for Client {
         }
     }
 }
+
+#[NdlModule("bin")]
+struct DNSLocal {}
+
+#[async_trait::async_trait]
+impl AsyncModule for DNSLocal {
+    fn new() -> Self {
+        Self {}
+    }
+
+    async fn at_sim_start(&mut self, _: usize) {
+        let ip = par("addr").unwrap().parse::<Ipv4Addr>().unwrap();
+        IOContext::new(random(), ip).set();
+        tokio::spawn(async move {
+            let mut server = DNSNameserver::new(
+                DNSNodeInformation {
+                    zone: DNSString::from(format!("{}", ip)),
+                    domain_name: DNSString::new(""),
+                    ip: IpAddr::V4(ip),
+                },
+                DNSSOAResourceRecord {
+                    name: DNSString::new(""),
+                    class: DNSClass::Internet,
+                    ttl: 7000,
+                    mname: DNSString::new(""),
+                    rname: DNSString::new(""),
+                    serial: 7000,
+                    refresh: 7000,
+                    retry: 7000,
+                    expire: 7000,
+                    minimum: 7000,
+                },
+            );
+
+            server.allow_recursive_for(IpMask::catch_all_v4());
+            server.launch().await.unwrap();
+        });
+    }
+}
+
+// # SERVER
 
 #[NdlModule("bin")]
 struct DNSServer0 {
@@ -193,6 +277,7 @@ impl AsyncModule for DNSServer2 {
         }
         let mut server = self.server.take().unwrap();
         tokio::spawn(async move {
+            server.declare_root_ns();
             server.launch().await.unwrap();
         });
     }
