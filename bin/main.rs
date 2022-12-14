@@ -1,38 +1,52 @@
-use std::str::FromStr;
-
 use des::{net::hooks::*, prelude::*, tokio::net::IOContext};
-use inet::{dns::*, FromBytestream, IntoBytestream, IpMask};
-use tokio::net::UdpSocket;
+use inet::{dns::*, FromBytestream, IpMask};
 
 /*
 Concept
 DNS0 = org
 DNS1 = example
 DNS2 = www
-
-
-
 */
 
 // # CLIENT
 
 #[NdlModule("bin")]
-struct Client {
-    resolver: DNSResolver,
-}
+struct Client {}
 #[async_trait::async_trait]
 impl AsyncModule for Client {
     fn new() -> Self {
-        Self {
-            resolver: DNSResolver::new(),
-        }
+        Self {}
     }
 
     async fn at_sim_start(&mut self, _stage: usize) {
         let ip = par("addr").unwrap().parse::<Ipv4Addr>().unwrap();
         IOContext::new(random(), ip).set();
-
         schedule_in(Message::new().kind(2334).build(), Duration::from_secs(10));
+
+        tokio::spawn(async move {
+            let mut server = DNSNameserver::new(
+                DNSNodeInformation {
+                    zone: DNSString::from(format!("{}", ip)),
+                    domain_name: DNSString::new(""),
+                    ip: IpAddr::V4(ip),
+                },
+                DNSSOAResourceRecord {
+                    name: DNSString::new(""),
+                    class: DNSClass::Internet,
+                    ttl: 7000,
+                    mname: DNSString::new(""),
+                    rname: DNSString::new(""),
+                    serial: 7000,
+                    refresh: 7000,
+                    retry: 7000,
+                    expire: 7000,
+                    minimum: 7000,
+                },
+            );
+
+            server.allow_recursive_for(IpMask::catch_all_v4());
+            server.launch().await.unwrap();
+        });
     }
 
     async fn handle_message(&mut self, msg: Message) {
@@ -78,43 +92,56 @@ impl AsyncModule for Client {
                 // //     "out",
                 // // )
 
-                let socket = UdpSocket::bind("0.0.0.0:0").await.unwrap();
-                let mut msg = DNSMessage::question_a(123, "www.example.org");
-                msg.rd = true;
-                let buf = msg.into_buffer().unwrap();
-                socket
-                    .send_to(&buf, SocketAddr::from_str("192.168.2.178:53").unwrap())
-                    .await
-                    .unwrap();
-
-                let mut buf = vec![0u8; 512];
-                let (n, _) = socket.recv_from(&mut buf).await.unwrap();
-                buf.truncate(n);
-                let resp = DNSMessage::from_buffer(buf).unwrap();
-
-                for response in resp.response() {
-                    log::info!(">>> {}", response);
+                let lookup = lookup_host("www.example.org:80").await;
+                match lookup {
+                    Ok(iter) => {
+                        for addr in iter {
+                            log::info!(">>> {}", addr)
+                        }
+                    }
+                    Err(e) => log::error!(">>> {}", e),
                 }
 
-                tokio::time::sleep(Duration::from_secs(100000)).await;
+                // let socket = UdpSocket::bind("0.0.0.0:0").await.unwrap();
+                // let mut msg = DNSMessage::question_a(123, "www.example.aaa");
+                // msg.rd = true;
+                // let buf = msg.into_buffer().unwrap();
+                // socket
+                //     .send_to(&buf, SocketAddr::from_str("127.0.0.1:53").unwrap())
+                //     .await
+                //     .unwrap();
 
-                let socket = UdpSocket::bind("0.0.0.0:0").await.unwrap();
-                let mut msg = DNSMessage::question_a(812, "www.example.org");
-                msg.rd = true;
-                let buf = msg.into_buffer().unwrap();
-                socket
-                    .send_to(&buf, SocketAddr::from_str("192.168.2.178:53").unwrap())
-                    .await
-                    .unwrap();
+                // log::info!("Client socket send");
 
-                let mut buf = vec![0u8; 512];
-                let (n, _) = socket.recv_from(&mut buf).await.unwrap();
-                buf.truncate(n);
-                let resp = DNSMessage::from_buffer(buf).unwrap();
+                // let mut buf = vec![0u8; 512];
+                // let (n, _) = socket.recv_from(&mut buf).await.unwrap();
+                // buf.truncate(n);
+                // let resp = DNSMessage::from_buffer(buf).unwrap();
 
-                for response in resp.response() {
-                    log::info!(">>> {}", response);
-                }
+                // log::info!(">>> {:?}", resp.rcode);
+                // for response in resp.response() {
+                //     log::info!(">>> {}", response);
+                // }
+
+                // tokio::time::sleep(Duration::from_secs(100000)).await;
+
+                // let socket = UdpSocket::bind("0.0.0.0:0").await.unwrap();
+                // let mut msg = DNSMessage::question_a(812, "www.example.org");
+                // msg.rd = true;
+                // let buf = msg.into_buffer().unwrap();
+                // socket
+                //     .send_to(&buf, SocketAddr::from_str("192.168.2.178:53").unwrap())
+                //     .await
+                //     .unwrap();
+
+                // let mut buf = vec![0u8; 512];
+                // let (n, _) = socket.recv_from(&mut buf).await.unwrap();
+                // buf.truncate(n);
+                // let resp = DNSMessage::from_buffer(buf).unwrap();
+
+                // for response in resp.response() {
+                //     log::info!(">>> {}", response);
+                // }
             }
             _ => {
                 let content = msg.cast::<Vec<u8>>().0;

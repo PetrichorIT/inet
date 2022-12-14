@@ -32,11 +32,7 @@ impl DnsDb {
         if SimTime::now() < self.next_deadline {
             return;
         }
-        self.cache = self
-            .cache
-            .drain(..)
-            .filter(|e| e.1 > SimTime::now())
-            .collect();
+        self.cache.retain(|e| e.1 > SimTime::now())
     }
 
     pub fn add(&mut self, record: DNSResourceRecord) {

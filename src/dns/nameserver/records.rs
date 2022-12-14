@@ -3,7 +3,7 @@ use crate::{FromBytestream, IntoBytestream};
 use bytestream::{ByteOrder::BigEndian, StreamReader, StreamWriter};
 use std::fmt::Display;
 use std::io::{Cursor, Write};
-use std::net::{Ipv4Addr, Ipv6Addr};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::str::FromStr;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -59,6 +59,26 @@ impl FromBytestream for DNSResourceRecord {
 }
 
 impl DNSResourceRecord {
+    pub fn as_addr(&self) -> IpAddr {
+        match self.typ {
+            DNSType::A => {
+                let mut bytes = [0u8; 4];
+                for i in 0..4 {
+                    bytes[i] = self.rdata[i]
+                }
+                IpAddr::from(bytes)
+            }
+            DNSType::AAAA => {
+                let mut bytes = [0u8; 16];
+                for i in 0..16 {
+                    bytes[i] = self.rdata[i]
+                }
+                IpAddr::from(bytes)
+            }
+            _ => unimplemented!(),
+        }
+    }
+
     fn rdata_fmt(&self) -> String {
         match self.typ {
             DNSType::A => {

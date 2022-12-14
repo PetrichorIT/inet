@@ -5,7 +5,8 @@ mod nameserver;
 pub use nameserver::*;
 
 mod resolver;
-pub use resolver::DNSResolver;
+pub use resolver::lookup_host;
+pub use resolver::ToSocketAddrs;
 
 mod common;
 pub use common::*;

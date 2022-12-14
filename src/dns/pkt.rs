@@ -154,7 +154,7 @@ impl FromBytestream for DNSMessage {
         let opcode = DNSOpCode::from_raw((b0 >> 3) & 0b1111).unwrap();
 
         let ra = (0b1000_0000 & b1) != 0;
-        let rcode = DNSResponseCode::from_raw((b1 & 0b1111) as u16).unwrap();
+        let rcode = DNSResponseCode::from_raw((b1 & 0b1111) as u8).unwrap();
 
         let nquestions = u16::read_from(bytestream, BigEndian)?;
         let nanwsers = u16::read_from(bytestream, BigEndian)?;
@@ -225,7 +225,7 @@ primitve_enum_repr! {
 primitve_enum_repr! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
     pub enum DNSResponseCode {
-        type Repr = u16;
+        type Repr = u8;
 
         NoError = 0,
         FormError = 1,

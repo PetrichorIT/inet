@@ -1,3 +1,5 @@
+#![feature(type_alias_impl_trait)]
+
 mod common;
 pub use common::*;
 #[macro_use]
