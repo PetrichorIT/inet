@@ -8,4 +8,5 @@ mod macros;
 pub mod dhcp;
 pub mod dns;
 pub mod ip;
+pub mod routing;
 pub mod udp;
