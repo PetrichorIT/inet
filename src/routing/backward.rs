@@ -1,10 +1,12 @@
+use crate::{ip::IPPacket, FromBytestream};
+
 use super::{Router, RoutingInformation, RoutingPort};
 use des::prelude::*;
-use std::{collections::HashMap, net::IpAddr};
+use std::collections::HashMap;
 
 pub struct BackwardRoutingDeamon<R: Router> {
     info: RoutingInformation,
-    knowledge: HashMap<IpAddr, RoutingPort>,
+    knowledge: HashMap<Ipv4Addr, RoutingPort>,
     fallback: R,
 }
 
@@ -24,14 +26,19 @@ impl<R: Router> Router for BackwardRoutingDeamon<R> {
         self.info = routing_info;
     }
 
-    fn accepts(&mut self, msg: &Message) -> bool {
-        let msg_ip = msg.header().dest_addr.ip();
-        self.knowledge.get(&msg_ip).is_some() || self.fallback.accepts(msg)
+    fn accepts(&mut self, _: &Message) -> bool {
+        true
     }
 
     fn route(&mut self, msg: Message) -> Result<(), Message> {
+        // (0) Read packet
+        let Some(vec) = msg.try_content::<Vec<u8>>() else {
+            return Err(msg);
+        };
+        let pkt = IPPacket::from_buffer(vec).unwrap();
+
         // (0) Try route with knowledge
-        let msg_ip = msg.header().dest_addr.ip();
+        let msg_ip = pkt.dest;
         if let Some(record) = self.knowledge.get(&msg_ip) {
             send(msg, &record.output);
             return Ok(());
@@ -40,8 +47,10 @@ impl<R: Router> Router for BackwardRoutingDeamon<R> {
         // (1) Record knowledge
         if let Some(last_gate) = &msg.header().last_gate {
             if let Some(port) = self.info.port_for(last_gate) {
-                let src = msg.header().src_addr.ip();
-                self.knowledge.insert(src, port);
+                let src = pkt.src;
+                if !self.knowledge.contains_key(&src) {
+                    self.knowledge.insert(src, port);
+                }
             }
         }
 

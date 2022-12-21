@@ -142,7 +142,7 @@ impl IntoBytestream for DNSMessage {
 
 impl FromBytestream for DNSMessage {
     type Error = std::io::Error;
-    fn from_bytestream(bytestream: &mut Cursor<Vec<u8>>) -> Result<Self, Self::Error> {
+    fn from_bytestream(bytestream: &mut Cursor<impl AsRef<[u8]>>) -> Result<Self, Self::Error> {
         let transaction = u16::read_from(bytestream, BigEndian)?;
         let b0 = u8::read_from(bytestream, BigEndian)?;
         let b1 = u8::read_from(bytestream, BigEndian)?;
@@ -272,7 +272,7 @@ impl IntoBytestream for DNSQuestion {
 
 impl FromBytestream for DNSQuestion {
     type Error = std::io::Error;
-    fn from_bytestream(bytestream: &mut Cursor<Vec<u8>>) -> Result<Self, Self::Error> {
+    fn from_bytestream(bytestream: &mut Cursor<impl AsRef<[u8]>>) -> Result<Self, Self::Error> {
         let qname = DNSString::from_bytestream(bytestream)?;
 
         let qtyp = DNSType::from_raw(u16::read_from(bytestream, BigEndian)?).unwrap();
@@ -318,7 +318,7 @@ impl FromBytestream for DNSQuestion {
 
 // impl FromBytestream for DNSResourceRecord {
 //     type Error = std::io::Error;
-//     fn from_bytestream(bytestream: &mut Cursor<Vec<u8>>) -> Result<Self, Self::Error> {
+//     fn from_bytestream(bytestream: &mut Cursor<impl AsRef<[u8]>>) -> Result<Self, Self::Error> {
 //         let name = DNSString::from_bytestream(bytestream)?;
 
 //         let typ = DNSType::from_raw(u16::read_from(bytestream, BigEndian)?).unwrap();

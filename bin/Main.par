@@ -1,6 +1,5 @@
-client.addr = 200.3.43.125
-dns0.addr = 100.3.43.125
-dns1.addr = 100.78.43.100
-dns1alt.addr = 100.78.43.200
-dns2.addr = 100.100.100.100
-local.addr = 192.168.2.178
+client[1].addr = 50.50.50.50
+client[2].addr = 100.100.100.100
+client[3].addr = 150.150.150.150
+client[4].addr = 200.200.200.200
+client[5].addr = 250.250.250.250

@@ -29,7 +29,7 @@ impl IntoBytestream for UDPPacket {
 
 impl FromBytestream for UDPPacket {
     type Error = std::io::Error;
-    fn from_bytestream(bytestream: &mut Cursor<Vec<u8>>) -> Result<Self, Self::Error> {
+    fn from_bytestream(bytestream: &mut Cursor<impl AsRef<[u8]>>) -> Result<Self, Self::Error> {
         let src_port = u16::read_from(bytestream, BigEndian)?;
         let dest_port = u16::read_from(bytestream, BigEndian)?;
         let length = u16::read_from(bytestream, BigEndian)?;

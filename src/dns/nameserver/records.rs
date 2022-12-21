@@ -36,7 +36,7 @@ impl IntoBytestream for DNSResourceRecord {
 
 impl FromBytestream for DNSResourceRecord {
     type Error = std::io::Error;
-    fn from_bytestream(bytestream: &mut Cursor<Vec<u8>>) -> Result<Self, Self::Error> {
+    fn from_bytestream(bytestream: &mut Cursor<impl AsRef<[u8]>>) -> Result<Self, Self::Error> {
         let name = DNSString::from_bytestream(bytestream)?;
 
         let typ = DNSType::from_raw(u16::read_from(bytestream, BigEndian)?).unwrap();

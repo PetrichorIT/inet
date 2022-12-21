@@ -1,0 +1,20 @@
+digraph D {
+    "client[1]" [shape=box]
+    "client[2]" [shape=box]
+    "client[3]" [shape=box]
+    "client[4]" [shape=box]
+    "client[5]" [shape=box]
+    "router" [shape=box]
+
+    "client[1]" -> "router" [ headlabel="in[0] (input)" label="1" taillabel="out (output)" ]
+    "client[2]" -> "router" [ headlabel="in[1] (input)" label="1" taillabel="out (output)" ]
+    "client[3]" -> "router" [ headlabel="in[2] (input)" label="1" taillabel="out (output)" ]
+    "client[4]" -> "router" [ headlabel="in[3] (input)" label="1" taillabel="out (output)" ]
+    "client[5]" -> "router" [ headlabel="in[4] (input)" label="1" taillabel="out (output)" ]
+    "router" -> "client[1]" [ headlabel="in (input)" label="1" taillabel="out[0] (output)" ]
+    "router" -> "client[2]" [ headlabel="in (input)" label="1" taillabel="out[1] (output)" ]
+    "router" -> "client[3]" [ headlabel="in (input)" label="1" taillabel="out[2] (output)" ]
+    "router" -> "client[4]" [ headlabel="in (input)" label="1" taillabel="out[3] (output)" ]
+    "router" -> "client[5]" [ headlabel="in (input)" label="1" taillabel="out[4] (output)" ]
+
+}

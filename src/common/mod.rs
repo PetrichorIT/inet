@@ -74,9 +74,9 @@ pub trait FromBytestreamDepc: Sized {
 
 pub trait FromBytestream: Sized {
     type Error;
-    fn from_bytestream(bytestream: &mut Cursor<Vec<u8>>) -> Result<Self, Self::Error>;
+    fn from_bytestream(bytestream: &mut Cursor<impl AsRef<[u8]>>) -> Result<Self, Self::Error>;
 
-    fn from_buffer(buffer: Vec<u8>) -> Result<Self, Self::Error> {
+    fn from_buffer(buffer: impl AsRef<[u8]>) -> Result<Self, Self::Error> {
         let mut cursor = Cursor::new(buffer);
         Self::from_bytestream(&mut cursor)
     }

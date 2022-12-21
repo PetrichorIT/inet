@@ -37,8 +37,8 @@ pub enum IPVersion {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct IPFlags {
-    df: bool,
-    mf: bool,
+    pub df: bool,
+    pub mf: bool,
 }
 
 impl IPFlags {
@@ -52,13 +52,14 @@ impl IPPacket {}
 impl IntoBytestream for IPPacket {
     type Error = std::io::Error;
     fn into_bytestream(&self, bytestream: &mut impl Write) -> Result<(), Self::Error> {
-        let byte0 = ((self.version as u8) << 4) | self.ihl;
+        let byte0 = ((self.version as u8) << 4) | (self.ihl & 0b1111);
         byte0.write_to(bytestream, BigEndian)?;
 
         let byte1 = (self.dscp << 2) | self.enc;
         byte1.write_to(bytestream, BigEndian)?;
 
-        self.len.write_to(bytestream, BigEndian)?;
+        let len = 20 + self.content.len() as u16;
+        len.write_to(bytestream, BigEndian)?;
         self.identification.write_to(bytestream, BigEndian)?;
 
         let fbyte = self.flags.as_u16() | self.fragment_offset;
@@ -78,7 +79,7 @@ impl IntoBytestream for IPPacket {
 
 impl FromBytestream for IPPacket {
     type Error = std::io::Error;
-    fn from_bytestream(bytestream: &mut Cursor<Vec<u8>>) -> Result<Self, Self::Error> {
+    fn from_bytestream(bytestream: &mut Cursor<impl AsRef<[u8]>>) -> Result<Self, Self::Error> {
         let byte0 = u8::read_from(bytestream, BigEndian)?;
         let version = byte0 >> 4;
         let version = match version {

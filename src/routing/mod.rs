@@ -6,6 +6,9 @@ pub use random::RandomRoutingDeamon;
 mod backward;
 pub use backward::BackwardRoutingDeamon;
 
+mod stacked;
+pub use stacked::StackedRoutingDeamon;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RoutingInformation {
     ports: Vec<RoutingPort>,
@@ -67,12 +70,13 @@ impl RoutingPort {
                             .map(|v| v.owner().id())
                             .unwrap_or(ModuleId::NULL)
                             == id
-                            && inferred_service_type(*v) == GateServiceType::Input
+                            && inferred_service_type(*v) == GateServiceType::Output
                     });
 
                     let Some(other) = other else {
                         continue;
                     };
+                    // println!("{}")
                     ports.push(RoutingPort::new(gate, other.clone()));
                 }
                 GateServiceType::Output => {
@@ -80,12 +84,15 @@ impl RoutingPort {
                         .path_end()
                         .map(|v| v.owner().id())
                         .unwrap_or(ModuleId::NULL);
+                    // println!("{:?}", gate.previous_gate());
+                    // println!("{}", gate.path_end().unwrap().path());
+                    // println!("Searching gate for {} with id {}", gate.path(), id);
                     let other = gates.iter().find(|v| {
                         v.path_start()
                             .map(|v| v.owner().id())
                             .unwrap_or(ModuleId::NULL)
                             == id
-                            && inferred_service_type(*v) == GateServiceType::Output
+                            && inferred_service_type(*v) == GateServiceType::Input
                     });
 
                     let Some(other) = other else {
@@ -96,6 +103,15 @@ impl RoutingPort {
                 GateServiceType::Undefined => log::warn!("Found undefined gate service typ"),
             };
         }
+
+        // for port in &ports {
+        //     println!(
+        //         "Port {} input {} output {}",
+        //         port.name,
+        //         port.input.path(),
+        //         port.output.path()
+        //     );
+        // }
 
         ports
     }

@@ -143,7 +143,7 @@ impl IntoBytestream for DNSString {
 
 impl FromBytestream for DNSString {
     type Error = std::io::Error;
-    fn from_bytestream(bytestream: &mut Cursor<Vec<u8>>) -> Result<Self, Self::Error> {
+    fn from_bytestream(bytestream: &mut Cursor<impl AsRef<[u8]>>) -> Result<Self, Self::Error> {
         let mut string = String::new();
         let mut labels = Vec::new();
         loop {
