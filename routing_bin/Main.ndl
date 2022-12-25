@@ -1,0 +1,40 @@
+module Client {
+    gates:
+        in @input
+        out @output
+}
+
+module Router {
+    gates:
+        in[5] @input
+        out[5] @output
+}
+
+link LANLink {
+    bitrate: 10000000
+    jitter: 0.0
+    latency: 0.05
+    queuesize: 4096
+}
+
+subsystem Main {
+    nodes:
+        client[1...5]: Client
+        router: Router
+
+    connections:
+        client[1]/out --> LANLink --> router/in[0]
+        client[1]/in <-- LANLink <-- router/out[0]
+
+        client[2]/out --> LANLink --> router/in[1]
+        client[2]/in <-- LANLink <-- router/out[1]
+
+        client[3]/out --> LANLink --> router/in[2]
+        client[3]/in <-- LANLink <-- router/out[2]
+
+        client[4]/out --> LANLink --> router/in[3]
+        client[4]/in <-- LANLink <-- router/out[3]
+
+        client[5]/out --> LANLink --> router/in[4]
+        client[5]/in <-- LANLink <-- router/out[4]
+}

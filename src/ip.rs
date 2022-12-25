@@ -1,4 +1,5 @@
 use bytestream::{ByteOrder::BigEndian, StreamReader, StreamWriter};
+use des::prelude::{MessageBody, MessageKind};
 use std::{
     io::{Cursor, Write},
     net::Ipv4Addr,
@@ -6,14 +7,16 @@ use std::{
 
 use crate::{FromBytestream, IntoBytestream};
 
+pub const KIND_IP: MessageKind = 0x0800;
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct IPPacket {
     pub version: IPVersion,
-    pub ihl: u8,
+    // pub ihl: u8,
     pub dscp: u8, // prev tos
     pub enc: u8,
 
-    pub len: u16,
+    // pub len: u16,
     pub identification: u16,
     pub flags: IPFlags,
     pub fragment_offset: u16,
@@ -52,7 +55,7 @@ impl IPPacket {}
 impl IntoBytestream for IPPacket {
     type Error = std::io::Error;
     fn into_bytestream(&self, bytestream: &mut impl Write) -> Result<(), Self::Error> {
-        let byte0 = ((self.version as u8) << 4) | (self.ihl & 0b1111);
+        let byte0 = ((self.version as u8) << 4) | (20 & 0b1111);
         byte0.write_to(bytestream, BigEndian)?;
 
         let byte1 = (self.dscp << 2) | self.enc;
@@ -87,7 +90,7 @@ impl FromBytestream for IPPacket {
             6 => IPVersion::V6,
             _ => unimplemented!(),
         };
-        let ihl = byte0 & 0x0f;
+        // let ihl = byte0 & 0x0f;
 
         let byte1 = u8::read_from(bytestream, BigEndian)?;
         let dscp = byte1 >> 2;
@@ -129,10 +132,10 @@ impl FromBytestream for IPPacket {
 
         Ok(Self {
             version,
-            ihl,
+            // ihl,
             dscp,
             enc,
-            len,
+            // len,
             identification,
             flags,
             fragment_offset,
@@ -143,5 +146,11 @@ impl FromBytestream for IPPacket {
             dest,
             content,
         })
+    }
+}
+
+impl MessageBody for IPPacket {
+    fn byte_len(&self) -> usize {
+        20 + self.content.len()
     }
 }

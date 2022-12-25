@@ -1,14 +1,12 @@
-use std::io::{Cursor, Read, Write};
-
-use bytestream::{ByteOrder::BigEndian, StreamReader, StreamWriter};
-
 use crate::{FromBytestream, IntoBytestream};
+use bytestream::{ByteOrder::BigEndian, StreamReader, StreamWriter};
+use std::io::{Cursor, Read, Write};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct UDPPacket {
     pub src_port: u16,
     pub dest_port: u16,
-    pub length: u16,
+    // pub length: u16,
     pub checksum: u16,
 
     pub content: Vec<u8>,
@@ -19,7 +17,7 @@ impl IntoBytestream for UDPPacket {
     fn into_bytestream(&self, bytestream: &mut impl Write) -> Result<(), Self::Error> {
         self.src_port.write_to(bytestream, BigEndian)?;
         self.dest_port.write_to(bytestream, BigEndian)?;
-        self.length.write_to(bytestream, BigEndian)?;
+        (8 + self.content.len() as u16).write_to(bytestream, BigEndian)?;
         self.checksum.write_to(bytestream, BigEndian)?;
 
         bytestream.write_all(&self.content)?;
@@ -38,10 +36,11 @@ impl FromBytestream for UDPPacket {
         let mut buf = Vec::new();
         bytestream.read_to_end(&mut buf)?;
 
+        assert_eq!(buf.len() as u16, length - 8);
+
         Ok(Self {
             src_port,
             dest_port,
-            length,
             checksum,
             content: buf,
         })

@@ -1,5 +1,6 @@
 use std::io::Result;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
+use std::str::FromStr;
 
 use tokio::net::UdpSocket;
 
@@ -128,6 +129,11 @@ impl ToSocketAddrs for (&str, u16) {}
 impl sealed::ToSocketAddrsPriv for (&str, u16) {
     type Iter = std::vec::IntoIter<SocketAddr>;
     async fn to_socket_addrs(&self) -> std::io::Result<Self::Iter> {
+        if let Ok(ip) = IpAddr::from_str(self.0) {
+            return Ok(vec![SocketAddr::new(ip, self.1)].into_iter());
+        }
+
+        // Real resolve
         let socket = UdpSocket::bind("127.0.0.1:0").await?;
         let mut question = DNSMessage::question_a(0x01, self.0);
         question.rd = true;

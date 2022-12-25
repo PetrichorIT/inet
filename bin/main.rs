@@ -1,124 +1,74 @@
-use des::{net::globals, prelude::*};
-use inet::{
-    ip::*,
-    routing::{BackwardRoutingDeamon, RandomRoutingDeamon, RoutingInformation},
-    FromBytestream, IntoBytestream,
+use des::{
+    net::module::{set_setup_fn, ModuleContext},
+    prelude::*,
 };
+use inet::inet::{IOContext, IOPlugin, UdpSocket};
 
 #[NdlModule("bin")]
-struct Client {}
-
-impl Module for Client {
+struct A {}
+#[async_trait::async_trait]
+impl AsyncModule for A {
     fn new() -> Self {
         Self {}
     }
 
-    fn at_sim_start(&mut self, _stage: usize) {
-        // if par("addr").unwrap().parse::<Ipv4Addr>().unwrap().octets()[0] == 50 {
-        schedule_in(
-            Message::new().kind(1111).build(),
-            Duration::from_secs(random::<u64>() % 10),
-        );
-        // }
+    async fn at_sim_start(&mut self, _: usize) {
+        IOContext::eth_default(Ipv4Addr::new(100, 100, 100, 100)).set();
+        tokio::spawn(async move {
+            let sock = UdpSocket::bind("0.0.0.0:2000").await.unwrap();
+            loop {
+                let mut buf = [0u8; 512];
+                let (n, src) = sock.recv_from(&mut buf).await.unwrap();
+                log::info!("Received {} bytes from {}", n, src);
+                sock.send_to(&buf[..n], src).await.unwrap();
+            }
+        });
     }
 
-    fn handle_message(&mut self, msg: Message) {
-        let own = par("addr").unwrap().parse::<Ipv4Addr>().unwrap();
-        match msg.header().kind {
-            1111 => {
-                let ip = [50, 100, 150, 200, 250][random::<usize>() % 5];
-                let ip = Ipv4Addr::new(ip, ip, ip, ip);
-                let pkt = IPPacket {
-                    version: IPVersion::V4,
-                    ihl: 0,
-                    dscp: 0,
-                    enc: 0,
-                    len: 20 + 100,
-                    flags: IPFlags {
-                        df: false,
-                        mf: false,
-                    },
-                    identification: 0,
-                    ttl: 8,
-                    fragment_offset: 0,
-                    proto: 123,
-                    checksum: 0,
-
-                    src: own,
-                    dest: ip,
-                    content: vec![42; 100],
-                };
-
-                let content = pkt.into_buffer().unwrap();
-                // println!("{:x?}", &content[..20]);
-                log::info!("Sending packet from {} to {}", own, ip);
-
-                send(Message::new().content(content).build(), "out");
-                schedule_in(
-                    Message::new().kind(1111).build(),
-                    Duration::from_secs(1 + random::<u64>() % 5),
-                );
-            }
-            _ => {
-                let (content, _) = msg.cast::<Vec<u8>>();
-                // println!("{:x?}", &content[..20]);
-                let ip = IPPacket::from_buffer(content).unwrap();
-                // println!("{}", ip.dest);
-                if ip.dest == own {
-                    log::info!("Received pkt from {} -> consumed", ip.src);
-                } else {
-                    log::info!("Received pkt from {} -> redirected", ip.src);
-                    let content = ip.into_buffer().unwrap();
-                    let msg = Message::new().content(content).build();
-                    send(msg, "out")
-                }
-            }
-        }
+    async fn handle_message(&mut self, _: Message) {
+        panic!()
     }
 }
 
 #[NdlModule("bin")]
-struct Router {
-    router: Box<dyn inet::routing::Router>,
-}
-
-impl Module for Router {
+struct B {}
+#[async_trait::async_trait]
+impl AsyncModule for B {
     fn new() -> Self {
-        Self {
-            router: Box::new(BackwardRoutingDeamon::new(RandomRoutingDeamon::new())),
-        }
+        Self {}
     }
 
-    fn at_sim_start(&mut self, _stage: usize) {
-        let rinfo = RoutingInformation::collect();
-        // log::info!("{:?}", rinfo);
-        self.router.initalize(rinfo);
+    async fn at_sim_start(&mut self, _: usize) {
+        IOContext::eth_default(Ipv4Addr::new(200, 200, 200, 200)).set();
+        tokio::spawn(async move {
+            let sock = UdpSocket::bind("0.0.0.0:1000").await.unwrap();
+            sock.connect("100.100.100.100:2000").await.unwrap();
+
+            sock.send(&vec![42u8; 100]).await.unwrap();
+
+            let mut buf = [0u8; 512];
+            let n = sock.recv(&mut buf).await.unwrap();
+            println!("{:?}", &buf[..n])
+        });
     }
 
-    fn handle_message(&mut self, msg: Message) {
-        if self.router.accepts(&msg) {
-            self.router.route(msg).unwrap();
-        }
-    }
-
-    fn at_sim_end(&mut self) {
-        let topo = globals().topology.borrow().clone();
-        topo.write_to_svg("topo.svg").unwrap()
+    async fn handle_message(&mut self, _: Message) {
+        panic!()
     }
 }
 
 #[NdlSubsystem("bin")]
 struct Main {}
 
+fn inet_setup_fn(this: &ModuleContext) {
+    this.add_plugin(IOPlugin::new(), 100, false);
+}
+
 fn main() {
-    ScopedLogger::new()
-        .interal_max_log_level(log::LevelFilter::Warn)
-        .finish()
-        .unwrap();
-    let rt = Main {}.build_rt();
-    let rt = Runtime::new_with(
-        rt,
-        RuntimeOptions::seeded(123).max_time(SimTime::from_duration(Duration::from_secs(1000))),
-    );
+    ScopedLogger::new().finish().unwrap();
+    set_setup_fn(inet_setup_fn);
+
+    let app = Main {}.build_rt();
+    let rt = Runtime::new_with(app, RuntimeOptions::seeded(123));
     let _ = rt.run();
 }
