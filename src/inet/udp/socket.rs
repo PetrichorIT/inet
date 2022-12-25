@@ -117,6 +117,7 @@ impl UdpSocket {
     /// The [connect](UdpSocket::connect) method will connect this socket to a remote address.
     /// This method will fail if the socket is not connected.
     pub async fn send(&self, buf: &[u8]) -> Result<usize> {
+        self.writable().await?;
         IOContext::with_current(|ctx| {
             let peer = ctx.udp_peer_addr(self.fd)?;
             ctx.udp_send_to(self.fd, peer, buf)
@@ -144,6 +145,7 @@ impl UdpSocket {
         let addr = lookup_host(target).await;
         let first = addr.unwrap().next().unwrap();
 
+        self.writable().await?;
         IOContext::with_current(|ctx| ctx.udp_send_to(self.fd, first, buf))?;
 
         Ok(buf.len())

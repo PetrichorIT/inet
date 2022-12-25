@@ -97,6 +97,8 @@ impl IOContext {
                 }
                 _ => Some(msg),
             }
+        } else if kind == KIND_LINK_UNBUSY {
+            self.capture_link_update(msg)
         } else {
             None
         }

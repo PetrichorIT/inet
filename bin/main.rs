@@ -45,10 +45,15 @@ impl AsyncModule for B {
             sock.connect("100.100.100.100:2000").await.unwrap();
 
             sock.send(&vec![42u8; 100]).await.unwrap();
+            sock.send(&vec![69u8; 100]).await.unwrap();
 
             let mut buf = [0u8; 512];
             let n = sock.recv(&mut buf).await.unwrap();
-            println!("{:?}", &buf[..n])
+            log::info!("First: {:?}", &buf[..n]);
+
+            let mut buf = [0u8; 512];
+            let n = sock.recv(&mut buf).await.unwrap();
+            log::info!("Second: {:?}", &buf[..n]);
         });
     }
 

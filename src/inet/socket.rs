@@ -3,6 +3,7 @@ use std::io::{Error, ErrorKind, Result};
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 
 /// A communications socket.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Socket {
     pub addr: SocketAddr,
     pub domain: SocketDomain,
@@ -227,5 +228,30 @@ impl IOContext {
             ErrorKind::AddrNotAvailable,
             "Address not available",
         ))
+    }
+
+    pub(super) fn socket_link_update(&mut self, fd: Fd) {
+        use SocketDomain::*;
+        use SocketType::*;
+
+        let Some(socket) = self.sockets.get(&fd) else {
+            return;
+        };
+
+        match (socket.domain, socket.typ) {
+            (AF_INET, SOCK_DGRAM) => {
+                let Some(udp) = self.udp_manager.get_mut(&fd) else {
+                    return
+                };
+
+                if let Some(interest) = &udp.interest {
+                    if interest.interest.interest.is_writable() {
+                        let interest = udp.interest.take().unwrap();
+                        interest.waker.wake();
+                    }
+                }
+            }
+            _ => {}
+        }
     }
 }
