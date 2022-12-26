@@ -124,8 +124,8 @@ impl IOContext {
 
         udp_handle.incoming.push_back((src, dest, udp));
         if let Some(interest) = &udp_handle.interest {
-            if interest.interest.interest.is_readable() {
-                udp_handle.interest.take().unwrap().waker.wake();
+            if interest.is_readable() {
+                udp_handle.interest.take().unwrap().wake();
             }
         }
 
@@ -157,8 +157,8 @@ impl IOContext {
 
             udp_handle.incoming.push_back((src, dest, udp.clone()));
             if let Some(interest) = &udp_handle.interest {
-                if interest.interest.interest.is_readable() {
-                    udp_handle.interest.take().unwrap().waker.wake();
+                if interest.is_readable() {
+                    udp_handle.interest.take().unwrap().wake();
                 }
             }
         }

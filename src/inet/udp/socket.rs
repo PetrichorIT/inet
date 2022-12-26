@@ -95,7 +95,8 @@ impl UdpSocket {
     pub async fn ready(&self, interest: Interest) -> Result<Ready> {
         let io = UdpInterest {
             fd: self.fd,
-            interest,
+            io_interest: interest,
+            resolved: false,
         };
 
         io.await

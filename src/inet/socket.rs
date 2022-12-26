@@ -279,9 +279,9 @@ impl IOContext {
                 };
 
                 if let Some(interest) = &udp.interest {
-                    if interest.interest.interest.is_writable() {
+                    if interest.is_writable() {
                         let interest = udp.interest.take().unwrap();
-                        interest.waker.wake();
+                        interest.wake()
                     }
                 }
             }

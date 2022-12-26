@@ -83,7 +83,10 @@ impl IOContext {
     }
 
     pub(self) fn try_with_current<R>(f: impl FnOnce(&mut IOContext) -> R) -> Option<R> {
-        CURRENT.with(|cell| Some(f(cell.borrow_mut().as_mut()?)))
+        match CURRENT.try_with(|cell| Some(f(cell.borrow_mut().as_mut()?))) {
+            Ok(v) => v,
+            Err(_) => None,
+        }
     }
 }
 
