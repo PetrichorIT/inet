@@ -13,6 +13,9 @@ pub use udp::*;
 mod plugin;
 pub use plugin::*;
 
+mod api;
+pub use api::*;
+
 use crate::ip::{IPPacket, KIND_IP};
 
 thread_local! {
@@ -44,6 +47,12 @@ impl IOContext {
         }
     }
 
+    pub fn loopback_only() -> Self {
+        let mut this = Self::empty();
+        this.add_interface(Interface::loopback());
+        this
+    }
+
     pub fn eth_default(v4: Ipv4Addr) -> Self {
         let mut this = Self::empty();
         this.add_interface(Interface::loopback());
@@ -55,7 +64,7 @@ impl IOContext {
         Self::swap_in(Some(self));
     }
 
-    pub fn swap_in(ingoing: Option<IOContext>) -> Option<IOContext> {
+    pub(self) fn swap_in(ingoing: Option<IOContext>) -> Option<IOContext> {
         CURRENT.with(|ctx| {
             let mut ctx = ctx.borrow_mut();
             let ret = ctx.take();
@@ -64,7 +73,7 @@ impl IOContext {
         })
     }
 
-    pub fn with_current<R>(f: impl FnOnce(&mut IOContext) -> R) -> R {
+    pub(self) fn with_current<R>(f: impl FnOnce(&mut IOContext) -> R) -> R {
         CURRENT.with(|cell| {
             f(cell
                 .borrow_mut()
@@ -73,7 +82,7 @@ impl IOContext {
         })
     }
 
-    pub fn try_with_current<R>(f: impl FnOnce(&mut IOContext) -> R) -> Option<R> {
+    pub(self) fn try_with_current<R>(f: impl FnOnce(&mut IOContext) -> R) -> Option<R> {
         CURRENT.with(|cell| Some(f(cell.borrow_mut().as_mut()?)))
     }
 }
@@ -110,6 +119,10 @@ impl IOContext {
         } else {
             self.interfaces.insert(iface.name.hash, iface);
         }
+    }
+
+    pub fn get_interfaces(&self) -> Vec<Interface> {
+        self.interfaces.values().cloned().collect::<Vec<_>>()
     }
 
     pub(self) fn create_fd(&mut self) -> Fd {

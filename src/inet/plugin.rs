@@ -26,6 +26,7 @@ impl Plugin for IOPlugin {
     }
     fn capture(&mut self, msg: Option<Message>) -> Option<Message> {
         let io = self.ctx.take().expect("Theft");
+        // inet_trace!("io::begin with {} interfaces", io.interfaces.len());
         self.prev = IOContext::swap_in(Some(io));
 
         if let Some(msg) = msg {
@@ -45,6 +46,10 @@ impl Plugin for IOPlugin {
         // Defer intent resolve
 
         self.ctx = IOContext::swap_in(self.prev.take());
+        // inet_trace!(
+        //     "io::end with {} interfaces",
+        //     self.ctx.as_ref().unwrap().interfaces.len()
+        // );
         assert!(self.ctx.is_some());
     }
 }

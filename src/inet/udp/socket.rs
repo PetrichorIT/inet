@@ -2,7 +2,7 @@ use tokio::io::{Interest, Ready};
 
 use crate::{
     dns::{lookup_host, ToSocketAddrs},
-    inet::{udp::UDPPacket, Fd, IOContext},
+    inet::{udp::UDPPacket, Fd, IOContext, InterfaceName},
 };
 use std::{
     io::{Error, ErrorKind, Result},
@@ -11,6 +11,7 @@ use std::{
 
 use super::interest::UdpInterest;
 
+#[derive(Debug)]
 pub struct UdpSocket {
     pub(super) fd: Fd,
 }
@@ -117,11 +118,19 @@ impl UdpSocket {
     /// The [connect](UdpSocket::connect) method will connect this socket to a remote address.
     /// This method will fail if the socket is not connected.
     pub async fn send(&self, buf: &[u8]) -> Result<usize> {
-        self.writable().await?;
-        IOContext::with_current(|ctx| {
-            let peer = ctx.udp_peer_addr(self.fd)?;
-            ctx.udp_send_to(self.fd, peer, buf)
-        })
+        loop {
+            self.writable().await?;
+            let result = IOContext::with_current(|ctx| {
+                let peer = ctx.udp_peer_addr(self.fd)?;
+                ctx.udp_send_to(self.fd, peer, buf)
+            });
+
+            match result {
+                Ok(v) => return Ok(v),
+                Err(e) if e.kind() == ErrorKind::WouldBlock => continue,
+                Err(e) => return Err(e),
+            }
+        }
     }
 
     /// Tries to send data on the socket to the remote address to which it is connected.
@@ -145,10 +154,16 @@ impl UdpSocket {
         let addr = lookup_host(target).await;
         let first = addr.unwrap().next().unwrap();
 
-        self.writable().await?;
-        IOContext::with_current(|ctx| ctx.udp_send_to(self.fd, first, buf))?;
+        loop {
+            self.writable().await?;
+            let result = IOContext::with_current(|ctx| ctx.udp_send_to(self.fd, first, buf));
 
-        Ok(buf.len())
+            match result {
+                Ok(v) => return Ok(v),
+                Err(e) if e.kind() == ErrorKind::WouldBlock => continue,
+                Err(e) => return Err(e),
+            }
+        }
     }
 
     /// Tries to send data on the socket to the given address,
@@ -360,6 +375,10 @@ impl UdpSocket {
                 "SimContext lost socket handle",
             )),
         })
+    }
+
+    pub fn device(&self) -> Result<Option<InterfaceName>> {
+        IOContext::with_current(|ctx| ctx.posix_socket_device(self.fd))
     }
 }
 

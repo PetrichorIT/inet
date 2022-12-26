@@ -1,4 +1,4 @@
-use super::{Fd, IOContext, InterfaceAddr, InterfaceStatus};
+use super::{Fd, IOContext, InterfaceAddr, InterfaceName, InterfaceStatus};
 use std::io::{Error, ErrorKind, Result};
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 
@@ -70,7 +70,7 @@ pub enum SocketType {
 }
 
 impl IOContext {
-    pub(super) fn create_socket(
+    pub(super) fn posix_create_socket(
         &mut self,
         domain: SocketDomain,
         typ: SocketType,
@@ -85,28 +85,36 @@ impl IOContext {
             fd,
             interface: 0,
         };
+        inet_trace!(
+            "socket::create '0x{:x} {:?}/{:?}/{}",
+            fd,
+            domain,
+            typ,
+            protocol
+        );
         self.sockets.insert(fd, socket);
         fd
     }
 
-    pub(super) fn close_socket(&mut self, fd: Fd) {
+    pub(super) fn posix_close_socket(&mut self, fd: Fd) {
+        inet_trace!("socket::drop '0x{:x}", fd);
         self.sockets.remove(&fd);
     }
 
-    pub(super) fn bind_socket(&mut self, fd: Fd, addr: SocketAddr) -> Result<SocketAddr> {
+    pub(super) fn posix_bind_socket(&mut self, fd: Fd, addr: SocketAddr) -> Result<SocketAddr> {
         let unspecified = match addr {
             SocketAddr::V4(v4) => v4.ip().is_unspecified(),
             SocketAddr::V6(v6) => v6.ip().is_unspecified(),
         };
 
         if unspecified {
-            self.bind_socket_unspecified(fd, addr)
+            self.posix_bind_socket_unspecified(fd, addr)
         } else {
-            self.bind_socket_specified(fd, addr)
+            self.posix_bind_socket_specified(fd, addr)
         }
     }
 
-    fn bind_socket_unspecified(&mut self, fd: Fd, addr: SocketAddr) -> Result<SocketAddr> {
+    fn posix_bind_socket_unspecified(&mut self, fd: Fd, addr: SocketAddr) -> Result<SocketAddr> {
         let socket = self.sockets.get(&fd).expect("Invalid socket FD");
         let domain = socket.domain;
 
@@ -162,6 +170,14 @@ impl IOContext {
                 let socket = self.sockets.get_mut(&fd).expect("Invalid socket FD");
                 socket.addr = SocketAddr::new(next, port);
                 socket.interface = *ifid;
+
+                inet_trace!(
+                    "socket::bind '0x{:x} to {} at {} (zero-bind)",
+                    fd,
+                    socket.addr,
+                    interface.name
+                );
+
                 return Ok(socket.addr);
             }
         }
@@ -172,7 +188,7 @@ impl IOContext {
         ))
     }
 
-    fn bind_socket_specified(&mut self, fd: Fd, addr: SocketAddr) -> Result<SocketAddr> {
+    fn posix_bind_socket_specified(&mut self, fd: Fd, addr: SocketAddr) -> Result<SocketAddr> {
         if self.sockets.values().any(|socket| socket.addr == addr) {
             return Err(Error::new(ErrorKind::AddrInUse, "Address allready in use"));
         }
@@ -220,6 +236,14 @@ impl IOContext {
                 let socket = self.sockets.get_mut(&fd).expect("Invalid socket FD");
                 socket.addr = SocketAddr::new(next, port);
                 socket.interface = *ifid;
+
+                inet_trace!(
+                    "socket::bind '0x{:x} to {} at {} (directed-bind)",
+                    fd,
+                    socket.addr,
+                    interface.name
+                );
+
                 return Ok(socket.addr);
             }
         }
@@ -230,7 +254,7 @@ impl IOContext {
         ))
     }
 
-    pub(super) fn socket_link_update(&mut self, fd: Fd) {
+    pub(super) fn posix_socket_link_update(&mut self, fd: Fd) {
         use SocketDomain::*;
         use SocketType::*;
 
@@ -253,5 +277,21 @@ impl IOContext {
             }
             _ => {}
         }
+    }
+
+    pub(super) fn posix_socket_device(&mut self, fd: Fd) -> Result<Option<InterfaceName>> {
+        let Some(socket) = self.sockets.get(&fd) else {
+            return Err(Error::new(ErrorKind::InvalidInput, "invalid fd - socket dropped"))
+        };
+
+        if socket.interface == 0 {
+            return Ok(None);
+        }
+
+        let Some(interface) = self.interfaces.get(&socket.interface) else {
+            return Err(Error::new(ErrorKind::Other, "interface down"))
+        };
+
+        Ok(Some(interface.name.clone()))
     }
 }

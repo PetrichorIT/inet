@@ -181,10 +181,10 @@ impl IOContext {
             SocketDomain::AF_INET6
         };
 
-        let socket: Fd = self.create_socket(domain, SocketType::SOCK_DGRAM, 0);
+        let socket: Fd = self.posix_create_socket(domain, SocketType::SOCK_DGRAM, 0);
 
-        let baddr = self.bind_socket(socket, addr).map_err(|e| {
-            self.close_socket(socket);
+        let baddr = self.posix_bind_socket(socket, addr).map_err(|e| {
+            self.posix_close_socket(socket);
             e
         })?;
 
@@ -292,7 +292,7 @@ impl IOContext {
                     return Err(Error::new(ErrorKind::Other, "interface down"))
                 };
 
-                interface.send_ip(ip);
+                interface.send_ip(ip)?;
                 Ok(buf.len())
             }
             (IpAddr::V6(_), IpAddr::V6(_)) => Ok(buf.len()),
@@ -302,6 +302,6 @@ impl IOContext {
 
     pub(super) fn udp_drop(&mut self, fd: Fd) {
         self.udp_manager.remove(&fd);
-        self.close_socket(fd);
+        self.posix_close_socket(fd);
     }
 }

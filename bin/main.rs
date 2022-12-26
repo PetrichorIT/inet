@@ -45,15 +45,31 @@ impl AsyncModule for B {
             sock.connect("100.100.100.100:2000").await.unwrap();
 
             sock.send(&vec![42u8; 100]).await.unwrap();
-            sock.send(&vec![69u8; 100]).await.unwrap();
+            sock.send(&vec![69u8; 300]).await.unwrap();
 
             let mut buf = [0u8; 512];
-            let n = sock.recv(&mut buf).await.unwrap();
-            log::info!("First: {:?}", &buf[..n]);
+            sock.recv(&mut buf).await.unwrap();
+            log::info!("First: {:?}", &buf[..10]);
 
             let mut buf = [0u8; 512];
-            let n = sock.recv(&mut buf).await.unwrap();
-            log::info!("Second: {:?}", &buf[..n]);
+            sock.recv(&mut buf).await.unwrap();
+            log::info!("Second: {:?}", &buf[..10]);
+        });
+
+        tokio::spawn(async move {
+            let sock = UdpSocket::bind("0.0.0.0:3000").await.unwrap();
+            sock.connect("100.100.100.100:2000").await.unwrap();
+
+            sock.send(&vec![142u8; 200]).await.unwrap();
+            sock.send(&vec![169u8; 150]).await.unwrap();
+
+            let mut buf = [0u8; 512];
+            sock.recv(&mut buf).await.unwrap();
+            log::info!("First: {:?}", &buf[..10]);
+
+            let mut buf = [0u8; 512];
+            sock.recv(&mut buf).await.unwrap();
+            log::info!("Second: {:?}", &buf[..10]);
         });
     }
 
@@ -70,7 +86,10 @@ fn inet_setup_fn(this: &ModuleContext) {
 }
 
 fn main() {
-    ScopedLogger::new().finish().unwrap();
+    ScopedLogger::new()
+        .interal_max_log_level(log::LevelFilter::Warn)
+        .finish()
+        .unwrap();
     set_setup_fn(inet_setup_fn);
 
     let app = Main {}.build_rt();

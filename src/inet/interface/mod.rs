@@ -1,5 +1,6 @@
 use crate::ip::{IPPacket, IPVersion, KIND_IP};
 use std::fmt::{self, Display};
+use std::io::{Error, ErrorKind, Result};
 use std::net::Ipv4Addr;
 
 mod flags;
@@ -43,7 +44,7 @@ pub struct Interface {
     pub addrs: Vec<InterfaceAddr>,
     /// The status
     pub status: InterfaceStatus,
-
+    /// State
     pub state: InterfaceBusyState,
 
     pub(crate) prio: usize,
@@ -76,7 +77,7 @@ impl Interface {
         }
     }
 
-    pub(crate) fn send_ip(&mut self, mut ip: IPPacket) {
+    pub(crate) fn send_ip(&mut self, mut ip: IPPacket) -> Result<()> {
         assert!(
             self.status == InterfaceStatus::Active,
             "Cannot send on inactive context"
@@ -89,7 +90,7 @@ impl Interface {
         ip.version = IPVersion::V4;
 
         let msg = Message::new().kind(KIND_IP).content(ip).build();
-        self.send_mtu(msg);
+        self.send_mtu(msg)
     }
 
     pub(crate) fn get_interface_addr_v4(&self) -> Option<Ipv4Addr> {
@@ -101,8 +102,19 @@ impl Interface {
         None
     }
 
-    pub(crate) fn send_mtu(&mut self, mtu: Message) {
-        assert_eq!(self.state, InterfaceBusyState::Idle);
+    pub(crate) fn send_mtu(&mut self, mtu: Message) -> Result<()> {
+        if self.state != InterfaceBusyState::Idle {
+            return Err(Error::new(
+                ErrorKind::WouldBlock,
+                "interface is busy - would block",
+            ));
+        }
+
+        // log::trace!(
+        //     "<inet> interface {} sending mtu of size {}b",
+        //     self.name,
+        //     mtu.header().length
+        // );
         self.state = self.device.send_mtu(mtu);
         if let InterfaceBusyState::Busy { until, .. } = &self.state {
             schedule_at(
@@ -113,6 +125,8 @@ impl Interface {
                 *until,
             );
         }
+
+        Ok(())
     }
 
     pub(super) fn link_update(&mut self) -> Vec<Fd> {
@@ -191,7 +205,7 @@ pub enum InterfaceStatus {
 }
 
 impl fmt::Display for InterfaceStatus {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> std::result::Result<(), fmt::Error> {
         match self {
             Self::Active => write!(f, "active"),
             Self::Inactive => write!(f, "inactive"),
@@ -222,7 +236,7 @@ impl IOContext {
 
         let updates = interface.link_update();
         for socket in updates {
-            self.socket_link_update(socket);
+            self.posix_socket_link_update(socket);
         }
         None
     }
