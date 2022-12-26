@@ -70,12 +70,22 @@ pub enum SocketType {
 }
 
 impl IOContext {
+    const POSIX_ALLOWED_COMBI: [(SocketDomain, SocketType); 2] = [
+        (SocketDomain::AF_INET, SocketType::SOCK_DGRAM),
+        (SocketDomain::AF_INET6, SocketType::SOCK_DGRAM),
+    ];
+
     pub(super) fn posix_create_socket(
         &mut self,
         domain: SocketDomain,
         typ: SocketType,
         protocol: i32,
     ) -> Fd {
+        assert!(
+            Self::POSIX_ALLOWED_COMBI.contains(&(domain, typ)),
+            "Invalid parameter combination"
+        );
+
         let fd = self.create_fd();
         let socket = Socket {
             addr: SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0)),

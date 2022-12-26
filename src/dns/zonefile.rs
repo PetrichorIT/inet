@@ -1,13 +1,11 @@
+use super::*;
+use crate::IntoBytestream;
 use std::{
     fs::File,
     io::{BufRead, BufReader},
     net::{Ipv4Addr, Ipv6Addr},
     path::PathBuf,
 };
-
-use crate::IntoBytestream;
-
-use super::*;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DNSZoneFile {

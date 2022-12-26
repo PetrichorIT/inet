@@ -2,9 +2,8 @@ use std::io::Result;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
 use std::str::FromStr;
 
-use tokio::net::UdpSocket;
-
 use crate::dns::DNSType;
+use crate::inet::UdpSocket;
 use crate::{FromBytestream, IntoBytestream};
 
 use super::{DNSMessage, DNSResponseCode};

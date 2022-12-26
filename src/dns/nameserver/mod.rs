@@ -1,12 +1,11 @@
 use super::{DNSMessage, DNSOpCode, DNSQuestion, DNSResponseCode, DNSString, DNSZoneFile};
-use crate::{FromBytestream, IntoBytestream, IpMask};
+use crate::{inet::UdpSocket, FromBytestream, IntoBytestream, IpMask};
 use des::{prelude::par, time::SimTime};
 use std::{
     collections::VecDeque,
     net::{IpAddr, Ipv4Addr, SocketAddr},
     str::FromStr,
 };
-use tokio::net::UdpSocket;
 
 mod iterative;
 mod recursive;
