@@ -1,7 +1,7 @@
-use crate::ip::{IPPacket, IPVersion, KIND_IP};
+use crate::ip::{IpPacket, IpVersion};
 use std::fmt::{self, Display};
 use std::io::{Error, ErrorKind, Result};
-use std::net::Ipv4Addr;
+use std::net::{IpAddr, Ipv4Addr};
 
 mod flags;
 use des::prelude::{schedule_at, GateRef, Message, MessageKind};
@@ -77,26 +77,37 @@ impl Interface {
         }
     }
 
-    pub(crate) fn send_ip(&mut self, mut ip: IPPacket) -> Result<()> {
+    pub(crate) fn send_ip(&mut self, mut ip: IpPacket) -> Result<()> {
         assert!(
             self.status == InterfaceStatus::Active,
             "Cannot send on inactive context"
         );
 
-        let addr = self
-            .get_interface_addr_v4()
-            .expect("Failed to fetch interface v4 addr");
-        ip.src = addr;
-        ip.version = IPVersion::V4;
+        let version = ip.version();
 
-        let msg = Message::new().kind(KIND_IP).content(ip).build();
-        self.send_mtu(msg)
+        let addr = self
+            .get_interface_addr_for(version)
+            .expect("Failed to fetch interface addr");
+        ip.set_src(addr);
+
+        let mut msg = Message::new().kind(ip.kind());
+        match ip {
+            IpPacket::V4(v4) => msg = msg.content(v4),
+            IpPacket::V6(v6) => msg = msg.content(v6),
+        }
+        self.send_mtu(msg.build())
     }
 
-    pub(crate) fn get_interface_addr_v4(&self) -> Option<Ipv4Addr> {
+    pub(crate) fn get_interface_addr_for(&self, version: IpVersion) -> Option<IpAddr> {
         for addr in &self.addrs {
-            if let InterfaceAddr::Inet { addr, .. } = addr {
-                return Some(*addr);
+            match (addr, version) {
+                (InterfaceAddr::Inet { addr, .. }, IpVersion::V4) => {
+                    return Some(IpAddr::V4(*addr))
+                }
+                (InterfaceAddr::Inet6 { addr, .. }, IpVersion::V6) => {
+                    return Some(IpAddr::V6(*addr))
+                }
+                _ => {}
             }
         }
         None

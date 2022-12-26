@@ -1,8 +1,5 @@
-use des::{
-    net::module::{set_setup_fn, ModuleContext},
-    prelude::*,
-};
-use inet::inet::{IOContext, IOPlugin, UdpSocket};
+use des::prelude::*;
+use inet::inet::{add_interface, Interface, NetworkDevice, UdpSocket};
 
 #[NdlModule("bin")]
 struct A {}
@@ -13,9 +10,14 @@ impl AsyncModule for A {
     }
 
     async fn at_sim_start(&mut self, _: usize) {
-        IOContext::eth_default(Ipv4Addr::new(100, 100, 100, 100)).set();
+        add_interface(Interface::en0(
+            random(),
+            Ipv4Addr::new(100, 100, 100, 100),
+            NetworkDevice::eth_default(),
+        ));
+
         tokio::spawn(async move {
-            let sock = UdpSocket::bind("0.0.0.0:2000").await.unwrap();
+            let sock = UdpSocket::bind("[::0]:2000").await.unwrap();
             loop {
                 let mut buf = [0u8; 512];
                 let (n, src) = sock.recv_from(&mut buf).await.unwrap();
@@ -39,10 +41,15 @@ impl AsyncModule for B {
     }
 
     async fn at_sim_start(&mut self, _: usize) {
-        IOContext::eth_default(Ipv4Addr::new(200, 200, 200, 200)).set();
+        add_interface(Interface::en0(
+            random(),
+            Ipv4Addr::new(200, 200, 200, 200),
+            NetworkDevice::eth_default(),
+        ));
+
         tokio::spawn(async move {
-            let sock = UdpSocket::bind("0.0.0.0:1000").await.unwrap();
-            sock.connect("100.100.100.100:2000").await.unwrap();
+            let sock = UdpSocket::bind("[::0]:1000").await.unwrap();
+            sock.connect("[::100.100.100.100]:2000").await.unwrap();
 
             sock.send(&vec![42u8; 100]).await.unwrap();
             sock.send(&vec![69u8; 300]).await.unwrap();
@@ -57,8 +64,8 @@ impl AsyncModule for B {
         });
 
         tokio::spawn(async move {
-            let sock = UdpSocket::bind("0.0.0.0:3000").await.unwrap();
-            sock.connect("100.100.100.100:2000").await.unwrap();
+            let sock = UdpSocket::bind("[::0]:3000").await.unwrap();
+            sock.connect("[::100.100.100.100]:2000").await.unwrap();
 
             sock.send(&vec![142u8; 200]).await.unwrap();
             sock.send(&vec![169u8; 150]).await.unwrap();
@@ -81,16 +88,13 @@ impl AsyncModule for B {
 #[NdlSubsystem("bin")]
 struct Main {}
 
-fn inet_setup_fn(this: &ModuleContext) {
-    this.add_plugin(IOPlugin::new(), 100, false);
-}
-
 fn main() {
+    inet::init();
+
     ScopedLogger::new()
         .interal_max_log_level(log::LevelFilter::Warn)
         .finish()
         .unwrap();
-    set_setup_fn(inet_setup_fn);
 
     let app = Main {}.build_rt();
     let rt = Runtime::new_with(app, RuntimeOptions::seeded(123));

@@ -31,7 +31,7 @@ pub enum InterfaceAddr {
 
 impl InterfaceAddr {
     /// Returns the addrs for a loopback interface.
-    pub const fn loopback() -> [Self; 3] {
+    pub fn loopback() -> [Self; 3] {
         [
             InterfaceAddr::Inet {
                 addr: Ipv4Addr::LOCALHOST,
@@ -51,12 +51,18 @@ impl InterfaceAddr {
     }
 
     /// Returns the addrs for a loopback interface.
-    pub const fn en0(ether: [u8; 6], v4: Ipv4Addr) -> [Self; 2] {
+    pub fn en0(ether: [u8; 6], v4: Ipv4Addr) -> [Self; 3] {
+        let v6 = v4.to_ipv6_compatible();
         [
             InterfaceAddr::Ether { addr: ether },
             InterfaceAddr::Inet {
                 addr: v4,
                 netmask: Ipv4Addr::new(255, 255, 255, 0),
+            },
+            InterfaceAddr::Inet6 {
+                addr: v6,
+                prefixlen: 64,
+                scope_id: Some(0x1),
             },
         ]
     }
@@ -80,8 +86,19 @@ impl InterfaceAddr {
                 let mask_u32 = u32::from_be_bytes(netmask.octets());
                 mask_u32 & ip_u32 == mask_u32 & addr_u32
             }
-            Self::Inet6 { .. } if ip.is_ipv6() => {
-                todo!()
+            Self::Inet6 {
+                addr, prefixlen, ..
+            } if ip.is_ipv6() => {
+                let ip = if let IpAddr::V6(v) = ip {
+                    v
+                } else {
+                    unreachable!()
+                };
+
+                let ip_u128 = u128::from_be_bytes(ip.octets());
+                let addr_u128 = u128::from_be_bytes(addr.octets());
+                let mask_u128 = !(u128::MAX << (128 - prefixlen));
+                mask_u128 & ip_u128 == mask_u128 & addr_u128
             }
             _ => false,
         }

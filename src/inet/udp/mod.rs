@@ -1,7 +1,7 @@
 use super::{Fd, IOContext, SocketDomain, SocketType};
 use crate::{
     inet::InterfaceStatus,
-    ip::{IPFlags, IPPacket, IPVersion},
+    ip::{IpFlags, IpPacket, IpPacketRef, IpVersion, Ipv4Packet, Ipv6Packet},
     FromBytestream, IntoBytestream,
 };
 use std::{
@@ -42,13 +42,13 @@ impl UdpManager {
     //     }
     // }
 
-    pub(self) fn ip_version(&self) -> IPVersion {
+    pub(self) fn ip_version(&self) -> IpVersion {
         let v4 =
             self.local_addr.is_ipv4() && self.state.peer().map(|p| p.is_ipv4()).unwrap_or(false);
         if v4 {
-            IPVersion::V4
+            IpVersion::V4
         } else {
-            IPVersion::V6
+            IpVersion::V6
         }
     }
 }
@@ -84,24 +84,31 @@ impl IOContext {
     // returns consumed
     pub(super) fn capture_udp_packet(
         &mut self,
-        packet: &IPPacket,
+        packet: IpPacketRef,
         last_gate: Option<GateRef>,
     ) -> bool {
-        assert_eq!(packet.proto, PROTO_UDP);
+        assert_eq!(packet.tos(), PROTO_UDP);
 
-        if packet.dest.is_broadcast() {
+        fn is_broadcast(ip: IpAddr) -> bool {
+            match ip {
+                IpAddr::V4(v4) => v4.is_broadcast(),
+                _ => false,
+            }
+        }
+
+        if is_broadcast(packet.dest()) {
             return self.capture_udp_packet_broadcast(packet, last_gate);
         }
 
-        let Ok(udp) = UDPPacket::from_buffer(&packet.content) else {
+        let Ok(udp) = UDPPacket::from_buffer(packet.content()) else {
             log::error!("received ip-packet with proto=0x11 (udp) but content was no udp-packet");
             return false;
         };
 
-        let src = SocketAddr::new(IpAddr::V4(packet.src), udp.src_port);
-        let dest = SocketAddr::new(IpAddr::V4(packet.dest), udp.dest_port);
+        let src = SocketAddr::new(packet.src(), udp.src_port);
+        let dest = SocketAddr::new(packet.dest(), udp.dest_port);
 
-        let Some(ifid) = self.capture_udp_get_interface(IpAddr::V4(packet.dest), last_gate).pop() else {
+        let Some(ifid) = self.capture_udp_get_interface(packet.dest(), last_gate).pop() else {
             return false
         };
 
@@ -127,18 +134,18 @@ impl IOContext {
 
     fn capture_udp_packet_broadcast(
         &mut self,
-        packet: &IPPacket,
+        packet: IpPacketRef,
         last_gate: Option<GateRef>,
     ) -> bool {
-        let Ok(udp) = UDPPacket::from_buffer(&packet.content) else {
+        let Ok(udp) = UDPPacket::from_buffer(packet.content()) else {
             log::error!("received ip-packet with proto=0x11 (udp) but content was no udp-packet");
             return false;
         };
 
-        let src = SocketAddr::new(IpAddr::V4(packet.src), udp.src_port);
-        let dest = SocketAddr::new(IpAddr::V4(packet.dest), udp.dest_port);
+        let src = SocketAddr::new(packet.src(), udp.src_port);
+        let dest = SocketAddr::new(packet.dest(), udp.dest_port);
 
-        for ifid in self.capture_udp_get_interface(IpAddr::V4(packet.dest), last_gate) {
+        for ifid in self.capture_udp_get_interface(packet.dest(), last_gate) {
             let Some((fd, udp_handle)) = self.udp_manager.iter_mut().find(|(_, socket)| socket.local_addr.port() == udp.dest_port) else {
                 continue
             };
@@ -263,12 +270,12 @@ impl IOContext {
 
         match (socket.local_addr.ip(), target.ip()) {
             (IpAddr::V4(local), IpAddr::V4(target)) => {
-                let ip = IPPacket {
+                let ip = Ipv4Packet {
                     version: socket.ip_version(),
                     dscp: 0,
                     enc: 0,
                     identification: 0,
-                    flags: IPFlags {
+                    flags: IpFlags {
                         df: false,
                         mf: false,
                     },
@@ -292,10 +299,36 @@ impl IOContext {
                     return Err(Error::new(ErrorKind::Other, "interface down"))
                 };
 
-                interface.send_ip(ip)?;
+                interface.send_ip(IpPacket::V4(ip))?;
                 Ok(buf.len())
             }
-            (IpAddr::V6(_), IpAddr::V6(_)) => Ok(buf.len()),
+            (IpAddr::V6(local), IpAddr::V6(target)) => {
+                let ip = Ipv6Packet {
+                    version: socket.ip_version(),
+                    traffic_class: 0,
+                    flow_label: 0,
+                    hop_limit: socket.ttl,
+
+                    next_header: PROTO_UDP,
+
+                    src: local,
+                    dest: target,
+
+                    content,
+                };
+
+                let socket_info = self
+                    .sockets
+                    .get(&fd)
+                    .expect("Socket should not have been dropped");
+
+                let Some(interface) = self.interfaces.get_mut(&socket_info.interface) else {
+                    return Err(Error::new(ErrorKind::Other, "interface down"))
+                };
+
+                interface.send_ip(IpPacket::V6(ip))?;
+                Ok(buf.len())
+            }
             _ => unreachable!(),
         }
     }

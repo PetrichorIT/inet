@@ -106,21 +106,27 @@ impl ToSocketAddrs for &str {}
 impl sealed::ToSocketAddrsPriv for &str {
     type Iter = std::vec::IntoIter<SocketAddr>;
     async fn to_socket_addrs(&self) -> std::io::Result<Self::Iter> {
-        let split = self.split(':').collect::<Vec<_>>();
-        if split.len() != 2 {
+        let Some(lcolon) = self.bytes().enumerate().filter(|(_, c)| *c == b':').last() else {
+            return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "invalid socket address - missing port",
+        ));};
+        let split = self.split_at(lcolon.0);
+        let Ok(port) =  split.1[1..].parse::<u16>() else {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
-                "invalid socket address",
-            ));
-        }
-        let Ok(port) =  split[1].parse::<u16>() else {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                "invalid socket address",
+                "invalid socket address - invalid port",
             ));
         };
 
-        <(&str, u16) as sealed::ToSocketAddrsPriv>::to_socket_addrs(&(&split[0], port)).await
+        if split.0.starts_with('[') != split.0.ends_with(']') {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "invalid socket address - invalid ip - missing brackets",
+            ));
+        }
+
+        <(&str, u16) as sealed::ToSocketAddrsPriv>::to_socket_addrs(&(&split.0, port)).await
     }
 }
 
@@ -129,7 +135,11 @@ impl ToSocketAddrs for (&str, u16) {}
 impl sealed::ToSocketAddrsPriv for (&str, u16) {
     type Iter = std::vec::IntoIter<SocketAddr>;
     async fn to_socket_addrs(&self) -> std::io::Result<Self::Iter> {
-        if let Ok(ip) = IpAddr::from_str(self.0) {
+        let mut s = self.0;
+        if s.starts_with('[') && s.ends_with(']') {
+            s = &s[1..(s.len() - 1)]
+        }
+        if let Ok(ip) = IpAddr::from_str(s) {
             return Ok(vec![SocketAddr::new(ip, self.1)].into_iter());
         }
 

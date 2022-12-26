@@ -16,7 +16,7 @@ pub use plugin::*;
 mod api;
 pub use api::*;
 
-use crate::ip::{IPPacket, KIND_IP};
+use crate::ip::{IpPacketRef, Ipv4Packet, Ipv6Packet, KIND_IPV4, KIND_IPV6};
 
 thread_local! {
     static CURRENT: RefCell<Option<IOContext>> = const { RefCell::new(None) };
@@ -90,15 +90,33 @@ impl IOContext {
 impl IOContext {
     pub fn capture(&mut self, msg: Message) -> Option<Message> {
         let kind = msg.header().kind;
-        if kind == KIND_IP {
-            let Some(ip) = msg.try_content::<IPPacket>() else {
+        if kind == KIND_IPV4 {
+            let Some(ip) = msg.try_content::<Ipv4Packet>() else {
                 log::error!("received eth-packet with kind=0x0800 (ip) but content was no ip-packet");
                 return Some(msg)
             };
 
             match ip.proto {
                 udp::PROTO_UDP => {
-                    if self.capture_udp_packet(ip, msg.header().last_gate.clone()) {
+                    if self.capture_udp_packet(IpPacketRef::V4(ip), msg.header().last_gate.clone())
+                    {
+                        None
+                    } else {
+                        Some(msg)
+                    }
+                }
+                _ => Some(msg),
+            }
+        } else if kind == KIND_IPV6 {
+            let Some(ip) = msg.try_content::<Ipv6Packet>() else {
+                log::error!("received eth-packet with kind=0x08DD (ip) but content was no ip-packet");
+                return Some(msg)
+            };
+
+            match ip.next_header {
+                udp::PROTO_UDP => {
+                    if self.capture_udp_packet(IpPacketRef::V6(ip), msg.header().last_gate.clone())
+                    {
                         None
                     } else {
                         Some(msg)

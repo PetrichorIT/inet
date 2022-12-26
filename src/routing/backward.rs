@@ -1,4 +1,4 @@
-use crate::{ip::IPPacket, FromBytestream};
+use crate::{ip::Ipv4Packet, FromBytestream};
 
 use super::{Router, RoutingInformation, RoutingPort};
 use des::prelude::*;
@@ -35,7 +35,7 @@ impl<R: Router> Router for BackwardRoutingDeamon<R> {
         let Some(vec) = msg.try_content::<Vec<u8>>() else {
             return Err(msg);
         };
-        let pkt = IPPacket::from_buffer(vec).unwrap();
+        let pkt = Ipv4Packet::from_buffer(vec).unwrap();
 
         // (0) Try route with knowledge
         let msg_ip = pkt.dest;
