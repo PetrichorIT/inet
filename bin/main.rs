@@ -1,5 +1,5 @@
 use des::prelude::*;
-use inet::inet::{add_interface, Interface, NetworkDevice, UdpSocket};
+use inet::inet::{add_interface, Interface, NetworkDevice, TcpListener, TcpStream};
 
 #[NdlModule("bin")]
 struct A {}
@@ -17,13 +17,11 @@ impl AsyncModule for A {
         ));
 
         tokio::spawn(async move {
-            let sock = UdpSocket::bind("[::0]:2000").await.unwrap();
-            loop {
-                let mut buf = [0u8; 512];
-                let (n, src) = sock.recv_from(&mut buf).await.unwrap();
-                log::info!("Received {} bytes from {}", n, src);
-                sock.send_to(&buf[..n], src).await.unwrap();
-            }
+            let sock = TcpListener::bind("[::0]:2000").await.unwrap();
+
+            let (stream, _) = sock.accept().await.unwrap();
+            log::info!("Established stream");
+            let _ = stream;
         });
     }
 
@@ -48,35 +46,11 @@ impl AsyncModule for B {
         ));
 
         tokio::spawn(async move {
-            let sock = UdpSocket::bind("[::0]:1000").await.unwrap();
-            sock.connect("[::100.100.100.100]:2000").await.unwrap();
+            let _stream = TcpStream::connect("[::100.100.100.100]:2000")
+                .await
+                .unwrap();
 
-            sock.send(&vec![42u8; 100]).await.unwrap();
-            sock.send(&vec![69u8; 300]).await.unwrap();
-
-            let mut buf = [0u8; 512];
-            sock.recv(&mut buf).await.unwrap();
-            log::info!("First: {:?}", &buf[..10]);
-
-            let mut buf = [0u8; 512];
-            sock.recv(&mut buf).await.unwrap();
-            log::info!("Second: {:?}", &buf[..10]);
-        });
-
-        tokio::spawn(async move {
-            let sock = UdpSocket::bind("[::0]:3000").await.unwrap();
-            sock.connect("[::100.100.100.100]:2000").await.unwrap();
-
-            sock.send(&vec![142u8; 200]).await.unwrap();
-            sock.send(&vec![169u8; 150]).await.unwrap();
-
-            let mut buf = [0u8; 512];
-            sock.recv(&mut buf).await.unwrap();
-            log::info!("First: {:?}", &buf[..10]);
-
-            let mut buf = [0u8; 512];
-            sock.recv(&mut buf).await.unwrap();
-            log::info!("Second: {:?}", &buf[..10]);
+            log::info!("Established stream");
         });
     }
 

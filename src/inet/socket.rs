@@ -6,6 +6,8 @@ use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Socket {
     pub addr: SocketAddr,
+    pub peer: SocketAddr,
+
     pub domain: SocketDomain,
     pub typ: SocketType,
     pub protocol: i32,
@@ -70,9 +72,11 @@ pub enum SocketType {
 }
 
 impl IOContext {
-    const POSIX_ALLOWED_COMBI: [(SocketDomain, SocketType); 2] = [
+    const POSIX_ALLOWED_COMBI: [(SocketDomain, SocketType); 4] = [
         (SocketDomain::AF_INET, SocketType::SOCK_DGRAM),
         (SocketDomain::AF_INET6, SocketType::SOCK_DGRAM),
+        (SocketDomain::AF_INET6, SocketType::SOCK_STREAM),
+        (SocketDomain::AF_INET6, SocketType::SOCK_STREAM),
     ];
 
     pub(super) fn posix_create_socket(
@@ -89,6 +93,8 @@ impl IOContext {
         let fd = self.create_fd();
         let socket = Socket {
             addr: SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0)),
+            peer: SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0)),
+
             domain,
             typ,
             protocol,
@@ -104,6 +110,19 @@ impl IOContext {
         );
         self.sockets.insert(fd, socket);
         fd
+    }
+
+    pub(super) fn posix_dup_socket(&mut self, fd: Fd) -> Result<Fd> {
+        let Some(socket) = self.sockets.get(&fd) else {
+            return Err(Error::new(ErrorKind::InvalidInput, "invalid fd - socket dropped"))
+        };
+
+        let mut new = socket.clone();
+        let new_fd = self.create_fd();
+        new.fd = new_fd;
+        self.sockets.insert(new_fd, new);
+
+        Ok(new_fd)
     }
 
     pub(super) fn posix_close_socket(&mut self, fd: Fd) {
@@ -264,6 +283,39 @@ impl IOContext {
         ))
     }
 
+    pub(super) fn posix_bind_peer(&mut self, fd: Fd, peer: SocketAddr) -> Result<()> {
+        let Some(socket) = self.sockets.get_mut(&fd) else {
+            return Err(Error::new(ErrorKind::InvalidInput, "invalid fd - socket dropped"))
+        };
+        socket.peer = peer;
+        Ok(())
+    }
+
+    pub(super) fn posix_get_socket_addr(&self, fd: Fd) -> Result<SocketAddr> {
+        let Some(socket) = self.sockets.get(&fd) else {
+            return Err(Error::new(ErrorKind::InvalidInput, "invalid fd - socket dropped"))
+        };
+        if socket.addr.ip().is_unspecified() {
+            Err(Error::new(
+                ErrorKind::Other,
+                "invalid local addr - not bound",
+            ))
+        } else {
+            Ok(socket.addr)
+        }
+    }
+
+    pub(super) fn posix_get_socket_peer(&self, fd: Fd) -> Result<SocketAddr> {
+        let Some(socket) = self.sockets.get(&fd) else {
+            return Err(Error::new(ErrorKind::InvalidInput, "invalid fd - socket dropped"))
+        };
+        if socket.peer.ip().is_unspecified() {
+            Err(Error::new(ErrorKind::Other, "invalid peer addr - no peer"))
+        } else {
+            Ok(socket.peer)
+        }
+    }
+
     pub(super) fn posix_socket_link_update(&mut self, fd: Fd) {
         use SocketDomain::*;
         use SocketType::*;
@@ -284,6 +336,9 @@ impl IOContext {
                         interest.wake()
                     }
                 }
+            }
+            (AF_INET, SOCK_STREAM) | (AF_INET6, SOCK_STREAM) => {
+                self.tcp_socket_link_update(fd);
             }
             _ => {}
         }

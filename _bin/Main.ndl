@@ -1,0 +1,27 @@
+module A {
+    gates:
+        in @input
+        out @output
+}
+
+module B {
+    gates:
+        in @input
+        out @output
+}
+
+link LANLink {
+    bitrate: 10000000
+    jitter: 0.0
+    latency: 0.05
+}
+
+subsystem Main {
+    nodes:
+        a: A
+        b: B
+
+    connections:
+        a/out --> LANLink --> b/in
+        b/out --> LANLink --> a/in
+}

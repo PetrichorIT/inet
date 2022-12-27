@@ -10,6 +10,9 @@ pub use socket::*;
 mod udp;
 pub use udp::*;
 
+mod tcp;
+pub use tcp::*;
+
 mod plugin;
 pub use plugin::*;
 
@@ -26,9 +29,11 @@ pub type Fd = u32;
 
 pub struct IOContext {
     pub interfaces: HashMap<u64, Interface>,
-    pub sockets: HashMap<u32, Socket>,
+    pub sockets: HashMap<Fd, Socket>,
 
-    udp_manager: HashMap<u32, UdpManager>,
+    udp_manager: HashMap<Fd, UdpManager>,
+    tcp_manager: HashMap<Fd, TcpController>,
+    tcp_listeners: HashMap<Fd, TcpListenerHandle>,
 
     pub fd: Fd,
     pub port: u16,
@@ -41,6 +46,8 @@ impl IOContext {
             sockets: HashMap::new(),
 
             udp_manager: HashMap::new(),
+            tcp_manager: HashMap::new(),
+            tcp_listeners: HashMap::new(),
 
             fd: 100,
             port: 1024,
@@ -108,6 +115,14 @@ impl IOContext {
                         Some(msg)
                     }
                 }
+                tcp::PROTO_TCP => {
+                    if self.capture_tcp_packet(IpPacketRef::V4(ip), msg.header().last_gate.clone())
+                    {
+                        None
+                    } else {
+                        Some(msg)
+                    }
+                }
                 _ => Some(msg),
             }
         } else if kind == KIND_IPV6 {
@@ -119,6 +134,14 @@ impl IOContext {
             match ip.next_header {
                 udp::PROTO_UDP => {
                     if self.capture_udp_packet(IpPacketRef::V6(ip), msg.header().last_gate.clone())
+                    {
+                        None
+                    } else {
+                        Some(msg)
+                    }
+                }
+                tcp::PROTO_TCP => {
+                    if self.capture_tcp_packet(IpPacketRef::V6(ip), msg.header().last_gate.clone())
                     {
                         None
                     } else {

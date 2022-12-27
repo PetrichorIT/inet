@@ -16,6 +16,7 @@ pub enum IpPacket {
     V6(Ipv6Packet),
 }
 
+#[derive(Debug)]
 pub(crate) enum IpPacketRef<'a, 'b> {
     V4(&'a Ipv4Packet),
     V6(&'b Ipv6Packet),

@@ -58,12 +58,12 @@ impl UdpSocket {
 
     /// Returns the local address that this socket is bound to.
     pub fn local_addr(&self) -> Result<SocketAddr> {
-        IOContext::with_current(|ctx| ctx.udp_local_addr(self.fd))
+        IOContext::with_current(|ctx| ctx.posix_get_socket_addr(self.fd))
     }
 
     /// Returns the peer address that this socket is bound to.
     pub fn peer_addr(&self) -> Result<SocketAddr> {
-        IOContext::with_current(|ctx| ctx.udp_peer_addr(self.fd))
+        IOContext::with_current(|ctx| ctx.posix_get_socket_peer(self.fd))
     }
 
     /// Connects the UDP socket setting the default destination for send() and
@@ -121,10 +121,8 @@ impl UdpSocket {
     pub async fn send(&self, buf: &[u8]) -> Result<usize> {
         loop {
             self.writable().await?;
-            let result = IOContext::with_current(|ctx| {
-                let peer = ctx.udp_peer_addr(self.fd)?;
-                ctx.udp_send_to(self.fd, peer, buf)
-            });
+            let peer = self.peer_addr()?;
+            let result = IOContext::with_current(|ctx| ctx.udp_send_to(self.fd, peer, buf));
 
             match result {
                 Ok(v) => return Ok(v),
@@ -139,10 +137,8 @@ impl UdpSocket {
     /// When the socket buffer is full, Err(io::ErrorKind::WouldBlock) is returned.
     /// This function is usually paired with writable().
     pub fn try_send(&self, buf: &[u8]) -> Result<usize> {
-        IOContext::with_current(|ctx| {
-            let peer = ctx.udp_peer_addr(self.fd)?;
-            ctx.udp_send_to(self.fd, peer, buf)
-        })
+        let peer = self.peer_addr()?;
+        IOContext::with_current(|ctx| ctx.udp_send_to(self.fd, peer, buf))
     }
 
     /// Sends data on the socket to the given address. On success, returns the number of bytes written.
@@ -190,8 +186,7 @@ impl UdpSocket {
     /// Receives a single datagram message on the socket from the remote address to
     /// which it is connected. On success, returns the number of bytes read.
     pub async fn recv(&self, buf: &mut [u8]) -> Result<usize> {
-        let peer = IOContext::with_current(|ctx| ctx.udp_peer_addr(self.fd))?;
-
+        let peer = self.peer_addr()?;
         loop {
             self.readable().await?;
 
@@ -228,9 +223,8 @@ impl UdpSocket {
     /// If a message is too long to fit in the supplied buffer, excess bytes may be discarded.
     pub fn try_recv(&self, buf: &mut [u8]) -> Result<usize> {
         loop {
+            let peer = self.peer_addr()?;
             let (peer, r) = IOContext::with_current(|ctx| {
-                let peer = ctx.udp_peer_addr(self.fd)?;
-
                 if let Some(handle) = ctx.udp_manager.get_mut(&self.fd) {
                     Ok::<(SocketAddr, Option<(SocketAddr, SocketAddr, UDPPacket)>), std::io::Error>(
                         (peer, handle.incoming.pop_front()),

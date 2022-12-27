@@ -1,6 +1,5 @@
 use super::{Fd, IOContext, SocketDomain, SocketType};
 use crate::{
-    inet::InterfaceStatus,
     ip::{IpFlags, IpPacket, IpPacketRef, IpVersion, Ipv4Packet, Ipv6Packet},
     FromBytestream, IntoBytestream,
 };
@@ -108,7 +107,7 @@ impl IOContext {
         let src = SocketAddr::new(packet.src(), udp.src_port);
         let dest = SocketAddr::new(packet.dest(), udp.dest_port);
 
-        let Some(ifid) = self.capture_udp_get_interface(packet.dest(), last_gate).pop() else {
+        let Some(ifid) = self.get_interface_for_ip_packet(packet.dest(), last_gate).pop() else {
             return false
         };
 
@@ -145,7 +144,7 @@ impl IOContext {
         let src = SocketAddr::new(packet.src(), udp.src_port);
         let dest = SocketAddr::new(packet.dest(), udp.dest_port);
 
-        for ifid in self.capture_udp_get_interface(packet.dest(), last_gate) {
+        for ifid in self.get_interface_for_ip_packet(packet.dest(), last_gate) {
             let Some((fd, udp_handle)) = self.udp_manager.iter_mut().find(|(_, socket)| socket.local_addr.port() == udp.dest_port) else {
                 continue
             };
@@ -163,20 +162,6 @@ impl IOContext {
             }
         }
         false
-    }
-
-    fn capture_udp_get_interface(&self, ip: IpAddr, last_gate: Option<GateRef>) -> Vec<u64> {
-        let mut ifaces = self
-            .interfaces
-            .iter()
-            .filter(|(_, iface)| iface.status == InterfaceStatus::Active && iface.flags.up)
-            .filter(|(_, iface)| iface.last_gate_matches(&last_gate))
-            .filter(|(_, iface)| iface.addrs.iter().any(|addr| addr.matches_ip(ip)))
-            .collect::<Vec<_>>();
-
-        ifaces.sort_by(|(_, l), (_, r)| r.prio.cmp(&l.prio));
-
-        ifaces.into_iter().map(|v| *v.0).collect::<Vec<_>>()
     }
 }
 
@@ -210,32 +195,13 @@ impl IOContext {
         Ok(UdpSocket { fd: socket })
     }
 
-    pub(super) fn udp_local_addr(&mut self, socket: Fd) -> Result<SocketAddr> {
-        match self.udp_manager.get(&socket) {
-            Some(v) => Ok(v.local_addr),
-            None => Err(Error::new(ErrorKind::Other, "Invalid FD")),
-        }
-    }
-
-    pub(super) fn udp_peer_addr(&mut self, socket: Fd) -> Result<SocketAddr> {
-        let Some(socket) = self.udp_manager.get(&socket) else {
-            return Err(Error::new(ErrorKind::InvalidInput, "invalid fd - socket dropped"))
-        };
-        match socket.state.peer() {
-            Some(v) => Ok(v),
-            None => Err(Error::new(
-                ErrorKind::Other,
-                "no peer address associated with socket",
-            )),
-        }
-    }
-
-    pub(super) fn udp_connect(&mut self, socket: Fd, peer: SocketAddr) -> Result<()> {
-        let Some(socket) = self.udp_manager.get_mut(&socket) else {
+    pub(super) fn udp_connect(&mut self, fd: Fd, peer: SocketAddr) -> Result<()> {
+        let Some(socket) = self.udp_manager.get_mut(&fd) else {
             return Err(Error::new(ErrorKind::InvalidInput, "invalid fd - socket dropped"))
         };
 
         socket.state = UdpSocketState::Connected(peer);
+        self.posix_bind_peer(fd, peer)?;
         Ok(())
     }
 

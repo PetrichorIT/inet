@@ -251,4 +251,22 @@ impl IOContext {
         }
         None
     }
+
+    pub(super) fn get_interface_for_ip_packet(
+        &self,
+        ip: IpAddr,
+        last_gate: Option<GateRef>,
+    ) -> Vec<u64> {
+        let mut ifaces = self
+            .interfaces
+            .iter()
+            .filter(|(_, iface)| iface.status == InterfaceStatus::Active && iface.flags.up)
+            .filter(|(_, iface)| iface.last_gate_matches(&last_gate))
+            .filter(|(_, iface)| iface.addrs.iter().any(|addr| addr.matches_ip(ip)))
+            .collect::<Vec<_>>();
+
+        ifaces.sort_by(|(_, l), (_, r)| r.prio.cmp(&l.prio));
+
+        ifaces.into_iter().map(|v| *v.0).collect::<Vec<_>>()
+    }
 }

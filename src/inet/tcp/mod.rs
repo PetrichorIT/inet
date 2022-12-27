@@ -1,203 +1,271 @@
 #![allow(unused)]
-use des::prelude::*;
+
 use std::{
+    io::Result,
     collections::VecDeque,
     net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4},
+    time::Duration, task::Waker,
 };
 
-use super::mock::*;
+mod pkt;
+use des::prelude::{schedule_in, GateRef, Message};
+pub use pkt::*;
 
 mod buf;
-use buf::TcpBuffer;
+pub use buf::*;
 
-#[derive(Debug, Clone)]
+mod types;
+use types::*;
+
+mod socket;
+pub use socket::*;
+
+mod interest;
+use interest::*;
+
+use crate::{
+    ip::{IpPacket, IpPacketRef, Ipv4Packet, IpVersion, IpFlags, Ipv6Packet},
+    FromBytestream, IntoBytestream,
+};
+
+use super::{Fd, IOContext};
+
+pub(super) const PROTO_TCP: u8 = 0x06;
+
 pub struct TcpController {
+    // # General
     state: TcpState,
-
     local_addr: SocketAddr,
     peer_addr: SocketAddr,
 
-    last_recv_seq_no: u32,
-    total_bytes: usize,
-    good_bytes: usize,
+    // # Send buffer
+    sender_buffer: TcpBuffer,
+    sender_segments: VecDeque<TcpSegment>,
+    sender_queue: VecDeque<IpPacket>,
+    sender_last_ack_seq_no: u32,
+    sender_next_send_seq_no: u32,
+    sender_next_send_buffer_seq_no: u32,
+    sender_max_send_seq_no: u32,
 
-    receive_queue: usize,
-    send_queue: usize,
+    // # Recv buffer
+    receiver_buffer: TcpBuffer,
+    receiver_last_recv_seq_no: u32,
 
-    send_buffer: TcpBuffer,
-    recv_buffer: TcpBuffer,
-
-    send_bytes: u32,
-    ack_bytes: u32,
-
-    last_ack_seq_no: u32,
-    next_send_seq_no: u32,
-    max_allowed_seq_no: u32,
-
+    // # Congestions
     congestion_ctrl: bool,
-
     congestion_window: u32,
     ssthresh: u32,
     congestion_avoid_counter: u32,
 
-    next_send_buffer_seq_no: u32,
-
+    // # Parameters
     timeout: Duration,
     timewait: Duration,
-
     timer: u16,
-}
+    fd: Fd,
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
-#[repr(u8)]
-enum TcpState {
-    #[default]
-    Closed = 0,
-    Listen = 1,
-    SynSent = 2,
-    SynRcvd = 3,
-    Established = 4,
-    FinWait1 = 5,
-    FinWait2 = 6,
-    Closing = 7,
-    TimeWait = 8,
-    CloseWait = 9,
-    LastAck = 10,
-}
+    // # Metrics
+    sender_send_bytes: usize,
+    sender_ack_bytes: usize,
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-enum TcpPacketId {
-    Syn,
-    Ack,
-    Fin,
-}
-
-#[derive(Debug)]
-#[non_exhaustive]
-enum TcpEvent {
-    SysListen(),
-    SysOpen(SocketAddr),
-    SysClose(),
-    SysSend(),
-    SysRecv(),
-
-    Syn(NetworkPacket),
-    Ack(NetworkPacket),
-    Fin(NetworkPacket),
-    Data(NetworkPacket),
-    Perm(NetworkPacket),
-
-    Timeout(),
-}
-
-pub enum TcpSyscall {
-    Listen(),
-    Open(SocketAddr),
-    Close(),
-    Send,
-    Recv,
+    // # Interest
+    established_interest: Option<Waker>,
 }
 
 impl TcpController {
-    pub fn new(addr: SocketAddr) -> Self {
+    pub fn new(fd: Fd, addr: SocketAddr) -> Self {
         Self {
             state: TcpState::Closed,
 
             local_addr: addr,
             peer_addr: SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0)),
 
-            last_recv_seq_no: 0,
-            total_bytes: 0,
-            good_bytes: 0,
+            sender_buffer: TcpBuffer::new(1024, 0),
+            sender_segments: VecDeque::new(),
+            sender_queue: VecDeque::new(),
+            sender_last_ack_seq_no: 0,
+            sender_next_send_seq_no: 0,
+            sender_next_send_buffer_seq_no: 0,
+            sender_max_send_seq_no: 0,
 
-            receive_queue: 1, // initalize from par
-            send_queue: 1,    // initalize from par
-
-            send_bytes: 0,
-            ack_bytes: 0,
-
-            send_buffer: TcpBuffer::new(4096),
-            recv_buffer: TcpBuffer::new(4096),
-
-            last_ack_seq_no: 0,
-            next_send_seq_no: 0,
-            max_allowed_seq_no: 0,
+            receiver_buffer: TcpBuffer::new(1024, 0),
+            receiver_last_recv_seq_no: 0,
 
             congestion_ctrl: false,
-
             congestion_window: 1,
             ssthresh: 0,
             congestion_avoid_counter: 0,
 
-            next_send_buffer_seq_no: 0,
-
-            timeout: Duration::from_secs(1),  // from pars.
-            timewait: Duration::from_secs(1), // from pars,
-
+            timeout: Duration::from_secs(1),
+            timewait: Duration::from_secs(1),
             timer: 0,
+            fd,
+
+            sender_send_bytes: 0,
+            sender_ack_bytes: 0,
+
+            established_interest: None,
+        }
+    }
+}
+
+impl IOContext {
+    pub(super) fn capture_tcp_packet(
+        &mut self,
+        packet: IpPacketRef,
+        last_gate: Option<GateRef>,
+    ) -> bool {
+        assert!(packet.tos() == PROTO_TCP);
+
+        let Ok(tcp) = TcpPacket::from_buffer(packet.content()) else {
+            log::error!("received ip-packet with proto=0x06 (tcp) but content was no tcp-packet");
+            return false;
+        };
+
+        let src = SocketAddr::new(packet.src(), tcp.src_port);
+        let dest = SocketAddr::new(packet.dest(), tcp.dest_port);
+
+        let Some(ifid) = self.get_interface_for_ip_packet(packet.dest(), last_gate).pop() else {
+            return false
+        };
+
+        let Some((fd, _)) = self.tcp_manager.iter().find(|(_, socket)| socket.local_addr == dest && socket.peer_addr == src) else {
+            // may still be a SYN 
+            let Some((_, listeners)) = self.tcp_listeners.iter_mut().find(|(_, list)| list.local_addr == dest) else {
+                return false;
+            };
+            
+            listeners.incoming.push_back(TcpListenerPendingConnection {
+                local_addr: listeners.local_addr,
+                peer_addr: src,
+                packet: (packet.src(), packet.dest(), tcp),
+            });
+
+            // Wake up
+            let mut i = 0;
+            while i < listeners.interests.len() {
+                if matches!(listeners.interests[i].interest, TcpInterest::TcpAccept(_)) {
+                    let w = listeners.interests.swap_remove(i);
+                    w.waker.wake();
+                } else {
+                    i += 1;
+                }
+            }
+
+            return true
+        };
+
+        let socket = self.sockets.get(fd).expect("underlying os socket dropped");
+
+        if socket.interface != ifid {
+            return false;
+        }
+
+        self.process(*fd, packet, tcp);
+
+        true
+    }
+
+    pub(crate) fn tcp_send_packet(&mut self, ctrl: &mut TcpController, ip: IpPacket) {
+        ctrl.sender_queue.push_back(ip);
+
+        let Some(socket) = self.sockets.get(&ctrl.fd) else { return };
+        let Some(interface) = self.interfaces.get_mut(&socket.interface) else { return };
+
+        if !interface.is_busy() {
+            interface
+                .send_ip(ctrl.sender_queue.pop_front().unwrap())
+                .unwrap();
         }
     }
 
-    pub fn process(&mut self, pkt: NetworkPacket) {
-        assert_eq!(pkt.dest, self.local_addr.ip());
-        assert_eq!(pkt.dest_port, self.local_addr.port());
+    pub(crate) fn tcp_socket_link_update(&mut self, fd: Fd) {
+        let Some(ctrl) = self.tcp_manager.get_mut(&fd) else {
+            return;
+        };
 
-        assert!(self.invariants());
+        let Some(socket) = self.sockets.get(&ctrl.fd) else { return };
+        let Some(interface) = self.interfaces.get_mut(&socket.interface) else { return };
+
+        if !interface.is_busy() {
+            interface
+                .send_ip(ctrl.sender_queue.pop_front().unwrap())
+                .unwrap();
+        }
+    }
+}
+
+impl IOContext {
+    pub(crate) fn process(&mut self, fd: Fd, ip: IpPacketRef<'_, '_>, pkt: TcpPacket) {
+        let Some(mut ctrl) = self.tcp_manager.remove(&fd) else {
+            return
+        };
+
+        assert_eq!(ip.dest(), ctrl.local_addr.ip());
+        assert_eq!(pkt.dest_port, ctrl.local_addr.port());
 
         // Missing PERM
-        let event = if pkt.flags.syn() {
-            TcpEvent::Syn(pkt)
+        let event = if pkt.flags.syn {
+            TcpEvent::Syn((ip.src(), ip.dest(), pkt))
         } else {
-            if pkt.flags.fin() {
-                TcpEvent::Fin(pkt)
+            if pkt.flags.fin {
+                TcpEvent::Fin((ip.src(), ip.dest(), pkt))
             } else {
-                if pkt.data.is_empty() && pkt.flags.ack() {
-                    TcpEvent::Ack(pkt)
+                if pkt.content.is_empty() && pkt.flags.ack {
+                    TcpEvent::Ack((ip.src(), ip.dest(), pkt))
                 } else {
-                    TcpEvent::Data(pkt)
+                    TcpEvent::Data((ip.src(), ip.dest(), pkt))
                 }
             }
         };
 
-        match self.state {
-            TcpState::Closed => self.process_state_closed(event),
-            TcpState::Listen => self.process_state_listen(event),
-            TcpState::SynSent => self.process_state_syn_sent(event),
-            TcpState::SynRcvd => self.process_state_syn_rcvd(event),
-            TcpState::Established => self.process_state_established(event),
-            TcpState::FinWait1 => self.process_state_fin_wait1(event),
-            TcpState::FinWait2 => self.process_state_fin_wait2(event),
-            TcpState::TimeWait => self.process_state_time_wait(event),
-            TcpState::Closing => self.process_state_closing(event),
-            TcpState::CloseWait => self.process_state_close_wait(event),
-            TcpState::LastAck => self.process_state_last_ack(event),
+        match ctrl.state {
+            TcpState::Closed => self.process_state_closed(&mut ctrl, event),
+            TcpState::Listen => self.process_state_listen(&mut ctrl, event),
+            TcpState::SynSent => self.process_state_syn_sent(&mut ctrl, event),
+            TcpState::SynRcvd => self.process_state_syn_rcvd(&mut ctrl, event),
+            TcpState::Established => self.process_state_established(&mut ctrl, event),
+            TcpState::FinWait1 => self.process_state_fin_wait1(&mut ctrl, event),
+            TcpState::FinWait2 => self.process_state_fin_wait2(&mut ctrl, event),
+            TcpState::TimeWait => self.process_state_time_wait(&mut ctrl, event),
+            TcpState::Closing => self.process_state_closing(&mut ctrl, event),
+            TcpState::CloseWait => self.process_state_close_wait(&mut ctrl, event),
+            TcpState::LastAck => self.process_state_last_ack(&mut ctrl, event),
         }
 
-        assert!(self.invariants());
+        self.tcp_manager.insert(fd, ctrl);
     }
 
-    pub fn process_timeout(&mut self, msg: Message) {
-        if msg.header().id != self.timer {
+    pub fn process_timeout(&mut self, fd: Fd, msg: Message) {
+        let Some(mut ctrl) = self.tcp_manager.remove(&fd) else {
+            return
+        };
+
+        if msg.header().id != ctrl.timer {
             return;
         }
 
         let event = TcpEvent::Timeout();
-        match self.state {
-            TcpState::Closed => self.process_state_closed(event),
-            TcpState::Listen => self.process_state_listen(event),
-            TcpState::SynSent => self.process_state_syn_sent(event),
-            TcpState::SynRcvd => self.process_state_syn_rcvd(event),
-            TcpState::Established => self.process_state_established(event),
-            TcpState::FinWait1 => self.process_state_fin_wait1(event),
-            TcpState::FinWait2 => self.process_state_fin_wait2(event),
-            TcpState::TimeWait => self.process_state_time_wait(event),
-            TcpState::Closing => self.process_state_closing(event),
-            TcpState::CloseWait => self.process_state_close_wait(event),
-            TcpState::LastAck => self.process_state_last_ack(event),
+        match ctrl.state {
+            TcpState::Closed => self.process_state_closed(&mut ctrl, event),
+            TcpState::Listen => self.process_state_listen(&mut ctrl, event),
+            TcpState::SynSent => self.process_state_syn_sent(&mut ctrl, event),
+            TcpState::SynRcvd => self.process_state_syn_rcvd(&mut ctrl, event),
+            TcpState::Established => self.process_state_established(&mut ctrl, event),
+            TcpState::FinWait1 => self.process_state_fin_wait1(&mut ctrl, event),
+            TcpState::FinWait2 => self.process_state_fin_wait2(&mut ctrl, event),
+            TcpState::TimeWait => self.process_state_time_wait(&mut ctrl, event),
+            TcpState::Closing => self.process_state_closing(&mut ctrl, event),
+            TcpState::CloseWait => self.process_state_close_wait(&mut ctrl, event),
+            TcpState::LastAck => self.process_state_last_ack(&mut ctrl, event),
         }
+
+        self.tcp_manager.insert(fd, ctrl);
     }
 
-    pub fn syscall(&mut self, syscall: TcpSyscall) {
+    pub fn syscall(&mut self, fd: Fd, syscall: TcpSyscall) {
+        let Some(mut ctrl) = self.tcp_manager.remove(&fd) else {
+            return
+        };
         let event = match syscall {
             TcpSyscall::Listen() => TcpEvent::SysListen(),
             TcpSyscall::Open(peer) => TcpEvent::SysOpen(peer),
@@ -205,247 +273,283 @@ impl TcpController {
             _ => unimplemented!(),
         };
 
-        match self.state {
-            TcpState::Closed => self.process_state_closed(event),
-            TcpState::Listen => self.process_state_listen(event),
-            TcpState::SynSent => self.process_state_syn_sent(event),
-            TcpState::SynRcvd => self.process_state_syn_rcvd(event),
-            TcpState::Established => self.process_state_established(event),
-            TcpState::FinWait1 => self.process_state_fin_wait1(event),
-            TcpState::FinWait2 => self.process_state_fin_wait2(event),
-            TcpState::TimeWait => self.process_state_time_wait(event),
-            TcpState::Closing => self.process_state_closing(event),
-            TcpState::CloseWait => self.process_state_close_wait(event),
-            TcpState::LastAck => self.process_state_last_ack(event),
+        match ctrl.state {
+            TcpState::Closed => self.process_state_closed(&mut ctrl, event),
+            TcpState::Listen => self.process_state_listen(&mut ctrl, event),
+            TcpState::SynSent => self.process_state_syn_sent(&mut ctrl, event),
+            TcpState::SynRcvd => self.process_state_syn_rcvd(&mut ctrl, event),
+            TcpState::Established => self.process_state_established(&mut ctrl, event),
+            TcpState::FinWait1 => self.process_state_fin_wait1(&mut ctrl, event),
+            TcpState::FinWait2 => self.process_state_fin_wait2(&mut ctrl, event),
+            TcpState::TimeWait => self.process_state_time_wait(&mut ctrl, event),
+            TcpState::Closing => self.process_state_closing(&mut ctrl, event),
+            TcpState::CloseWait => self.process_state_close_wait(&mut ctrl, event),
+            TcpState::LastAck => self.process_state_last_ack(&mut ctrl, event),
         }
+
+        self.tcp_manager.insert(fd, ctrl);
     }
 
     //
 
-    fn process_state_closed(&mut self, event: TcpEvent) {
+    fn process_state_closed(&mut self, ctrl: &mut TcpController, event: TcpEvent) {
         match event {
             TcpEvent::SysListen() => {
-                self.state = TcpState::Listen;
+                ctrl.state = TcpState::Listen;
                 // syscall reply
             }
             TcpEvent::SysOpen(peer) => {
-                self.peer_addr = peer;
+                ctrl.peer_addr = peer;
+                self.posix_bind_peer(ctrl.fd, peer);
 
-                self.last_recv_seq_no = 0;
-                self.next_send_seq_no = self.select_inital_seq_no();
-                self.send_buffer
-                    .fwd_to_seq_no(self.next_send_seq_no as usize + 1);
-                self.next_send_buffer_seq_no = self.next_send_seq_no + 1;
-                self.max_allowed_seq_no = self.next_send_seq_no;
+                ctrl.receiver_last_recv_seq_no = 0;
+                ctrl.sender_next_send_seq_no = ctrl.select_inital_seq_no();
+                ctrl.sender_buffer
+                    .fwd_to_seq_no(ctrl.sender_next_send_seq_no + 1);
+                // ctrl.next_send_buffer_seq_no = self.next_send_seq_no + 1; TODO
+                ctrl.sender_max_send_seq_no = ctrl.sender_next_send_seq_no;
 
-                let mut pkt = self.create_packet(TcpPacketId::Syn, self.next_send_seq_no, 0);
-                self.next_send_seq_no += 1;
+                let mut pkt = ctrl.create_packet(TcpPacketId::Syn, ctrl.sender_next_send_seq_no, 0);
+                ctrl.sender_next_send_seq_no += 1;
 
-                pkt.window = self.receive_queue as u16;
+                pkt.window = 1;
 
-                log::info!("[C] Sending SYN {{ seq_no: {} }}", pkt.seq_no);
-                send(pkt, "out");
-                self.set_timer(self.timeout);
+                inet_trace!("tcp::closed '0x{:x} Sending SYN {{ seq_no: {} }}", ctrl.fd, pkt.seq_no);
+                self.tcp_send_packet(
+                    ctrl,
+                    ctrl.ip_packet_for(pkt)
+                );
 
-                self.state = TcpState::SynSent;
+                ctrl.set_timer(ctrl.timeout);
+
+                ctrl.state = TcpState::SynSent;
                 // syscall reply
             }
             _ => unimplemented!(),
         }
     }
 
-    fn process_state_listen(&mut self, event: TcpEvent) {
+    fn process_state_listen(&mut self, ctrl: &mut TcpController, event: TcpEvent) {
         match event {
-            TcpEvent::Syn(syn) => {
-                assert!(syn.flags.syn());
+            TcpEvent::Syn((src, dest, syn)) => {
+                assert!(syn.flags.syn);
 
-                self.peer_addr = SocketAddr::new(syn.src, syn.src_port);
+                ctrl.peer_addr = SocketAddr::new(src, syn.src_port);
 
-                self.last_recv_seq_no = syn.seq_no;
-                self.recv_buffer.fwd_to_seq_no(syn.seq_no as usize + 1);
+                ctrl.receiver_last_recv_seq_no = syn.seq_no;
+                ctrl.receiver_buffer.fwd_to_seq_no(syn.seq_no + 1);
 
-                self.next_send_seq_no = self.select_inital_seq_no();
-                self.send_buffer
-                    .fwd_to_seq_no(self.next_send_seq_no as usize + 1);
+                ctrl.sender_next_send_seq_no = ctrl.select_inital_seq_no();
+                ctrl.sender_buffer
+                    .fwd_to_seq_no(ctrl.sender_next_send_seq_no + 1);
 
-                self.next_send_buffer_seq_no = self.next_send_seq_no + 1;
-                self.max_allowed_seq_no = self.next_send_seq_no + syn.window as u32;
+                ctrl.sender_next_send_buffer_seq_no = ctrl.sender_next_send_seq_no + 1; 
+                ctrl.sender_max_send_seq_no = ctrl.sender_next_send_seq_no + syn.window as u32;
 
-                log::trace!("Window size: {}", syn.window);
+                inet_trace!("tcp::listen '0x{:x} Window size: {}", ctrl.fd, syn.window);
 
-                let mut pkt = self.create_packet(
+                let mut pkt = ctrl.create_packet(
                     TcpPacketId::Syn,
-                    self.next_send_seq_no,
-                    self.last_recv_seq_no + 1,
+                    ctrl.sender_next_send_seq_no,
+                    ctrl.receiver_last_recv_seq_no + 1,
                 );
-                pkt.window = self.receive_queue as u16;
-                self.next_send_seq_no += 1;
+                pkt.window = 1;
+                ctrl.sender_next_send_seq_no += 1;
 
-                log::info!(
-                    "[L] Sending SYNACK {{ seq_no: {}, ack: {} }}",
+                inet_trace!(
+                    "tcp::listen '0x{:x} Sending SYNACK {{ seq_no: {}, ack: {} }}",
+                    ctrl.fd,
                     pkt.seq_no,
                     pkt.ack_no
                 );
-                send(pkt, "out");
-                self.set_timer(self.timeout);
+                self.tcp_send_packet(
+                    ctrl,
+                    ctrl.ip_packet_for(pkt)
+                );
+                ctrl.set_timer(ctrl.timeout);
 
                 // syscall incoming ind.
-                self.state = TcpState::SynRcvd;
+                ctrl.state = TcpState::SynRcvd;
             }
             TcpEvent::SysClose() => {
-                self.state = TcpState::Closed;
+                ctrl.state = TcpState::Closed;
                 // syscall reply
             }
             _ => unimplemented!("Got: {:?}", event),
         }
     }
 
-    fn process_state_syn_sent(&mut self, event: TcpEvent) {
+    fn process_state_syn_sent(&mut self, ctrl: &mut TcpController, event: TcpEvent) {
         match event {
-            TcpEvent::Syn(pkt) => {
-                self.last_recv_seq_no = pkt.seq_no;
-                self.recv_buffer.fwd_to_seq_no(pkt.seq_no as usize + 1);
+            TcpEvent::Syn((src, dest, pkt)) => {
+                ctrl.receiver_last_recv_seq_no = pkt.seq_no;
+                ctrl.receiver_buffer.fwd_to_seq_no(pkt.seq_no + 1);
 
-                if pkt.flags.ack() {
-                    self.last_ack_seq_no = pkt.ack_no;
-                    self.max_allowed_seq_no = self.last_ack_seq_no + pkt.window as u32 - 1;
+                if pkt.flags.ack {
+                    ctrl.sender_last_ack_seq_no = pkt.ack_no;
+                    ctrl.sender_max_send_seq_no =
+                        ctrl.sender_last_ack_seq_no + pkt.window as u32 - 1;
 
-                    self.send_ack(self.last_recv_seq_no + 1, self.recv_window());
+                    self.send_ack(ctrl, ctrl.receiver_last_recv_seq_no + 1, ctrl.recv_window());
 
-                    self.cancel_timer();
+                    ctrl.cancel_timer();
                     // syscall established ind
 
-                    log::info!(
-                        "[SS] Established with Sender {{ seq_no: {}, buf: {}, max_seq_no: {} }} and Receiver {{ last_ack: {} }}",
-                        self.next_send_seq_no,
-                        self.next_send_buffer_seq_no,
-                        self.max_allowed_seq_no,
-                        self.last_recv_seq_no
+                    inet_trace!(
+                        "tcp::synsent '0x{:x} Established with Sender {{ seq_no: {}, buf: {}, max_seq_no: {} }} and Receiver {{ last_ack: {} }}",
+                        ctrl.fd,
+                        ctrl.sender_next_send_seq_no,
+                        ctrl.sender_next_send_buffer_seq_no,
+                        ctrl.sender_max_send_seq_no,
+                        ctrl.receiver_last_recv_seq_no
                     );
-                    self.state = TcpState::Established;
+                    ctrl.state = TcpState::Established;
+                    ctrl.established_interest.take().map(|v| v.wake());
                 } else {
-                    log::info!("[SS] -> [SR]");
+                    inet_trace!("tcp::synsent '0x{:x} transition to tcp::synrecv", ctrl.fd);
 
-                    self.send_ack(self.last_recv_seq_no + 1, self.recv_window());
-                    self.max_allowed_seq_no = self.last_ack_seq_no + pkt.window as u32 - 1;
-                    self.state = TcpState::SynRcvd;
+                    self.send_ack(ctrl, ctrl.receiver_last_recv_seq_no + 1, ctrl.recv_window());
+                    ctrl.sender_max_send_seq_no =
+                        ctrl.sender_last_ack_seq_no + pkt.window as u32 - 1;
+                    ctrl.state = TcpState::SynRcvd;
                 }
             }
             TcpEvent::Ack(_) => {
                 // NOP
             }
             TcpEvent::Timeout() => {
-                let pkt = self.create_packet(TcpPacketId::Syn, self.next_send_seq_no - 1, 0);
+                let pkt = ctrl.create_packet(TcpPacketId::Syn, ctrl.sender_next_send_seq_no - 1, 0);
 
-                log::info!("[L] Re-Sending SYN {{ seq_no: {} }}", pkt.seq_no,);
-                send(pkt, "out");
-                self.set_timer(self.timeout);
+                inet_trace!("tcp::synsent '0x{:x} Re-Sending SYN {{ seq_no: {} }}", ctrl.fd, pkt.seq_no,);
+                self.tcp_send_packet(
+                    ctrl, 
+                    ctrl.ip_packet_for(pkt)
+                );
+                ctrl.set_timer(ctrl.timeout);
             }
             _ => unimplemented!(),
         }
     }
 
-    fn process_state_syn_rcvd(&mut self, event: TcpEvent) {
+    fn process_state_syn_rcvd(&mut self, ctrl: &mut TcpController, event: TcpEvent) {
         match event {
             TcpEvent::Syn(_) => (),
-            TcpEvent::Fin(_) => (),
-            TcpEvent::Data(pkt) => {
+            TcpEvent::Fin( _) => (),
+            TcpEvent::Data((src, dest, pkt)) => {
                 // Own addition
-                self.last_ack_seq_no = pkt.ack_no;
+                ctrl.sender_last_ack_seq_no = pkt.ack_no;
 
-                if self.last_ack_seq_no - 1 + pkt.window as u32 > self.max_allowed_seq_no {
-                    self.max_allowed_seq_no = self.last_ack_seq_no - 1 + pkt.window as u32;
+                if ctrl.sender_last_ack_seq_no - 1 + pkt.window as u32 > ctrl.sender_max_send_seq_no
+                {
+                    ctrl.sender_max_send_seq_no =
+                        ctrl.sender_last_ack_seq_no - 1 + pkt.window as u32;
                 }
 
-                self.cancel_timer();
+                ctrl.cancel_timer();
                 // syscall estab ind
-                log::info!(
-                    "[SR] Established with Sender {{ seq_no: {}, buf: {}, max_seq_no: {} }} and Receiver {{ last_ack: {} }}",
-                    self.next_send_seq_no,
-                    self.next_send_buffer_seq_no,
-                    self.max_allowed_seq_no,
-                    self.last_recv_seq_no
+                inet_trace!(
+                    "tcp::synrecv '0x{:x} Established with Sender {{ seq_no: {}, buf: {}, max_seq_no: {} }} and Receiver {{ last_ack: {} }}",
+                    ctrl.fd,
+                    ctrl.sender_next_send_seq_no,
+                    ctrl.sender_next_send_buffer_seq_no,
+                    ctrl.sender_max_send_seq_no,
+                    ctrl.receiver_last_recv_seq_no
                 );
 
-                self.state = TcpState::Established;
-                self.handle_data(pkt)
+                ctrl.state = TcpState::Established;
+                ctrl.established_interest.take().map(|v| v.wake());
+
+                self.handle_data(ctrl, src, dest, pkt)
             }
-            TcpEvent::Ack(pkt) => {
-                self.last_ack_seq_no = pkt.ack_no;
+            TcpEvent::Ack((src, dest, pkt)) => {
+                ctrl.sender_last_ack_seq_no = pkt.ack_no;
 
-                if self.last_ack_seq_no - 1 + pkt.window as u32 > self.max_allowed_seq_no {
-                    self.max_allowed_seq_no = self.last_ack_seq_no - 1 + pkt.window as u32;
+                if ctrl.sender_last_ack_seq_no - 1 + pkt.window as u32 > ctrl.sender_max_send_seq_no
+                {
+                    ctrl.sender_max_send_seq_no =
+                        ctrl.sender_last_ack_seq_no - 1 + pkt.window as u32;
                 }
 
-                self.cancel_timer();
+                ctrl.cancel_timer();
                 // syscall estab ind
-                log::info!(
-                    "[SR] Established with Sender {{ seq_no: {}, buf: {}, max_seq_no: {} }} and Receiver {{ last_ack: {} }}",
-                    self.next_send_seq_no,
-                    self.next_send_buffer_seq_no,
-                    self.max_allowed_seq_no,
-                    self.last_recv_seq_no
+                inet_trace!(
+                    "tcp::synrecv '0x{:x} Established with Sender {{ seq_no: {}, buf: {}, max_seq_no: {} }} and Receiver {{ last_ack: {} }}",
+                    ctrl.fd,
+                    ctrl.sender_next_send_seq_no,
+                    ctrl.sender_next_send_buffer_seq_no,
+                    ctrl.sender_max_send_seq_no,
+                    ctrl.receiver_last_recv_seq_no
                 );
 
-                self.state = TcpState::Established;
+                ctrl.state = TcpState::Established;
+                ctrl.established_interest.take().map(|v| v.wake());
             }
 
             TcpEvent::Timeout() => {
-                let mut pkt = self.create_packet(
+                let mut pkt = ctrl.create_packet(
                     TcpPacketId::Syn,
-                    self.next_send_seq_no - 1,
-                    self.last_recv_seq_no + 1,
+                    ctrl.sender_next_send_seq_no - 1,
+                    ctrl.receiver_last_recv_seq_no + 1,
                 );
-                pkt.window = self.recv_window() as u16;
+                pkt.window = ctrl.recv_window() as u16;
 
-                log::info!(
-                    "[L] Re-Sending SYNACK {{ seq_no: {}, ack_no: {} }}",
+                inet_trace!(
+                    "tcp::synrecv '0x{:x} Re-Sending SYNACK {{ seq_no: {}, ack_no: {} }}",
+                    ctrl.fd,
                     pkt.seq_no,
                     pkt.ack_no
                 );
-                send(pkt, "out");
-                self.set_timer(self.timeout);
+                
+                self.tcp_send_packet(
+                    ctrl, 
+                    ctrl.ip_packet_for(pkt)
+                );
+
+                ctrl.set_timer(ctrl.timeout);
             }
             _ => unimplemented!(),
         }
     }
 
-    fn process_state_established(&mut self, event: TcpEvent) {
+    fn process_state_established(&mut self, ctrl: &mut TcpController, event: TcpEvent) {
         match event {
-            // TODO
             TcpEvent::SysClose() => {
-                let pkt = self.create_packet(
+                let pkt = ctrl.create_packet(
                     TcpPacketId::Fin,
-                    self.next_send_seq_no,
-                    self.last_recv_seq_no + 1,
+                    ctrl.sender_next_send_seq_no,
+                    ctrl.receiver_last_recv_seq_no + 1,
                 );
-                self.next_send_seq_no += 1;
-                log::info!("[E] Initialing shutdown with FIN");
-                send(pkt, "out");
+                ctrl.sender_next_send_seq_no += 1;
+                inet_trace!("tcp::estab '0x{:x} Initialing shutdown with FIN", ctrl.fd);
+                
+                self.tcp_send_packet(
+                    ctrl, 
+                    ctrl.ip_packet_for(pkt)
+                );
 
-                self.state = TcpState::FinWait1;
+                ctrl.state = TcpState::FinWait1;
             }
-            TcpEvent::Fin(pkt) => {
-                log::info!("[E] Got FIN");
-                self.last_recv_seq_no = pkt.seq_no;
-                self.handle_data(pkt);
+            TcpEvent::Fin((src, dest, pkt)) => {
+                inet_trace!("tcp::estab '0x{:x} Got FIN", ctrl.fd);
+                ctrl.receiver_last_recv_seq_no = pkt.seq_no;
+                self.handle_data(ctrl, src, dest, pkt);
 
-                self.send_ack(self.last_recv_seq_no + 1, self.recv_window());
-                self.state = TcpState::CloseWait;
+                self.send_ack(ctrl, ctrl.receiver_last_recv_seq_no + 1, ctrl.recv_window());
+                ctrl.state = TcpState::CloseWait;
 
                 // TODO: Quickfix
-                self.syscall(TcpSyscall::Close());
+                // self.syscall(TcpSyscall::Close());
             }
-            TcpEvent::Ack(pkt) | TcpEvent::Data(pkt) | TcpEvent::Perm(pkt) => {
-                self.handle_data(pkt);
+            TcpEvent::Ack((src, dest, pkt)) | TcpEvent::Data((src, dest, pkt)) | TcpEvent::Perm((src, dest, pkt)) => {
+                self.handle_data(ctrl, src,dest, pkt);
             }
             TcpEvent::Timeout() => {
-                self.handle_data_timeout();
+                self.handle_data_timeout(ctrl);
             }
             TcpEvent::SysSend() | TcpEvent::SysRecv() => todo!(),
 
             // Own addition
-            TcpEvent::Syn(pkt) => {
+            TcpEvent::Syn(_) => {
                 // This is client and the ACK must have been dropped.
             }
 
@@ -455,28 +559,28 @@ impl TcpController {
         }
     }
 
-    fn process_state_fin_wait1(&mut self, event: TcpEvent) {
-        // log::trace!("{:?}", event);
+    fn process_state_fin_wait1(&mut self, ctrl: &mut TcpController, event: TcpEvent) {
+        // inet_trace!("{:?}", event);
         match event {
-            TcpEvent::Fin(pkt) => {
-                self.last_recv_seq_no = pkt.seq_no;
+            TcpEvent::Fin((src, dest, pkt)) => {
+                ctrl.receiver_last_recv_seq_no = pkt.seq_no;
 
-                if pkt.flags.ack() {
-                    self.handle_data(pkt);
+                if pkt.flags.ack {
+                    self.handle_data(ctrl, src,dest, pkt);
                 }
 
                 // syscall closing ind
-                self.send_ack(self.last_recv_seq_no + 1, self.recv_window());
-                self.state = TcpState::Closing;
+                self.send_ack(ctrl, ctrl.receiver_last_recv_seq_no + 1, ctrl.recv_window());
+                ctrl.state = TcpState::Closing;
             }
-            TcpEvent::Timeout() => self.handle_data_timeout(),
-            TcpEvent::Data(pkt) | TcpEvent::Ack(pkt) | TcpEvent::Perm(pkt) => {
+            TcpEvent::Timeout() => self.handle_data_timeout(ctrl),
+            TcpEvent::Data((src, dest, pkt)) | TcpEvent::Ack((src, dest, pkt)) | TcpEvent::Perm((src, dest, pkt)) => {
                 // let ack_of_fin = pkt.flags.ack() && self.next_send_buffer_seq_no == pkt.ack_no;
                 let ack_of_fin = true;
-                self.handle_data(pkt);
+                self.handle_data(ctrl, src,dest, pkt);
 
                 if ack_of_fin {
-                    self.state = TcpState::FinWait2;
+                    ctrl.state = TcpState::FinWait2;
                 }
             }
             TcpEvent::SysRecv() => {
@@ -486,36 +590,38 @@ impl TcpController {
         }
     }
 
-    fn process_state_fin_wait2(&mut self, event: TcpEvent) {
+    fn process_state_fin_wait2(&mut self, ctrl: &mut TcpController, event: TcpEvent) {
         match event {
-            TcpEvent::Fin(pkt) => {
-                self.last_recv_seq_no = pkt.seq_no;
-                self.handle_data(pkt);
+            TcpEvent::Fin((src,dest, pkt)) => {
+                ctrl.receiver_last_recv_seq_no = pkt.seq_no;
+                self.handle_data(ctrl, src,dest, pkt);
 
-                self.send_ack(self.last_recv_seq_no + 1, self.recv_window());
+                self.send_ack(ctrl, ctrl.receiver_last_recv_seq_no + 1, ctrl.recv_window());
                 // cancel event, timer
-                self.set_timer(self.timewait);
+                ctrl.set_timer(ctrl.timewait);
 
-                self.state = TcpState::TimeWait;
+                ctrl.state = TcpState::TimeWait;
             }
-            TcpEvent::Timeout() => self.handle_data_timeout(),
-            TcpEvent::Data(pkt) | TcpEvent::Ack(pkt) | TcpEvent::Perm(pkt) => self.handle_data(pkt),
+            TcpEvent::Timeout() => self.handle_data_timeout(ctrl),
+            TcpEvent::Data((src,dest, pkt)) | TcpEvent::Ack((src,dest, pkt)) | TcpEvent::Perm((src,dest, pkt)) => {
+                self.handle_data(ctrl, src, dest, pkt)
+            }
             TcpEvent::SysRecv() => unimplemented!(),
             _ => unimplemented!(),
         }
     }
 
-    fn process_state_closing(&mut self, event: TcpEvent) {
+    fn process_state_closing(&mut self, ctrl: &mut TcpController, event: TcpEvent) {
         match event {
-            TcpEvent::Timeout() => self.handle_data_timeout(),
-            TcpEvent::Ack(pkt) | TcpEvent::Perm(pkt) => {
-                let ack_of_fin = pkt.flags.ack() && self.next_send_buffer_seq_no == pkt.ack_no;
-                self.handle_data(pkt);
+            TcpEvent::Timeout() => self.handle_data_timeout(ctrl),
+            TcpEvent::Ack((src,dest, pkt)) | TcpEvent::Perm((src,dest, pkt)) => {
+                let ack_of_fin = pkt.flags.ack && ctrl.sender_buffer.head_seq_no() == pkt.ack_no;
+                self.handle_data(ctrl, src, dest, pkt);
 
                 if ack_of_fin {
                     // cancel timer
-                    self.set_timer(self.timewait);
-                    self.state = TcpState::TimeWait;
+                    ctrl.set_timer(ctrl.timewait);
+                    ctrl.state = TcpState::TimeWait;
                 }
             }
             TcpEvent::SysRecv() => unimplemented!(),
@@ -524,13 +630,13 @@ impl TcpController {
         }
     }
 
-    fn process_state_time_wait(&mut self, event: TcpEvent) {
+    fn process_state_time_wait(&mut self, ctrl: &mut TcpController, event: TcpEvent) {
         match event {
             TcpEvent::Timeout() => {
-                self.reset_connection_pars();
+                ctrl.reset_connection_pars();
 
-                log::info!("Closed");
-                self.state = TcpState::Closed;
+                inet_trace!("tcp::timewait '0x{:x} Closed", ctrl.fd);
+                ctrl.state = TcpState::Closed;
             }
             TcpEvent::SysRecv() => unimplemented!(),
             TcpEvent::SysOpen(_) | TcpEvent::SysListen() => unimplemented!(),
@@ -538,76 +644,78 @@ impl TcpController {
         }
     }
 
-    fn process_state_close_wait(&mut self, event: TcpEvent) {
+    fn process_state_close_wait(&mut self, ctrl: &mut TcpController, event: TcpEvent) {
         match event {
-            TcpEvent::Timeout() => self.handle_data_timeout(),
+            TcpEvent::Timeout() => self.handle_data_timeout(ctrl),
             TcpEvent::SysClose() => {
                 // self.last_recv_seq_no = pkt.seq_no;
                 // self.handle_data(pkt);
 
-                self.send_ack(self.last_recv_seq_no + 1, self.recv_window());
+                self.send_ack(ctrl, ctrl.receiver_last_recv_seq_no + 1, ctrl.recv_window());
 
-                let pkt = self.create_packet(TcpPacketId::Fin, self.next_send_seq_no, 0);
-                send_in(pkt, "out", Duration::from_millis(50));
+                let pkt = ctrl.create_packet(TcpPacketId::Fin, ctrl.sender_next_send_seq_no, 0);
+                self.tcp_send_packet(
+                    ctrl, 
+                    ctrl.ip_packet_for(pkt)
+                );
 
-                self.state = TcpState::LastAck;
+                ctrl.state = TcpState::LastAck;
             }
             _ => unimplemented!(),
         }
     }
 
-    fn process_state_last_ack(&mut self, event: TcpEvent) {
+    fn process_state_last_ack(&mut self, ctrl: &mut TcpController, event: TcpEvent) {
         match event {
-            TcpEvent::Ack(pkt) => {
-                self.reset_connection_pars();
-                self.state = TcpState::Closed;
+            TcpEvent::Ack(_) => {
+                ctrl.reset_connection_pars();
+                ctrl.state = TcpState::Closed;
             }
             _ => unimplemented!(),
         }
     }
-}
 
-impl TcpController {
-    fn handle_data(&mut self, pkt: NetworkPacket) {
-        log::debug!(
-            "Data {{ ack: {}, max: {}, seq: {}, buf: {} }} with Packet {{ seq_no: {}, ack_no: {}, data: {} }}",
-            self.last_ack_seq_no,
-            self.max_allowed_seq_no,
-            self.next_send_seq_no,
-            self.next_send_buffer_seq_no,
+    fn handle_data(&mut self, ctrl: &mut TcpController, src: IpAddr, dest:IpAddr, pkt: TcpPacket) {
+        inet_trace!(
+            "tcp::data '0x{:x} Data {{ ack: {}, max: {}, seq: {}, buf: {} }} with Packet {{ seq_no: {}, ack_no: {}, data: {} }}",
+            ctrl.fd,
+            ctrl.sender_last_ack_seq_no,
+            ctrl.sender_max_send_seq_no,
+            ctrl.sender_last_ack_seq_no,
+            ctrl.sender_last_ack_seq_no,
             pkt.seq_no,
             pkt.ack_no,
-            pkt.data.len()
+            pkt.content.len()
         );
 
-        if pkt.flags.ack() {
+        if pkt.flags.ack {
             // let buf_full = self.send_queue == self.send_buffer.size();
-            let buf_full = self.send_buffer.remaining_cap() == 0;
+            let buf_full = ctrl.sender_buffer.rem() == 0;
 
-            self.cancel_timer();
-            if self.last_ack_seq_no < pkt.ack_no - 1 {
-                let n = pkt.ack_no - self.last_ack_seq_no;
-                self.send_buffer.free(n as usize);
+            ctrl.cancel_timer();
+            if ctrl.sender_last_ack_seq_no < pkt.ack_no - 1 {
+                let n = pkt.ack_no - ctrl.sender_last_ack_seq_no;
+                ctrl.sender_buffer.free(n as usize);
 
                 // freeBuffers
-                self.last_ack_seq_no = pkt.ack_no;
+                ctrl.sender_last_ack_seq_no = pkt.ack_no;
 
-                if self.last_ack_seq_no < self.next_send_seq_no {
-                    self.set_data_timer()
+                if ctrl.sender_last_ack_seq_no < ctrl.sender_next_send_seq_no {
+                    ctrl.set_data_timer()
                 } else {
                     // opti
-                    self.next_send_seq_no = self.last_ack_seq_no;
+                    ctrl.sender_next_send_seq_no = ctrl.sender_last_ack_seq_no;
                 }
 
-                if self.congestion_ctrl {
-                    if self.congestion_window < self.ssthresh {
-                        self.congestion_window += 1;
-                        self.congestion_avoid_counter = self.congestion_window;
+                if ctrl.congestion_ctrl {
+                    if ctrl.congestion_window < ctrl.ssthresh {
+                        ctrl.congestion_window += 1;
+                        ctrl.congestion_avoid_counter = ctrl.congestion_window;
                     } else {
-                        self.congestion_avoid_counter.saturating_sub(1);
-                        if self.congestion_avoid_counter == 0 {
-                            self.congestion_window += 1;
-                            self.congestion_avoid_counter = self.congestion_window;
+                        ctrl.congestion_avoid_counter = ctrl.congestion_avoid_counter.saturating_sub(1);
+                        if ctrl.congestion_avoid_counter == 0 {
+                            ctrl.congestion_window += 1;
+                            ctrl.congestion_avoid_counter = ctrl.congestion_window;
                         }
                     }
                 }
@@ -617,30 +725,27 @@ impl TcpController {
                 }
             }
 
-            self.max_allowed_seq_no = self.last_ack_seq_no - 1 + pkt.window as u32;
-            self.do_sending()
+            ctrl.sender_max_send_seq_no = ctrl.sender_last_ack_seq_no - 1 + pkt.window as u32;
+            self.do_sending(ctrl)
         }
 
-        if !pkt.data.is_empty() {
-            log::trace!("{{DATA}} Got Packet {{ seq_no: {} }}", pkt.seq_no);
+        if !pkt.content.is_empty() {
+            inet_trace!("tcp::data '0x{:x} {{DATA}} Got Packet {{ seq_no: {} }}", ctrl.fd, pkt.seq_no);
 
             // if permit sched, remove
             // TODO
-            if self.receive_queue - 0 > 0 {
-                self.recv_buffer.write_to(&pkt.data, pkt.seq_no as usize);
+            if 1 > 0 {
+                ctrl.receiver_buffer.write_to(&pkt.content, pkt.seq_no);
                 // self.recv_buffer.write_to_head(&pkt.data);
-                self.last_recv_seq_no = pkt.seq_no + pkt.data.len() as u32;
+                ctrl.receiver_last_recv_seq_no = pkt.seq_no + pkt.content.len() as u32;
 
-                self.send_ack(
-                    pkt.seq_no + pkt.data.len() as u32,
-                    self.receive_queue as u16 - 0,
-                );
+                self.send_ack(ctrl, pkt.seq_no + pkt.content.len() as u32, 1 as u16 - 0);
             }
         }
     }
 
-    fn do_sending(&mut self) {
-        // log::debug!(
+    fn do_sending(&mut self, ctrl: &mut TcpController) {
+        // inet_trace!(
         //     "{{DOSENDING}} ack: {}, max: {}, seq: {}, buf: {}",
         //     self.last_ack_seq_no,
         //     self.max_allowed_seq_no,
@@ -649,66 +754,179 @@ impl TcpController {
         // );
 
         // FIN may be send without window
-        if self.max_allowed_seq_no == self.next_send_buffer_seq_no.saturating_sub(2) && true {
-            self.max_allowed_seq_no += 1;
+        if ctrl.sender_max_send_seq_no == ctrl.sender_next_send_seq_no.saturating_sub(2) && true {
+            ctrl.sender_max_send_seq_no += 1;
         }
 
-        assert!(self.invariants());
-
-        let max_seq_no = if self.congestion_ctrl {
-            self.max_allowed_seq_no
-                .min(self.last_ack_seq_no - 1 + self.congestion_window)
+        let max_seq_no = if ctrl.congestion_ctrl {
+            ctrl.sender_max_send_seq_no
+                .min(ctrl.sender_last_ack_seq_no - 1 + ctrl.congestion_window)
         } else {
-            self.max_allowed_seq_no
+            ctrl.sender_max_send_seq_no
         };
 
         let mut offset = 0;
-        while self.next_send_seq_no <= max_seq_no
-            && self.next_send_seq_no < self.next_send_buffer_seq_no
+        while ctrl.sender_next_send_seq_no <= max_seq_no
+            && ctrl.sender_next_send_seq_no < ctrl.sender_next_send_seq_no + 1
+        // TODO
         {
             // send buffer set timeout
             // reschedule timer
             // get_data_packet
             // send
 
-            self.set_data_timer();
+            ctrl.set_data_timer();
 
             let mut buf = vec![0u8; 1024];
-            let n = self.send_buffer.peek_relative(&mut buf, offset);
+            let n = ctrl.sender_buffer.peek_at(&mut buf, offset);
             buf.truncate(n);
-            offset += n;
+            offset += n as u32;
 
-            let pkt = NetworkPacket {
-                src: self.local_addr.ip(),
-                dest: self.peer_addr.ip(),
-                src_port: self.local_addr.port(),
-                dest_port: self.peer_addr.port(),
-                seq_no: self.next_send_seq_no,
-                ack_no: self.last_recv_seq_no,
-                offset: 0,
-                flags: TcpControlFlags::new().set_ack(true),
-                window: self.recv_window(),
-                checksum: 0,
+            let tcp = TcpPacket {
+                src_port: ctrl.local_addr.port(),
+                dest_port: ctrl.peer_addr.port(),
+                seq_no: ctrl.sender_next_send_seq_no,
+                ack_no: ctrl.sender_last_ack_seq_no,
+                flags: TcpFlags::new().ack(true),
+                window: ctrl.recv_window(),
                 urgent_ptr: 0,
-                data: buf,
+                content: buf,
             };
 
-            self.next_send_seq_no += n as u32;
+            // let ip = IpPacket {
+            //     src: ctrl.local_addr.ip(),
+            // };
 
-            log::trace!(
-                "Sending Packet {{ seq_no {} ack_no {} data: {} }}",
-                pkt.seq_no,
-                pkt.ack_no,
-                pkt.data.len()
+            self.tcp_send_packet(
+                ctrl, 
+                ctrl.ip_packet_for(tcp)
             );
-            send(pkt, "out")
+
+            ctrl.sender_next_send_seq_no += n as u32;
+
+           
+
+            // inet_trace!(
+            //     "Sending Packet {{ seq_no {} ack_no {} data: {} }}",
+            //     pkt.seq_no,
+            //     pkt.ack_no,
+            //     pkt.data.len()
+            // );
+            // send(pkt, "out")
+        }
+    }
+
+    pub fn send_data(&mut self, ctrl: &mut TcpController, pkt: &[u8], nowin: bool) -> usize {
+        // TODO:
+        let n = ctrl.sender_buffer.write(pkt);
+        ctrl.sender_next_send_buffer_seq_no += n as u32;
+        self.do_sending(ctrl);
+        n
+    }
+
+    pub fn read_data(&mut self, ctrl: &mut TcpController, buf: &mut [u8]) -> usize {
+        let n = ctrl
+            .receiver_buffer
+            .peek_at(buf, ctrl.receiver_buffer.tail_seq_no);
+        ctrl.receiver_buffer.free(n);
+        n
+    }
+
+    pub fn close(&mut self) {}
+
+    fn handle_data_timeout(&mut self, ctrl: &mut TcpController) {
+        inet_trace!("tcp::data '0x{:x} TIMEOUT", ctrl.fd);
+        // TODO: Handle permit packets
+        ctrl.sender_next_send_seq_no = ctrl.sender_last_ack_seq_no;
+        ctrl.set_data_timer();
+
+        self.do_sending(ctrl);
+    }
+
+    fn send_ack(&mut self, ctrl: &mut TcpController, next_expected: u32, win: u16) {
+        assert!(next_expected > 0);
+        let mut ack = ctrl.create_packet(
+            TcpPacketId::Ack,
+            ctrl.sender_next_send_seq_no - 1,
+            next_expected,
+        );
+        if win > 0 {
+            ack.window = win;
+        }
+        
+        self.tcp_send_packet(
+            ctrl, 
+            ctrl.ip_packet_for(ack)
+        );
+    }
+
+    
+}
+
+impl TcpController {
+    fn ip_packet_for(&self, tcp: TcpPacket) -> IpPacket {
+        let content = tcp.into_buffer().unwrap();
+        match self.local_addr {
+            SocketAddr::V4(local) => {
+                IpPacket::V4(Ipv4Packet {
+                    version: IpVersion::V4,
+                    dscp: 0,
+                    enc: 0,
+                    identification: 0,
+                    flags: IpFlags { df: false, mf: false },
+                    fragment_offset: 0,
+                    ttl: 64,
+                    proto: PROTO_TCP,
+                    checksum: 0,
+                    
+                    src: *local.ip(),
+                    dest: if let IpAddr::V4(addr) = self.peer_addr.ip() { addr } else { unreachable!() },
+
+                    content
+                })
+            }
+            SocketAddr::V6(local) => {
+                IpPacket::V6(Ipv6Packet {
+                    version: IpVersion::V4,
+                    traffic_class: 0,
+                    flow_label: 0,
+                    hop_limit: 64,
+                    next_header: PROTO_TCP,
+                    
+                    
+                    src: *local.ip(),
+                    dest: if let IpAddr::V6(addr) = self.peer_addr.ip() { addr } else { unreachable!() },
+
+                    content
+                })
+            }
         }
 
-        assert!(self.invariants());
+        
+    }
+
+    fn create_packet(&self, id: TcpPacketId, seq_no: u32, expected: u32) -> TcpPacket {
+        let ack = expected != 0 || id == TcpPacketId::Ack;
+        let syn = id == TcpPacketId::Syn;
+        let fin = id == TcpPacketId::Fin;
+
+        TcpPacket {
+            src_port: self.local_addr.port(),
+            dest_port: self.peer_addr.port(),
+            seq_no,
+            ack_no: expected,
+            flags: TcpFlags::new()
+                .ack(ack)
+                .syn(syn)
+                .fin(fin),
+            window: 0,
+            urgent_ptr:0,
+            content: Vec::new()
+        }
     }
 
     fn set_data_timer(&mut self) {
-        // log::debug!("Setting data timer");
+        // inet_trace!("Setting data timer");
         self.timer += 1;
         schedule_in(
             Message::new().kind(u16::MAX).id(self.timer).build(),
@@ -720,102 +938,20 @@ impl TcpController {
         self.timer += 1;
     }
 
-    pub fn send_data(&mut self, pkt: &[u8], nowin: bool) -> usize {
-        // TODO:
-        let n = self.send_buffer.write_to_head(pkt);
-        self.next_send_buffer_seq_no += n as u32;
-        self.do_sending();
-        n
-    }
-
-    pub fn read_data(&mut self, buf: &mut [u8]) -> usize {
-        let n = self.recv_buffer.peek_relative(buf, 0);
-        self.recv_buffer.free(n);
-        n
-    }
-
-    pub fn close(&mut self) {}
-
-    fn handle_data_timeout(&mut self) {
-        log::trace!("DATA TIMEOUT");
-        // TODO: Handle permit packets
-        self.next_send_seq_no = self.last_ack_seq_no;
-        // self.set_data_timer();
-
-        self.do_sending();
-    }
-
-    fn send_ack(&mut self, next_expected: u32, win: u16) {
-        assert!(next_expected > 0);
-        let mut ack =
-            self.create_packet(TcpPacketId::Ack, self.next_send_seq_no - 1, next_expected);
-        if win > 0 {
-            ack.window = win;
-        }
-        send(ack, "out")
-    }
-
     fn send_buffer_len(&self) -> u32 {
-        self.next_send_buffer_seq_no - self.next_send_seq_no
+        self.sender_next_send_buffer_seq_no - self.sender_next_send_seq_no
     }
 
     fn send_window(&self) -> u32 {
-        self.max_allowed_seq_no - (self.next_send_seq_no - 1)
+        self.sender_max_send_seq_no - (self.sender_next_send_seq_no - 1)
     }
 
     fn recv_window(&self) -> u16 {
-        (self.recv_buffer.cap() - self.recv_buffer.len()) as u16
-    }
-
-    fn invariants(&self) -> bool {
-        // if matches!(self.state, TcpState::Closed | TcpState::Listen) {
-        // if self.state == TcpState::SynSent {
-        // if self.state as u8 >= TcpState::SynSent as u8 {
-        // if self.state as u8 >= TcpState::SynRcvd as u8 {
-
-        // if self.state as u8 == TcpState::Established as u8 {
-        //     assert!(self.last_ack_seq_no <= self.next_send_seq_no);
-        //     assert!(self.next_send_seq_no <= self.next_send_buffer_seq_no);
-        //     assert!(self.next_send_seq_no <= self.max_allowed_seq_no + 1);
-        //     assert!(self.last_ack_seq_no - 1 <= self.max_allowed_seq_no);
-
-        //     if self.congestion_ctrl {
-        //         assert!(self.next_send_seq_no <= self.last_ack_seq_no + self.congestion_window);
-        //         assert!(
-        //             self.congestion_window <= self.ssthresh && self.congestion_avoid_counter > 0
-        //         );
-        //     }
-        // }
-
-        true
-    }
-
-    fn create_packet(&self, id: TcpPacketId, seq_no: u32, expected: u32) -> NetworkPacket {
-        let ack = expected != 0 || id == TcpPacketId::Ack;
-        let syn = id == TcpPacketId::Syn;
-        let fin = id == TcpPacketId::Fin;
-
-        NetworkPacket {
-            src: self.local_addr.ip(),
-            dest: self.peer_addr.ip(),
-            src_port: self.local_addr.port(),
-            dest_port: self.peer_addr.port(),
-            seq_no,
-            ack_no: expected,
-            offset: 0,
-            flags: TcpControlFlags::new()
-                .set_ack(ack)
-                .set_syn(syn)
-                .set_fin(fin),
-            window: 0,
-            checksum: 0,
-            urgent_ptr: 0,
-            data: Vec::new(),
-        }
+        (self.receiver_buffer.cap() - self.receiver_buffer.len()) as u16
     }
 
     fn set_timer(&mut self, expiration: Duration) {
-        // log::debug!("Setting normal timer");
+        // inet_trace!("Setting normal timer");
         schedule_in(
             Message::new().kind(u16::MAX).id(self.timer).build(),
             expiration,
@@ -828,12 +964,12 @@ impl TcpController {
         self.local_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), 0);
         self.peer_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), 0);
 
-        self.last_ack_seq_no = 0;
-        self.next_send_seq_no = 0;
-        self.next_send_buffer_seq_no = 0;
+        self.sender_last_ack_seq_no = 0;
+        self.sender_next_send_seq_no = 0;
+        self.sender_next_send_buffer_seq_no = 0;
 
-        self.last_recv_seq_no = 0;
-        self.max_allowed_seq_no = 0;
+        self.receiver_last_recv_seq_no = 0;
+        self.sender_max_send_seq_no = 0;
 
         self.congestion_window = 1;
         self.congestion_avoid_counter = 0;
@@ -844,15 +980,15 @@ impl TcpController {
     }
 
     pub fn current_state_print(&self) {
-        log::trace!(
+        inet_trace!(
             "{:?}: Send {{ seq_no: {} buf_no: {}, max_no: {}, acked: {} }} and Recv {{ seq_no: {}, data: {} }}",
             self.state,
-            self.next_send_seq_no,
-            self.next_send_buffer_seq_no,
-            self.max_allowed_seq_no,
-            self.last_ack_seq_no,
-            self.last_recv_seq_no,
-            self.recv_buffer.len()
+            self.sender_next_send_seq_no,
+            self.sender_next_send_buffer_seq_no,
+            self.sender_max_send_seq_no,
+            self.sender_last_ack_seq_no,
+            self.receiver_last_recv_seq_no,
+            self.receiver_buffer.len()
         );
     }
 }

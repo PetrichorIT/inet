@@ -37,5 +37,5 @@ macro_rules! primitve_enum_repr {
 
 macro_rules! inet_trace {
     (target: $target:expr, $($arg:tt)+) => { compile_error!("No you dont") };
-    ($($arg:tt)+) => { log::trace!(target: &format!("{}@inet", ::des::net::module::module_path()), $($arg)+) };
+    ($($arg:tt)+) => { log::trace!(target: &format!("{} (inet)", ::des::net::module::module_path()), $($arg)+) };
 }
