@@ -99,4 +99,7 @@ fn main() {
     let app = Main {}.build_rt();
     let rt = Runtime::new_with(app, RuntimeOptions::seeded(123));
     let _ = rt.run();
+
+    // Should complete at 365.184001ms
+    // -> 1.364358401s due to timeouts
 }

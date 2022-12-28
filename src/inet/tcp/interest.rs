@@ -81,6 +81,13 @@ impl Future for TcpInterest {
                     )));
                 };
 
+                if handle.syn_resend_counter >= 3 {
+                    return Poll::Ready(Err(Error::new(
+                        ErrorKind::NotFound,
+                        "host not found - syn exceeded",
+                    )));
+                }
+
                 if handle.state as u8 >= TcpState::Established as u8 {
                     Poll::Ready(Ok(Ready::ALL))
                 } else {

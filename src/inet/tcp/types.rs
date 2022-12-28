@@ -22,7 +22,7 @@ pub(super) enum TcpState {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TcpSegment {
+pub(super) struct TcpSegment {
     pub header: TcpPacket,
     pub seq_no: u32,
     pub len: u32,

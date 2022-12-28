@@ -1,4 +1,5 @@
-use super::{IOContext, Interface};
+use super::Interface;
+use crate::inet::IOContext;
 
 pub fn add_interface(iface: Interface) {
     IOContext::with_current(|ctx| ctx.add_interface(iface))

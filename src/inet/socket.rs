@@ -1,4 +1,9 @@
-use super::{Fd, IOContext, InterfaceAddr, InterfaceName, InterfaceStatus};
+//! BSD sockets.
+
+use super::{
+    interface::{InterfaceAddr, InterfaceName, InterfaceStatus},
+    Fd, IOContext,
+};
 use std::io::{Error, ErrorKind, Result};
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 
@@ -75,7 +80,7 @@ impl IOContext {
     const POSIX_ALLOWED_COMBI: [(SocketDomain, SocketType); 4] = [
         (SocketDomain::AF_INET, SocketType::SOCK_DGRAM),
         (SocketDomain::AF_INET6, SocketType::SOCK_DGRAM),
-        (SocketDomain::AF_INET6, SocketType::SOCK_STREAM),
+        (SocketDomain::AF_INET, SocketType::SOCK_STREAM),
         (SocketDomain::AF_INET6, SocketType::SOCK_STREAM),
     ];
 

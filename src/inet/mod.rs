@@ -1,47 +1,44 @@
-use std::{cell::RefCell, collections::HashMap, net::Ipv4Addr};
-
-mod interface;
+use crate::ip::{IpPacketRef, Ipv4Packet, Ipv6Packet, KIND_IPV4, KIND_IPV6};
 use des::{
     prelude::{Message, MessageKind},
     runtime::random,
 };
-pub use interface::*;
+use std::{cell::RefCell, collections::HashMap, net::Ipv4Addr};
 
-mod socket;
-pub use socket::*;
+pub mod interface;
+use interface::*;
+
+pub mod socket;
+use socket::*;
 
 mod udp;
 pub use udp::*;
 
-mod tcp;
-pub use tcp::*;
+pub mod tcp;
+pub use tcp::socket::{TcpListener, TcpStream};
 
 mod plugin;
 pub use plugin::*;
-
-mod api;
-pub use api::*;
-
-use crate::ip::{IpPacketRef, Ipv4Packet, Ipv6Packet, KIND_IPV4, KIND_IPV6};
 
 thread_local! {
     static CURRENT: RefCell<Option<IOContext>> = const { RefCell::new(None) };
 }
 
+/// File descriptors.
 pub type Fd = u32;
 
 const KIND_IO_TIMEOUT: MessageKind = 0x0128;
 
 pub struct IOContext {
-    pub interfaces: HashMap<u64, Interface>,
-    pub sockets: HashMap<Fd, Socket>,
+    interfaces: HashMap<u64, Interface>,
+    sockets: HashMap<Fd, Socket>,
 
     udp_manager: HashMap<Fd, UdpManager>,
-    tcp_manager: HashMap<Fd, TcpController>,
-    tcp_listeners: HashMap<Fd, TcpListenerHandle>,
+    tcp_manager: HashMap<Fd, tcp::TcpController>,
+    tcp_listeners: HashMap<Fd, tcp::socket::TcpListenerHandle>,
 
-    pub fd: Fd,
-    pub port: u16,
+    fd: Fd,
+    port: u16,
 }
 
 impl IOContext {

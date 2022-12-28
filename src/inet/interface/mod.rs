@@ -1,11 +1,15 @@
+//! Network interfaces and devices.
+
+use super::{Fd, IOContext};
 use crate::ip::{IpPacket, IpVersion};
-use std::fmt::{self, Display};
-use std::io::{Error, ErrorKind, Result};
-use std::net::{IpAddr, Ipv4Addr};
+use des::prelude::{schedule_at, GateRef, Message, MessageKind, SimTime};
+use std::{
+    fmt::{self, Display},
+    io::{Error, ErrorKind, Result},
+    net::{IpAddr, Ipv4Addr},
+};
 
 mod flags;
-use des::prelude::{schedule_at, GateRef, Message, MessageKind};
-use des::time::SimTime;
 pub use flags::InterfaceFlags;
 
 mod addrs;
@@ -14,13 +18,13 @@ pub use addrs::InterfaceAddr;
 mod device;
 pub use device::NetworkDevice;
 
-use super::{Fd, IOContext};
+mod api;
+pub use api::*;
 
 macro_rules! hash {
     ($v:expr) => {{
         use std::hash::Hash;
         use std::hash::Hasher;
-
         let mut s = ::std::collections::hash_map::DefaultHasher::new();
         ($v).hash(&mut s);
         s.finish()

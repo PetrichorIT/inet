@@ -6,7 +6,8 @@ use std::task::{Context, Poll};
 
 use crate::inet::tcp::interest::{TcpInterest, TcpInterestGuard};
 use crate::inet::tcp::types::{TcpEvent, TcpSyscall};
-use crate::inet::{Fd, SocketDomain, SocketType, TcpController, TcpPacket};
+use crate::inet::tcp::{TcpController, TcpPacket};
+use crate::inet::{Fd, SocketDomain, SocketType};
 use crate::{
     dns::{lookup_host, ToSocketAddrs},
     inet::IOContext,

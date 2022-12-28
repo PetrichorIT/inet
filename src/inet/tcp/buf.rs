@@ -1,6 +1,6 @@
 use std::fmt::Debug;
 
-pub struct TcpBuffer {
+pub(super) struct TcpBuffer {
     buffer: Box<[u8]>,
     tail: usize, // A ptr to the last existing byte (if len > 0)
     head: usize, // A ptr to the next free byte

@@ -1,7 +1,7 @@
 use std::io::ErrorKind;
 
 use des::prelude::*;
-use inet::inet::{interface::*, tcp::TcpDebugPlugin, TcpListener, TcpStream};
+use inet::inet::{add_interface, Interface, NetworkDevice, TcpDebugPlugin, TcpListener, TcpStream};
 
 #[NdlModule("bin")]
 struct ManInTheMiddle {}
@@ -63,9 +63,9 @@ impl AsyncModule for Server {
             assert_eq!(err.kind(), ErrorKind::WouldBlock);
 
             log::info!("Sever done");
-            std::mem::forget(stream);
 
-            std::mem::forget(sock);
+            let _ = stream;
+            // std::mem::forget(sock);
         });
     }
     async fn handle_message(&mut self, _: Message) {
@@ -98,7 +98,7 @@ impl AsyncModule for Client {
             let buf = vec![42; 4000];
             stream.write_all(&buf).await.unwrap();
             // log::info!("wrotes {n}")
-            log::info!("Client done");
+            log::info!("Client done")
         });
     }
 

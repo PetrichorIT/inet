@@ -1,28 +1,31 @@
-use tokio::io::{AsyncRead, AsyncWrite, Interest, ReadBuf, Ready};
-
+use super::TcpSocketConfig;
 use crate::{
     dns::{lookup_host, ToSocketAddrs},
     inet::{
         tcp::{
             interest::{TcpInterest, TcpInterestGuard},
-            types::{TcpEvent, TcpState},
+            types::{TcpEvent, TcpState, TcpSyscall},
+            TcpController,
         },
-        Fd, IOContext, SocketDomain, SocketType, TcpController,
+        Fd, IOContext, SocketDomain, SocketType,
     },
 };
 use std::{
     io::{Error, ErrorKind, Result},
-    net::{SocketAddr, SocketAddrV6},
+    net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
     pin::Pin,
+    sync::Arc,
     task::{Context, Poll},
 };
-use std::{
-    net::{Ipv4Addr, Ipv6Addr, SocketAddrV4},
-    sync::Arc,
-};
+use tokio::io::{AsyncRead, AsyncWrite, Interest, ReadBuf, Ready};
 
-use super::TcpSocketConfig;
+mod owned_half;
+pub use owned_half::*;
 
+mod ref_half;
+pub use ref_half::*;
+
+/// A TCP Stream.
 #[derive(Debug)]
 pub struct TcpStream {
     pub(crate) inner: Arc<TcpStreamInner>,
@@ -104,7 +107,7 @@ impl TcpStream {
     /// Because try_read() is non-blocking, the buffer does not have to be stored by the async task
     /// and can exist entirely on the stack.
     pub fn try_read(&self, buf: &mut [u8]) -> Result<usize> {
-        IOContext::with_current(|ctx| ctx.tcp_try_recv(self.inner.fd, buf))
+        IOContext::with_current(|ctx| ctx.tcp_try_read(self.inner.fd, buf))
     }
 
     /// Receives data on the socket from the remote address to which it is connected,
@@ -139,7 +142,17 @@ impl TcpStream {
     /// The function will attempt to write the entire contents of `buf`,
     /// but only part of the buffer may be written.
     pub fn try_write(&self, buf: &[u8]) -> Result<usize> {
-        IOContext::with_current(|ctx| ctx.tcp_try_send(self.inner.fd, buf))
+        IOContext::with_current(|ctx| ctx.tcp_try_write(self.inner.fd, buf))
+    }
+
+    /// Splits a `TcpStream` into a read half and a write half, which can be used to read and write the stream concurrently.
+    pub fn into_split(self) -> (OwnedReadHalf, OwnedWriteHalf) {
+        (
+            OwnedReadHalf {
+                inner: self.inner.clone(),
+            },
+            OwnedWriteHalf { inner: self.inner },
+        )
     }
 }
 
@@ -150,7 +163,7 @@ impl AsyncRead for TcpStream {
         buf: &mut ReadBuf<'_>,
     ) -> Poll<Result<()>> {
         IOContext::with_current(|ctx| {
-            match ctx.tcp_try_recv(self.inner.fd, buf.initialize_unfilled()) {
+            match ctx.tcp_try_read(self.inner.fd, buf.initialize_unfilled()) {
                 Ok(n) => {
                     buf.advance(n);
                     Poll::Ready(Ok(()))
@@ -176,7 +189,7 @@ impl AsyncRead for TcpStream {
 
 impl AsyncWrite for TcpStream {
     fn poll_write(self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &[u8]) -> Poll<Result<usize>> {
-        IOContext::with_current(|ctx| match ctx.tcp_try_send(self.inner.fd, buf) {
+        IOContext::with_current(|ctx| match ctx.tcp_try_write(self.inner.fd, buf) {
             Ok(n) => Poll::Ready(Ok(n)),
             Err(e) if e.kind() == ErrorKind::WouldBlock => {
                 let Some(handle) = ctx.tcp_manager.get_mut(&self.inner.fd) else {
@@ -246,12 +259,17 @@ impl IOContext {
             return Err(Error::new(ErrorKind::InvalidInput, "invalid fd - socket dropped"))
         };
 
+        if tcp.syn_resend_counter >= 3 {
+            return Err(Error::new(
+                ErrorKind::NotFound,
+                "host not found - syn exceeded",
+            ));
+        }
+
         Ok(tcp.state as u8 >= TcpState::Established as u8)
     }
 
     fn tcp_drop_stream(&mut self, fd: Fd) {
-        // self.tcp_manager.drop();
-        // self.tcp_manager.remove(&fd);
-        // self.bsd_close_socket(fd);
+        self.syscall(fd, TcpSyscall::Close());
     }
 }

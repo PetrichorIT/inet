@@ -3,6 +3,7 @@ use std::{fmt::Display, io::Read};
 use crate::{FromBytestream, IntoBytestream};
 use bytestream::{ByteOrder::BigEndian, StreamReader, StreamWriter};
 
+/// A TCP packet assosciated with an end-to-end connection.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TcpPacket {
     pub src_port: u16,
@@ -16,6 +17,7 @@ pub struct TcpPacket {
     pub content: Vec<u8>,
 }
 
+/// Flags of a [`TcpPacket`].
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct TcpFlags {
     pub cwr: bool,

@@ -2,7 +2,7 @@ use tokio::io::{Interest, Ready};
 
 use crate::{
     dns::{lookup_host, ToSocketAddrs},
-    inet::{udp::UDPPacket, Fd, IOContext, InterfaceName},
+    inet::{interface::InterfaceName, udp::UDPPacket, Fd, IOContext},
 };
 use std::{
     io::{Error, ErrorKind, Result},

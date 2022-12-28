@@ -1,13 +1,14 @@
 use des::prelude::*;
 
 use crate::{
-    inet::KIND_LINK_UNBUSY,
+    inet::interface::KIND_LINK_UNBUSY,
     ip::{Ipv4Packet, Ipv6Packet, KIND_IPV4, KIND_IPV6},
     FromBytestream,
 };
 
 use super::{TcpPacket, PROTO_TCP};
 
+/// A logger for TCP packet.
 pub struct TcpDebugPlugin;
 
 impl TcpDebugPlugin {
