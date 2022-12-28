@@ -1,3 +1,5 @@
+use std::fmt::Debug;
+
 pub struct TcpBuffer {
     buffer: Box<[u8]>,
     tail: usize, // A ptr to the last existing byte (if len > 0)
@@ -7,12 +9,31 @@ pub struct TcpBuffer {
 }
 
 impl TcpBuffer {
+    pub fn state(&self) {
+        inet_trace!(
+            "TcpBuffer [{} ... {} ... {}]",
+            self.tail_seq_no,
+            self.head_seq_no(),
+            self.tail_seq_no + self.cap() as u32
+        )
+    }
+
     pub fn len(&self) -> usize {
-        if self.tail <= self.head {
+        let result = if self.tail <= self.head {
             self.head - self.tail
         } else {
-            (self.head + self.buffer.len()) - self.tail
-        }
+            self.head + (self.buffer.len() - self.tail)
+        };
+
+        assert!(
+            result <= self.cap(),
+            "Buffer {{ head: {}, tail: {}, len: {}, cap + 1: {} }}",
+            self.head,
+            self.tail,
+            result,
+            self.buffer.len()
+        );
+        result
     }
 
     pub fn cap(&self) -> usize {
@@ -93,7 +114,7 @@ impl TcpBuffer {
         };
 
         if h < shk {
-            self.head = shk;
+            self.head = shk % self.buffer.len();
         } else {
             // NOP
         }
@@ -134,5 +155,17 @@ impl TcpBuffer {
         assert!(n <= self.len());
         self.tail = (self.tail + n) % self.buffer.len();
         self.tail_seq_no = self.tail_seq_no.wrapping_add(n as u32);
+    }
+}
+
+impl Debug for TcpBuffer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "TcpBuffer [{} ... {} ... {}]",
+            self.tail_seq_no,
+            self.head_seq_no(),
+            self.tail_seq_no + self.cap() as u32
+        )
     }
 }

@@ -1,7 +1,10 @@
 use std::{cell::RefCell, collections::HashMap, net::Ipv4Addr};
 
 mod interface;
-use des::{prelude::Message, runtime::random};
+use des::{
+    prelude::{Message, MessageKind},
+    runtime::random,
+};
 pub use interface::*;
 
 mod socket;
@@ -26,6 +29,8 @@ thread_local! {
 }
 
 pub type Fd = u32;
+
+const KIND_IO_TIMEOUT: MessageKind = 0x0128;
 
 pub struct IOContext {
     pub interfaces: HashMap<u64, Interface>,
@@ -100,61 +105,90 @@ impl IOContext {
 impl IOContext {
     pub fn capture(&mut self, msg: Message) -> Option<Message> {
         let kind = msg.header().kind;
-        if kind == KIND_IPV4 {
-            let Some(ip) = msg.try_content::<Ipv4Packet>() else {
-                log::error!("received eth-packet with kind=0x0800 (ip) but content was no ip-packet");
-                return Some(msg)
-            };
+        match kind {
+            KIND_IPV4 => {
+                let Some(ip) = msg.try_content::<Ipv4Packet>() else {
+                    log::error!("received eth-packet with kind=0x0800 (ip) but content was no ip-packet");
+                    return Some(msg)
+                };
 
-            match ip.proto {
-                udp::PROTO_UDP => {
-                    if self.capture_udp_packet(IpPacketRef::V4(ip), msg.header().last_gate.clone())
-                    {
-                        None
-                    } else {
-                        Some(msg)
+                match ip.proto {
+                    udp::PROTO_UDP => {
+                        if self
+                            .capture_udp_packet(IpPacketRef::V4(ip), msg.header().last_gate.clone())
+                        {
+                            None
+                        } else {
+                            Some(msg)
+                        }
                     }
-                }
-                tcp::PROTO_TCP => {
-                    if self.capture_tcp_packet(IpPacketRef::V4(ip), msg.header().last_gate.clone())
-                    {
-                        None
-                    } else {
-                        Some(msg)
+                    tcp::PROTO_TCP => {
+                        if self
+                            .capture_tcp_packet(IpPacketRef::V4(ip), msg.header().last_gate.clone())
+                        {
+                            None
+                        } else {
+                            Some(msg)
+                        }
                     }
+                    _ => Some(msg),
                 }
-                _ => Some(msg),
             }
-        } else if kind == KIND_IPV6 {
-            let Some(ip) = msg.try_content::<Ipv6Packet>() else {
-                log::error!("received eth-packet with kind=0x08DD (ip) but content was no ip-packet");
-                return Some(msg)
-            };
+            KIND_IPV6 => {
+                let Some(ip) = msg.try_content::<Ipv6Packet>() else {
+                    log::error!("received eth-packet with kind=0x08DD (ip) but content was no ip-packet");
+                    return Some(msg)
+                };
 
-            match ip.next_header {
-                udp::PROTO_UDP => {
-                    if self.capture_udp_packet(IpPacketRef::V6(ip), msg.header().last_gate.clone())
-                    {
-                        None
-                    } else {
-                        Some(msg)
+                match ip.next_header {
+                    udp::PROTO_UDP => {
+                        if self
+                            .capture_udp_packet(IpPacketRef::V6(ip), msg.header().last_gate.clone())
+                        {
+                            None
+                        } else {
+                            Some(msg)
+                        }
                     }
-                }
-                tcp::PROTO_TCP => {
-                    if self.capture_tcp_packet(IpPacketRef::V6(ip), msg.header().last_gate.clone())
-                    {
-                        None
-                    } else {
-                        Some(msg)
+                    tcp::PROTO_TCP => {
+                        if self
+                            .capture_tcp_packet(IpPacketRef::V6(ip), msg.header().last_gate.clone())
+                        {
+                            None
+                        } else {
+                            Some(msg)
+                        }
                     }
+                    _ => Some(msg),
                 }
-                _ => Some(msg),
             }
-        } else if kind == KIND_LINK_UNBUSY {
-            self.capture_link_update(msg)
-        } else {
-            None
+            KIND_LINK_UNBUSY => self.capture_link_update(msg),
+            KIND_IO_TIMEOUT => self.capture_io_timeout(msg),
+            _ => {
+                log::error!("Unkown packet {}", msg.str());
+                None
+            }
         }
+    }
+
+    fn capture_io_timeout(&mut self, msg: Message) -> Option<Message> {
+        let Some(fd) = msg.try_content::<Fd>() else {
+            return None;
+        };
+
+        let Some(socket) = self.sockets.get(fd) else {
+            return None
+        };
+
+        match socket.typ {
+            SocketType::SOCK_STREAM => {
+                // TODO: If listeners have timesouts as well we must do something
+                self.process_timeout(*fd, msg)
+            }
+            _ => {}
+        }
+
+        None
     }
 
     pub fn add_interface(&mut self, iface: Interface) {

@@ -1,7 +1,7 @@
 #![allow(unused)]
 
 use std::{
-    io::Result,
+    io::{Result, Error, ErrorKind},
     collections::VecDeque,
     net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4},
     time::Duration, task::Waker,
@@ -23,15 +23,20 @@ pub use socket::*;
 mod interest;
 use interest::*;
 
+
+mod debug;
+pub use debug::*;
+
 use crate::{
     ip::{IpPacket, IpPacketRef, Ipv4Packet, IpVersion, IpFlags, Ipv6Packet},
     FromBytestream, IntoBytestream,
 };
 
-use super::{Fd, IOContext};
+use super::{Fd, IOContext, KIND_IO_TIMEOUT};
 
 pub(super) const PROTO_TCP: u8 = 0x06;
 
+#[derive(Debug)]
 pub struct TcpController {
     // # General
     state: TcpState,
@@ -46,10 +51,13 @@ pub struct TcpController {
     sender_next_send_seq_no: u32,
     sender_next_send_buffer_seq_no: u32,
     sender_max_send_seq_no: u32,
+    sender_write_interests: Vec<TcpInterestGuard>,
 
     // # Recv buffer
     receiver_buffer: TcpBuffer,
     receiver_last_recv_seq_no: u32,
+    receiver_valid_slices: VecDeque<(u32, u32)>, // seq_no,len
+    receiver_read_interests: Vec<TcpInterestGuard>,
 
     // # Congestions
     congestion_ctrl: bool,
@@ -62,6 +70,8 @@ pub struct TcpController {
     timewait: Duration,
     timer: u16,
     fd: Fd,
+    inital_seq_no: u32,
+    mtu: u32,
 
     // # Metrics
     sender_send_bytes: usize,
@@ -79,16 +89,19 @@ impl TcpController {
             local_addr: addr,
             peer_addr: SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0)),
 
-            sender_buffer: TcpBuffer::new(1024, 0),
+            sender_buffer: TcpBuffer::new(2048, 0),
             sender_segments: VecDeque::new(),
             sender_queue: VecDeque::new(),
             sender_last_ack_seq_no: 0,
             sender_next_send_seq_no: 0,
             sender_next_send_buffer_seq_no: 0,
             sender_max_send_seq_no: 0,
+            sender_write_interests: Vec::new(),
 
-            receiver_buffer: TcpBuffer::new(1024, 0),
+            receiver_buffer: TcpBuffer::new(2048, 0),
             receiver_last_recv_seq_no: 0,
+            receiver_valid_slices: VecDeque::new(),
+            receiver_read_interests: Vec::new(),
 
             congestion_ctrl: false,
             congestion_window: 1,
@@ -99,6 +112,8 @@ impl TcpController {
             timewait: Duration::from_secs(1),
             timer: 0,
             fd,
+            inital_seq_no: 100,
+            mtu: 1024,
 
             sender_send_bytes: 0,
             sender_ack_bytes: 0,
@@ -129,7 +144,7 @@ impl IOContext {
         };
 
         let Some((fd, _)) = self.tcp_manager.iter().find(|(_, socket)| socket.local_addr == dest && socket.peer_addr == src) else {
-            // may still be a SYN 
+            // may still be a SYN
             let Some((_, listeners)) = self.tcp_listeners.iter_mut().find(|(_, list)| list.local_addr == dest) else {
                 return false;
             };
@@ -166,6 +181,7 @@ impl IOContext {
     }
 
     pub(crate) fn tcp_send_packet(&mut self, ctrl: &mut TcpController, ip: IpPacket) {
+        
         ctrl.sender_queue.push_back(ip);
 
         let Some(socket) = self.sockets.get(&ctrl.fd) else { return };
@@ -175,6 +191,8 @@ impl IOContext {
             interface
                 .send_ip(ctrl.sender_queue.pop_front().unwrap())
                 .unwrap();
+        } else {
+            interface.add_write_interest(ctrl.fd);
         }
     }
 
@@ -190,6 +208,10 @@ impl IOContext {
             interface
                 .send_ip(ctrl.sender_queue.pop_front().unwrap())
                 .unwrap();
+            
+            if !ctrl.sender_queue.is_empty() {
+                interface.add_write_interest(ctrl.fd);
+            }
         }
     }
 }
@@ -300,10 +322,10 @@ impl IOContext {
             }
             TcpEvent::SysOpen(peer) => {
                 ctrl.peer_addr = peer;
-                self.posix_bind_peer(ctrl.fd, peer);
+                self.bsd_bind_peer(ctrl.fd, peer);
 
                 ctrl.receiver_last_recv_seq_no = 0;
-                ctrl.sender_next_send_seq_no = ctrl.select_inital_seq_no();
+                ctrl.sender_next_send_seq_no = ctrl.inital_seq_no;
                 ctrl.sender_buffer
                     .fwd_to_seq_no(ctrl.sender_next_send_seq_no + 1);
                 // ctrl.next_send_buffer_seq_no = self.next_send_seq_no + 1; TODO
@@ -339,14 +361,14 @@ impl IOContext {
                 ctrl.receiver_last_recv_seq_no = syn.seq_no;
                 ctrl.receiver_buffer.fwd_to_seq_no(syn.seq_no + 1);
 
-                ctrl.sender_next_send_seq_no = ctrl.select_inital_seq_no();
+                ctrl.sender_next_send_seq_no = ctrl.inital_seq_no;
                 ctrl.sender_buffer
                     .fwd_to_seq_no(ctrl.sender_next_send_seq_no + 1);
 
                 ctrl.sender_next_send_buffer_seq_no = ctrl.sender_next_send_seq_no + 1; 
                 ctrl.sender_max_send_seq_no = ctrl.sender_next_send_seq_no + syn.window as u32;
 
-                inet_trace!("tcp::listen '0x{:x} Window size: {}", ctrl.fd, syn.window);
+                inet_trace!("tcp::listen '0x{:x} window size: {}", ctrl.fd, syn.window);
 
                 let mut pkt = ctrl.create_packet(
                     TcpPacketId::Syn,
@@ -387,8 +409,9 @@ impl IOContext {
 
                 if pkt.flags.ack {
                     ctrl.sender_last_ack_seq_no = pkt.ack_no;
+                    ctrl.sender_next_send_buffer_seq_no = ctrl.sender_next_send_seq_no;
                     ctrl.sender_max_send_seq_no =
-                        ctrl.sender_last_ack_seq_no + pkt.window as u32 - 1;
+                        ctrl.sender_last_ack_seq_no + (pkt.window as u32 * ctrl.mtu); // ?
 
                     self.send_ack(ctrl, ctrl.receiver_last_recv_seq_no + 1, ctrl.recv_window());
 
@@ -396,8 +419,9 @@ impl IOContext {
                     // syscall established ind
 
                     inet_trace!(
-                        "tcp::synsent '0x{:x} Established with Sender {{ seq_no: {}, buf: {}, max_seq_no: {} }} and Receiver {{ last_ack: {} }}",
+                        "tcp::synsent '0x{:x} Established with Sender {{ last_ack: {}, seq_no: {}, buf: {},  max_seq_no: {} }} and Receiver {{ last_recv: {} }}",
                         ctrl.fd,
+                        ctrl.sender_last_ack_seq_no,
                         ctrl.sender_next_send_seq_no,
                         ctrl.sender_next_send_buffer_seq_no,
                         ctrl.sender_max_send_seq_no,
@@ -410,7 +434,7 @@ impl IOContext {
 
                     self.send_ack(ctrl, ctrl.receiver_last_recv_seq_no + 1, ctrl.recv_window());
                     ctrl.sender_max_send_seq_no =
-                        ctrl.sender_last_ack_seq_no + pkt.window as u32 - 1;
+                        ctrl.sender_last_ack_seq_no + (pkt.window as u32 * ctrl.mtu);
                     ctrl.state = TcpState::SynRcvd;
                 }
             }
@@ -442,7 +466,7 @@ impl IOContext {
                 if ctrl.sender_last_ack_seq_no - 1 + pkt.window as u32 > ctrl.sender_max_send_seq_no
                 {
                     ctrl.sender_max_send_seq_no =
-                        ctrl.sender_last_ack_seq_no - 1 + pkt.window as u32;
+                        ctrl.sender_last_ack_seq_no + (pkt.window as u32 * ctrl.mtu);
                 }
 
                 ctrl.cancel_timer();
@@ -467,7 +491,7 @@ impl IOContext {
                 if ctrl.sender_last_ack_seq_no - 1 + pkt.window as u32 > ctrl.sender_max_send_seq_no
                 {
                     ctrl.sender_max_send_seq_no =
-                        ctrl.sender_last_ack_seq_no - 1 + pkt.window as u32;
+                        ctrl.sender_last_ack_seq_no + (pkt.window as u32 * ctrl.mtu);
                 }
 
                 ctrl.cancel_timer();
@@ -491,7 +515,7 @@ impl IOContext {
                     ctrl.sender_next_send_seq_no - 1,
                     ctrl.receiver_last_recv_seq_no + 1,
                 );
-                pkt.window = ctrl.recv_window() as u16;
+                pkt.window = 1;
 
                 inet_trace!(
                     "tcp::synrecv '0x{:x} Re-Sending SYNACK {{ seq_no: {}, ack_no: {} }}",
@@ -693,9 +717,11 @@ impl IOContext {
             let buf_full = ctrl.sender_buffer.rem() == 0;
 
             ctrl.cancel_timer();
-            if ctrl.sender_last_ack_seq_no < pkt.ack_no - 1 {
+            if ctrl.sender_last_ack_seq_no < pkt.ack_no {
                 let n = pkt.ack_no - ctrl.sender_last_ack_seq_no;
                 ctrl.sender_buffer.free(n as usize);
+
+                log::debug!("tcp::data '0x{:x} freeing acked data: {} bytes", ctrl.fd, n);
 
                 // freeBuffers
                 ctrl.sender_last_ack_seq_no = pkt.ack_no;
@@ -723,38 +749,53 @@ impl IOContext {
                 if buf_full {
                     // SysStopInd
                 }
+
+                // Wakeup write interests
+                ctrl.sender_write_interests.drain(..).for_each(|g| g.wake())
             }
 
-            ctrl.sender_max_send_seq_no = ctrl.sender_last_ack_seq_no - 1 + pkt.window as u32;
-            self.do_sending(ctrl)
+            ctrl.sender_max_send_seq_no = ctrl.sender_last_ack_seq_no + (pkt.window as u32 * ctrl.mtu);  
+            self.do_sending(ctrl);
         }
 
         if !pkt.content.is_empty() {
             inet_trace!("tcp::data '0x{:x} {{DATA}} Got Packet {{ seq_no: {} }}", ctrl.fd, pkt.seq_no);
 
+            ctrl.receiver_buffer.state();
+
             // if permit sched, remove
             // TODO
-            if 1 > 0 {
-                ctrl.receiver_buffer.write_to(&pkt.content, pkt.seq_no);
-                // self.recv_buffer.write_to_head(&pkt.data);
-                ctrl.receiver_last_recv_seq_no = pkt.seq_no + pkt.content.len() as u32;
+            let n = ctrl.receiver_buffer.write_to(&pkt.content, pkt.seq_no);
 
-                self.send_ack(ctrl, pkt.seq_no + pkt.content.len() as u32, 1 as u16 - 0);
+            let prev = ctrl.tcp_recv_valid_slice_len();
+
+            let slice  = (pkt.seq_no, pkt.content.len() as u32);
+            match ctrl.receiver_valid_slices.binary_search_by(|e| e.0.cmp(&pkt.seq_no)) {
+                Ok(n) | Err(n) => ctrl.receiver_valid_slices.insert(n, slice)
+            };
+            ctrl.receiver_last_recv_seq_no = pkt.seq_no + pkt.content.len() as u32;
+            
+            let next = ctrl.tcp_recv_valid_slice_len();
+            if next > prev {
+                ctrl.receiver_read_interests.drain(..).for_each(|g| g.wake())
             }
+
+            self.send_ack(
+                ctrl, 
+                ctrl.receiver_last_recv_seq_no , 
+                ctrl.recv_window()
+            );
+
+            ctrl.receiver_buffer.state();
+            
         }
     }
 
     fn do_sending(&mut self, ctrl: &mut TcpController) {
-        // inet_trace!(
-        //     "{{DOSENDING}} ack: {}, max: {}, seq: {}, buf: {}",
-        //     self.last_ack_seq_no,
-        //     self.max_allowed_seq_no,
-        //     self.next_send_seq_no,
-        //     self.next_send_buffer_seq_no
-        // );
 
         // FIN may be send without window
         if ctrl.sender_max_send_seq_no == ctrl.sender_next_send_seq_no.saturating_sub(2) && true {
+            inet_trace!("FIN without window");
             ctrl.sender_max_send_seq_no += 1;
         }
 
@@ -765,9 +806,12 @@ impl IOContext {
             ctrl.sender_max_send_seq_no
         };
 
-        let mut offset = 0;
+        // Try sending data as long as:
+        // a) Data is allowed to be send according to the minimal window
+        // b) There is data to send
+        
         while ctrl.sender_next_send_seq_no <= max_seq_no
-            && ctrl.sender_next_send_seq_no < ctrl.sender_next_send_seq_no + 1
+            && ctrl.sender_next_send_seq_no < ctrl.sender_next_send_buffer_seq_no
         // TODO
         {
             // send buffer set timeout
@@ -778,59 +822,120 @@ impl IOContext {
             ctrl.set_data_timer();
 
             let mut buf = vec![0u8; 1024];
-            let n = ctrl.sender_buffer.peek_at(&mut buf, offset);
+            let n = ctrl.sender_buffer.peek_at(&mut buf,  ctrl.sender_next_send_seq_no);
             buf.truncate(n);
-            offset += n as u32;
+            log::debug!("sending {} bytes (seq_no: {} max {})", n, ctrl.sender_next_send_seq_no, ctrl.sender_max_send_seq_no);
+
 
             let tcp = TcpPacket {
                 src_port: ctrl.local_addr.port(),
                 dest_port: ctrl.peer_addr.port(),
                 seq_no: ctrl.sender_next_send_seq_no,
-                ack_no: ctrl.sender_last_ack_seq_no,
+                ack_no: ctrl.receiver_last_recv_seq_no,
                 flags: TcpFlags::new().ack(true),
                 window: ctrl.recv_window(),
                 urgent_ptr: 0,
                 content: buf,
             };
-
-            // let ip = IpPacket {
-            //     src: ctrl.local_addr.ip(),
-            // };
-
+         
             self.tcp_send_packet(
                 ctrl, 
                 ctrl.ip_packet_for(tcp)
             );
 
             ctrl.sender_next_send_seq_no += n as u32;
-
-           
-
-            // inet_trace!(
-            //     "Sending Packet {{ seq_no {} ack_no {} data: {} }}",
-            //     pkt.seq_no,
-            //     pkt.ack_no,
-            //     pkt.data.len()
-            // );
-            // send(pkt, "out")
         }
     }
 
-    pub fn send_data(&mut self, ctrl: &mut TcpController, pkt: &[u8], nowin: bool) -> usize {
-        // TODO:
-        let n = ctrl.sender_buffer.write(pkt);
+    pub fn tcp_try_send(&mut self, fd: Fd, buf: &[u8]) -> Result<usize> {
+        log::debug!("::tcp_try_send");
+        // (0) Get the socket
+        let Some(mut ctrl) = self.tcp_manager.remove(&fd) else {
+            return Err(Error::new(ErrorKind::InvalidInput, "invalid fd - socket dropped"))
+        };
+
+        // (1) Write as much as possible to the send buffer
+        let n = ctrl.sender_buffer.write(buf);
         ctrl.sender_next_send_buffer_seq_no += n as u32;
-        self.do_sending(ctrl);
-        n
+        if n == 0 {
+            self.tcp_manager.insert(fd, ctrl);
+            return Err(Error::new(ErrorKind::WouldBlock, "send buffer full - would block"))
+        }
+        
+        self.do_sending(&mut ctrl);
+        self.tcp_manager.insert(fd, ctrl);
+
+        Ok(n)
     }
 
-    pub fn read_data(&mut self, ctrl: &mut TcpController, buf: &mut [u8]) -> usize {
-        let n = ctrl
-            .receiver_buffer
-            .peek_at(buf, ctrl.receiver_buffer.tail_seq_no);
-        ctrl.receiver_buffer.free(n);
-        n
+
+    pub fn tcp_try_recv(&mut self, fd: Fd, buf: &mut [u8]) -> Result<usize> {
+        log::debug!("::tcp_try_recv");
+        // (0) Get the socket
+        let Some(mut ctrl) = self.tcp_manager.remove(&fd) else {
+            return Err(Error::new(ErrorKind::InvalidInput, "invalid fd - socket dropped"))
+        };
+
+        // (1) Check for the availabe valid slice
+        let max = ctrl.tcp_recv_valid_slice_len().min(buf.len());
+        let was_full = ctrl.receiver_buffer.len() == ctrl.receiver_buffer.cap();
+        let n = ctrl.receiver_buffer.read(&mut buf[..max]);
+        if n == 0 {
+            self.tcp_manager.insert(fd, ctrl);
+            return Err(Error::new(ErrorKind::WouldBlock, "recv buffer empty - would block"))
+        }
+
+        ctrl.drop_valid_slices_for(n);
+
+        if was_full {
+            log::debug!("reinitiating send process since receive buffer is no longer full");
+            let window = ctrl.recv_window();
+            let ack_no = ctrl.receiver_last_recv_seq_no ;
+            self.send_ack(&mut ctrl, ack_no , window);
+        }
+        // ctrl.receiver_buffer.state();
+
+        self.tcp_manager.insert(fd, ctrl);
+
+        Ok(n)
     }
+
+    pub fn tcp_try_peek(&mut self, fd: Fd, buf: &mut [u8]) -> Result<usize> {
+        log::debug!("::tcp_try_peek");
+        // (0) Get the socket
+        let Some(mut ctrl) = self.tcp_manager.remove(&fd) else {
+            return Err(Error::new(ErrorKind::InvalidInput, "invalid fd - socket dropped"))
+        };
+
+        // (1) Check for the availabe valid slice
+        let max = ctrl.tcp_recv_valid_slice_len().min(buf.len());
+        let n = ctrl.receiver_buffer.peek(&mut buf[..max]);
+        if n == 0 {
+            self.tcp_manager.insert(fd, ctrl);
+            return Err(Error::new(ErrorKind::WouldBlock, "recv buffer empty - would block"))
+        }
+        
+        self.tcp_manager.insert(fd, ctrl);
+
+        Ok(n)
+    }
+
+
+    // pub fn send_data(&mut self, ctrl: &mut TcpController, pkt: &[u8], nowin: bool) -> usize {
+    //     // TODO:
+    //     let n = ctrl.sender_buffer.write(pkt);
+    //     ctrl.sender_next_send_buffer_seq_no += n as u32;
+    //     self.do_sending(ctrl);
+    //     n
+    // }
+
+    // pub fn read_data(&mut self, ctrl: &mut TcpController, buf: &mut [u8]) -> usize {
+    //     let n = ctrl
+    //         .receiver_buffer
+    //         .peek_at(buf, ctrl.receiver_buffer.tail_seq_no);
+    //     ctrl.receiver_buffer.free(n);
+    //     n
+    // }
 
     pub fn close(&mut self) {}
 
@@ -847,7 +952,7 @@ impl IOContext {
         assert!(next_expected > 0);
         let mut ack = ctrl.create_packet(
             TcpPacketId::Ack,
-            ctrl.sender_next_send_seq_no - 1,
+            ctrl.sender_next_send_seq_no,
             next_expected,
         );
         if win > 0 {
@@ -864,6 +969,32 @@ impl IOContext {
 }
 
 impl TcpController {
+    fn tcp_recv_valid_slice_len(&self) -> usize {
+        let mut seq_no = self.receiver_buffer.tail_seq_no;
+        for slice in self.receiver_valid_slices.iter() {
+            if seq_no != slice.0 {
+                break
+            }
+            seq_no += slice.1;
+        }
+        (seq_no - self.receiver_buffer.tail_seq_no) as usize
+    }
+
+    fn drop_valid_slices_for(&mut self, n: usize) {
+        let mut n = n as u32;
+        while n > 0 {
+            let (seq_no, len) = self.receiver_valid_slices.pop_front().unwrap();
+            if n > len {
+                n -= len;
+            } else {
+                if n != len {
+                    self.receiver_valid_slices.push_front((seq_no + n, len - n));  
+                }
+                return
+            }   
+        }
+    }
+
     fn ip_packet_for(&self, tcp: TcpPacket) -> IpPacket {
         let content = tcp.into_buffer().unwrap();
         match self.local_addr {
@@ -929,7 +1060,7 @@ impl TcpController {
         // inet_trace!("Setting data timer");
         self.timer += 1;
         schedule_in(
-            Message::new().kind(u16::MAX).id(self.timer).build(),
+            Message::new().kind(KIND_IO_TIMEOUT).id(self.timer).content(self.fd).build(),
             self.timeout,
         );
     }
@@ -947,13 +1078,14 @@ impl TcpController {
     }
 
     fn recv_window(&self) -> u16 {
-        (self.receiver_buffer.cap() - self.receiver_buffer.len()) as u16
+        self.receiver_buffer.rem().div_ceil(self.mtu as usize) as u16
+        // (self.receiver_buffer.cap() - self.receiver_buffer.len()) as u16
     }
 
     fn set_timer(&mut self, expiration: Duration) {
         // inet_trace!("Setting normal timer");
         schedule_in(
-            Message::new().kind(u16::MAX).id(self.timer).build(),
+            Message::new().kind(KIND_IO_TIMEOUT).id(self.timer).content(self.fd).build(),
             expiration,
         )
     }
@@ -975,9 +1107,7 @@ impl TcpController {
         self.congestion_avoid_counter = 0;
     }
 
-    fn select_inital_seq_no(&self) -> u32 {
-        100
-    }
+  
 
     pub fn current_state_print(&self) {
         inet_trace!(
@@ -992,3 +1122,10 @@ impl TcpController {
         );
     }
 }
+
+// impl Drop for TcpController {
+//     fn drop(&mut self) {
+//         // panic!();
+//         log::trace!("### DROPPING MANAGER FOR '0x{:x} ###", self.fd);
+//     }
+// }

@@ -1,3 +1,5 @@
+#![feature(int_roundings)]
+
 mod common;
 pub use common::*;
 

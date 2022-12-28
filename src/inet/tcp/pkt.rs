@@ -1,4 +1,4 @@
-use std::io::Read;
+use std::{fmt::Display, io::Read};
 
 use crate::{FromBytestream, IntoBytestream};
 use bytestream::{ByteOrder::BigEndian, StreamReader, StreamWriter};
@@ -41,7 +41,6 @@ impl TcpFlags {
     pub fn new() -> Self {
         Self::default()
     }
-
     fimpl!(cwr);
     fimpl!(ece);
     fimpl!(urg);
@@ -50,6 +49,38 @@ impl TcpFlags {
     fimpl!(rst);
     fimpl!(syn);
     fimpl!(fin);
+}
+
+impl Display for TcpFlags {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.cwr {
+            write!(f, "CWR")?
+        }
+        if self.ece {
+            write!(f, "ECE")?
+        }
+        if self.urg {
+            write!(f, "URG")?
+        }
+        if self.ack {
+            write!(f, "ACK")?
+        }
+
+        if self.psh {
+            write!(f, "PSH")?
+        }
+        if self.rst {
+            write!(f, "RST")?
+        }
+        if self.syn {
+            write!(f, "SYN")?
+        }
+        if self.fin {
+            write!(f, "FIN")?
+        }
+
+        Ok(())
+    }
 }
 
 impl IntoBytestream for TcpPacket {

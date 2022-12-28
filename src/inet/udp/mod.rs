@@ -173,10 +173,10 @@ impl IOContext {
             SocketDomain::AF_INET6
         };
 
-        let socket: Fd = self.posix_create_socket(domain, SocketType::SOCK_DGRAM, 0);
+        let socket: Fd = self.bsd_create_socket(domain, SocketType::SOCK_DGRAM, 0);
 
-        let baddr = self.posix_bind_socket(socket, addr).map_err(|e| {
-            self.posix_close_socket(socket);
+        let baddr = self.bsd_bind_socket(socket, addr).map_err(|e| {
+            self.bsd_close_socket(socket);
             e
         })?;
 
@@ -201,7 +201,7 @@ impl IOContext {
         };
 
         socket.state = UdpSocketState::Connected(peer);
-        self.posix_bind_peer(fd, peer)?;
+        self.bsd_bind_peer(fd, peer)?;
         Ok(())
     }
 
@@ -301,6 +301,6 @@ impl IOContext {
 
     pub(super) fn udp_drop(&mut self, fd: Fd) {
         self.udp_manager.remove(&fd);
-        self.posix_close_socket(fd);
+        self.bsd_close_socket(fd);
     }
 }

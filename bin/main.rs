@@ -1,15 +1,19 @@
+use std::io::ErrorKind;
+
 use des::prelude::*;
-use inet::inet::{add_interface, Interface, NetworkDevice, TcpListener, TcpStream};
+use inet::inet::{add_interface, Interface, NetworkDevice, TcpDebugPlugin, TcpListener, TcpStream};
 
 #[NdlModule("bin")]
-struct A {}
+struct Server {}
 #[async_trait::async_trait]
-impl AsyncModule for A {
+impl AsyncModule for Server {
     fn new() -> Self {
         Self {}
     }
 
     async fn at_sim_start(&mut self, _: usize) {
+        add_plugin(TcpDebugPlugin, 1);
+
         add_interface(Interface::en0(
             random(),
             Ipv4Addr::new(100, 100, 100, 100),
@@ -19,26 +23,53 @@ impl AsyncModule for A {
         tokio::spawn(async move {
             let sock = TcpListener::bind("[::0]:2000").await.unwrap();
 
-            let (stream, _) = sock.accept().await.unwrap();
+            let (mut stream, _) = sock.accept().await.unwrap();
             log::info!("Established stream");
+
+            let mut buf = [0u8; 100];
+            let err = stream.try_read(&mut buf).unwrap_err();
+            assert_eq!(err.kind(), ErrorKind::WouldBlock);
+
+            use tokio::io::AsyncReadExt;
+            let n = stream.read(&mut buf).await.unwrap();
+            assert_eq!(n, 100);
+
+            // read 3500 bytes
+            let mut bytes = 0;
+            while bytes < 3900 {
+                let mut buf = [0u8; 500];
+                let n = stream.read(&mut buf).await.unwrap();
+                bytes += n;
+                log::info!("Now consumed 100 + {bytes} bytes")
+            }
+            // assert_eq!(n, 300);
+
+            let err = stream.try_read(&mut buf).unwrap_err();
+            assert_eq!(err.kind(), ErrorKind::WouldBlock);
+
+            log::info!("Sever done");
+
             let _ = stream;
+            // std::mem::forget(sock);
         });
     }
 
     async fn handle_message(&mut self, _: Message) {
-        panic!()
+        log::error!("HM?");
     }
 }
 
 #[NdlModule("bin")]
-struct B {}
+struct Client {}
 #[async_trait::async_trait]
-impl AsyncModule for B {
+impl AsyncModule for Client {
     fn new() -> Self {
         Self {}
     }
 
     async fn at_sim_start(&mut self, _: usize) {
+        add_plugin(TcpDebugPlugin, 1);
+
         add_interface(Interface::en0(
             random(),
             Ipv4Addr::new(200, 200, 200, 200),
@@ -46,11 +77,17 @@ impl AsyncModule for B {
         ));
 
         tokio::spawn(async move {
-            let _stream = TcpStream::connect("[::100.100.100.100]:2000")
+            use tokio::io::AsyncWriteExt;
+            let mut stream = TcpStream::connect("[::100.100.100.100]:2000")
                 .await
                 .unwrap();
 
             log::info!("Established stream");
+
+            let buf = vec![42; 4000];
+            stream.write_all(&buf).await.unwrap();
+            // log::info!("wrotes {n}")
+            log::info!("Client done")
         });
     }
 

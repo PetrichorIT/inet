@@ -121,13 +121,10 @@ impl Interface {
             ));
         }
 
-        // log::trace!(
-        //     "<inet> interface {} sending mtu of size {}b",
-        //     self.name,
-        //     mtu.header().length
-        // );
+        // let bytes = mtu.header().length;
         self.state = self.device.send_mtu(mtu);
         if let InterfaceBusyState::Busy { until, .. } = &self.state {
+            // log::warn!("interface {} sending mtu of size {}b", self.name, bytes);
             schedule_at(
                 Message::new()
                     .kind(KIND_LINK_UNBUSY)
@@ -247,7 +244,7 @@ impl IOContext {
 
         let updates = interface.link_update();
         for socket in updates {
-            self.posix_socket_link_update(socket);
+            self.bsd_socket_link_update(socket);
         }
         None
     }

@@ -1,10 +1,10 @@
-module A {
+module Server {
     gates:
         in @input
         out @output
 }
 
-module B {
+module Client {
     gates:
         in @input
         out @output
@@ -18,10 +18,10 @@ link LANLink {
 
 subsystem Main {
     nodes:
-        a: A
-        b: B
+        server: Server
+        client: Client
 
     connections:
-        a/out --> LANLink --> b/in
-        b/out --> LANLink --> a/in
+        server/out --> LANLink --> client/in
+        client/out --> LANLink --> server/in
 }

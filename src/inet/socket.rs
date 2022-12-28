@@ -79,7 +79,7 @@ impl IOContext {
         (SocketDomain::AF_INET6, SocketType::SOCK_STREAM),
     ];
 
-    pub(super) fn posix_create_socket(
+    pub(super) fn bsd_create_socket(
         &mut self,
         domain: SocketDomain,
         typ: SocketType,
@@ -112,7 +112,7 @@ impl IOContext {
         fd
     }
 
-    pub(super) fn posix_dup_socket(&mut self, fd: Fd) -> Result<Fd> {
+    pub(super) fn bsd_dup_socket(&mut self, fd: Fd) -> Result<Fd> {
         let Some(socket) = self.sockets.get(&fd) else {
             return Err(Error::new(ErrorKind::InvalidInput, "invalid fd - socket dropped"))
         };
@@ -125,25 +125,25 @@ impl IOContext {
         Ok(new_fd)
     }
 
-    pub(super) fn posix_close_socket(&mut self, fd: Fd) {
+    pub(super) fn bsd_close_socket(&mut self, fd: Fd) {
         inet_trace!("socket::drop '0x{:x}", fd);
         self.sockets.remove(&fd);
     }
 
-    pub(super) fn posix_bind_socket(&mut self, fd: Fd, addr: SocketAddr) -> Result<SocketAddr> {
+    pub(super) fn bsd_bind_socket(&mut self, fd: Fd, addr: SocketAddr) -> Result<SocketAddr> {
         let unspecified = match addr {
             SocketAddr::V4(v4) => v4.ip().is_unspecified(),
             SocketAddr::V6(v6) => v6.ip().is_unspecified(),
         };
 
         if unspecified {
-            self.posix_bind_socket_unspecified(fd, addr)
+            self.bsd_bind_socket_unspecified(fd, addr)
         } else {
-            self.posix_bind_socket_specified(fd, addr)
+            self.bsd_bind_socket_specified(fd, addr)
         }
     }
 
-    fn posix_bind_socket_unspecified(&mut self, fd: Fd, addr: SocketAddr) -> Result<SocketAddr> {
+    fn bsd_bind_socket_unspecified(&mut self, fd: Fd, addr: SocketAddr) -> Result<SocketAddr> {
         let socket = self.sockets.get(&fd).expect("Invalid socket FD");
         let domain = socket.domain;
 
@@ -217,7 +217,7 @@ impl IOContext {
         ))
     }
 
-    fn posix_bind_socket_specified(&mut self, fd: Fd, addr: SocketAddr) -> Result<SocketAddr> {
+    fn bsd_bind_socket_specified(&mut self, fd: Fd, addr: SocketAddr) -> Result<SocketAddr> {
         if self.sockets.values().any(|socket| socket.addr == addr) {
             return Err(Error::new(ErrorKind::AddrInUse, "Address allready in use"));
         }
@@ -283,7 +283,7 @@ impl IOContext {
         ))
     }
 
-    pub(super) fn posix_bind_peer(&mut self, fd: Fd, peer: SocketAddr) -> Result<()> {
+    pub(super) fn bsd_bind_peer(&mut self, fd: Fd, peer: SocketAddr) -> Result<()> {
         let Some(socket) = self.sockets.get_mut(&fd) else {
             return Err(Error::new(ErrorKind::InvalidInput, "invalid fd - socket dropped"))
         };
@@ -291,7 +291,7 @@ impl IOContext {
         Ok(())
     }
 
-    pub(super) fn posix_get_socket_addr(&self, fd: Fd) -> Result<SocketAddr> {
+    pub(super) fn bsd_get_socket_addr(&self, fd: Fd) -> Result<SocketAddr> {
         let Some(socket) = self.sockets.get(&fd) else {
             return Err(Error::new(ErrorKind::InvalidInput, "invalid fd - socket dropped"))
         };
@@ -305,7 +305,7 @@ impl IOContext {
         }
     }
 
-    pub(super) fn posix_get_socket_peer(&self, fd: Fd) -> Result<SocketAddr> {
+    pub(super) fn bsd_get_socket_peer(&self, fd: Fd) -> Result<SocketAddr> {
         let Some(socket) = self.sockets.get(&fd) else {
             return Err(Error::new(ErrorKind::InvalidInput, "invalid fd - socket dropped"))
         };
@@ -316,7 +316,7 @@ impl IOContext {
         }
     }
 
-    pub(super) fn posix_socket_link_update(&mut self, fd: Fd) {
+    pub(super) fn bsd_socket_link_update(&mut self, fd: Fd) {
         use SocketDomain::*;
         use SocketType::*;
 
@@ -344,7 +344,7 @@ impl IOContext {
         }
     }
 
-    pub(super) fn posix_socket_device(&mut self, fd: Fd) -> Result<Option<InterfaceName>> {
+    pub(super) fn bsd_socket_device(&mut self, fd: Fd) -> Result<Option<InterfaceName>> {
         let Some(socket) = self.sockets.get(&fd) else {
             return Err(Error::new(ErrorKind::InvalidInput, "invalid fd - socket dropped"))
         };
