@@ -17,7 +17,10 @@ use std::{
     sync::Arc,
     task::{Context, Poll},
 };
-use tokio::io::{AsyncRead, AsyncWrite, Interest, ReadBuf, Ready};
+use tokio::{
+    io::{AsyncRead, AsyncWrite, Interest, ReadBuf, Ready},
+    stream,
+};
 
 mod owned_half;
 pub use owned_half::*;
@@ -49,7 +52,11 @@ impl TcpStream {
         let mut last_err = None;
 
         for peer in addrs {
-            let this = IOContext::with_current(|ctx| ctx.tcp_create_socket(peer, None))?;
+            let this = IOContext::with_current(|ctx| {
+                let stream = ctx.tcp_create_socket(peer, None)?;
+                ctx.tcp_connect_socket(stream.inner.fd, peer)?;
+                Ok::<TcpStream, Error>(stream)
+            })?;
 
             loop {
                 // Initiate connect by sending a message (better repeat)
@@ -224,7 +231,7 @@ impl Drop for TcpStreamInner {
 }
 
 impl IOContext {
-    fn tcp_create_socket(
+    pub(super) fn tcp_create_socket(
         &mut self,
         peer: SocketAddr,
         config: Option<TcpSocketConfig>,
@@ -244,17 +251,21 @@ impl IOContext {
         self.bsd_bind_socket(fd, unspecified)?;
         self.bsd_bind_peer(fd, peer);
 
-        let mut ctrl = TcpController::new(fd, self.bsd_get_socket_addr(fd)?);
-        self.process_state_closed(&mut ctrl, TcpEvent::SysOpen(peer));
-
-        self.tcp_manager.insert(fd, ctrl);
-
         Ok(TcpStream {
             inner: Arc::new(TcpStreamInner { fd }),
         })
     }
 
-    fn tcp_connected(&mut self, fd: Fd) -> Result<bool> {
+    pub(super) fn tcp_connect_socket(&mut self, fd: Fd, peer: SocketAddr) -> Result<()> {
+        let mut ctrl = TcpController::new(fd, self.bsd_get_socket_addr(fd)?);
+        self.process_state_closed(&mut ctrl, TcpEvent::SysOpen(peer));
+
+        self.tcp_manager.insert(fd, ctrl);
+
+        Ok(())
+    }
+
+    pub(super) fn tcp_connected(&mut self, fd: Fd) -> Result<bool> {
         let Some(tcp) = self.tcp_manager.get(&fd) else {
             return Err(Error::new(ErrorKind::InvalidInput, "invalid fd - socket dropped"))
         };
@@ -269,7 +280,7 @@ impl IOContext {
         Ok(tcp.state as u8 >= TcpState::Established as u8)
     }
 
-    fn tcp_drop_stream(&mut self, fd: Fd) {
+    pub(super) fn tcp_drop_stream(&mut self, fd: Fd) {
         self.syscall(fd, TcpSyscall::Close());
     }
 }

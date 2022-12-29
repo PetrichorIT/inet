@@ -6,6 +6,9 @@ pub use listener::*;
 mod stream;
 pub use stream::*;
 
+mod socket;
+pub use socket::*;
+
 #[derive(Debug, Clone)]
 #[allow(unused)]
 pub(crate) struct TcpSocketConfig {
@@ -25,9 +28,27 @@ pub(crate) struct TcpSocketConfig {
 }
 
 impl TcpSocketConfig {
-    pub(super) fn socket() -> TcpSocketConfig {
+    pub(super) fn socket_v4() -> TcpSocketConfig {
         TcpSocketConfig {
             addr: "0.0.0.0:0".parse::<SocketAddr>().unwrap(),
+            linger: None,
+
+            listen_backlog: 32,
+            recv_buffer_size: 2048,
+            send_buffer_size: 2048,
+            reuseaddr: true,
+            reuseport: true,
+
+            connect_timeout: Duration::from_secs(2),
+            nodelay: true,
+
+            ttl: 64,
+        }
+    }
+
+    pub(super) fn socket_v6() -> TcpSocketConfig {
+        TcpSocketConfig {
+            addr: "[::0]:0".parse::<SocketAddr>().unwrap(),
             linger: None,
 
             listen_backlog: 32,

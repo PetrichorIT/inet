@@ -37,6 +37,7 @@ impl AsyncModule for Server {
 
         tokio::spawn(async move {
             let sock = TcpListener::bind("0.0.0.0:2000").await.unwrap();
+            log::info!("Server bound");
 
             let (mut stream, _) = sock.accept().await.unwrap();
             log::info!("Established stream");

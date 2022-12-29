@@ -70,7 +70,7 @@ impl TcpListener {
             let mut last_err = None;
 
             for addr in addrs {
-                match ctx.tcp_bind_listener(addr, None) {
+                match ctx.tcp_bind_listener(addr, None, None) {
                     Ok(socket) => return Ok(socket),
                     Err(e) => last_err = Some(e),
                 }
@@ -173,22 +173,28 @@ impl Drop for TcpListener {
 }
 
 impl IOContext {
-    fn tcp_bind_listener(
+    pub(super) fn tcp_bind_listener(
         &mut self,
-        addr: SocketAddr,
+        mut addr: SocketAddr,
         config: Option<TcpSocketConfig>,
+        fd: Option<Fd>,
     ) -> Result<TcpListener> {
-        let domain = if addr.is_ipv4() {
-            SocketDomain::AF_INET
+        let (fd) = if let Some(fd) = fd {
+            fd
         } else {
-            SocketDomain::AF_INET6
-        };
-        let fd = self.bsd_create_socket(domain, SocketType::SOCK_STREAM, 0);
+            let domain = if addr.is_ipv4() {
+                SocketDomain::AF_INET
+            } else {
+                SocketDomain::AF_INET6
+            };
+            let fd = self.bsd_create_socket(domain, SocketType::SOCK_STREAM, 0);
 
-        let addr = self.bsd_bind_socket(fd, addr).map_err(|e| {
-            self.bsd_close_socket(self.fd);
-            e
-        })?;
+            addr = self.bsd_bind_socket(fd, addr).map_err(|e| {
+                self.bsd_close_socket(self.fd);
+                e
+            })?;
+            fd
+        };
 
         let buf = TcpListenerHandle {
             local_addr: addr,
@@ -202,7 +208,7 @@ impl IOContext {
         return Ok(TcpListener { fd });
     }
 
-    fn tcp_accept(&mut self, fd: Fd) -> Result<(TcpStream, SocketAddr)> {
+    pub(super) fn tcp_accept(&mut self, fd: Fd) -> Result<(TcpStream, SocketAddr)> {
         let Some(handle) = self.tcp_listeners.get_mut(&fd) else {
             return Err(Error::new(
                 ErrorKind::Other,
@@ -240,7 +246,7 @@ impl IOContext {
         ))
     }
 
-    fn tcp_drop_listener(&mut self, fd: Fd) {
+    pub(super) fn tcp_drop_listener(&mut self, fd: Fd) {
         self.tcp_listeners.remove(&fd);
         self.bsd_close_socket(fd);
     }
