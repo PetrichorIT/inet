@@ -225,7 +225,7 @@ impl IOContext {
 }
 
 impl IOContext {
-    pub(self) fn process(&mut self, fd: Fd, ip: IpPacketRef<'_, '_>, pkt: TcpPacket) {
+    pub(super) fn process(&mut self, fd: Fd, ip: IpPacketRef<'_, '_>, pkt: TcpPacket) {
         let Some(mut ctrl) = self.tcp_manager.remove(&fd) else {
             return
         };
@@ -270,15 +270,18 @@ impl IOContext {
         }
     }
 
-    pub fn process_timeout(&mut self, fd: Fd, msg: Message) {
+    pub(super)  fn process_timeout(&mut self, fd: Fd, msg: Message) {
         let Some(mut ctrl) = self.tcp_manager.remove(&fd) else {
             return
         };
 
-        if msg.header().id != ctrl.timer {
-            self.tcp_manager.insert(fd, ctrl);
-            return;
-        }
+        // TODO: this extra if should not be nessecary
+        // if ctrl.state != TcpState::TimeWait {
+            if msg.header().id != ctrl.timer {
+                self.tcp_manager.insert(fd, ctrl);
+                return;
+            }
+        // }   
 
         let event = TcpEvent::Timeout();
         match ctrl.state {
@@ -303,7 +306,7 @@ impl IOContext {
         }
     }
 
-    pub fn syscall(&mut self, fd: Fd, syscall: TcpSyscall) {
+    pub(super) fn syscall(&mut self, fd: Fd, syscall: TcpSyscall) {
         let Some(mut ctrl) = self.tcp_manager.remove(&fd) else {
             return
         };
@@ -573,32 +576,50 @@ impl IOContext {
     fn process_state_established(&mut self, ctrl: &mut TcpController, event: TcpEvent) {
         match event {
             TcpEvent::SysClose() => {
+                // Handle dropped
+                // Active close - consider self client
+                // -> self will not read from the recv_buffer any longer
+                // -> self must still ack the data send by the server, but no more windows
+                // -> self may posses data in the send buffer that must still be send.
+
+                // (0) Send a FIN with seq_no = next_expected
+                inet_trace!("tcp::estab '0x{:x} Initialing shutdown with FIN", ctrl.fd);
                 let pkt = ctrl.create_packet(
                     TcpPacketId::Fin,
                     ctrl.sender_next_send_seq_no,
                     ctrl.receiver_last_recv_seq_no,
                 );
                 ctrl.sender_next_send_seq_no += 1;
-                inet_trace!("tcp::estab '0x{:x} Initialing shutdown with FIN", ctrl.fd);
-                
                 self.tcp_send_packet(
                     ctrl, 
                     ctrl.ip_packet_for(pkt)
                 );
 
+                // (1) Switch to FinWait1 expecting ACK of FIN
                 ctrl.state = TcpState::FinWait1;
             }
             TcpEvent::Fin((src, dest, pkt)) => {
+                // Peer initated close
+                // Responsder close - consider self server
+                // -> Peer will no longer receive data
+                // -> Peer may still send data
+
+                // (0) Handle last ack from FINACK packet
                 inet_trace!("tcp::estab '0x{:x} Got FIN", ctrl.fd);
                 ctrl.receiver_last_recv_seq_no = pkt.seq_no;
                 self.handle_data(ctrl, src, dest, pkt);
 
-                self.send_ack(ctrl, ctrl.receiver_last_recv_seq_no, ctrl.recv_window());
+                // (1) Acknowledge FIN
+                self.send_ack(ctrl, ctrl.receiver_last_recv_seq_no + 1, ctrl.recv_window());
                 ctrl.state = TcpState::CloseWait;
 
-                // TODO: Quickfix
-                // self.syscall(TcpSyscall::Close());
-                self.process_state_close_wait(ctrl, TcpEvent::SysClose());
+                // (2) Own FIN means that recv buffer will no longer be used
+                // -> Wake all interest so that they can fail with 0
+                ctrl.receiver_read_interests.drain(..).for_each(|g| g.wake());
+
+                // // (2) Wait for application close
+                // // -> TODO: remove this quickfix
+                // self.process_state_close_wait(ctrl, TcpEvent::SysClose());
             }
             TcpEvent::Ack((src, dest, pkt)) | TcpEvent::Data((src, dest, pkt)) | TcpEvent::Perm((src, dest, pkt)) => {
                 self.handle_data(ctrl, src,dest, pkt);
@@ -619,26 +640,46 @@ impl IOContext {
         }
     }
 
+
     fn process_state_fin_wait1(&mut self, ctrl: &mut TcpController, event: TcpEvent) {
-        // inet_trace!("{:?}", event);
+        // Consider self client
         match event {
             TcpEvent::Fin((src, dest, pkt)) => {
-                log::error!("Got FIN in FINWAIt 1");
-                ctrl.receiver_last_recv_seq_no = pkt.seq_no;
+                // Got FIN from server before ACK of FIN
+                // Simultaneous Close
+                // -> Both sides will no longer receive data
+                // -> Both sides may try to send data, can be ignored
 
+                // (0) Handle last ACK from FINACK
+                inet_trace!("tcp::finwait1 '0x{:x} received FIN -> simultaneous close", ctrl.fd);
+                ctrl.receiver_last_recv_seq_no = pkt.seq_no;
                 if pkt.flags.ack {
                     self.handle_data(ctrl, src,dest, pkt);
                 }
 
-                // syscall closing ind
-                self.send_ack(ctrl, ctrl.receiver_last_recv_seq_no, ctrl.recv_window());
+                // (1) Acknowledge FIN (peer will do the same)
+                self.send_ack(ctrl, ctrl.receiver_last_recv_seq_no + 1, ctrl.recv_window());
+
+                // (2) Wait for peer FIN acknowledge
                 ctrl.state = TcpState::Closing;
             }
-            TcpEvent::Timeout() => self.handle_data_timeout(ctrl),
+            TcpEvent::Timeout() => {
+                // self is client - so data may need to be send before close.
+                self.handle_data_timeout(ctrl)
+            },
             TcpEvent::Data((src, dest, pkt)) | TcpEvent::Ack((src, dest, pkt)) | TcpEvent::Perm((src, dest, pkt)) => {
-                // let ack_of_fin = pkt.flags.ack() && self.next_send_buffer_seq_no == pkt.ack_no;
+                // Got ACK from server
+                // -> may be data packet, could be ingored 
+                // -> may be ack of data packet, handle
+                // -> may be ACK of FIN
+                
+                // (0) Check for ACK of FIN (seq_no = nss + 1)
                 let ack_of_fin = pkt.flags.ack && pkt.ack_no == ctrl.sender_next_send_seq_no;
                 if ack_of_fin {
+                    // (1) Switch to finwait2 to prevent simultaneous close
+                    // -> Since ACK of FIN was send before FIN peer must be in estab
+                    // thus now close_wait 
+                    inet_trace!("tcp::finwait1 '0x{:x} got ACK of FIN {}", ctrl.fd, pkt.ack_no);
                     ctrl.state = TcpState::FinWait2;
                 } else {
                     self.handle_data(ctrl, src,dest, pkt);
@@ -652,20 +693,27 @@ impl IOContext {
     }
 
     fn process_state_fin_wait2(&mut self, ctrl: &mut TcpController, event: TcpEvent) {
+        // consider self client
+        // consider non-simultaneous close
         match event {
             TcpEvent::Fin((src,dest, pkt)) => {
+                // Active close
+                // Wait for FIN indicating that server has decided to close.
+
+                // (0) Handle last ACK of FINACK
                 inet_trace!("tcp::finwait2 '0x{:x} going to time-wait", ctrl.fd);
                 ctrl.receiver_last_recv_seq_no = pkt.seq_no;
-                // self.handle_data(ctrl, src,dest, pkt);
-
-                self.send_ack(ctrl, ctrl.receiver_last_recv_seq_no + 1, ctrl.recv_window());
-                // cancel event, timer
+                
+                // (1) Send ACK for FIN
+                self.send_ack(ctrl, ctrl.receiver_last_recv_seq_no, ctrl.recv_window());
                 ctrl.set_timer(ctrl.timewait);
 
+                // (2) Switch to Time-Wait to handle timeouts for final ACKs
                 ctrl.state = TcpState::TimeWait;
             }
             TcpEvent::Timeout() => self.handle_data_timeout(ctrl),
             TcpEvent::Data((src,dest, pkt)) | TcpEvent::Ack((src,dest, pkt)) | TcpEvent::Perm((src,dest, pkt)) => {
+                // Since server has not yet been closed, data may be send
                 self.handle_data(ctrl, src, dest, pkt)
             }
             TcpEvent::SysRecv() => unimplemented!(),
@@ -674,18 +722,22 @@ impl IOContext {
     }
 
     fn process_state_closing(&mut self, ctrl: &mut TcpController, event: TcpEvent) {
+        // consider self client or server (both client believe)
+        // both parties send FIN, expect ACK
         match event {
             TcpEvent::Timeout() => {
-                
+                // Both parties closed -> no data 
+                // -> but ack resend may be nessecary
                 self.handle_data_timeout(ctrl)
             },
             TcpEvent::Ack((src,dest, pkt)) | TcpEvent::Perm((src,dest, pkt)) => {
-                let ack_of_fin = pkt.flags.ack && ctrl.sender_buffer.head_seq_no() + 1 == pkt.ack_no;
-                // self.handle_data(ctrl, src, dest, pkt); ?
-                log::error!("ACK_OF_FIN: {ack_of_fin}");
-
+                // (0) Ignore data parts of packets --> no need for receivers
+                
+                // (1) Check for ACK of FIN
+                let ack_of_fin = pkt.flags.ack && ctrl.sender_next_send_seq_no == pkt.ack_no;
                 if ack_of_fin {
-                    // cancel timer
+                    inet_trace!("tcp::closing '0x{:x} got ACK of FIN {}", ctrl.fd, pkt.ack_no);
+                    // (2) Switch to time_wait
                     ctrl.set_timer(ctrl.timewait);
                     ctrl.state = TcpState::TimeWait;
                 }
@@ -697,10 +749,12 @@ impl IOContext {
     }
 
     fn process_state_time_wait(&mut self, ctrl: &mut TcpController, event: TcpEvent) {
+        // consider self client or at least client believe
+        // assume either LAST ACK or LAST FIN was allready send
         match event {
             TcpEvent::Timeout() => {
+                // After waiting for errors ensure close the socket.
                 ctrl.reset_connection_pars();
-
                 inet_trace!("tcp::timewait '0x{:x} Closed", ctrl.fd);
                 ctrl.state = TcpState::Closed;
             }
@@ -711,21 +765,28 @@ impl IOContext {
     }
 
     fn process_state_close_wait(&mut self, ctrl: &mut TcpController, event: TcpEvent) {
+        // consider self server
+        // client will no longer receive data, but may still send
         match event {
-            TcpEvent::Timeout() => self.handle_data_timeout(ctrl),
+            TcpEvent::Timeout() => {
+                // ACK resend must be handled to get to ACK of FIN
+                self.handle_data_timeout(ctrl)
+            },
             TcpEvent::SysClose() => {
-                // self.last_recv_seq_no = pkt.seq_no;
-                // self.handle_data(pkt);
-
+                // Once the application agrees to close 
+                // send ACK of FIN
                 inet_trace!("tcp::closewait '0x{:x}", ctrl.fd);
-                self.send_ack(ctrl, ctrl.receiver_last_recv_seq_no + 1, ctrl.recv_window());
 
+                // (0) Send own FIN
                 let pkt = ctrl.create_packet(TcpPacketId::Fin, ctrl.sender_next_send_seq_no + 1, 0);
                 self.tcp_send_packet(
                     ctrl, 
                     ctrl.ip_packet_for(pkt)
                 );
 
+          
+                // (2) Wait for ACK
+                // -> client will only send ACK as response to FIN
                 ctrl.state = TcpState::LastAck;
             }
             _ => unimplemented!(),
@@ -733,8 +794,10 @@ impl IOContext {
     }
 
     fn process_state_last_ack(&mut self, ctrl: &mut TcpController, event: TcpEvent) {
+        // consider self server
         match event {
             TcpEvent::Ack(_) => {
+                // (0) Each last ack will be only for FIN (else simultaneous close)
                 ctrl.reset_connection_pars();
                 ctrl.state = TcpState::Closed;
                 inet_trace!("tcp::lastack '0x{:x} Closed", ctrl.fd);
@@ -891,7 +954,7 @@ impl IOContext {
         }
     }
 
-    pub fn tcp_try_write(&mut self, fd: Fd, buf: &[u8]) -> Result<usize> {
+    pub(self)  fn tcp_try_write(&mut self, fd: Fd, buf: &[u8]) -> Result<usize> {
         // log::debug!("::tcp_try_send");
         // (0) Get the socket
         let Some(mut ctrl) = self.tcp_manager.remove(&fd) else {
@@ -919,7 +982,7 @@ impl IOContext {
     }
 
 
-    pub fn tcp_try_read(&mut self, fd: Fd, buf: &mut [u8]) -> Result<usize> {
+    pub(self)  fn tcp_try_read(&mut self, fd: Fd, buf: &mut [u8]) -> Result<usize> {
         // log::debug!("::tcp_try_recv");
         // (0) Get the socket
         let Some(mut ctrl) = self.tcp_manager.remove(&fd) else {
@@ -931,8 +994,13 @@ impl IOContext {
         let was_full = ctrl.receiver_buffer.len() == ctrl.receiver_buffer.cap();
         let n = ctrl.receiver_buffer.read(&mut buf[..max]);
         if n == 0 {
+            let nmd = ctrl.no_more_data_closed();
             self.tcp_manager.insert(fd, ctrl);
-            return Err(Error::new(ErrorKind::WouldBlock, "recv buffer empty - would block"))
+            if nmd {
+                return Ok(n)
+            } else {
+                return Err(Error::new(ErrorKind::WouldBlock, "recv buffer empty - would block"))
+            }     
         }
 
         ctrl.drop_valid_slices_for(n);
@@ -950,7 +1018,7 @@ impl IOContext {
         Ok(n)
     }
 
-    pub fn tcp_try_peek(&mut self, fd: Fd, buf: &mut [u8]) -> Result<usize> {
+    pub(self) fn tcp_try_peek(&mut self, fd: Fd, buf: &mut [u8]) -> Result<usize> {
         // log::debug!("::tcp_try_peek");
         // (0) Get the socket
         let Some(mut ctrl) = self.tcp_manager.remove(&fd) else {
@@ -987,7 +1055,6 @@ impl IOContext {
     //     n
     // }
 
-    pub fn close(&mut self) {}
 
     fn handle_data_timeout(&mut self, ctrl: &mut TcpController) {
         inet_trace!("tcp::data '0x{:x} TIMEOUT", ctrl.fd);
@@ -1019,6 +1086,10 @@ impl IOContext {
 }
 
 impl TcpController {
+    fn no_more_data_closed(&self) -> bool {
+        matches!(self.state, TcpState::CloseWait | TcpState::LastAck | TcpState::Closed | TcpState::Closing | TcpState::TimeWait)
+    }
+
     fn tcp_recv_valid_slice_len(&self) -> usize {
         let mut seq_no = self.receiver_buffer.tail_seq_no;
         for slice in self.receiver_valid_slices.iter() {
@@ -1134,6 +1205,7 @@ impl TcpController {
 
     fn set_timer(&mut self, expiration: Duration) {
         // inet_trace!("Setting normal timer");
+        self.timer += 1;
         schedule_in(
             Message::new().kind(KIND_IO_TIMEOUT).id(self.timer).content(self.fd).build(),
             expiration,

@@ -1,0 +1,47 @@
+module TcpServer {
+    gates:
+        in @input
+        out @output
+}
+
+module Link {
+    gates:
+        lhs_in @input
+        lhs_out @output
+
+        rhs_in @input
+        rhs_out @output
+}
+
+module TcpClient {
+    gates:
+        in @input
+        out @output
+}
+
+link LANLink {
+    bitrate: 10000000
+    jitter: 0.0
+    latency: 0.03
+}
+
+link LANLinkBuffed {
+    bitrate: 10000000
+    jitter: 0.0
+    latency: 0.03
+    queuesize: 2048
+}
+
+subsystem Main {
+    nodes:
+        server: TcpServer
+        mim: Link
+        client: TcpClient
+
+    connections:
+        server/out --> LANLink --> mim/rhs_in
+        server/in <-- LANLinkBuffed <-- mim/rhs_out
+
+        client/out --> LANLink --> mim/lhs_in
+        client/in <-- LANLinkBuffed <-- mim/lhs_out
+}

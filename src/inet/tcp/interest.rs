@@ -108,6 +108,10 @@ impl Future for TcpInterest {
                 if handle.tcp_recv_valid_slice_len() > 0 {
                     Poll::Ready(Ok(Ready::READABLE))
                 } else {
+                    if handle.no_more_data_closed() {
+                        return Poll::Ready(Err(Error::new(ErrorKind::Other, "socket closed")));
+                    }
+
                     handle.receiver_read_interests.push(TcpInterestGuard {
                         interest: self.clone(),
                         waker: cx.waker().clone(),

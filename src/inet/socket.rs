@@ -365,3 +365,8 @@ impl IOContext {
         Ok(Some(interface.name.clone()))
     }
 }
+
+#[doc(hidden)]
+pub fn bsd_socket_info(fd: Fd) -> Option<Socket> {
+    IOContext::with_current(|ctx| ctx.sockets.get(&fd).cloned())
+}

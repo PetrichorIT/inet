@@ -20,12 +20,12 @@ pub use tcp::socket::{TcpListener, TcpStream};
 mod plugin;
 pub use plugin::*;
 
+mod fd;
+pub use fd::*;
+
 thread_local! {
     static CURRENT: RefCell<Option<IOContext>> = const { RefCell::new(None) };
 }
-
-/// File descriptors.
-pub type Fd = u32;
 
 const KIND_IO_TIMEOUT: MessageKind = 0x0128;
 
@@ -100,7 +100,7 @@ impl IOContext {
 }
 
 impl IOContext {
-    pub fn capture(&mut self, msg: Message) -> Option<Message> {
+    pub(self) fn capture(&mut self, msg: Message) -> Option<Message> {
         let kind = msg.header().kind;
         match kind {
             KIND_IPV4 => {
@@ -186,18 +186,6 @@ impl IOContext {
         }
 
         None
-    }
-
-    pub fn add_interface(&mut self, iface: Interface) {
-        if self.interfaces.get(&iface.name.hash).is_some() {
-            unimplemented!()
-        } else {
-            self.interfaces.insert(iface.name.hash, iface);
-        }
-    }
-
-    pub fn get_interfaces(&self) -> Vec<Interface> {
-        self.interfaces.values().cloned().collect::<Vec<_>>()
     }
 
     pub(self) fn create_fd(&mut self) -> Fd {

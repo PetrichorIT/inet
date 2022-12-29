@@ -237,6 +237,18 @@ pub enum InterfaceBusyState {
 // # IOContext
 
 impl IOContext {
+    pub(super) fn add_interface(&mut self, iface: Interface) {
+        if self.interfaces.get(&iface.name.hash).is_some() {
+            unimplemented!()
+        } else {
+            self.interfaces.insert(iface.name.hash, iface);
+        }
+    }
+
+    pub(super) fn get_interfaces(&self) -> Vec<Interface> {
+        self.interfaces.values().cloned().collect::<Vec<_>>()
+    }
+
     pub(super) fn capture_link_update(&mut self, msg: Message) -> Option<Message> {
         let Some(content) = msg.try_content::<u64>() else {
             return Some(msg)

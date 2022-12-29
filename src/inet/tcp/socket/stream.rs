@@ -7,7 +7,7 @@ use crate::{
             types::{TcpEvent, TcpState, TcpSyscall},
             TcpController,
         },
-        Fd, IOContext, SocketDomain, SocketType,
+        AsRawFd, Fd, FromRawFd, IOContext, IntoRawFd, SocketDomain, SocketType,
     },
 };
 use std::{
@@ -230,6 +230,28 @@ impl Drop for TcpStreamInner {
     }
 }
 
+impl AsRawFd for TcpStream {
+    fn as_raw_fd(&self) -> Fd {
+        self.inner.fd
+    }
+}
+
+impl IntoRawFd for TcpStream {
+    fn into_raw_fd(self) -> Fd {
+        let fd = self.inner.fd;
+        std::mem::forget(self);
+        fd
+    }
+}
+
+impl FromRawFd for TcpStream {
+    fn from_raw_fd(fd: Fd) -> TcpStream {
+        TcpStream {
+            inner: Arc::new(TcpStreamInner { fd }),
+        }
+    }
+}
+
 impl IOContext {
     pub(super) fn tcp_create_socket(
         &mut self,
@@ -281,6 +303,7 @@ impl IOContext {
     }
 
     pub(super) fn tcp_drop_stream(&mut self, fd: Fd) {
+        log::debug!("closing '0x{:x}", fd);
         self.syscall(fd, TcpSyscall::Close());
     }
 }
