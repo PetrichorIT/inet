@@ -5,40 +5,30 @@ use des::{
 };
 use std::{cell::RefCell, collections::HashMap, net::Ipv4Addr};
 
-pub mod interface;
-use interface::*;
-
-pub mod socket;
-use socket::*;
-
-mod udp;
-pub use udp::*;
-
-pub mod tcp;
-pub use tcp::socket::{TcpListener, TcpStream};
-
-mod plugin;
-pub use plugin::*;
-
-mod fd;
-pub use fd::*;
+use super::{
+    fd::Fd,
+    interface::*,
+    socket::*,
+    tcp::{socket::TcpListenerHandle, TcpController, PROTO_TCP},
+    udp::{UdpManager, PROTO_UDP},
+};
 
 thread_local! {
     static CURRENT: RefCell<Option<IOContext>> = const { RefCell::new(None) };
 }
 
-const KIND_IO_TIMEOUT: MessageKind = 0x0128;
+pub(super) const KIND_IO_TIMEOUT: MessageKind = 0x0128;
 
 pub struct IOContext {
-    interfaces: HashMap<u64, Interface>,
-    sockets: HashMap<Fd, Socket>,
+    pub(super) interfaces: HashMap<u64, Interface>,
+    pub(super) sockets: HashMap<Fd, Socket>,
 
-    udp_manager: HashMap<Fd, UdpManager>,
-    tcp_manager: HashMap<Fd, tcp::TcpController>,
-    tcp_listeners: HashMap<Fd, tcp::socket::TcpListenerHandle>,
+    pub(super) udp_manager: HashMap<Fd, UdpManager>,
+    pub(super) tcp_manager: HashMap<Fd, TcpController>,
+    pub(super) tcp_listeners: HashMap<Fd, TcpListenerHandle>,
 
-    fd: Fd,
-    port: u16,
+    pub(super) fd: Fd,
+    pub(super) port: u16,
 }
 
 impl IOContext {
@@ -73,7 +63,7 @@ impl IOContext {
         Self::swap_in(Some(self));
     }
 
-    pub(self) fn swap_in(ingoing: Option<IOContext>) -> Option<IOContext> {
+    pub(super) fn swap_in(ingoing: Option<IOContext>) -> Option<IOContext> {
         CURRENT.with(|ctx| {
             let mut ctx = ctx.borrow_mut();
             let ret = ctx.take();
@@ -82,7 +72,7 @@ impl IOContext {
         })
     }
 
-    pub(self) fn with_current<R>(f: impl FnOnce(&mut IOContext) -> R) -> R {
+    pub(super) fn with_current<R>(f: impl FnOnce(&mut IOContext) -> R) -> R {
         CURRENT.with(|cell| {
             f(cell
                 .borrow_mut()
@@ -91,7 +81,7 @@ impl IOContext {
         })
     }
 
-    pub(self) fn try_with_current<R>(f: impl FnOnce(&mut IOContext) -> R) -> Option<R> {
+    pub(super) fn try_with_current<R>(f: impl FnOnce(&mut IOContext) -> R) -> Option<R> {
         match CURRENT.try_with(|cell| Some(f(cell.borrow_mut().as_mut()?))) {
             Ok(v) => v,
             Err(_) => None,
@@ -100,7 +90,7 @@ impl IOContext {
 }
 
 impl IOContext {
-    pub(self) fn capture(&mut self, msg: Message) -> Option<Message> {
+    pub(super) fn capture(&mut self, msg: Message) -> Option<Message> {
         let kind = msg.header().kind;
         match kind {
             KIND_IPV4 => {
@@ -110,7 +100,7 @@ impl IOContext {
                 };
 
                 match ip.proto {
-                    udp::PROTO_UDP => {
+                    PROTO_UDP => {
                         if self
                             .capture_udp_packet(IpPacketRef::V4(ip), msg.header().last_gate.clone())
                         {
@@ -119,7 +109,7 @@ impl IOContext {
                             Some(msg)
                         }
                     }
-                    tcp::PROTO_TCP => {
+                    PROTO_TCP => {
                         if self
                             .capture_tcp_packet(IpPacketRef::V4(ip), msg.header().last_gate.clone())
                         {
@@ -138,7 +128,7 @@ impl IOContext {
                 };
 
                 match ip.next_header {
-                    udp::PROTO_UDP => {
+                    PROTO_UDP => {
                         if self
                             .capture_udp_packet(IpPacketRef::V6(ip), msg.header().last_gate.clone())
                         {
@@ -147,7 +137,7 @@ impl IOContext {
                             Some(msg)
                         }
                     }
-                    tcp::PROTO_TCP => {
+                    PROTO_TCP => {
                         if self
                             .capture_tcp_packet(IpPacketRef::V6(ip), msg.header().last_gate.clone())
                         {
@@ -188,7 +178,7 @@ impl IOContext {
         None
     }
 
-    pub(self) fn create_fd(&mut self) -> Fd {
+    pub(super) fn create_fd(&mut self) -> Fd {
         loop {
             self.fd = self.fd.wrapping_add(1);
             if self.sockets.get(&self.fd).is_some() {

@@ -3,7 +3,7 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV
 use std::str::FromStr;
 
 use crate::dns::DNSType;
-use crate::inet::UdpSocket;
+use crate::UdpSocket;
 use crate::{FromBytestream, IntoBytestream};
 
 use super::{DNSMessage, DNSResponseCode};

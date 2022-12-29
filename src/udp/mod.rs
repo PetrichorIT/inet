@@ -1,6 +1,6 @@
-use super::{Fd, IOContext, SocketDomain, SocketType};
+use super::{socket::*, Fd, IOContext};
 use crate::{
-    ip::{IpFlags, IpPacket, IpPacketRef, IpVersion, Ipv4Packet, Ipv6Packet},
+    ip::{IpPacket, IpPacketRef, IpVersion, Ipv4Flags, Ipv4Packet, Ipv6Packet},
     FromBytestream, IntoBytestream,
 };
 use std::{
@@ -241,7 +241,7 @@ impl IOContext {
                     dscp: 0,
                     enc: 0,
                     identification: 0,
-                    flags: IpFlags {
+                    flags: Ipv4Flags {
                         df: false,
                         mf: false,
                     },

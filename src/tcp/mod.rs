@@ -30,7 +30,7 @@ mod debug;
 pub use debug::*;
 
 use crate::{
-    ip::{IpPacket, IpPacketRef, Ipv4Packet, IpVersion, IpFlags, Ipv6Packet},
+    ip::{IpPacket, IpPacketRef, Ipv4Packet, IpVersion,Ipv4Flags, Ipv6Packet},
     FromBytestream, IntoBytestream,
 };
 
@@ -1125,7 +1125,7 @@ impl TcpController {
                     dscp: 0,
                     enc: 0,
                     identification: 0,
-                    flags: IpFlags { df: false, mf: false },
+                    flags: Ipv4Flags { df: false, mf: false },
                     fragment_offset: 0,
                     ttl: 64,
                     proto: PROTO_TCP,

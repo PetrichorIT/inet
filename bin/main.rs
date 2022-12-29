@@ -1,7 +1,7 @@
 use std::io::ErrorKind;
 
 use des::prelude::*;
-use inet::inet::{interface::*, tcp::TcpDebugPlugin, TcpListener, TcpStream};
+use inet::{interface::*, tcp::TcpDebugPlugin, TcpListener, TcpStream};
 
 #[NdlModule("bin")]
 struct ManInTheMiddle {}

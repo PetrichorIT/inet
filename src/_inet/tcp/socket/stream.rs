@@ -2,12 +2,13 @@ use super::TcpSocketConfig;
 use crate::{
     dns::{lookup_host, ToSocketAddrs},
     inet::{
+        socket::*,
         tcp::{
             interest::{TcpInterest, TcpInterestGuard},
             types::{TcpEvent, TcpState, TcpSyscall},
             TcpController,
         },
-        AsRawFd, Fd, FromRawFd, IOContext, IntoRawFd, SocketDomain, SocketType,
+        AsRawFd, Fd, FromRawFd, IOContext, IntoRawFd,
     },
 };
 use std::{

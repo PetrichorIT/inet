@@ -5,7 +5,7 @@ use des::{
     net::{BuildContext, __Buildable0},
     prelude::*,
 };
-use inet::inet::{interface::*, *};
+use inet::{interface::*, *};
 use serial_test::serial;
 use tokio::task::JoinHandle;
 

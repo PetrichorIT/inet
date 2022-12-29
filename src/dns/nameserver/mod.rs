@@ -1,5 +1,5 @@
 use super::{DNSMessage, DNSOpCode, DNSQuestion, DNSResponseCode, DNSString, DNSZoneFile};
-use crate::{inet::UdpSocket, FromBytestream, IntoBytestream, IpMask};
+use crate::{ip::IpMask, FromBytestream, IntoBytestream, UdpSocket};
 use des::{prelude::par, time::SimTime};
 use std::{
     collections::VecDeque,

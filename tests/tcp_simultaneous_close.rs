@@ -8,7 +8,7 @@ use std::{
 };
 
 use des::prelude::*;
-use inet::inet::{interface::*, tcp::TcpDebugPlugin, AsRawFd, Fd, TcpListener, TcpStream};
+use inet::{interface::*, tcp::TcpDebugPlugin, AsRawFd, Fd, TcpListener, TcpStream};
 use serial_test::serial;
 
 #[NdlModule("tests")]
@@ -109,7 +109,7 @@ impl AsyncModule for TcpServer {
 
         let fd: Fd = self.fd.load(SeqCst);
         assert!(fd != 0);
-        assert!(inet::inet::socket::bsd_socket_info(fd).is_none())
+        assert!(inet::socket::bsd_socket_info(fd).is_none())
     }
 }
 
@@ -170,7 +170,7 @@ impl AsyncModule for TcpClient {
 
         let fd: Fd = self.fd.load(SeqCst);
         assert!(fd != 0);
-        assert!(inet::inet::socket::bsd_socket_info(fd).is_none())
+        assert!(inet::socket::bsd_socket_info(fd).is_none())
     }
 }
 

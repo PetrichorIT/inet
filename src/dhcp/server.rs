@@ -9,7 +9,7 @@ use std::{
 use des::prelude::*;
 use des::tokio::net::get_ip;
 
-use crate::common::MESSAGE_KIND_DHCP;
+use crate::dhcp::MESSAGE_KIND_DHCP;
 
 use super::common::{DHCPMessage, DHCPOp, DHCPOpsTyp, DHCPParameter};
 

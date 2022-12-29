@@ -1,3 +1,5 @@
+//! Domain-Name-Server Protocol.
+
 mod pkt;
 pub use pkt::*;
 

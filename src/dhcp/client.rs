@@ -9,7 +9,7 @@ use des::{
 };
 
 use super::common::{DHCPMessage, DHCPOpsTyp};
-use crate::{common::MESSAGE_KIND_DHCP, dhcp::common::DHCPParameter};
+use crate::dhcp::{common::DHCPParameter, MESSAGE_KIND_DHCP};
 
 pub struct DHCPClient {
     mac: [u8; 8],

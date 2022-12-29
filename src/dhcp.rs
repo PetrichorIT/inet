@@ -1,3 +1,6 @@
+//! Dynamic-Host-Configuration Protocol
+use des::net::message::MessageKind;
+
 mod client;
 mod common;
 mod server;
@@ -7,3 +10,5 @@ pub use common::DHCPMessage;
 
 pub use server::DHCPServer;
 pub use server::DHCPServerConfig;
+
+pub const MESSAGE_KIND_DHCP: MessageKind = 0x63_82;

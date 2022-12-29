@@ -8,18 +8,36 @@ mod macros;
 
 pub mod dhcp;
 pub mod dns;
-pub mod inet;
 pub mod ip;
 pub mod routing;
 
-// pub mod net;
+pub mod interface;
+pub mod socket;
 
+mod udp;
+pub use udp::*;
+
+pub mod tcp;
+pub use tcp::socket::{TcpListener, TcpStream};
+
+mod plugin;
+pub use plugin::*;
+
+mod fd;
+pub use fd::*;
+
+mod ctx;
+pub use ctx::*;
+
+/// Initaliztion function for inet-plugins.
+///
+/// Call this function as the first step in your simulation (pre runtime creation)
 pub fn init() {
     des::net::module::set_setup_fn(inet_init)
 }
 
 fn inet_init(this: &des::net::module::ModuleContext) {
-    this.add_plugin(self::inet::IOPlugin::new(), 50, false);
+    this.add_plugin(IOPlugin::new(), 50, false);
     this.add_plugin(
         des::net::plugin::TokioTimePlugin::new("inet::imported_time_module".to_string()),
         1,
