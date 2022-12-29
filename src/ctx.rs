@@ -9,7 +9,7 @@ use super::{
     fd::Fd,
     interface::*,
     socket::*,
-    tcp::{socket::TcpListenerHandle, TcpController, PROTO_TCP},
+    tcp::{api::TcpListenerHandle, TcpController, PROTO_TCP},
     udp::{UdpManager, PROTO_UDP},
 };
 

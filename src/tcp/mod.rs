@@ -18,13 +18,12 @@ pub use buf::*;
 mod types;
 use types::*;
 
-pub(super) mod socket;
-pub use socket::{OwnedReadHalf, OwnedWriteHalf, ReadHalf, WriteHalf, ReuniteError};
-use socket::*;
+pub(super) mod api;
+pub use api::{OwnedReadHalf, OwnedWriteHalf, ReadHalf, WriteHalf, ReuniteError};
+use api::*;
 
 mod interest;
 use interest::*;
-
 
 mod debug;
 pub use debug::*;
@@ -1121,7 +1120,7 @@ impl TcpController {
         match self.local_addr {
             SocketAddr::V4(local) => {
                 IpPacket::V4(Ipv4Packet {
-                    version: IpVersion::V4,
+                   
                     dscp: 0,
                     enc: 0,
                     identification: 0,
@@ -1129,8 +1128,7 @@ impl TcpController {
                     fragment_offset: 0,
                     ttl: 64,
                     proto: PROTO_TCP,
-                    checksum: 0,
-                    
+                
                     src: *local.ip(),
                     dest: if let IpAddr::V4(addr) = self.peer_addr.ip() { addr } else { unreachable!() },
 
@@ -1139,7 +1137,6 @@ impl TcpController {
             }
             SocketAddr::V6(local) => {
                 IpPacket::V6(Ipv6Packet {
-                    version: IpVersion::V4,
                     traffic_class: 0,
                     flow_label: 0,
                     hop_limit: 64,

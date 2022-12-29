@@ -2,7 +2,7 @@ use crate::{FromBytestream, IntoBytestream};
 use bytestream::{ByteOrder::BigEndian, StreamReader, StreamWriter};
 use des::net::message::MessageBody;
 use std::{
-    io::{Cursor, Write},
+    io::{Cursor, Error, ErrorKind, Write},
     net::Ipv6Addr,
 };
 
@@ -10,7 +10,6 @@ use super::IpVersion;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Ipv6Packet {
-    pub version: IpVersion,
     pub traffic_class: u8,
     pub flow_label: u32, // u20
     pub next_header: u8,
@@ -25,7 +24,7 @@ pub struct Ipv6Packet {
 impl IntoBytestream for Ipv6Packet {
     type Error = std::io::Error;
     fn into_bytestream(&self, bytestream: &mut impl Write) -> Result<(), Self::Error> {
-        let byte0 = ((self.version as u8) << 4) | (self.traffic_class >> 4);
+        let byte0 = (6 << 4) | (self.traffic_class >> 4);
         byte0.write_to(bytestream, BigEndian)?;
 
         // [32..24 24..16 16..8 8..0]
@@ -37,6 +36,8 @@ impl IntoBytestream for Ipv6Packet {
 
         let len = self.content.len() as u16;
         len.write_to(bytestream, BigEndian)?;
+        self.next_header.write_to(bytestream, BigEndian)?;
+        self.hop_limit.write_to(bytestream, BigEndian)?;
 
         for byte in self.src.octets() {
             byte.write_to(bytestream, BigEndian)?;
@@ -59,13 +60,19 @@ impl FromBytestream for Ipv6Packet {
         let byte3 = u8::read_from(bytestream, BigEndian)?;
 
         let version = byte0 >> 4;
-        let version = match version {
-            4 => IpVersion::V4,
+        let _version = match version {
+            4 => {
+                return Err(Error::new(
+                    ErrorKind::InvalidData,
+                    "ipv6 packet expeced, got ipv4 flag",
+                ))
+            }
             6 => IpVersion::V6,
             _ => unimplemented!(),
         };
 
-        let traffic_class = 0u8 | ((byte0 & 0b1111) << 4) | ((byte0 >> 4) & 0b1111);
+        // println!("{:b} {:b} {:b} {:b}", byte0, byte1, byte2, byte3);
+        let traffic_class = 0u8 | ((byte0 & 0b1111) << 4) | ((byte1 >> 4) & 0b1111);
 
         let f2 = byte1 & 0b1111;
         let flow_label = u32::from_be_bytes([0, f2, byte2, byte3]);
@@ -88,12 +95,11 @@ impl FromBytestream for Ipv6Packet {
 
         // fetch rest
         let mut content = Vec::with_capacity(len as usize);
-        for _ in 0..(len - 20) {
+        for _ in 0..len {
             content.push(u8::read_from(bytestream, BigEndian)?);
         }
 
         Ok(Self {
-            version,
             traffic_class,
             flow_label,
             next_header,

@@ -12,6 +12,9 @@ pub use v4::{Ipv4Flags, Ipv4Packet};
 mod v6;
 pub use v6::Ipv6Packet;
 
+#[cfg(test)]
+mod tests;
+
 pub const KIND_IPV4: MessageKind = 0x0800;
 pub const KIND_IPV6: MessageKind = 0x86DD;
 

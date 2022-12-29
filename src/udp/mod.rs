@@ -1,6 +1,6 @@
 use super::{socket::*, Fd, IOContext};
 use crate::{
-    ip::{IpPacket, IpPacketRef, IpVersion, Ipv4Flags, Ipv4Packet, Ipv6Packet},
+    ip::{IpPacket, IpPacketRef, Ipv4Flags, Ipv4Packet, Ipv6Packet},
     FromBytestream, IntoBytestream,
 };
 use std::{
@@ -40,16 +40,6 @@ impl UdpManager {
     //         in_queue_size: self.incoming.len(),
     //     }
     // }
-
-    pub(self) fn ip_version(&self) -> IpVersion {
-        let v4 =
-            self.local_addr.is_ipv4() && self.state.peer().map(|p| p.is_ipv4()).unwrap_or(false);
-        if v4 {
-            IpVersion::V4
-        } else {
-            IpVersion::V6
-        }
-    }
 }
 
 /// A public info over UDP sockets.
@@ -68,15 +58,6 @@ pub(super) enum UdpSocketState {
     #[default]
     Bound,
     Connected(SocketAddr),
-}
-
-impl UdpSocketState {
-    pub(self) fn peer(&self) -> Option<SocketAddr> {
-        match self {
-            Self::Bound => None,
-            Self::Connected(addr) => Some(*addr),
-        }
-    }
 }
 
 impl IOContext {
@@ -237,7 +218,6 @@ impl IOContext {
         match (socket.local_addr.ip(), target.ip()) {
             (IpAddr::V4(local), IpAddr::V4(target)) => {
                 let ip = Ipv4Packet {
-                    version: socket.ip_version(),
                     dscp: 0,
                     enc: 0,
                     identification: 0,
@@ -252,7 +232,6 @@ impl IOContext {
                     src: local,
                     dest: target,
 
-                    checksum: 0,
                     content,
                 };
 
@@ -270,7 +249,6 @@ impl IOContext {
             }
             (IpAddr::V6(local), IpAddr::V6(target)) => {
                 let ip = Ipv6Packet {
-                    version: socket.ip_version(),
                     traffic_class: 0,
                     flow_label: 0,
                     hop_limit: socket.ttl,
