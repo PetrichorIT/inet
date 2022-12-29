@@ -4,6 +4,7 @@ use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use std::task::{Context, Poll};
 
+use crate::bsd::*;
 use crate::tcp::interest::{TcpInterest, TcpInterestGuard};
 use crate::tcp::types::{TcpEvent, TcpSyscall};
 use crate::tcp::{TcpController, TcpPacket};
@@ -11,7 +12,6 @@ use crate::{
     dns::{lookup_host, ToSocketAddrs},
     IOContext,
 };
-use crate::{socket::*, Fd};
 
 use super::{TcpSocketConfig, TcpStream, TcpStreamInner};
 
@@ -187,7 +187,7 @@ impl IOContext {
             } else {
                 SocketDomain::AF_INET6
             };
-            let fd = self.bsd_create_socket(domain, SocketType::SOCK_STREAM, 0);
+            let fd = self.bsd_create_socket(domain, SocketType::SOCK_STREAM, 0)?;
 
             addr = self.bsd_bind_socket(fd, addr).map_err(|e| {
                 self.bsd_close_socket(self.fd);
@@ -216,13 +216,19 @@ impl IOContext {
             ))
         };
 
+        let config = handle.config.clone();
+
         let con = match handle.incoming.pop_front() {
             Some(con) => con,
             None => return Err(Error::new(ErrorKind::WouldBlock, "WouldBlock")),
         };
 
         let stream_socket = self.bsd_dup_socket(fd)?;
-        let mut ctrl = TcpController::new(stream_socket, self.bsd_get_socket_addr(stream_socket)?);
+        let mut ctrl = TcpController::new(
+            stream_socket,
+            self.bsd_get_socket_addr(stream_socket)?,
+            config,
+        );
 
         self.syscall(stream_socket, TcpSyscall::Listen());
 

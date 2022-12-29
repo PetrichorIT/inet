@@ -1,4 +1,4 @@
-use super::{socket::*, Fd, IOContext};
+use super::{bsd::*, IOContext};
 use crate::{
     ip::{IpPacket, IpPacketRef, Ipv4Flags, Ipv4Packet, Ipv6Packet},
     FromBytestream, IntoBytestream,
@@ -13,8 +13,8 @@ mod pkt;
 use des::prelude::GateRef;
 pub use pkt::*;
 
-mod socket;
-pub use socket::*;
+mod api;
+pub use api::*;
 
 mod interest;
 use interest::*;
@@ -154,10 +154,10 @@ impl IOContext {
             SocketDomain::AF_INET6
         };
 
-        let socket: Fd = self.bsd_create_socket(domain, SocketType::SOCK_DGRAM, 0);
+        let socket: Fd = self.bsd_create_socket(domain, SocketType::SOCK_DGRAM, 0)?;
 
         let baddr = self.bsd_bind_socket(socket, addr).map_err(|e| {
-            self.bsd_close_socket(socket);
+            let _ = self.bsd_close_socket(socket);
             e
         })?;
 
@@ -279,6 +279,6 @@ impl IOContext {
 
     pub(super) fn udp_drop(&mut self, fd: Fd) {
         self.udp_manager.remove(&fd);
-        self.bsd_close_socket(fd);
+        let _ = self.bsd_close_socket(fd);
     }
 }

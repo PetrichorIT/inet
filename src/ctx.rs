@@ -6,9 +6,8 @@ use des::{
 use std::{cell::RefCell, collections::HashMap, net::Ipv4Addr};
 
 use super::{
-    fd::Fd,
+    bsd::*,
     interface::*,
-    socket::*,
     tcp::{api::TcpListenerHandle, TcpController, PROTO_TCP},
     udp::{UdpManager, PROTO_UDP},
 };

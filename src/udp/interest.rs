@@ -2,7 +2,8 @@ use std::io::{Error, ErrorKind, Result};
 use std::task::Poll;
 use std::{future::Future, task::Waker};
 
-use crate::{Fd, IOContext};
+use crate::IOContext;
+use crate::bsd::Fd;
 use tokio::io::{Interest, Ready};
 
 #[derive(Debug, Clone, PartialEq, Eq)]

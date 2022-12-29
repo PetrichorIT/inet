@@ -6,7 +6,7 @@ use std::{
 
 use tokio::io::{Interest, Ready};
 
-use crate::{Fd, IOContext};
+use crate::{bsd::Fd, IOContext};
 
 use super::types::TcpState;
 

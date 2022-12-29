@@ -1,12 +1,22 @@
 //! BSD sockets.
 
 use super::{
-    interface::{InterfaceAddr, InterfaceName, InterfaceStatus},
-    Fd, IOContext,
+    interface::{InterfaceName, InterfaceStatus},
+    IOContext,
 };
 use std::io::{Error, ErrorKind, Result};
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 
+mod api;
+pub use api::*;
+
+mod types;
+pub use types::*;
+
+mod fd;
+pub use fd::*;
+
+#[doc(hidden)]
 /// A communications socket.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Socket {
@@ -18,62 +28,6 @@ pub struct Socket {
     pub protocol: i32,
     pub fd: Fd,
     pub interface: u64,
-}
-
-/// The communication domain of a socket.
-#[allow(nonstandard_style)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[repr(i32)]
-pub enum SocketDomain {
-    AF_UNIX,
-    // AF_LOCAL = 0,
-    AF_INET,
-    AF_AX25,
-    AF_IPX,
-    AF_APPLETALK,
-    AF_X25,
-    AF_INET6,
-    AF_DECnet,
-    AF_KEY,
-    AF_NETLINK,
-    AF_PACKET,
-    AF_RDS,
-    AF_PPPOX,
-    AF_LLC,
-    AF_IB,
-    AF_MPLS,
-    AF_CAN,
-    AF_TIPC,
-    AF_BLUETOOTH,
-    AF_ALG,
-    AF_VSOCK,
-    AF_KCM,
-    AF_XDP,
-}
-
-impl SocketDomain {
-    fn valid_for_interface_addr(&self, iaddr: &InterfaceAddr) -> bool {
-        use InterfaceAddr::*;
-        match (self, iaddr) {
-            (Self::AF_INET, Inet { .. }) => true,
-            (Self::AF_INET6, Inet6 { .. }) => true,
-            _ => false,
-        }
-    }
-}
-
-/// The type of communications semantics use in the socket.
-#[allow(nonstandard_style)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[repr(i32)]
-pub enum SocketType {
-    SOCK_STREAM,
-    SOCK_DGRAM,
-    SOCK_SEQPACKET,
-    SOCK_RAW,
-    SOCK_RDM,
-    #[deprecated]
-    SOCK_PACKET,
 }
 
 impl IOContext {
@@ -89,11 +43,13 @@ impl IOContext {
         domain: SocketDomain,
         typ: SocketType,
         protocol: i32,
-    ) -> Fd {
-        assert!(
-            Self::POSIX_ALLOWED_COMBI.contains(&(domain, typ)),
-            "Invalid parameter combination"
-        );
+    ) -> Result<Fd> {
+        if !Self::POSIX_ALLOWED_COMBI.contains(&(domain, typ)) {
+            return Err(Error::new(
+                ErrorKind::Unsupported,
+                "socket type is not supported in this domain",
+            ));
+        }
 
         let fd = self.create_fd();
         let socket = Socket {
@@ -114,7 +70,7 @@ impl IOContext {
             protocol
         );
         self.sockets.insert(fd, socket);
-        fd
+        Ok(fd)
     }
 
     pub(super) fn bsd_dup_socket(&mut self, fd: Fd) -> Result<Fd> {
@@ -125,14 +81,28 @@ impl IOContext {
         let mut new = socket.clone();
         let new_fd = self.create_fd();
         new.fd = new_fd;
+        inet_trace!(
+            "socket::create '0x{:x} {:?}/{:?}/{} from '0x{:x}",
+            new_fd,
+            new.domain,
+            new.typ,
+            new.protocol,
+            fd
+        );
+
         self.sockets.insert(new_fd, new);
 
         Ok(new_fd)
     }
 
-    pub(super) fn bsd_close_socket(&mut self, fd: Fd) {
-        inet_trace!("socket::drop '0x{:x}", fd);
-        self.sockets.remove(&fd);
+    pub(super) fn bsd_close_socket(&mut self, fd: Fd) -> Result<()> {
+        inet_trace!("socket::close '0x{:x}", fd);
+        let socket = self.sockets.remove(&fd);
+        if socket.is_some() {
+            Ok(())
+        } else {
+            Err(Error::new(ErrorKind::InvalidInput, "invalid fd"))
+        }
     }
 
     pub(super) fn bsd_bind_socket(&mut self, fd: Fd, addr: SocketAddr) -> Result<SocketAddr> {
@@ -364,9 +334,4 @@ impl IOContext {
 
         Ok(Some(interface.name.clone()))
     }
-}
-
-#[doc(hidden)]
-pub fn bsd_socket_info(fd: Fd) -> Option<Socket> {
-    IOContext::with_current(|ctx| ctx.sockets.get(&fd).cloned())
 }

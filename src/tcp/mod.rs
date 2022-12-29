@@ -30,10 +30,10 @@ pub use debug::*;
 
 use crate::{
     ip::{IpPacket, IpPacketRef, Ipv4Packet, IpVersion,Ipv4Flags, Ipv6Packet},
-    FromBytestream, IntoBytestream,
+    FromBytestream, IntoBytestream, bsd::Fd,
 };
 
-use super::{Fd, IOContext, KIND_IO_TIMEOUT};
+use super::{IOContext, KIND_IO_TIMEOUT};
 
 pub(super) const PROTO_TCP: u8 = 0x06;
 
@@ -77,6 +77,7 @@ pub(crate) struct TcpController {
     fd: Fd,
     inital_seq_no: u32,
     mtu: u32,
+    ttl: u8,
 
     // # Metrics
     sender_send_bytes: usize,
@@ -87,7 +88,15 @@ pub(crate) struct TcpController {
 }
 
 impl TcpController {
-    pub fn new(fd: Fd, addr: SocketAddr) -> Self {
+    pub fn new(fd: Fd, addr: SocketAddr, config: TcpSocketConfig) -> Self {
+        inet_trace!(
+            "tcp::create '0x{:x} with buffers {} (sender) {} (recv) at seq_no {} at ttl {}",
+            fd,
+            config.send_buffer_size,
+            config.recv_buffer_size,
+            config.inital_seq_no,
+            config.ttl,
+        );
         Self {
             state: TcpState::Closed,
             dropped: false,
@@ -96,7 +105,7 @@ impl TcpController {
 
             syn_resend_counter: 0,
 
-            sender_buffer: TcpBuffer::new(2048, 0),
+            sender_buffer: TcpBuffer::new(config.send_buffer_size as usize, 0),
             sender_segments: VecDeque::new(),
             sender_queue: VecDeque::new(),
             sender_last_ack_seq_no: 0,
@@ -105,7 +114,7 @@ impl TcpController {
             sender_max_send_seq_no: 0,
             sender_write_interests: Vec::new(),
 
-            receiver_buffer: TcpBuffer::new(2048, 0),
+            receiver_buffer: TcpBuffer::new(config.send_buffer_size as usize, 0),
             receiver_last_recv_seq_no: 0,
             receiver_valid_slices: VecDeque::new(),
             receiver_read_interests: Vec::new(),
@@ -119,8 +128,9 @@ impl TcpController {
             timewait: Duration::from_secs(1),
             timer: 0,
             fd,
-            inital_seq_no: 100,
-            mtu: 1024,
+            inital_seq_no: config.inital_seq_no,
+            mtu: config.maximum_segment_size,
+            ttl: config.ttl as u8,
 
             sender_send_bytes: 0,
             sender_ack_bytes: 0,

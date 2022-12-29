@@ -1,10 +1,11 @@
 use tokio::io::{Interest, Ready};
 
 use crate::{
+    bsd::Fd,
     dns::{lookup_host, ToSocketAddrs},
     interface::InterfaceName,
     udp::UDPPacket,
-    Fd, IOContext,
+    IOContext,
 };
 use std::{
     io::{Error, ErrorKind, Result},

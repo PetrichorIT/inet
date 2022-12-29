@@ -1,13 +1,14 @@
 use super::TcpSocketConfig;
 use crate::{
+    bsd::*,
+    bsd::*,
     dns::{lookup_host, ToSocketAddrs},
-    socket::*,
     tcp::{
         interest::{TcpInterest, TcpInterestGuard},
         types::{TcpEvent, TcpState, TcpSyscall},
         TcpController,
     },
-    AsRawFd, Fd, FromRawFd, IOContext, IntoRawFd,
+    IOContext,
 };
 use std::{
     io::{Error, ErrorKind, Result},
@@ -51,11 +52,8 @@ impl TcpStream {
         let mut last_err = None;
 
         for peer in addrs {
-            let this = IOContext::with_current(|ctx| {
-                let stream = ctx.tcp_create_socket(peer, None)?;
-                ctx.tcp_connect_socket(stream.inner.fd, peer)?;
-                Ok::<TcpStream, Error>(stream)
-            })?;
+            let this =
+                IOContext::with_current(|ctx| ctx.tcp_create_and_connect_socket(peer, None, None))?;
 
             loop {
                 // Initiate connect by sending a message (better repeat)
@@ -252,39 +250,77 @@ impl FromRawFd for TcpStream {
 }
 
 impl IOContext {
-    pub(super) fn tcp_create_socket(
+    pub(super) fn tcp_create_and_connect_socket(
         &mut self,
         peer: SocketAddr,
         config: Option<TcpSocketConfig>,
+        fd: Option<Fd>,
     ) -> Result<TcpStream> {
-        let domain = if peer.is_ipv4() {
-            SocketDomain::AF_INET
+        let (fd, config) = if let Some(fd) = fd {
+            (fd, config.unwrap())
         } else {
-            SocketDomain::AF_INET6
-        };
-        let unspecified = if peer.is_ipv4() {
-            SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0))
-        } else {
-            SocketAddr::V6(SocketAddrV6::new(Ipv6Addr::UNSPECIFIED, 0, 0, 0))
+            let domain = if peer.is_ipv4() {
+                SocketDomain::AF_INET
+            } else {
+                SocketDomain::AF_INET6
+            };
+            let unspecified = if peer.is_ipv4() {
+                SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0))
+            } else {
+                SocketAddr::V6(SocketAddrV6::new(Ipv6Addr::UNSPECIFIED, 0, 0, 0))
+            };
+
+            let fd = self.bsd_create_socket(domain, SocketType::SOCK_STREAM, 0)?;
+            let addr = self.bsd_bind_socket(fd, unspecified)?;
+
+            let config = config.unwrap_or(TcpSocketConfig::listener(addr));
+            (fd, config)
         };
 
-        let fd = self.bsd_create_socket(domain, SocketType::SOCK_STREAM, 0);
-        self.bsd_bind_socket(fd, unspecified)?;
         self.bsd_bind_peer(fd, peer);
+        let mut ctrl = TcpController::new(fd, self.bsd_get_socket_addr(fd)?, config);
+        self.process_state_closed(&mut ctrl, TcpEvent::SysOpen(peer));
+
+        self.tcp_manager.insert(fd, ctrl);
 
         Ok(TcpStream {
             inner: Arc::new(TcpStreamInner { fd }),
         })
     }
 
-    pub(super) fn tcp_connect_socket(&mut self, fd: Fd, peer: SocketAddr) -> Result<()> {
-        let mut ctrl = TcpController::new(fd, self.bsd_get_socket_addr(fd)?);
-        self.process_state_closed(&mut ctrl, TcpEvent::SysOpen(peer));
+    // pub(super) fn tcp_create_socket(
+    //     &mut self,
+    //     peer: SocketAddr,
+    //     config: Option<TcpSocketConfig>,
+    // ) -> Result<TcpStream> {
+    //     let domain = if peer.is_ipv4() {
+    //         SocketDomain::AF_INET
+    //     } else {
+    //         SocketDomain::AF_INET6
+    //     };
+    //     let unspecified = if peer.is_ipv4() {
+    //         SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0))
+    //     } else {
+    //         SocketAddr::V6(SocketAddrV6::new(Ipv6Addr::UNSPECIFIED, 0, 0, 0))
+    //     };
 
-        self.tcp_manager.insert(fd, ctrl);
+    //     let fd = self.bsd_create_socket(domain, SocketType::SOCK_STREAM, 0)?;
+    //     self.bsd_bind_socket(fd, unspecified)?;
+    //     self.bsd_bind_peer(fd, peer);
 
-        Ok(())
-    }
+    //     Ok(TcpStream {
+    //         inner: Arc::new(TcpStreamInner { fd }),
+    //     })
+    // }
+
+    // pub(super) fn tcp_connect_socket(&mut self, fd: Fd, peer: SocketAddr) -> Result<()> {
+    //     let mut ctrl = TcpController::new(fd, self.bsd_get_socket_addr(fd)?);
+    //     self.process_state_closed(&mut ctrl, TcpEvent::SysOpen(peer));
+
+    //     self.tcp_manager.insert(fd, ctrl);
+
+    //     Ok(())
+    // }
 
     pub(super) fn tcp_connected(&mut self, fd: Fd) -> Result<bool> {
         let Some(tcp) = self.tcp_manager.get(&fd) else {

@@ -1,7 +1,10 @@
 //! Network interfaces and devices.
 
-use super::{Fd, IOContext};
-use crate::ip::{IpPacket, IpVersion};
+use super::IOContext;
+use crate::{
+    bsd::Fd,
+    ip::{IpPacket, IpVersion},
+};
 use des::prelude::{schedule_at, GateRef, Message, MessageKind, SimTime};
 use std::{
     fmt::{self, Display},

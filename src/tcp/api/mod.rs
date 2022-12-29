@@ -25,6 +25,8 @@ pub(crate) struct TcpSocketConfig {
     pub(super) nodelay: bool,
 
     pub(super) ttl: u32,
+    pub(super) inital_seq_no: u32,
+    pub(super) maximum_segment_size: u32,
 }
 
 impl TcpSocketConfig {
@@ -43,6 +45,8 @@ impl TcpSocketConfig {
             nodelay: true,
 
             ttl: 64,
+            inital_seq_no: 100,
+            maximum_segment_size: 1024,
         }
     }
 
@@ -61,6 +65,8 @@ impl TcpSocketConfig {
             nodelay: true,
 
             ttl: 64,
+            inital_seq_no: 100,
+            maximum_segment_size: 1024,
         }
     }
 
@@ -79,6 +85,8 @@ impl TcpSocketConfig {
             nodelay: true,
 
             ttl: 64,
+            inital_seq_no: 100,
+            maximum_segment_size: 1024,
         }
     }
 
@@ -97,6 +105,8 @@ impl TcpSocketConfig {
             nodelay: true,
 
             ttl: 64,
+            inital_seq_no: 100,
+            maximum_segment_size: 1024,
         }
     }
 
@@ -115,6 +125,8 @@ impl TcpSocketConfig {
             nodelay: true,
 
             ttl: 64,
+            inital_seq_no: 100,
+            maximum_segment_size: 1024,
         }
     }
 }

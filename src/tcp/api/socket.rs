@@ -1,14 +1,15 @@
 use super::{TcpListener, TcpSocketConfig, TcpStream, TcpStreamInner};
+use crate::bsd::{Fd, SocketDomain, SocketType};
 use crate::dns::lookup_host;
-use crate::socket::{SocketDomain, SocketType};
 use crate::tcp::interest::TcpInterest;
-use crate::{Fd, IOContext};
+use crate::IOContext;
 use std::cell::RefCell;
 use std::io::{Error, ErrorKind, Result};
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 
+/// A TCP socket that has not yet been converted to a TcpStream or TcpListener.
 #[derive(Debug)]
 pub struct TcpSocket {
     fd: Fd,
@@ -22,7 +23,7 @@ impl TcpSocket {
             config: RefCell::new(TcpSocketConfig::socket_v4()),
             fd: IOContext::with_current(|ctx| {
                 ctx.bsd_create_socket(SocketDomain::AF_INET, SocketType::SOCK_STREAM, 0)
-            }),
+            })?,
         })
     }
 
@@ -32,8 +33,30 @@ impl TcpSocket {
             config: RefCell::new(TcpSocketConfig::socket_v6()),
             fd: IOContext::with_current(|ctx| {
                 ctx.bsd_create_socket(SocketDomain::AF_INET6, SocketType::SOCK_STREAM, 0)
-            }),
+            })?,
         })
+    }
+
+    /// Sets the inital sequence number.
+    pub fn set_maximum_segement_size(&self, maximum_segment_size: u32) -> Result<()> {
+        self.config.borrow_mut().maximum_segment_size = maximum_segment_size;
+        Ok(())
+    }
+
+    /// Gets the inital sequence number.
+    pub fn maximum_segement_size(&self) -> Result<u32> {
+        Ok(self.config.borrow().maximum_segment_size)
+    }
+
+    /// Sets the inital sequence number.
+    pub fn set_inital_seq_no(&self, seq_no: u32) -> Result<()> {
+        self.config.borrow_mut().inital_seq_no = seq_no;
+        Ok(())
+    }
+
+    /// Gets the inital sequence number.
+    pub fn inital_seq_no(&self) -> Result<u32> {
+        Ok(self.config.borrow().inital_seq_no)
     }
 
     /// Allows the socket to bind to an in-use address.
@@ -154,13 +177,19 @@ impl TcpSocket {
     /// Refer to the target platform’s documentation for more details.
     pub async fn connect(mut self, peer: SocketAddr) -> Result<TcpStream> {
         let this = IOContext::with_current(|ctx| {
-            // ctx.tcp_bind_stream(peer, Some(self.config.into_inner()))
-            ctx.bsd_bind_peer(self.fd, peer)?;
-            ctx.tcp_connect_socket(self.fd, peer)?;
-            self.fd = 0;
-            Ok::<TcpStream, Error>(TcpStream {
-                inner: Arc::new(TcpStreamInner { fd: self.fd }),
-            })
+            ctx.tcp_create_and_connect_socket(
+                peer,
+                Some(self.config.borrow().clone()),
+                Some(self.fd),
+            )
+
+            // // // ctx.tcp_bind_stream(peer, Some(self.config.into_inner()))
+            // // ctx.bsd_bind_peer(self.fd, peer)?;
+            // // ctx.tcp_connect_socket(self.fd, peer)?;
+            // // self.fd = 0;
+            // Ok::<TcpStream, Error>(TcpStream {
+            //     inner: Arc::new(TcpStreamInner { fd: self.fd }),
+            // })
         })?;
 
         loop {

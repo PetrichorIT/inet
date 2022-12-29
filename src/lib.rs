@@ -11,8 +11,8 @@ pub mod dns;
 pub mod ip;
 pub mod routing;
 
+pub mod bsd;
 pub mod interface;
-pub mod socket;
 
 mod udp;
 pub use udp::*;
@@ -22,9 +22,6 @@ pub use tcp::api::{TcpListener, TcpStream};
 
 mod plugin;
 pub use plugin::*;
-
-mod fd;
-pub use fd::*;
 
 mod ctx;
 pub use ctx::*;
