@@ -38,13 +38,13 @@ impl TcpSocket {
     }
 
     /// Sets the inital sequence number.
-    pub fn set_maximum_segement_size(&self, maximum_segment_size: u32) -> Result<()> {
+    pub fn set_maximum_segement_size(&self, maximum_segment_size: u16) -> Result<()> {
         self.config.borrow_mut().maximum_segment_size = maximum_segment_size;
         Ok(())
     }
 
     /// Gets the inital sequence number.
-    pub fn maximum_segement_size(&self) -> Result<u32> {
+    pub fn maximum_segement_size(&self) -> Result<u16> {
         Ok(self.config.borrow().maximum_segment_size)
     }
 

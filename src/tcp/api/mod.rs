@@ -26,7 +26,7 @@ pub(crate) struct TcpSocketConfig {
 
     pub(super) ttl: u32,
     pub(super) inital_seq_no: u32,
-    pub(super) maximum_segment_size: u32,
+    pub(super) maximum_segment_size: u16,
 }
 
 impl TcpSocketConfig {

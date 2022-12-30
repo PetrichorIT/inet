@@ -76,7 +76,7 @@ pub(crate) struct TcpController {
     timer: u16,
     fd: Fd,
     inital_seq_no: u32,
-    mtu: u32,
+    mtu: u16,
     ttl: u8,
 
     // # Metrics
@@ -372,6 +372,7 @@ impl IOContext {
                 ctrl.sender_max_send_seq_no = ctrl.sender_next_send_seq_no;
 
                 let mut pkt = ctrl.create_packet(TcpPacketId::Syn, ctrl.sender_next_send_seq_no, 0);
+                pkt.options = ctrl.syn_options();
                 ctrl.sender_next_send_seq_no += 1;
 
                 pkt.window = 1;
@@ -407,6 +408,7 @@ impl IOContext {
 
                 ctrl.sender_next_send_buffer_seq_no = ctrl.sender_next_send_seq_no + 1; 
                 ctrl.sender_max_send_seq_no = ctrl.sender_next_send_seq_no + syn.window as u32;
+                ctrl.apply_syn_options(&syn.options);
 
                 inet_trace!("tcp::listen '0x{:x} window size: {}", ctrl.fd, syn.window);
 
@@ -415,6 +417,7 @@ impl IOContext {
                     ctrl.sender_next_send_seq_no,
                     ctrl.receiver_last_recv_seq_no + 1,
                 );
+                pkt.options = ctrl.syn_options();
                 pkt.window = 1;
                 ctrl.sender_next_send_seq_no += 1;
 
@@ -446,12 +449,13 @@ impl IOContext {
             TcpEvent::Syn((src, dest, pkt)) => {
                 ctrl.receiver_last_recv_seq_no = pkt.seq_no;
                 ctrl.receiver_buffer.fwd_to_seq_no(pkt.seq_no + 1);
+                ctrl.apply_syn_options(&pkt.options);
 
                 if pkt.flags.ack {
                     ctrl.sender_last_ack_seq_no = pkt.ack_no;
                     ctrl.sender_next_send_buffer_seq_no = ctrl.sender_next_send_seq_no;
                     ctrl.sender_max_send_seq_no =
-                        ctrl.sender_last_ack_seq_no + (pkt.window as u32 * ctrl.mtu); // ?
+                        ctrl.sender_last_ack_seq_no + (pkt.window as u32 * ctrl.mtu as u32); // ?
 
                     self.send_ack(ctrl, ctrl.receiver_last_recv_seq_no + 1, ctrl.recv_window());
 
@@ -474,7 +478,7 @@ impl IOContext {
 
                     self.send_ack(ctrl, ctrl.receiver_last_recv_seq_no + 1, ctrl.recv_window());
                     ctrl.sender_max_send_seq_no =
-                        ctrl.sender_last_ack_seq_no + (pkt.window as u32 * ctrl.mtu);
+                        ctrl.sender_last_ack_seq_no + (pkt.window as u32 * ctrl.mtu as u32);
                     ctrl.state = TcpState::SynRcvd;
                 }
             }
@@ -513,7 +517,7 @@ impl IOContext {
                 if ctrl.sender_last_ack_seq_no - 1 + pkt.window as u32 > ctrl.sender_max_send_seq_no
                 {
                     ctrl.sender_max_send_seq_no =
-                        ctrl.sender_last_ack_seq_no + (pkt.window as u32 * ctrl.mtu);
+                        ctrl.sender_last_ack_seq_no + (pkt.window as u32 * ctrl.mtu as u32);
                 }
 
                 ctrl.cancel_timer();
@@ -538,7 +542,7 @@ impl IOContext {
                 if ctrl.sender_last_ack_seq_no - 1 + pkt.window as u32 > ctrl.sender_max_send_seq_no
                 {
                     ctrl.sender_max_send_seq_no =
-                        ctrl.sender_last_ack_seq_no + (pkt.window as u32 * ctrl.mtu);
+                        ctrl.sender_last_ack_seq_no + (pkt.window as u32 * ctrl.mtu as u32);
                 }
 
                 ctrl.cancel_timer();
@@ -870,7 +874,7 @@ impl IOContext {
                 ctrl.sender_write_interests.drain(..).for_each(|g| g.wake())
             }
 
-            ctrl.sender_max_send_seq_no = ctrl.sender_last_ack_seq_no + (pkt.window as u32 * ctrl.mtu);  
+            ctrl.sender_max_send_seq_no = ctrl.sender_last_ack_seq_no + (pkt.window as u32 * ctrl.mtu as u32);  
             self.do_sending(ctrl);
         }
 
@@ -951,6 +955,7 @@ impl IOContext {
                 flags: TcpFlags::new().ack(true),
                 window: ctrl.recv_window(),
                 urgent_ptr: 0,
+                options: Vec::new(),
                 content: buf,
             };
          
@@ -1180,7 +1185,21 @@ impl TcpController {
                 .fin(fin),
             window: 0,
             urgent_ptr:0,
+            options: Vec::new(),
             content: Vec::new()
+        }
+    }
+
+    fn syn_options(&self) -> Vec<TcpOption> {
+        vec![
+            TcpOption::MaximumSegmentSize(self.mtu),
+            TcpOption::EndOfOptionsList()
+        ]
+    }
+
+    fn apply_syn_options(&mut self, options: &[TcpOption]) {
+        if let Some(mss) = options.iter().find_map(|v| if let TcpOption::MaximumSegmentSize(mss) = v { Some(mss) } else { None }) {
+            self.mtu = self.mtu.min(*mss);
         }
     }
 
@@ -1235,8 +1254,6 @@ impl TcpController {
         self.congestion_window = 1;
         self.congestion_avoid_counter = 0;
     }
-
-  
 
     pub fn current_state_print(&self) {
         inet_trace!(
