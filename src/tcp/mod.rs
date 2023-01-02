@@ -375,7 +375,7 @@ impl IOContext {
                 pkt.options = ctrl.syn_options();
                 ctrl.sender_next_send_seq_no += 1;
 
-                pkt.window = 1;
+                pkt.window = ctrl.recv_window();
 
                 inet_trace!("tcp::closed '0x{:x} Sending SYN {{ seq_no: {} }}", ctrl.fd, pkt.seq_no);
                 self.tcp_send_packet(
@@ -418,7 +418,7 @@ impl IOContext {
                     ctrl.receiver_last_recv_seq_no + 1,
                 );
                 pkt.options = ctrl.syn_options();
-                pkt.window = 1;
+                pkt.window = ctrl.recv_window();
                 ctrl.sender_next_send_seq_no += 1;
 
                 inet_trace!(
@@ -455,7 +455,7 @@ impl IOContext {
                     ctrl.sender_last_ack_seq_no = pkt.ack_no;
                     ctrl.sender_next_send_buffer_seq_no = ctrl.sender_next_send_seq_no;
                     ctrl.sender_max_send_seq_no =
-                        ctrl.sender_last_ack_seq_no + (pkt.window as u32 * ctrl.mtu as u32); // ?
+                        pkt.ack_no + pkt.window as u32; // 
 
                     self.send_ack(ctrl, ctrl.receiver_last_recv_seq_no + 1, ctrl.recv_window());
 
@@ -478,7 +478,7 @@ impl IOContext {
 
                     self.send_ack(ctrl, ctrl.receiver_last_recv_seq_no + 1, ctrl.recv_window());
                     ctrl.sender_max_send_seq_no =
-                        ctrl.sender_last_ack_seq_no + (pkt.window as u32 * ctrl.mtu as u32);
+                        ctrl.sender_last_ack_seq_no + pkt.window as u32;
                     ctrl.state = TcpState::SynRcvd;
                 }
             }
@@ -517,7 +517,7 @@ impl IOContext {
                 if ctrl.sender_last_ack_seq_no - 1 + pkt.window as u32 > ctrl.sender_max_send_seq_no
                 {
                     ctrl.sender_max_send_seq_no =
-                        ctrl.sender_last_ack_seq_no + (pkt.window as u32 * ctrl.mtu as u32);
+                        pkt.ack_no + pkt.window as u32;
                 }
 
                 ctrl.cancel_timer();
@@ -542,7 +542,7 @@ impl IOContext {
                 if ctrl.sender_last_ack_seq_no - 1 + pkt.window as u32 > ctrl.sender_max_send_seq_no
                 {
                     ctrl.sender_max_send_seq_no =
-                        ctrl.sender_last_ack_seq_no + (pkt.window as u32 * ctrl.mtu as u32);
+                        pkt.ack_no + pkt.window as u32;
                 }
 
                 ctrl.cancel_timer();
@@ -566,7 +566,7 @@ impl IOContext {
                     ctrl.sender_next_send_seq_no - 1,
                     ctrl.receiver_last_recv_seq_no + 1,
                 );
-                pkt.window = 1;
+                pkt.window = ctrl.recv_window();
 
                 inet_trace!(
                     "tcp::synrecv '0x{:x} Re-Sending SYNACK {{ seq_no: {}, ack_no: {} }}",
@@ -874,7 +874,7 @@ impl IOContext {
                 ctrl.sender_write_interests.drain(..).for_each(|g| g.wake())
             }
 
-            ctrl.sender_max_send_seq_no = ctrl.sender_last_ack_seq_no + (pkt.window as u32 * ctrl.mtu as u32);  
+            ctrl.sender_max_send_seq_no = pkt.ack_no + pkt.window as u32;  
             self.do_sending(ctrl);
         }
 
@@ -1225,7 +1225,7 @@ impl TcpController {
     }
 
     fn recv_window(&self) -> u16 {
-        self.receiver_buffer.rem().div_ceil(self.mtu as usize) as u16
+        self.receiver_buffer.rem() as u16
         // (self.receiver_buffer.cap() - self.receiver_buffer.len()) as u16
     }
 
