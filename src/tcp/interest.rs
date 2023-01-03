@@ -105,7 +105,7 @@ impl Future for TcpInterest {
                     )));
                 };
 
-                if handle.tcp_recv_valid_slice_len() > 0 {
+                if handle.receiver_buffer.state.valid_slice_len() > 0 {
                     Poll::Ready(Ok(Ready::READABLE))
                 } else {
                     if handle.no_more_data_closed() {

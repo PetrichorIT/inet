@@ -157,9 +157,11 @@ impl TcpSocket {
     /// This calls the bind(2) operating-system function.
     /// Behavior is platform specific. Refer to the target platform’s documentation for more details.
     pub fn bind(&self, addr: SocketAddr) -> Result<()> {
-        if self.local_addr()?.is_ipv4() != addr.ip().is_ipv4() {
+        let brw = self.config.borrow();
+        if brw.addr.is_ipv4() != addr.ip().is_ipv4() {
             return Err(Error::new(ErrorKind::Other, "Expected other ip typ"));
         }
+        drop(brw);
 
         let addr = IOContext::with_current(|ctx| ctx.bsd_bind_socket(self.fd, addr))?;
         self.config.borrow_mut().addr = addr;
@@ -176,12 +178,10 @@ impl TcpSocket {
     /// Behavior is platform specific.
     /// Refer to the target platform’s documentation for more details.
     pub async fn connect(mut self, peer: SocketAddr) -> Result<TcpStream> {
+        let fd = self.fd;
+        self.fd = 0;
         let this = IOContext::with_current(|ctx| {
-            ctx.tcp_create_and_connect_socket(
-                peer,
-                Some(self.config.borrow().clone()),
-                Some(self.fd),
-            )
+            ctx.tcp_create_and_connect_socket(peer, Some(self.config.borrow().clone()), Some(fd))
 
             // // // ctx.tcp_bind_stream(peer, Some(self.config.into_inner()))
             // // ctx.bsd_bind_peer(self.fd, peer)?;
@@ -215,11 +215,12 @@ impl TcpSocket {
     /// Refer to the target platform’s documentation for more details.
     pub fn listen(mut self, backlog: u32) -> Result<TcpListener> {
         self.config.borrow_mut().listen_backlog = backlog;
-        IOContext::with_current(|ctx| {
-            let fd = Some(self.fd);
-            self.fd = 0;
+        let local_addr = self.local_addr()?;
 
-            ctx.tcp_bind_listener(self.local_addr()?, Some(self.config.borrow().clone()), fd)
+        let fd = Some(self.fd);
+        self.fd = 0;
+        IOContext::with_current(|ctx| {
+            ctx.tcp_bind_listener(local_addr, Some(self.config.borrow().clone()), fd)
         })
     }
 
@@ -233,7 +234,6 @@ impl TcpSocket {
 
 impl Drop for TcpSocket {
     fn drop(&mut self) {
-        log::trace!("Dropping socket");
         if self.fd != 0 {
             IOContext::try_with_current(|ctx| ctx.bsd_close_socket(self.fd));
         }

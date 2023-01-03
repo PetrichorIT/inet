@@ -61,7 +61,6 @@ pub(crate) struct TcpController {
     // # Recv buffer
     receiver_buffer: TcpBuffer,
     receiver_last_recv_seq_no: u32,
-    receiver_valid_slices: VecDeque<(u32, u32)>, // seq_no,len
     receiver_read_interests: Vec<TcpInterestGuard>,
 
     // # Congestions
@@ -116,7 +115,6 @@ impl TcpController {
 
             receiver_buffer: TcpBuffer::new(config.send_buffer_size as usize, 0),
             receiver_last_recv_seq_no: 0,
-            receiver_valid_slices: VecDeque::new(),
             receiver_read_interests: Vec::new(),
 
             congestion_ctrl: false,
@@ -832,6 +830,7 @@ impl IOContext {
             pkt.content.len()
         );
 
+        // (A) Handle acknowledgement information
         if pkt.flags.ack {
             // let buf_full = self.send_queue == self.send_buffer.size();
             let buf_full = ctrl.sender_buffer.rem() == 0;
@@ -878,36 +877,36 @@ impl IOContext {
             self.do_sending(ctrl);
         }
 
+        // (B) Handle data part
         if !pkt.content.is_empty() {
             inet_trace!("tcp::data '0x{:x} {{DATA}} Got Packet {{ seq_no: {} }}", ctrl.fd, pkt.seq_no);
-
             ctrl.receiver_buffer.state();
 
-            // if permit sched, remove
-            // TODO
+            // (0) Capture the length of the readable slice before the incoming packet
+            let prev = ctrl.receiver_buffer.state.valid_slice_len();
+
+            // (1) Insert the packet into the receiver_buffer
             let n = ctrl.receiver_buffer.write_to(&pkt.content, pkt.seq_no);
-
-            let prev = ctrl.tcp_recv_valid_slice_len();
-
-            let slice  = (pkt.seq_no, pkt.content.len() as u32);
-            match ctrl.receiver_valid_slices.binary_search_by(|e| e.0.cmp(&pkt.seq_no)) {
-                Ok(n) | Err(n) => ctrl.receiver_valid_slices.insert(n, slice)
-            };
             ctrl.receiver_last_recv_seq_no = pkt.seq_no + pkt.content.len() as u32;
             
-            let next = ctrl.tcp_recv_valid_slice_len();
+            // TODO: 
+            assert_eq!(n, pkt.content.len(), "Could not write received packet into buffer");
+
+            // (2) If the readable slice has increased, new read interest may be fulfilled
+            // so wake up corresponding guards. 
+            let next = ctrl.receiver_buffer.state.valid_slice_len();
             if next > prev {
-                ctrl.receiver_read_interests.drain(..).for_each(|g| g.wake())
+                ctrl.receiver_read_interests.drain(..).for_each(|g| g.wake());
             }
 
+            // (3) Acknowledge the data that was send 
             self.send_ack(
                 ctrl, 
-                ctrl.receiver_last_recv_seq_no , 
+                ctrl.receiver_last_recv_seq_no, 
                 ctrl.recv_window()
             );
 
-            ctrl.receiver_buffer.state();
-            
+            ctrl.receiver_buffer.state();            
         }
     }
 
@@ -928,11 +927,10 @@ impl IOContext {
 
         // Try sending data as long as:
         // a) Data is allowed to be send according to the minimal window
-        // b) There is data to send
+        // b) There is data to send in the sender_buffer
         
-        while ctrl.sender_next_send_seq_no <= max_seq_no
+        while ctrl.sender_next_send_seq_no < max_seq_no
             && ctrl.sender_next_send_seq_no < ctrl.sender_next_send_buffer_seq_no
-        // TODO
         {
             // send buffer set timeout
             // reschedule timer
@@ -941,12 +939,16 @@ impl IOContext {
 
             ctrl.set_data_timer();
 
-            let mut buf = vec![0u8; 1024];
+            // (0) Only send fragments within the remaining window and mtu limitiations
+            let size = (ctrl.mtu as usize).min((max_seq_no - ctrl.sender_next_send_seq_no) as usize);
+            let mut buf = vec![0u8; size];
+
+            // (1) Peek the data from the sender_buffer (n = size)
             let n = ctrl.sender_buffer.peek_at(&mut buf,  ctrl.sender_next_send_seq_no);
             buf.truncate(n);
-           inet_trace!("sending {} bytes (seq_no: {} max {})", n, ctrl.sender_next_send_seq_no, ctrl.sender_max_send_seq_no);
+            inet_trace!("sending {} bytes (seq_no: {} max {})", n, ctrl.sender_next_send_seq_no, ctrl.sender_max_send_seq_no);
 
-
+            // (2) Create a TCPData packet with the data embedded.
             let tcp = TcpPacket {
                 src_port: ctrl.local_addr.port(),
                 dest_port: ctrl.peer_addr.port(),
@@ -959,11 +961,13 @@ impl IOContext {
                 content: buf,
             };
          
+            // (3) Forward the packet to the socket output.
             self.tcp_send_packet(
                 ctrl, 
                 ctrl.ip_packet_for(tcp)
             );
 
+            // (4) Increment the sequence number on success
             ctrl.sender_next_send_seq_no += n as u32;
         }
     }
@@ -1003,10 +1007,13 @@ impl IOContext {
             return Err(Error::new(ErrorKind::InvalidInput, "invalid fd - socket dropped"))
         };
 
-        // (1) Check for the availabe valid slice
-        let max = ctrl.tcp_recv_valid_slice_len().min(buf.len());
+        // (1) Check for need for window updates.
         let was_full = ctrl.receiver_buffer.len() == ctrl.receiver_buffer.cap();
-        let n = ctrl.receiver_buffer.read(&mut buf[..max]);
+
+        // (2) This read operation will only read (and consume)
+        // valid bytes according to the buffers state. The state
+        // will be updated
+        let n = ctrl.receiver_buffer.read(buf);
         if n == 0 {
             let nmd = ctrl.no_more_data_closed();
             self.tcp_manager.insert(fd, ctrl);
@@ -1017,11 +1024,10 @@ impl IOContext {
             }     
         }
 
-        ctrl.drop_valid_slices_for(n);
-
         if was_full {
             log::debug!("reinitiating send process since receive buffer is no longer full");
             let window = ctrl.recv_window();
+            log::debug!("WIN: {}", window);
             let ack_no = ctrl.receiver_last_recv_seq_no ;
             self.send_ack(&mut ctrl, ack_no , window);
         }
@@ -1039,9 +1045,8 @@ impl IOContext {
             return Err(Error::new(ErrorKind::InvalidInput, "invalid fd - socket dropped"))
         };
 
-        // (1) Check for the availabe valid slice
-        let max = ctrl.tcp_recv_valid_slice_len().min(buf.len());
-        let n = ctrl.receiver_buffer.peek(&mut buf[..max]);
+        // (1) This peek will only be into valid slice memory
+        let n = ctrl.receiver_buffer.peek(&mut buf[..]);
         if n == 0 {
             self.tcp_manager.insert(fd, ctrl);
             return Err(Error::new(ErrorKind::WouldBlock, "recv buffer empty - would block"))
@@ -1051,24 +1056,6 @@ impl IOContext {
 
         Ok(n)
     }
-
-
-    // pub fn send_data(&mut self, ctrl: &mut TcpController, pkt: &[u8], nowin: bool) -> usize {
-    //     // TODO:
-    //     let n = ctrl.sender_buffer.write(pkt);
-    //     ctrl.sender_next_send_buffer_seq_no += n as u32;
-    //     self.do_sending(ctrl);
-    //     n
-    // }
-
-    // pub fn read_data(&mut self, ctrl: &mut TcpController, buf: &mut [u8]) -> usize {
-    //     let n = ctrl
-    //         .receiver_buffer
-    //         .peek_at(buf, ctrl.receiver_buffer.tail_seq_no);
-    //     ctrl.receiver_buffer.free(n);
-    //     n
-    // }
-
 
     fn handle_data_timeout(&mut self, ctrl: &mut TcpController) {
         inet_trace!("tcp::data '0x{:x} TIMEOUT", ctrl.fd);
@@ -1102,32 +1089,6 @@ impl IOContext {
 impl TcpController {
     fn no_more_data_closed(&self) -> bool {
         matches!(self.state, TcpState::CloseWait | TcpState::LastAck | TcpState::Closed | TcpState::Closing | TcpState::TimeWait)
-    }
-
-    fn tcp_recv_valid_slice_len(&self) -> usize {
-        let mut seq_no = self.receiver_buffer.tail_seq_no;
-        for slice in self.receiver_valid_slices.iter() {
-            if seq_no != slice.0 {
-                break
-            }
-            seq_no += slice.1;
-        }
-        (seq_no - self.receiver_buffer.tail_seq_no) as usize
-    }
-
-    fn drop_valid_slices_for(&mut self, n: usize) {
-        let mut n = n as u32;
-        while n > 0 {
-            let (seq_no, len) = self.receiver_valid_slices.pop_front().unwrap();
-            if n > len {
-                n -= len;
-            } else {
-                if n != len {
-                    self.receiver_valid_slices.push_front((seq_no + n, len - n));  
-                }
-                return
-            }   
-        }
     }
 
     fn ip_packet_for(&self, tcp: TcpPacket) -> IpPacket {

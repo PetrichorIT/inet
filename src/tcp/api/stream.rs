@@ -12,7 +12,7 @@ use crate::{
 };
 use std::{
     io::{Error, ErrorKind, Result},
-    net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
+    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
     pin::Pin,
     sync::Arc,
     task::{Context, Poll},
@@ -257,6 +257,29 @@ impl IOContext {
         fd: Option<Fd>,
     ) -> Result<TcpStream> {
         let (fd, config) = if let Some(fd) = fd {
+            // check whether socket was bound.
+            let Some(socket) = self.sockets.get(&fd) else {
+                return Err(Error::new(
+                    ErrorKind::InvalidInput,
+                    "invalid fd - socket dropped"
+                ))
+            };
+
+            let socket_bound = socket.interface != 0;
+            if !socket_bound {
+                let sock_typ = socket.domain;
+                let unspecified = match sock_typ {
+                    SocketDomain::AF_INET => {
+                        SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 0)
+                    }
+                    SocketDomain::AF_INET6 => {
+                        SocketAddr::new(IpAddr::V6(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 0)), 0)
+                    }
+                    _ => unreachable!(),
+                };
+                self.bsd_bind_socket(fd, unspecified)?;
+            }
+
             (fd, config.unwrap())
         } else {
             let domain = if peer.is_ipv4() {
