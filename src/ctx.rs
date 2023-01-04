@@ -1,9 +1,13 @@
-use crate::ip::{IpPacketRef, Ipv4Packet, Ipv6Packet, KIND_IPV4, KIND_IPV6};
+use crate::{
+    ip::{IpPacketRef, Ipv4Packet, Ipv6Packet, KIND_IPV4, KIND_IPV6},
+    IOPlugin,
+};
 use des::{
+    net::plugin::PluginError,
     prelude::{Message, MessageKind},
     runtime::random,
 };
-use std::{cell::RefCell, collections::HashMap, net::Ipv4Addr};
+use std::{cell::RefCell, collections::HashMap, net::Ipv4Addr, panic::UnwindSafe};
 
 use super::{
     bsd::*,
@@ -73,10 +77,10 @@ impl IOContext {
 
     pub(super) fn with_current<R>(f: impl FnOnce(&mut IOContext) -> R) -> R {
         CURRENT.with(|cell| {
-            f(cell
-                .borrow_mut()
-                .as_mut()
-                .expect("No IOContext set on the current module (missing IOPlugin)"))
+            f(cell.borrow_mut().as_mut().unwrap_or_else(|| {
+                let error = PluginError::expected::<IOPlugin>();
+                panic!("Missing IOContext: {error}")
+            }))
         })
     }
 
@@ -187,3 +191,5 @@ impl IOContext {
         }
     }
 }
+
+impl UnwindSafe for IOContext {}

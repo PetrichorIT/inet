@@ -141,6 +141,7 @@ impl TcpBuffer {
         }
         self.tail = (self.tail + k) % self.buffer.len();
         self.tail_seq_no = self.tail_seq_no.wrapping_add(k as u32);
+        self.state.free_slice(k as u32);
         k
     }
 
