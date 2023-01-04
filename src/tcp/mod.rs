@@ -188,23 +188,25 @@ impl IOContext {
                 return false;
             };
             
-            listeners.incoming.push_back(TcpListenerPendingConnection {
-                local_addr: listeners.local_addr,
-                peer_addr: src,
-                packet: (packet.src(), packet.dest(), tcp),
-            });
+            if listeners.incoming.len() < listeners.config.listen_backlog as usize{
+                listeners.incoming.push_back(TcpListenerPendingConnection {
+                    local_addr: listeners.local_addr,
+                    peer_addr: src,
+                    packet: (packet.src(), packet.dest(), tcp),
+                });
 
-            // Wake up
-            let mut i = 0;
-            while i < listeners.interests.len() {
-                if matches!(listeners.interests[i].interest, TcpInterest::TcpAccept(_)) {
-                    let w = listeners.interests.swap_remove(i);
-                    w.waker.wake();
-                } else {
-                    i += 1;
+                // Wake up
+                let mut i = 0;
+                while i < listeners.interests.len() {
+                    if matches!(listeners.interests[i].interest, TcpInterest::TcpAccept(_)) {
+                        let w = listeners.interests.swap_remove(i);
+                        w.waker.wake();
+                    } else {
+                        i += 1;
+                    }
                 }
             }
-
+            
             return true
         };
 
