@@ -1,4 +1,8 @@
 use std::str::FromStr;
+use std::sync::{
+    atomic::{AtomicBool, Ordering::SeqCst},
+    Arc,
+};
 
 use des::prelude::*;
 use inet::{
@@ -8,9 +12,9 @@ use inet::{
     FromBytestream, TcpSocket,
 };
 
-#[NdlModule("bin")]
-struct ManInTheMiddle {}
-impl Module for ManInTheMiddle {
+#[NdlModule("tests")]
+struct Link {}
+impl Module for Link {
     fn new() -> Self {
         Self {}
     }
@@ -42,12 +46,16 @@ impl Module for ManInTheMiddle {
     }
 }
 
-#[NdlModule("bin")]
-struct Server {}
+#[NdlModule("tests")]
+struct TcpServer {
+    done: Arc<AtomicBool>,
+}
 #[async_trait::async_trait]
-impl AsyncModule for Server {
+impl AsyncModule for TcpServer {
     fn new() -> Self {
-        Self {}
+        Self {
+            done: Arc::new(AtomicBool::new(false)),
+        }
     }
     async fn at_sim_start(&mut self, _: usize) {
         add_plugin(TcpDebugPlugin, 1);
@@ -58,6 +66,7 @@ impl AsyncModule for Server {
             NetworkDevice::eth_default(),
         ));
 
+        let done = self.done.clone();
         tokio::spawn(async move {
             let sock = TcpSocket::new_v4().unwrap();
             sock.bind(SocketAddr::from_str("0.0.0.0:2000").unwrap())
@@ -74,13 +83,13 @@ impl AsyncModule for Server {
             let (mut stream, _) = sock.accept().await.unwrap();
             log::info!("Established stream");
 
-            // let mut buf = [0u8; 100];
-            // let err = stream.try_read(&mut buf).unwrap_err();
-            // assert_eq!(err.kind(), ErrorKind::WouldBlock);
+            // Expect fast open
+            let mut buf = [0u8; 100];
+            let n = stream.try_read(&mut buf).unwrap();
 
             use tokio::io::AsyncReadExt;
             let mut buf = [0u8; 500];
-            let mut acc = 0;
+            let mut acc = n;
             loop {
                 let Ok(n) = stream.read(&mut buf).await else { break };
                 log::info!("received {} bytes", n);
@@ -104,19 +113,30 @@ impl AsyncModule for Server {
             log::info!("Server done");
             drop(stream);
             drop(sock);
+
+            done.store(true, SeqCst);
         });
     }
+
     async fn handle_message(&mut self, _: Message) {
         log::error!("HM?");
     }
+
+    async fn at_sim_end(&mut self) {
+        assert!(self.done.load(SeqCst));
+    }
 }
 
-#[NdlModule("bin")]
-struct Client {}
+#[NdlModule("tests")]
+struct TcpClient {
+    done: Arc<AtomicBool>,
+}
 #[async_trait::async_trait]
-impl AsyncModule for Client {
+impl AsyncModule for TcpClient {
     fn new() -> Self {
-        Self {}
+        Self {
+            done: Arc::new(AtomicBool::new(false)),
+        }
     }
     async fn at_sim_start(&mut self, _: usize) {
         add_plugin(TcpDebugPlugin, 1);
@@ -127,6 +147,7 @@ impl AsyncModule for Client {
             NetworkDevice::eth_default(),
         ));
 
+        let done = self.done.clone();
         tokio::spawn(async move {
             use tokio::io::AsyncWriteExt;
             let sock = TcpSocket::new_v4().unwrap();
@@ -150,24 +171,32 @@ impl AsyncModule for Client {
 
             log::info!("Client done");
             drop(stream);
+
+            done.store(true, SeqCst);
         });
     }
 
     async fn handle_message(&mut self, _: Message) {
         panic!()
     }
+
+    async fn at_sim_end(&mut self) {
+        assert!(self.done.load(SeqCst));
+    }
 }
 
-#[NdlSubsystem("bin")]
+#[NdlSubsystem("tests")]
 struct Main {}
 
-fn main() {
+#[test]
+#[serial_test::serial]
+fn tcp_accidental_fast_open() {
     inet::init();
 
-    ScopedLogger::new()
-        .interal_max_log_level(log::LevelFilter::Warn)
-        .finish()
-        .unwrap();
+    // ScopedLogger::new()
+    //     .interal_max_log_level(log::LevelFilter::Warn)
+    //     .finish()
+    //     .unwrap();
 
     let app = Main {}.build_rt();
     let rt = Runtime::new_with(

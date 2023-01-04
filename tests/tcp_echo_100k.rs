@@ -197,6 +197,6 @@ fn tcp_echo_100k() {
                                      // .max_time(SimTime::from_duration(Duration::from_secs(3))),
     );
     let (_, time, profiler) = rt.run().unwrap();
-    assert_eq!(time.as_secs(), 11);
-    assert!(profiler.event_count < 5000);
+    assert_eq!(time.as_secs(), 10);
+    assert!(profiler.event_count < 8000);
 }

@@ -539,7 +539,7 @@ impl IOContext {
                 ctrl.sender_state = TcpSenderState::Established;
 
                 inet_trace!(
-                    "tcp::synrecv '0x{:x} Established with Sender {{ seq_no: {}, buf: {}, max_seq_no: {} }} and Receiver {{ last_ack: {} }}",
+                    "tcp::synrecv '0x{:x} <FastOpen> Established with Sender {{ seq_no: {}, buf: {}, max_seq_no: {} }} and Receiver {{ last_ack: {} }}",
                     ctrl.fd,
                     ctrl.sender_next_send_seq_no,
                     ctrl.sender_next_send_buffer_seq_no,
