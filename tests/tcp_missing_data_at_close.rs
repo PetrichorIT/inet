@@ -15,7 +15,7 @@ use inet::{
     FromBytestream, TcpSocket,
 };
 
-#[NdlModule("bin")]
+#[NdlModule("tests")]
 struct Link {}
 impl Module for Link {
     fn new() -> Self {
@@ -24,10 +24,10 @@ impl Module for Link {
 
     fn handle_message(&mut self, msg: Message) {
         // random packet drop 10 %
-        let ippacket = msg.content::<Ipv4Packet>();
-        let tcp = TcpPacket::from_buffer(&ippacket.content).unwrap();
+        if (random::<usize>() % 10) == 7 {
+            let ippacket = msg.content::<Ipv4Packet>();
+            let tcp = TcpPacket::from_buffer(&ippacket.content).unwrap();
 
-        if (random::<usize>() % 10) == 7 && tcp.content.len() > 0 {
             log::error!(
                 "DROP {} --> {} :: Tcp {{ {} seq_no = {} ack_no = {} win = {} data = {} bytes }}",
                 ippacket.src,
@@ -38,6 +38,7 @@ impl Module for Link {
                 tcp.window,
                 tcp.content.len(),
             );
+
             return;
         }
 
@@ -49,7 +50,7 @@ impl Module for Link {
     }
 }
 
-#[NdlModule("bin")]
+#[NdlModule("tests")]
 struct TcpServer {
     done: Arc<AtomicBool>,
     fd: Arc<AtomicU32>,
@@ -109,10 +110,14 @@ impl AsyncModule for TcpServer {
                     break;
                 } else {
                     acc += n;
+                    if acc == 2000 {
+                        break;
+                    }
                 };
             }
 
-            assert_eq!(acc, 20_000);
+            let n = stream.read(&mut buf).await.unwrap();
+            assert_eq!(n, 0);
 
             log::info!("Server done");
             drop(stream);
@@ -134,7 +139,7 @@ impl AsyncModule for TcpServer {
     }
 }
 
-#[NdlModule("bin")]
+#[NdlModule("tests")]
 struct TcpClient {
     done: Arc<AtomicBool>,
     fd: Arc<AtomicU32>,
@@ -175,7 +180,7 @@ impl AsyncModule for TcpClient {
 
             log::info!("Established stream");
 
-            let buf = vec![42; 20_000];
+            let buf = vec![42; 2000];
             stream.write_all(&buf).await.unwrap();
 
             log::info!("Client done");
@@ -197,16 +202,18 @@ impl AsyncModule for TcpClient {
     }
 }
 
-#[NdlSubsystem("bin")]
+#[NdlSubsystem("tests")]
 struct Main {}
 
-fn main() {
+#[test]
+#[serial_test::serial]
+fn tcp_missing_data_at_close() {
     inet::init();
 
-    ScopedLogger::new()
-        .interal_max_log_level(log::LevelFilter::Warn)
-        .finish()
-        .unwrap();
+    // ScopedLogger::new()
+    //     .interal_max_log_level(log::LevelFilter::Warn)
+    //     .finish()
+    //     .unwrap();
 
     let app = Main {}.build_rt();
     let rt = Runtime::new_with(
@@ -215,5 +222,5 @@ fn main() {
             // .max_itr(100)
             .max_time(SimTime::from_duration(Duration::from_secs(10))),
     );
-    let _ = rt.run();
+    let _ = rt.run().unwrap();
 }

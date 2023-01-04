@@ -1,10 +1,10 @@
-module Server {
+module TcpServer {
     gates:
         in @input
         out @output
 }
 
-module ManInTheMiddle {
+module Link {
     gates:
         lhs_in @input
         lhs_out @output
@@ -13,7 +13,7 @@ module ManInTheMiddle {
         rhs_out @output
 }
 
-module Client {
+module TcpClient {
     gates:
         in @input
         out @output
@@ -34,9 +34,9 @@ link LANLinkBuffed {
 
 subsystem Main {
     nodes:
-        server: Server
-        mim: ManInTheMiddle
-        client: Client
+        server: TcpServer
+        mim: Link
+        client: TcpClient
 
     connections:
         server/out --> LANLink --> mim/rhs_in

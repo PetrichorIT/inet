@@ -57,10 +57,16 @@ impl TcpBuffer {
 
     pub fn rem_for(&self, seq_no: u32) -> usize {
         if seq_no > self.head_seq_no() {
-            todo!()
+            if seq_no < self.tail_seq_no + self.cap() as u32 {
+                let ret = self.tail_seq_no + self.cap() as u32 - seq_no;
+                ret as usize
+            } else {
+                unimplemented!()
+            }
+        } else {
+            let additional_bytes = self.head_seq_no() - seq_no;
+            self.rem() + additional_bytes as usize
         }
-        let additional_bytes = self.head_seq_no() - seq_no;
-        self.rem() + additional_bytes as usize
     }
 
     pub fn head_for(&self, seq_no: u32) -> usize {
