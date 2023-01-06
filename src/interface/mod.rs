@@ -5,7 +5,7 @@ use crate::{
     bsd::Fd,
     ip::{IpPacket, IpVersion},
 };
-use des::prelude::{schedule_at, GateRef, Message, MessageKind, SimTime};
+use des::prelude::{module_id, schedule_at, GateRef, Message, MessageKind, SimTime};
 use std::{
     fmt::{self, Display},
     io::{Error, ErrorKind, Result},
@@ -67,6 +67,52 @@ impl Interface {
             addrs: Vec::from(InterfaceAddr::loopback()),
             status: InterfaceStatus::Active,
             prio: 100,
+            state: InterfaceBusyState::Idle,
+        }
+    }
+
+    pub fn ethernet(ip_addrs: &[IpAddr], device: NetworkDevice) -> Self {
+        let mut addrs = Vec::new();
+        let id = module_id().0.to_be_bytes();
+        addrs.push(InterfaceAddr::Ether {
+            addr: [0xff, 0, 0, 0, id[1], id[0]],
+        });
+        for addr in ip_addrs {
+            match addr {
+                IpAddr::V4(v4) => {
+                    addrs.push(InterfaceAddr::Inet {
+                        addr: *v4,
+                        netmask: Ipv4Addr::new(255, 255, 255, 0),
+                    });
+                    addrs.push(InterfaceAddr::Inet6 {
+                        addr: v4.to_ipv6_mapped(),
+                        prefixlen: 128,
+                        scope_id: None,
+                    });
+                }
+                IpAddr::V6(v6) => {
+                    addrs.push(InterfaceAddr::Inet6 {
+                        addr: *v6,
+                        prefixlen: 128,
+                        scope_id: None,
+                    });
+                    if let Some(v4) = v6.to_ipv4_mapped() {
+                        addrs.push(InterfaceAddr::Inet {
+                            addr: v4,
+                            netmask: Ipv4Addr::new(255, 255, 255, 0),
+                        });
+                    }
+                }
+            }
+        }
+
+        Self {
+            name: "en0".into(),
+            device,
+            flags: InterfaceFlags::en0(),
+            addrs,
+            status: InterfaceStatus::Active,
+            prio: 5,
             state: InterfaceBusyState::Idle,
         }
     }

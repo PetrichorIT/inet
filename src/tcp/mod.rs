@@ -182,7 +182,7 @@ impl IOContext {
             return false
         };
 
-        let Some((fd, _)) = self.tcp_manager.iter().find(|(_, socket)| socket.local_addr == dest && socket.peer_addr == src) else {
+        let Some((fd, _)) = self.tcp_manager.iter().find(|(_, socket)| socket.local_addr == dest && socket.peer_addr == src) else {  
             // may still be a SYN
             let Some((_, listeners)) = self.tcp_listeners.iter_mut().find(|(_, list)| list.local_addr == dest) else {
                 return false;
@@ -532,7 +532,10 @@ impl IOContext {
                 );
                 ctrl.set_timer(ctrl.timeout);
             }
-            _ => unimplemented!(),
+            TcpEvent::SysClose() => {
+                ctrl.state = TcpState::Closed;
+            }
+            _ => unimplemented!("{:?}", event),
         }
     }
 

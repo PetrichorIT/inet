@@ -9,10 +9,16 @@ pub use backward::BackwardRoutingDeamon;
 mod stacked;
 pub use stacked::StackedRoutingDeamon;
 
+mod par_based;
+pub use par_based::ParBasedRoutingDeamon;
+
+mod plugin;
+pub use plugin::RoutingPlugin;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RoutingInformation {
-    ports: Vec<RoutingPort>,
-    node_ip: IpAddr,
+    pub ports: Vec<RoutingPort>,
+    pub node_ip: IpAddr,
 }
 
 impl RoutingInformation {
@@ -33,17 +39,21 @@ impl RoutingInformation {
     pub fn port_for(&self, gate: &GateRef) -> Option<RoutingPort> {
         self.ports.iter().find(|p| p.input == *gate).cloned()
     }
+
+    pub fn port_by_name(&self, s: &str) -> Option<RoutingPort> {
+        self.ports.iter().find(|p| p.name == s).cloned()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RoutingPort {
-    name: String,
-    input: GateRef,
-    output: GateRef,
+    pub name: String,
+    pub input: GateRef,
+    pub output: GateRef,
 }
 
 impl RoutingPort {
-    fn new(input: GateRef, output: GateRef) -> Self {
+    pub fn new(input: GateRef, output: GateRef) -> Self {
         let iname = input.name();
         let oname = output.name();
 

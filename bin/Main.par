@@ -1,0 +1,48 @@
+isp1.addr = 100.100.1.0
+isp1.node[0].addr = 100.100.1.100
+isp1.node[1].addr = 100.100.1.101
+isp1.node[2].addr = 100.100.1.102
+isp1.node[3].addr = 100.100.1.103
+isp1.node[4].addr = 100.100.1.104
+
+isp2.addr = 100.100.2.0
+isp2.node[0].addr = 100.100.2.100
+isp2.node[1].addr = 100.100.2.101
+isp2.node[2].addr = 100.100.2.102
+isp2.node[3].addr = 100.100.2.103
+isp2.node[4].addr = 100.100.2.104
+
+isp3.addr = 100.100.3.0
+isp3.node[0].addr = 100.100.3.100
+isp3.node[1].addr = 100.100.3.101
+isp3.node[2].addr = 100.100.3.102
+isp3.node[3].addr = 100.100.3.103
+isp3.node[4].addr = 100.100.3.104
+
+isp4.addr = 100.100.4.0
+isp4.node[0].addr = 100.100.4.100
+isp4.node[1].addr = 100.100.4.101
+isp4.node[2].addr = 100.100.4.102
+isp4.node[3].addr = 100.100.4.103
+isp4.node[4].addr = 100.100.4.104
+
+srv1.addr = 200.200.1.0
+srv1.node[0].addr = 200.200.1.200
+srv1.node[1].addr = 200.200.1.201
+srv1.node[2].addr = 200.200.1.202
+srv1.node[3].addr = 200.200.1.203
+srv1.node[4].addr = 200.200.1.204
+
+srv2.addr = 200.200.2.0
+srv2.node[0].addr = 200.200.2.200
+srv2.node[1].addr = 200.200.2.201
+srv2.node[2].addr = 200.200.2.202
+srv2.node[3].addr = 200.200.2.203
+srv2.node[4].addr = 200.200.2.204
+
+srv3.addr = 200.200.3.0
+srv3.node[0].addr = 200.200.3.200
+srv3.node[1].addr = 200.200.3.201
+srv3.node[2].addr = 200.200.3.202
+srv3.node[3].addr = 200.200.3.203
+srv3.node[4].addr = 200.200.3.204

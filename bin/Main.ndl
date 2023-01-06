@@ -1,47 +1,161 @@
-module TcpServer {
+// Prototypes
+
+module EdgeNode {
     gates:
         in @input
         out @output
 }
 
-module Link {
+module LANRouter {
     gates:
-        lhs_in @input
-        lhs_out @output
+        in[5] @input
+        out[5] @output
 
-        rhs_in @input
-        rhs_out @output
+        down @input
+        up @output
 }
 
-module TcpClient {
+module WANRouter {
     gates:
-        in @input
-        out @output
+        in[5] @input
+        out[5] @output
 }
 
 link LANLink {
     bitrate: 10000000
     jitter: 0.0
-    latency: 0.03
+    latency: 0.005
+    queuesize: 4096
 }
 
-link LANLinkBuffed {
-    bitrate: 10000000
+link LANUplink {
+    bitrate: 20000000
     jitter: 0.0
-    latency: 0.03
-    queuesize: 2048
+    latency: 0.005
+    queuesize: 4096
+}
+
+link WANLink {
+    bitrate: 1000000000
+    jitter: 0.0
+    latency: 0.01
+    queuesize: 4096
+}
+
+// Networks
+
+module TypeA {
+    gates:
+        down 
+        up 
+
+    submodules:
+        node[0...3]: EdgeNode
+        router: LANRouter
+
+    connections:
+        router/up --> up
+        router/down <-- down
+
+        router/in[0] <-- LANLink <-- node[0]/out
+        router/in[1] <-- LANLink <-- node[1]/out
+        router/in[2] <-- LANLink <-- node[2]/out
+        router/in[3] <-- LANLink <-- node[3]/out
+
+        router/out[0] --> LANLink --> node[0]/in
+        router/out[1] --> LANLink --> node[1]/in
+        router/out[2] --> LANLink --> node[2]/in
+        router/out[3] --> LANLink --> node[3]/in
+}
+
+module TypeB {
+    gates:
+        down
+        up
+
+    submodules:
+        node[0...2]: EdgeNode
+        router: LANRouter
+
+    connections:
+        router/up --> up
+        router/down <-- down
+
+        router/in[0] <-- LANLink <-- node[0]/out
+        router/in[1] <-- LANLink <-- node[1]/out
+        router/in[2] <-- LANLink <-- node[2]/out
+
+        router/out[0] --> LANLink --> node[0]/in
+        router/out[1] --> LANLink --> node[1]/in
+        router/out[2] --> LANLink --> node[2]/in
+}
+
+module TypeC {
+    gates:
+        down
+        up 
+
+    submodules:
+        node[0...4]: EdgeNode
+        router: LANRouter
+
+    connections:
+        router/up --> up
+        router/down <-- down
+
+        router/in[0] <-- LANLink <-- node[0]/out
+        router/in[1] <-- LANLink <-- node[1]/out
+        router/in[2] <-- LANLink <-- node[2]/out
+        router/in[3] <-- LANLink <-- node[3]/out
+        router/in[4] <-- LANLink <-- node[4]/out
+
+        router/out[0] --> LANLink --> node[0]/in
+        router/out[1] --> LANLink --> node[1]/in
+        router/out[2] --> LANLink --> node[2]/in
+        router/out[3] --> LANLink --> node[3]/in
+        router/out[4] --> LANLink --> node[4]/in
 }
 
 subsystem Main {
     nodes:
-        server: TcpServer
-        mim: Link
-        client: TcpClient
+        a: WANRouter
+        b: WANRouter
+        c: WANRouter
+
+        isp1: TypeA
+        isp2: TypeA
+        isp3: TypeB
+        isp4: TypeA
+
+        srv1: TypeC
+        srv2: TypeC
+        srv3: TypeB
 
     connections:
-        server/out --> LANLink --> mim/rhs_in
-        server/in <-- LANLinkBuffed <-- mim/rhs_out
 
-        client/out --> LANLink --> mim/lhs_in
-        client/in <-- LANLinkBuffed <-- mim/lhs_out
+        a/out[0] --> WANLink --> b/in[1]
+        a/out[1] --> WANLink --> c/in[0]
+        a/out[2] --> LANUplink --> srv3/down
+        a/out[3] --> LANUplink --> srv2/down
+
+        a/in[0] <-- WANLink <-- b/out[1]
+        a/in[1] <-- WANLink <-- c/out[0]
+        a/in[2] <-- LANUplink <-- srv3/up
+        a/in[3] <-- LANUplink <-- srv2/up
+
+        b/out[0] --> WANLink --> c/in[1]
+        b/out[2] --> LANUplink --> isp1/down
+        b/out[3] --> LANUplink --> isp2/down
+        b/out[4] --> LANUplink --> isp3/down
+
+        b/in[0] <-- WANLink <-- c/out[1]
+        b/in[2] <-- LANUplink <-- isp1/up
+        b/in[3] <-- LANUplink <-- isp2/up
+        b/in[4] <-- LANUplink <-- isp3/up
+
+        c/out[2] --> LANUplink --> srv1/down
+        c/out[3] --> LANUplink --> isp4/down
+
+        c/in[2] <-- LANUplink <-- srv1/up
+        c/in[3] <-- LANUplink <-- isp4/up
 }
