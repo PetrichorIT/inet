@@ -2,9 +2,9 @@ use std::io::{Error, ErrorKind, Result};
 use std::task::Poll;
 use std::{future::Future, task::Waker};
 
-use crate::IOContext;
 use crate::bsd::Fd;
-use tokio::io::{Interest, Ready};
+use crate::IOContext;
+use des::tokio::io::{Interest, Ready};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UdpInterest {

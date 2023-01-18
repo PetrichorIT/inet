@@ -4,7 +4,7 @@ use std::{
     task::{Poll, Waker},
 };
 
-use tokio::io::{Interest, Ready};
+use des::tokio::io::{Interest, Ready};
 
 use crate::{bsd::Fd, IOContext};
 

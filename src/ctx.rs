@@ -56,9 +56,13 @@ impl IOContext {
     }
 
     pub fn eth_default(v4: Ipv4Addr) -> Self {
+        Self::eth_with_addr(v4, random())
+    }
+
+    pub fn eth_with_addr(v4: Ipv4Addr, mac: [u8; 6]) -> Self {
         let mut this = Self::empty();
         this.add_interface(Interface::loopback());
-        this.add_interface(Interface::en0(random(), v4, NetworkDevice::eth_default()));
+        this.add_interface(Interface::en0(mac, v4, NetworkDevice::eth_default()));
         this
     }
 

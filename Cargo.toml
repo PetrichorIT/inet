@@ -14,7 +14,6 @@ async-trait = "*"
 bytestream = "0.4"
 des = {git = "https://github.com/PetrichorIT/des", branch = "llcqueue-nightly", features = ["full"]}
 log = {version = "*", features = ["max_level_trace"]}
-tokio = {git = "https://github.com/PetrichorIT/tokio_sim", features = ["sim"]}
 
 [dev-dependencies]
 serial_test = "0.10"

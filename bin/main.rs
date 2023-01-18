@@ -13,10 +13,9 @@ struct Main {}
 fn main() {
     inet::init();
 
-    ScopedLogger::new()
+    Logger::new()
         .interal_max_log_level(log::LevelFilter::Warn)
-        .finish()
-        .unwrap();
+        .set_logger();
 
     let app: NetworkRuntime<SubsystemRef> = Main {}.build_rt();
     let rt = Runtime::new_with(app, RuntimeOptions::seeded(123));

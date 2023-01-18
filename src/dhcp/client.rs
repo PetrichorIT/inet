@@ -3,13 +3,14 @@ use std::{
     str::FromStr,
 };
 
-use des::{
-    prelude::*,
-    tokio::net::{get_mac_address, IOContext},
-};
+use des::prelude::*;
 
 use super::common::{DHCPMessage, DHCPOpsTyp};
-use crate::dhcp::{common::DHCPParameter, MESSAGE_KIND_DHCP};
+use crate::{
+    dhcp::{common::DHCPParameter, MESSAGE_KIND_DHCP},
+    interface::get_mac_address,
+    IOContext,
+};
 
 pub struct DHCPClient {
     mac: [u8; 8],
@@ -142,7 +143,7 @@ impl DHCPClient {
                 // Commit values to tokio
                 let mac = get_mac_address().unwrap();
                 let mac = mac.unwrap_or(random());
-                IOContext::new(mac, self.addr).set();
+                IOContext::eth_with_addr(self.addr, mac).set();
                 self.done = true;
                 send(Message::new().kind(1000).content(self.addr).build(), "out")
             }

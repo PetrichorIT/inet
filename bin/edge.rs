@@ -1,4 +1,4 @@
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use des::tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use des::prelude::*;
 use inet::{
@@ -22,9 +22,9 @@ impl AsyncModule for EdgeNode {
         add_interface(Interface::loopback());
 
         if format!("{ip}") == "100.100.1.102" || format!("{ip}") == "100.100.3.101" {
-            tokio::spawn(async move {
+            des::tokio::spawn(async move {
                 let d = random::<f64>() / 2.0;
-                tokio::time::sleep(Duration::from_secs_f64(d)).await;
+                des::tokio::time::sleep(Duration::from_secs_f64(d)).await;
 
                 log::info!("Opening socket");
                 let mut stream = TcpStream::connect("200.200.2.201:80").await.unwrap();
@@ -42,10 +42,10 @@ impl AsyncModule for EdgeNode {
         }
 
         if format!("{ip}") == "200.200.2.201" {
-            tokio::spawn(async move {
+            des::tokio::spawn(async move {
                 let listener = TcpListener::bind("0.0.0.0:80").await.unwrap();
                 while let Ok((mut stream, _peer)) = listener.accept().await {
-                    tokio::spawn(async move {
+                    des::tokio::spawn(async move {
                         let mut buf = [0u8; 2048];
                         loop {
                             let Ok(n) = stream.read(&mut buf).await else {
