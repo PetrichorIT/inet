@@ -2,18 +2,18 @@ use des::tokio;
 use std::{collections::VecDeque, str::FromStr};
 
 use async_trait::async_trait;
-use des::{
-    net::{BuildContext, __Buildable0},
-    prelude::*,
-};
+use des::prelude::*;
 use inet::{interface::*, *};
 use serial_test::serial;
 use tokio::task::JoinHandle;
 
-#[NdlModule]
+#[macro_use]
+mod common;
+
 struct SocketBind {
     handle: Option<JoinHandle<()>>,
 }
+impl_build_named!(SocketBind);
 
 #[async_trait]
 impl AsyncModule for SocketBind {
@@ -80,10 +80,9 @@ fn udp_empty_socket_bind() {
     // ScopedLogger::new().finish().unwrap();
 
     let mut app = NetworkRuntime::new(());
-    let mut cx = BuildContext::new(&mut app);
 
-    let module = SocketBind::build_named(ObjectPath::root_module("root"), &mut cx);
-    cx.create_module(module);
+    let module = SocketBind::build_named(ObjectPath::from("root"), &mut app);
+    app.create_module(module);
 
     let rt = Runtime::new_with(app, RuntimeOptions::seeded(123));
     let RuntimeResult::Finished { .. } = rt.run() else {
@@ -91,8 +90,8 @@ fn udp_empty_socket_bind() {
     };
 }
 
-#[NdlModule]
 struct UdpEcho4200 {}
+impl_build_named!(UdpEcho4200);
 
 #[async_trait]
 impl AsyncModule for UdpEcho4200 {
@@ -128,10 +127,10 @@ impl AsyncModule for UdpEcho4200 {
     }
 }
 
-#[NdlModule]
 struct UdpSingleEchoSender {
     handle: Option<JoinHandle<()>>,
 }
+impl_build_named!(UdpSingleEchoSender);
 
 #[async_trait]
 impl AsyncModule for UdpSingleEchoSender {
@@ -181,10 +180,9 @@ fn udp_echo_single_client() {
     //     .unwrap();
 
     let mut app = NetworkRuntime::new(());
-    let mut cx = BuildContext::new(&mut app);
 
-    let server = UdpEcho4200::build_named(ObjectPath::root_module("server"), &mut cx);
-    let client = UdpSingleEchoSender::build_named(ObjectPath::root_module("client"), &mut cx);
+    let server = UdpEcho4200::build_named(ObjectPath::from("server"), &mut app);
+    let client = UdpSingleEchoSender::build_named(ObjectPath::from("client"), &mut app);
 
     let so = server.create_gate("out", GateServiceType::Output);
     let si = server.create_gate("in", GateServiceType::Input);
@@ -195,19 +193,19 @@ fn udp_echo_single_client() {
     co.set_next_gate(si);
 
     let cschan = Channel::new(
-        ObjectPath::channel_with("upstream", &client.path()),
+        ObjectPath::appended_channel(&client.path(), "upstream"),
         ChannelMetrics::new(100000, Duration::from_millis(100), Duration::ZERO),
     );
     let scchan = Channel::new(
-        ObjectPath::channel_with("downstream", &server.path()),
+        ObjectPath::appended_channel(&server.path(), "downstream"),
         ChannelMetrics::new(100000, Duration::from_millis(100), Duration::ZERO),
     );
 
     co.set_channel(cschan);
     so.set_channel(scchan);
 
-    cx.create_module(server);
-    cx.create_module(client);
+    app.create_module(server);
+    app.create_module(client);
 
     let rt = Runtime::new_with(app, RuntimeOptions::seeded(123));
     let RuntimeResult::Finished { time, .. } = rt.run() else {
@@ -217,10 +215,10 @@ fn udp_echo_single_client() {
     assert_eq!(time.as_secs(), 31)
 }
 
-#[NdlModule]
 struct UdpSingleClusteredSender {
     handle: Option<JoinHandle<()>>,
 }
+impl_build_named!(UdpSingleClusteredSender);
 
 #[async_trait]
 impl AsyncModule for UdpSingleClusteredSender {
@@ -279,10 +277,9 @@ fn udp_echo_clustered_echo() {
     //     .unwrap();
 
     let mut app = NetworkRuntime::new(());
-    let mut cx = BuildContext::new(&mut app);
 
-    let server = UdpEcho4200::build_named(ObjectPath::root_module("server"), &mut cx);
-    let client = UdpSingleClusteredSender::build_named(ObjectPath::root_module("client"), &mut cx);
+    let server = UdpEcho4200::build_named(ObjectPath::from("server"), &mut app);
+    let client = UdpSingleClusteredSender::build_named(ObjectPath::from("client"), &mut app);
 
     let so = server.create_gate("out", GateServiceType::Output);
     let si = server.create_gate("in", GateServiceType::Input);
@@ -293,19 +290,19 @@ fn udp_echo_clustered_echo() {
     co.set_next_gate(si);
 
     let cschan = Channel::new(
-        ObjectPath::channel_with("upstream", &client.path()),
+        ObjectPath::appended_channel(&client.path(), "upstream"),
         ChannelMetrics::new(100000, Duration::from_millis(100), Duration::ZERO),
     );
     let scchan = Channel::new(
-        ObjectPath::channel_with("downstream", &server.path()),
+        ObjectPath::appended_channel(&server.path(), "downstream"),
         ChannelMetrics::new(100000, Duration::from_millis(100), Duration::ZERO),
     );
 
     co.set_channel(cschan);
     so.set_channel(scchan);
 
-    cx.create_module(server);
-    cx.create_module(client);
+    app.create_module(server);
+    app.create_module(client);
 
     let rt = Runtime::new_with(app, RuntimeOptions::seeded(123));
     let RuntimeResult::Finished { time, .. } = rt.run() else {
@@ -315,10 +312,10 @@ fn udp_echo_clustered_echo() {
     assert_eq!(time.as_secs(), 8)
 }
 
-#[NdlModule]
 struct UdpConcurrentClients {
     handle: Option<JoinHandle<()>>,
 }
+impl_build_named!(UdpConcurrentClients);
 
 #[async_trait]
 impl AsyncModule for UdpConcurrentClients {
@@ -410,10 +407,9 @@ fn udp_echo_concurrent_clients() {
     //     .unwrap();
 
     let mut app = NetworkRuntime::new(());
-    let mut cx = BuildContext::new(&mut app);
 
-    let server = UdpEcho4200::build_named(ObjectPath::root_module("server"), &mut cx);
-    let client = UdpConcurrentClients::build_named(ObjectPath::root_module("client"), &mut cx);
+    let server = UdpEcho4200::build_named(ObjectPath::from("server"), &mut app);
+    let client = UdpConcurrentClients::build_named(ObjectPath::from("client"), &mut app);
 
     let so = server.create_gate("out", GateServiceType::Output);
     let si = server.create_gate("in", GateServiceType::Input);
@@ -424,19 +420,19 @@ fn udp_echo_concurrent_clients() {
     co.set_next_gate(si);
 
     let cschan = Channel::new(
-        ObjectPath::channel_with("upstream", &client.path()),
+        ObjectPath::appended_channel(&client.path(), "upstream"),
         ChannelMetrics::new(100000, Duration::from_millis(100), Duration::ZERO),
     );
     let scchan = Channel::new(
-        ObjectPath::channel_with("downstream", &server.path()),
+        ObjectPath::appended_channel(&server.path(), "downstream"),
         ChannelMetrics::new(100000, Duration::from_millis(100), Duration::ZERO),
     );
 
     co.set_channel(cschan);
     so.set_channel(scchan);
 
-    cx.create_module(server);
-    cx.create_module(client);
+    app.create_module(server);
+    app.create_module(client);
 
     let rt = Runtime::new_with(app, RuntimeOptions::seeded(123));
     let RuntimeResult::Finished { time, .. } = rt.run() else {

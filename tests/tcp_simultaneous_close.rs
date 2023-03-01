@@ -1,4 +1,4 @@
-use des::tokio;
+use des::{net::plugin::add_plugin, registry, tokio};
 use std::{
     io::ErrorKind,
     str::FromStr,
@@ -17,7 +17,6 @@ use inet::{
 };
 use serial_test::serial;
 
-#[NdlModule("tests")]
 struct Link {}
 impl Module for Link {
     fn new() -> Self {
@@ -33,7 +32,6 @@ impl Module for Link {
     }
 }
 
-#[NdlModule("tests")]
 struct TcpServer {
     done: Arc<AtomicBool>,
     fd: Arc<AtomicU32>,
@@ -119,7 +117,6 @@ impl AsyncModule for TcpServer {
     }
 }
 
-#[NdlModule("tests")]
 struct TcpClient {
     done: Arc<AtomicBool>,
     fd: Arc<AtomicU32>,
@@ -180,8 +177,12 @@ impl AsyncModule for TcpClient {
     }
 }
 
-#[NdlSubsystem("tests")]
-struct Main {}
+struct Main;
+impl Module for Main {
+    fn new() -> Main {
+        Main
+    }
+}
 
 #[test]
 #[serial]
@@ -193,7 +194,11 @@ fn tcp_simulaneous_close() {
     //     .finish()
     //     .unwrap();
 
-    let app = Main {}.build_rt();
+    let app = NetworkRuntime::new(
+        NdlApplication::new("tests/tcp.ndl", registry![Link, TcpServer, TcpClient, Main])
+            .map_err(|e| println!("{e}"))
+            .unwrap(),
+    );
     let rt = Runtime::new_with(
         app,
         RuntimeOptions::seeded(123)

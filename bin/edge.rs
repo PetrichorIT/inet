@@ -6,7 +6,6 @@ use inet::{
     TcpListener, TcpStream,
 };
 
-#[NdlModule("bin")]
 pub struct EdgeNode {}
 
 #[async_trait::async_trait]

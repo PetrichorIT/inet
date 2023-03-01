@@ -1,69 +1,61 @@
-module Client {
-    gates:
-        in @input
-        out @output
+module Basic {
+    gates {
+        in @input,
+        out @output,
+    }
 }
 
-module DNSServer0 {
-    gates:
-        in @input
-        out @output
-}
+module Client: Basic {}
 
-module DNSServer1 {
-    gates:
-        in @input
-        out @output
-}
+module DNSServer0: Basic {}
 
-module DNSServer2 {
-    gates:
-        in @input
-        out @output
-}
+module DNSServer1: Basic {}
 
-module DNSLocal {
-    gates:
-        in @input
-        out @output
-}
+module DNSServer2: Basic {}
+
+module DNSLocal: Basic {}
 
 module Router {
-    gates:
-        in[10] @input
-        out[10] @output
+    gates {
+        in[10] @input,
+        out[10] @output,
+    }
 }
 
 link LANLink {
-    bitrate: 80000000
-    jitter: 0.0
-    latency: 0.005
+    bitrate: 80000000,
+    jitter: 0.0,
+    latency: 0.005,
 }
 
-subsystem Main {
-    nodes:  
-        client: Client
+module Main {
+    submodules {
+        client: Client,
         local: DNSLocal,
-        dns0: DNSServer0
-        dns1: DNSServer1
-        dns1alt: DNSServer1
-        dns2: DNSServer2
-        router: Router
+        dns0: DNSServer0,
+        dns1: DNSServer1,
+        dns1alt: DNSServer1,
+        dns2: DNSServer2,
+        router: Router,
+    }
 
-    connections:
-        client/out --> LANLink --> router/in[0]
-        dns0/out --> LANLink --> router/in[1]
-        dns1/out --> LANLink --> router/in[2]
-        dns2/out --> LANLink --> router/in[3]
+    connections {
+        client/out --> LANLink --> router/in[0],
+        dns0/out --> LANLink --> router/in[1],
+        dns1/out --> LANLink --> router/in[2],
+        dns2/out --> LANLink --> router/in[3],
 
-        client/in <-- LANLink <-- router/out[0]
-        dns0/in <-- LANLink <-- router/out[1]
-        dns1/in <-- LANLink <-- router/out[2]
-        dns2/in <-- LANLink <-- router/out[3]
+        client/in <-- LANLink <-- router/out[0],
+        dns0/in <-- LANLink <-- router/out[1],
+        dns1/in <-- LANLink <-- router/out[2],
+        dns2/in <-- LANLink <-- router/out[3],
 
-        dns1alt/out --> LANLink --> router/in[4]
-        dns1alt/in <-- LANLink <-- router/out[4]
+        dns1alt/out --> LANLink --> router/in[4],
+        dns1alt/in <-- LANLink <-- router/out[4],
 
-        local/out --> LANLink --> router/in[5]
-        local/in <-- LANLink <-- router/out[5]
+        local/out --> LANLink --> router/in[5],
+        local/in <-- LANLink <-- router/out[5],
+    }
 }
+
+entry Main;

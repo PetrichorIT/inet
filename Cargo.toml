@@ -12,7 +12,7 @@ path = "bin/main.rs"
 [dependencies]
 async-trait = "*"
 bytestream = "0.4"
-des = {git = "https://github.com/PetrichorIT/des", branch = "llcqueue-nightly", features = ["full"]}
+des = {git = "https://github.com/PetrichorIT/des", branch = "master", features = ["full"]}
 log = {version = "*", features = ["max_level_trace"]}
 
 [dev-dependencies]

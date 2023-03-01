@@ -15,6 +15,7 @@ pub mod bsd;
 pub mod interface;
 
 mod udp;
+use des::net::plugin::PluginPanicPolicy;
 pub use udp::*;
 
 pub mod tcp;
@@ -34,10 +35,10 @@ pub fn init() {
 }
 
 fn inet_init(this: &des::net::module::ModuleContext) {
-    this.add_plugin(IOPlugin::new(), 50, false);
+    this.add_plugin(IOPlugin::new(), 50, PluginPanicPolicy::Abort);
     this.add_plugin(
         des::net::plugin::TokioTimePlugin::new("inet::imported_time_module".to_string()),
         1,
-        false,
+        PluginPanicPolicy::Abort,
     );
 }

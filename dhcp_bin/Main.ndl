@@ -1,43 +1,49 @@
 module Node {
-    gates:
-        in @input
-        out @output
+    gates {
+        in @input,
+        out @output,
+    }
 }
 
 module Switch {
-    gates:
-        in_ports[10] @input
-        out_ports[10] @output
+    gates {
+        in_ports[10] @input,
+        out_ports[10] @output,
+    }
 }
 
 link LLink {
-    bitrate: 10000000
-    latency: 0.005
-    jitter: 0.0
-    queuesize: 8000
+    bitrate: 10000000,
+    latency: 0.005,
+    jitter: 0.0,
+    queuesize: 8000,
 }
 
-subsystem Main {
-    nodes: 
-        node[1...6]: Node
-        switch: Switch
+module Main {
+    submodules {
+        node[6]: Node,
+        switch: Switch,
+    }
 
-    connections:
-        node[1]/out --> LLink --> switch/in_ports[0]
-        node[1]/in <-- LLink <-- switch/out_ports[0]
+    connections {
+        node[0]/out --> LLink --> switch/in_ports[0],
+        node[0]/in <-- LLink <-- switch/out_ports[0],
 
-        node[2]/out --> LLink --> switch/in_ports[1]
-        node[2]/in <-- LLink <-- switch/out_ports[1]
+        node[1]/out --> LLink --> switch/in_ports[1],
+        node[1]/in <-- LLink <-- switch/out_ports[1],
 
-        node[3]/out --> LLink --> switch/in_ports[2]
-        node[3]/in <-- LLink <-- switch/out_ports[2]
+        node[2]/out --> LLink --> switch/in_ports[2],
+        node[2]/in <-- LLink <-- switch/out_ports[2],
 
-        node[4]/out --> LLink --> switch/in_ports[3]
-        node[4]/in <-- LLink <-- switch/out_ports[3]
+        node[3]/out --> LLink --> switch/in_ports[3],
+        node[3]/in <-- LLink <-- switch/out_ports[3],
 
-        node[5]/out --> LLink --> switch/in_ports[4]
-        node[5]/in <-- LLink <-- switch/out_ports[4]
+        node[4]/out --> LLink --> switch/in_ports[4],
+        node[4]/in <-- LLink <-- switch/out_ports[4],
 
-        node[6]/out --> LLink --> switch/in_ports[5]
-        node[6]/in <-- LLink <-- switch/out_ports[5]
+        node[5]/out --> LLink --> switch/in_ports[5],
+        node[5]/in <-- LLink <-- switch/out_ports[5],
+    }
 }
+
+entry Main;

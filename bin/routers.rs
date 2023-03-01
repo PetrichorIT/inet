@@ -1,12 +1,11 @@
 use std::net::IpAddr;
 
-use des::prelude::*;
+use des::{prelude::*, net::plugin::add_plugin};
 use inet::{
     ip::{IpMask, Ipv6Packet, Ipv4Packet, Ipv4Mask, KIND_IPV4, KIND_IPV6},
     routing::{ParBasedRoutingDeamon, RoutingInformation, RoutingPlugin, RoutingPort},
 };
 
-#[NdlModule("bin")]
 pub struct LANRouter {}
 
 impl Module for LANRouter {
@@ -19,7 +18,6 @@ impl Module for LANRouter {
     }
 }
 
-#[NdlModule("bin")]
 pub struct WANRouter {
     info: RoutingInformation,
     fwd: Vec<(IpMask, RoutingPort)>,
@@ -46,7 +44,7 @@ impl Module for WANRouter {
 
                 match end.name() {
                     "down" => {                      
-                        let Some(addr) = par_for("addr", end.owner().path().parent_path()).as_optional() else {
+                        let Some(addr) = par_for("addr", end.owner().path().as_parent_str()).as_optional() else {
                             continue;
                         };
 

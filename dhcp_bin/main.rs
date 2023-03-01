@@ -1,9 +1,11 @@
 use std::collections::HashMap;
 
-use des::{prelude::*, tokio::net::IOContext};
-use inet::dhcp::{DHCPClient, DHCPMessage, DHCPServer};
+use des::{prelude::*, registry};
+use inet::{
+    dhcp::{DHCPClient, DHCPMessage, DHCPServer},
+    IOContext,
+};
 
-#[NdlModule("bin")]
 struct Node {
     server: Option<DHCPServer>,
     client: Option<DHCPClient>,
@@ -24,7 +26,7 @@ impl Module for Node {
             .as_optional()
             .map(|s| s.parse::<Ipv4Addr>().unwrap())
         {
-            IOContext::new(mac, addr).set();
+            IOContext::eth_with_addr(addr, mac).set();
             let subnet = par("subnet").unwrap().parse::<Ipv4Addr>().unwrap();
             let mut server = DHCPServer::new();
             let subnet = subnet.octets();
@@ -43,7 +45,7 @@ impl Module for Node {
             self.server = Some(server);
             log::info!("Created server")
         } else {
-            IOContext::new(mac, Ipv4Addr::UNSPECIFIED).set();
+            IOContext::eth_with_addr(Ipv4Addr::UNSPECIFIED, mac).set();
             self.client = Some(DHCPClient::new());
             log::info!("Created client");
 
@@ -80,7 +82,6 @@ impl Module for Node {
     }
 }
 
-#[NdlModule("bin")]
 struct Switch {
     entries: HashMap<IpAddr, GateRef>,
     n: usize,
@@ -154,16 +155,25 @@ impl Module for Switch {
     }
 }
 
-#[NdlSubsystem("bin")]
-struct Main {}
+struct Main;
+impl Module for Main {
+    fn new() -> Main {
+        Main
+    }
+}
 
 fn main() {
-    ScopedLogger::new()
+    inet::init();
+    Logger::new()
         .interal_max_log_level(log::LevelFilter::Warn)
-        .finish()
+        .try_set_logger()
         .unwrap();
     let _ = Runtime::new_with(
-        Main {}.build_rt(),
+        NetworkRuntime::new(
+            NdlApplication::new("dhcp_bin/main.ndl", registry![Node, Main, Switch])
+                .map_err(|e| println!("{e}"))
+                .unwrap(),
+        ),
         RuntimeOptions::seeded(123).include_env(),
     )
     .run();

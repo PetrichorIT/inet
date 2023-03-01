@@ -1,11 +1,10 @@
-use des::{net::globals, prelude::*};
+use des::{net::globals, prelude::*, registry};
 use inet::{
     ip::*,
     routing::{BackwardRoutingDeamon, RandomRoutingDeamon, RoutingInformation},
     FromBytestream, IntoBytestream,
 };
 
-#[NdlModule("bin")]
 struct Client {}
 
 impl Module for Client {
@@ -28,11 +27,10 @@ impl Module for Client {
             1111 => {
                 let ip = [50, 100, 150, 200, 250][random::<usize>() % 5];
                 let ip = Ipv4Addr::new(ip, ip, ip, ip);
-                let pkt = IPPacket {
-                    version: IPVersion::V4,
+                let pkt = Ipv4Packet {
                     dscp: 0,
                     enc: 0,
-                    flags: IPFlags {
+                    flags: Ipv4Flags {
                         df: false,
                         mf: false,
                     },
@@ -40,7 +38,6 @@ impl Module for Client {
                     ttl: 8,
                     fragment_offset: 0,
                     proto: 123,
-                    checksum: 0,
 
                     src: own,
                     dest: ip,
@@ -60,7 +57,7 @@ impl Module for Client {
             _ => {
                 let (content, _) = msg.cast::<Vec<u8>>();
                 // println!("{:x?}", &content[..20]);
-                let ip = IPPacket::from_buffer(content).unwrap();
+                let ip = Ipv4Packet::from_buffer(content).unwrap();
                 // println!("{}", ip.dest);
                 if ip.dest == own {
                     log::info!("Received pkt from {} -> consumed", ip.src);
@@ -75,7 +72,6 @@ impl Module for Client {
     }
 }
 
-#[NdlModule("bin")]
 struct Router {
     router: Box<dyn inet::routing::Router>,
 }
@@ -100,20 +96,30 @@ impl Module for Router {
     }
 
     fn at_sim_end(&mut self) {
-        let topo = globals().topology.borrow().clone();
-        topo.write_to_svg("topo.svg").unwrap()
+        let topo = globals().topology.lock().unwrap().clone();
+        let _ = topo.write_to_svg("topo.svg");
     }
 }
 
-#[NdlSubsystem("bin")]
-struct Main {}
+struct Main;
+impl Module for Main {
+    fn new() -> Main {
+        Main
+    }
+}
 
 fn main() {
-    ScopedLogger::new()
+    inet::init();
+
+    Logger::new()
         .interal_max_log_level(log::LevelFilter::Warn)
-        .finish()
+        .try_set_logger()
         .unwrap();
-    let rt = Main {}.build_rt();
+    let rt = NetworkRuntime::new(
+        NdlApplication::new("routing_bin/main.ndl", registry![Main, Router, Client])
+            .map_err(|e| println!("{e}"))
+            .unwrap(),
+    );
     let rt = Runtime::new_with(
         rt,
         RuntimeOptions::seeded(123).max_time(SimTime::from_duration(Duration::from_secs(1000))),

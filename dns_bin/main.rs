@@ -1,5 +1,5 @@
-use des::{net::hooks::*, prelude::*, tokio::net::IOContext};
-use inet::{dns::*, FromBytestream, IpMask};
+use des::{prelude::*, registry};
+use inet::{dns::*, ip::IpMask, FromBytestream, IOContext};
 
 /*
 Concept
@@ -10,7 +10,6 @@ DNS2 = www
 
 // # CLIENT
 
-#[NdlModule("bin")]
 struct Client {}
 #[async_trait::async_trait]
 impl AsyncModule for Client {
@@ -20,7 +19,7 @@ impl AsyncModule for Client {
 
     async fn at_sim_start(&mut self, _stage: usize) {
         let ip = par("addr").unwrap().parse::<Ipv4Addr>().unwrap();
-        IOContext::new(random(), ip).set();
+        IOContext::eth_default(ip).set();
         schedule_in(Message::new().kind(2334).build(), Duration::from_secs(10));
 
         tokio::spawn(async move {
@@ -155,7 +154,6 @@ impl AsyncModule for Client {
     }
 }
 
-#[NdlModule("bin")]
 struct DNSLocal {}
 
 #[async_trait::async_trait]
@@ -166,7 +164,7 @@ impl AsyncModule for DNSLocal {
 
     async fn at_sim_start(&mut self, _: usize) {
         let ip = par("addr").unwrap().parse::<Ipv4Addr>().unwrap();
-        IOContext::new(random(), ip).set();
+        IOContext::eth_default(ip).set();
         tokio::spawn(async move {
             let mut server = DNSNameserver::new(
                 DNSNodeInformation {
@@ -196,7 +194,6 @@ impl AsyncModule for DNSLocal {
 
 // # SERVER
 
-#[NdlModule("bin")]
 struct DNSServer0 {
     server: Option<DNSNameserver>,
 }
@@ -205,19 +202,15 @@ impl AsyncModule for DNSServer0 {
     fn new() -> Self {
         Self {
             server: Some(
-                DNSNameserver::from_zonefile(
-                    "org",
-                    "/Users/mk_dev/Developer/rust/inet/bin/zonefiles/",
-                    "ns0.namservers.org.",
-                )
-                .unwrap(),
+                DNSNameserver::from_zonefile("org", "dns_bin/zonefiles/", "ns0.namservers.org.")
+                    .unwrap(),
             ),
         }
     }
 
     async fn at_sim_start(&mut self, _stage: usize) {
         let ip = par("addr").unwrap().parse::<Ipv4Addr>().unwrap();
-        IOContext::new(random(), ip).set();
+        IOContext::eth_default(ip).set();
 
         schedule_in(Message::new().kind(1111).build(), Duration::ZERO);
     }
@@ -233,7 +226,6 @@ impl AsyncModule for DNSServer0 {
     }
 }
 
-#[NdlModule("bin")]
 struct DNSServer1 {
     server: Option<DNSNameserver>,
 }
@@ -244,7 +236,7 @@ impl AsyncModule for DNSServer1 {
             server: Some(
                 DNSNameserver::from_zonefile(
                     "example.org.",
-                    "/Users/mk_dev/Developer/rust/inet/bin/zonefiles/",
+                    "dns_bin/zonefiles/",
                     if module_name() == "dns1" {
                         "ns1.example.org."
                     } else {
@@ -258,7 +250,7 @@ impl AsyncModule for DNSServer1 {
 
     async fn at_sim_start(&mut self, _stage: usize) {
         let ip = par("addr").unwrap().parse::<Ipv4Addr>().unwrap();
-        IOContext::new(random(), ip).set();
+        IOContext::eth_default(ip).set();
         schedule_in(Message::new().kind(1111).build(), Duration::ZERO);
     }
 
@@ -273,7 +265,6 @@ impl AsyncModule for DNSServer1 {
     }
 }
 
-#[NdlModule("bin")]
 struct DNSServer2 {
     server: Option<DNSNameserver>,
 }
@@ -282,19 +273,15 @@ impl AsyncModule for DNSServer2 {
     fn new() -> Self {
         Self {
             server: Some(
-                DNSNameserver::from_zonefile(
-                    ".",
-                    "/Users/mk_dev/Developer/rust/inet/bin/zonefiles/",
-                    "a.root-servers.net.",
-                )
-                .unwrap(),
+                DNSNameserver::from_zonefile(".", "dns_bin/zonefiles/", "a.root-servers.net.")
+                    .unwrap(),
             ),
         }
     }
 
     async fn at_sim_start(&mut self, _stage: usize) {
         let ip = par("addr").unwrap().parse::<Ipv4Addr>().unwrap();
-        IOContext::new(random(), ip).set();
+        IOContext::eth_default(ip).set();
         schedule_in(Message::new().kind(7912).build(), Duration::from_secs(5));
     }
 
@@ -310,7 +297,6 @@ impl AsyncModule for DNSServer2 {
     }
 }
 
-#[NdlModule("bin")]
 struct Router {}
 impl Module for Router {
     fn new() -> Self {
@@ -323,24 +309,38 @@ impl Module for Router {
 
     fn at_sim_start(&mut self, stage: usize) {
         if stage == 1 {
-            IOContext::new(random(), Ipv4Addr::new(1, 1, 1, 1)).set();
-            let _ = create_hook(RoutingHook::new(RoutingHookOptions::INET), 0);
+            IOContext::eth_default(Ipv4Addr::new(1, 1, 1, 1)).set();
+            // let _ = create_hook(RoutingHook::new(RoutingHookOptions::INET), 0);
         }
     }
 
     fn handle_message(&mut self, _msg: Message) {}
 }
 
-#[NdlSubsystem("bin")]
-struct Main {}
+struct Main;
+impl Module for Main {
+    fn new() -> Main {
+        Main
+    }
+}
 
 fn main() {
-    ScopedLogger::new()
+    inet::init();
+
+    Logger::new()
         .interal_max_log_level(log::LevelFilter::Warn)
-        .finish()
+        .try_set_logger()
         .unwrap();
 
-    let rt = Main {}.build_rt();
+    let mut rt = NetworkRuntime::new(
+        NdlApplication::new(
+            "dns_bin/main.ndl",
+            registry![Main, Router, DNSServer0, DNSServer1, DNSServer2, DNSLocal, Client],
+        )
+        .map_err(|e| println!("{e}"))
+        .unwrap(),
+    );
+    rt.include_par_file("dns_bin/main.par");
     let rt = Runtime::new(rt);
     let _ = rt.run();
 }

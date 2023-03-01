@@ -18,38 +18,17 @@ impl IOPlugin {
 }
 
 impl Plugin for IOPlugin {
-    fn capture_sim_start(&mut self) {
-        self.capture(None);
-    }
-    fn capture_sim_end(&mut self) {
-        self.capture(None);
-    }
-    fn capture(&mut self, msg: Option<Message>) -> Option<Message> {
+    fn event_start(&mut self) {
         let io = self.ctx.take().expect("Theft");
-        // inet_trace!("io::begin with {} interfaces", io.interfaces.len());
         self.prev = IOContext::swap_in(Some(io));
-
-        if let Some(msg) = msg {
-            IOContext::with_current(|ctx| ctx.capture(msg))
-        } else {
-            None
-        }
     }
 
-    fn defer_sim_start(&mut self) {
-        self.defer();
+    fn capture_incoming(&mut self, msg: Message) -> Option<Message> {
+        IOContext::with_current(|ctx| ctx.capture(msg))
     }
-    fn defer_sim_end(&mut self) {
-        self.defer()
-    }
-    fn defer(&mut self) {
-        // Defer intent resolve
 
+    fn event_end(&mut self) {
         self.ctx = IOContext::swap_in(self.prev.take());
-        // inet_trace!(
-        //     "io::end with {} interfaces",
-        //     self.ctx.as_ref().unwrap().interfaces.len()
-        // );
         assert!(self.ctx.is_some());
     }
 }

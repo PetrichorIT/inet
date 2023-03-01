@@ -1,4 +1,5 @@
-use des::tokio;
+use des::net::plugin::add_plugin;
+use des::{registry, tokio};
 use std::str::FromStr;
 use std::sync::{
     atomic::{AtomicBool, Ordering::SeqCst},
@@ -13,8 +14,8 @@ use inet::{
     FromBytestream, TcpSocket,
 };
 
-#[NdlModule("tests")]
 struct Link {}
+
 impl Module for Link {
     fn new() -> Self {
         Self {}
@@ -47,10 +48,10 @@ impl Module for Link {
     }
 }
 
-#[NdlModule("tests")]
 struct TcpServer {
     done: Arc<AtomicBool>,
 }
+
 #[async_trait::async_trait]
 impl AsyncModule for TcpServer {
     fn new() -> Self {
@@ -128,10 +129,10 @@ impl AsyncModule for TcpServer {
     }
 }
 
-#[NdlModule("tests")]
 struct TcpClient {
     done: Arc<AtomicBool>,
 }
+
 #[async_trait::async_trait]
 impl AsyncModule for TcpClient {
     fn new() -> Self {
@@ -186,8 +187,12 @@ impl AsyncModule for TcpClient {
     }
 }
 
-#[NdlSubsystem("tests")]
-struct Main {}
+struct Main;
+impl Module for Main {
+    fn new() -> Main {
+        Main
+    }
+}
 
 #[test]
 #[serial_test::serial]
@@ -199,7 +204,11 @@ fn tcp_accidental_fast_open() {
     //     .finish()
     //     .unwrap();
 
-    let app = Main {}.build_rt();
+    let app = NetworkRuntime::new(
+        NdlApplication::new("tests/tcp.ndl", registry![Link, TcpServer, TcpClient, Main])
+            .map_err(|e| println!("{e}"))
+            .unwrap(),
+    );
     let rt = Runtime::new_with(
         app,
         RuntimeOptions::seeded(123)

@@ -1,9 +1,5 @@
 use des::prelude::*;
 
-use super::edge::EdgeNode;
-use super::routers::LANRouter;
-
-#[NdlModule("bin")]
 pub struct TypeA {}
 
 impl Module for TypeA {
@@ -12,7 +8,6 @@ impl Module for TypeA {
     }
 }
 
-#[NdlModule("bin")]
 pub struct TypeB {}
 
 impl Module for TypeB {
@@ -21,7 +16,6 @@ impl Module for TypeB {
     }
 }
 
-#[NdlModule("bin")]
 pub struct TypeC {}
 
 impl Module for TypeC {

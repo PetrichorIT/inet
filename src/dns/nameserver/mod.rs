@@ -1,6 +1,9 @@
 use super::{DNSMessage, DNSOpCode, DNSQuestion, DNSResponseCode, DNSString, DNSZoneFile};
 use crate::{ip::IpMask, FromBytestream, IntoBytestream, UdpSocket};
-use des::{prelude::par, time::SimTime};
+use des::{
+    prelude::{module_path, par},
+    time::SimTime,
+};
 use std::{
     collections::VecDeque,
     net::{IpAddr, Ipv4Addr, SocketAddr},
@@ -85,10 +88,15 @@ impl DNSNameserver {
         domain_name: impl Into<DNSString>,
     ) -> std::io::Result<Self> {
         let DNSZoneFile { zone, soa, records } = DNSZoneFile::new(zone, zone_filedir)?;
+
         let node = DNSNodeInformation {
             zone,
             domain_name: domain_name.into(),
-            ip: IpAddr::from_str(&par("addr").as_optional().unwrap()).unwrap(),
+            ip: IpAddr::from_str(&par("addr").as_optional().expect(&format!(
+                "failed to get par 'addr' for module {}",
+                module_path()
+            )))
+            .unwrap(),
         };
 
         Ok(Self {
