@@ -1,0 +1,33 @@
+link LANLink {
+    jitter: 0.0,
+    latency: 0.05,
+    bitrate: 10000000,
+}
+
+module Ping {
+    gates {
+        in @input,
+        out @output
+    }
+}
+
+module Pong {
+    gates {
+        in @input,
+        out @output,
+    }
+}
+
+module Main {
+    submodules {
+        ping: Ping,
+        pong: Pong,
+    }
+
+    connections {
+        ping/out --> LANLink --> pong/in,
+        pong/out --> LANLink --> ping/in,
+    }
+}
+
+entry Main;

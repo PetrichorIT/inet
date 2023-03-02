@@ -306,6 +306,7 @@ impl IOContext {
         let Some(interface) = self.interfaces.get_mut(content) else {
             return Some(msg)
         };
+        // log::trace!("(interface-update) {}", interface.name);
 
         let updates = interface.link_update();
         for socket in updates {

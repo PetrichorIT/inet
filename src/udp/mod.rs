@@ -32,16 +32,6 @@ pub(super) struct UdpManager {
     pub(super) interest: Option<UdpInterestGuard>,
 }
 
-impl UdpManager {
-    // pub(self) fn info(&self) -> UdpSocketInfo {
-    //     UdpSocketInfo {
-    //         addr: self.local_addr,
-    //         peer: self.state.peer(),
-    //         in_queue_size: self.incoming.len(),
-    //     }
-    // }
-}
-
 /// A public info over UDP sockets.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct UdpSocketInfo {
