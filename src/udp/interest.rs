@@ -22,7 +22,7 @@ pub struct UdpInterestGuard {
 impl UdpInterestGuard {
     pub(crate) fn wake(mut self) {
         self.interest.resolved = true;
-        self.waker.wake();
+        self.waker.wake_by_ref();
     }
 
     pub(crate) fn is_writable(&self) -> bool {
@@ -48,10 +48,11 @@ impl Future for UdpInterest {
                 };
 
                 if socket.incoming.is_empty() {
-                    socket.interest = Some(UdpInterestGuard {
+                    socket.interest.replace(UdpInterestGuard {
                         interest: self.clone(),
                         waker: cx.waker().clone(),
                     });
+
                     Poll::Pending
                 } else {
                     self.resolved = true;
@@ -79,7 +80,7 @@ impl Future for UdpInterest {
 
                 if interface.is_busy() {
                     interface.add_write_interest(self.fd);
-                    udp.interest = Some(UdpInterestGuard {
+                    udp.interest.replace(UdpInterestGuard {
                         interest: self.clone(),
                         waker: cx.waker().clone(),
                     });
@@ -104,13 +105,21 @@ impl Drop for UdpInterest {
     fn drop(&mut self) {
         if !self.resolved {
             if self.io_interest.is_readable() || self.io_interest.is_writable() {
+                // inet_trace!("dropping udp interest {:?}", self);
                 IOContext::try_with_current(|ctx| {
                     if let Some(udp) = ctx.udp_manager.get_mut(&self.fd) {
-                        udp.interest.take();
+                        let _ = udp.interest.take();
                     }
                 });
                 return;
             }
         }
+    }
+}
+
+impl Drop for UdpInterestGuard {
+    fn drop(&mut self) {
+        // prevent recursive calls of UdpInterest::drop that cause borrowmut of ctx
+        self.interest.resolved = true;
     }
 }
