@@ -67,7 +67,7 @@ impl DHCPClient {
             discover,
         );
 
-        log::trace!("<DHCPClient> Starting handshake {:x}", self.xid);
+        log::trace!(target: "inet/dhcp", "<DHCPClient> Starting handshake {:x}", self.xid);
         send(
             Message::new()
                 .kind(MESSAGE_KIND_DHCP)
@@ -108,6 +108,7 @@ impl DHCPClient {
 
                 self.server_choosen = req.siaddr;
                 log::trace!(
+                    target: "inet/dhcp",
                     "<DHCPClient> Accepted offer {:x} of {:?} for addr {:?}",
                     req.xid,
                     req.siaddr,
@@ -136,6 +137,7 @@ impl DHCPClient {
                 assert_eq!(msg.yiaddr, self.addr);
 
                 log::info!(
+                    target: "inet/dhcp",
                     "DHCP config complete: now known as {:?} from {:?}",
                     self.addr,
                     msg.siaddr

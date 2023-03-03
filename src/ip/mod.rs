@@ -99,4 +99,11 @@ impl IpPacket {
     pub fn is_v6(&self) -> bool {
         matches!(self, Self::V6(_))
     }
+
+    pub(crate) fn dest(&self) -> IpAddr {
+        match self {
+            Self::V4(v4) => IpAddr::V4(v4.dest),
+            Self::V6(v6) => IpAddr::V6(v6.dest),
+        }
+    }
 }

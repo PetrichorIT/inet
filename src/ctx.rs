@@ -107,7 +107,7 @@ impl IOContext {
         match kind {
             KIND_IPV4 => {
                 let Some(ip) = msg.try_content::<Ipv4Packet>() else {
-                    log::error!("received eth-packet with kind=0x0800 (ip) but content was no ip-packet");
+                    log::error!(target: "inet", "received eth-packet with kind=0x0800 (ip) but content was no ipv4-packet");
                     return Some(msg)
                 };
 
@@ -135,7 +135,7 @@ impl IOContext {
             }
             KIND_IPV6 => {
                 let Some(ip) = msg.try_content::<Ipv6Packet>() else {
-                    log::error!("received eth-packet with kind=0x08DD (ip) but content was no ip-packet");
+                    log::error!(target: "inet", "received eth-packet with kind=0x08DD (ip) but content was no ipv6-packet");
                     return Some(msg)
                 };
 
@@ -163,10 +163,7 @@ impl IOContext {
             }
             KIND_LINK_UNBUSY => self.capture_link_update(msg),
             KIND_IO_TIMEOUT => self.capture_io_timeout(msg),
-            _ => {
-                log::error!("Unkown packet {}", msg.str());
-                None
-            }
+            _ => Some(msg),
         }
     }
 

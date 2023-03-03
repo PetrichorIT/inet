@@ -105,7 +105,6 @@ impl Drop for UdpInterest {
     fn drop(&mut self) {
         if !self.resolved {
             if self.io_interest.is_readable() || self.io_interest.is_writable() {
-                // inet_trace!("dropping udp interest {:?}", self);
                 IOContext::try_with_current(|ctx| {
                     if let Some(udp) = ctx.udp_manager.get_mut(&self.fd) {
                         let _ = udp.interest.take();

@@ -62,7 +62,8 @@ impl IOContext {
             fd,
             interface: 0,
         };
-        inet_trace!(
+        log::trace!(
+            target: "inet/bsd",
             "socket::create '0x{:x} {:?}/{:?}/{}",
             fd,
             domain,
@@ -81,7 +82,8 @@ impl IOContext {
         let mut new = socket.clone();
         let new_fd = self.create_fd();
         new.fd = new_fd;
-        inet_trace!(
+        log::trace!(
+            target: "inet/bsd",
             "socket::create '0x{:x} {:?}/{:?}/{} from '0x{:x}",
             new_fd,
             new.domain,
@@ -96,7 +98,7 @@ impl IOContext {
     }
 
     pub(super) fn bsd_close_socket(&mut self, fd: Fd) -> Result<()> {
-        inet_trace!("socket::close '0x{:x}", fd);
+        log::trace!( target: "inet/bsd", "socket::close '0x{:x}", fd);
         let socket = self.sockets.remove(&fd);
         if socket.is_some() {
             Ok(())
@@ -175,7 +177,8 @@ impl IOContext {
                 socket.addr = SocketAddr::new(next, port);
                 socket.interface = *ifid;
 
-                inet_trace!(
+                log::trace!(
+                    target: "inet/bsd",
                     "socket::bind '0x{:x} to {} at {} (zero-bind)",
                     fd,
                     socket.addr,
@@ -241,7 +244,8 @@ impl IOContext {
                 socket.addr = SocketAddr::new(next, port);
                 socket.interface = *ifid;
 
-                inet_trace!(
+                log::trace!(
+                    target: "inet/bsd",
                     "socket::bind '0x{:x} to {} at {} (directed-bind)",
                     fd,
                     socket.addr,

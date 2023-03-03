@@ -110,7 +110,7 @@ impl RoutingPort {
                     };
                     ports.push(RoutingPort::new(other.clone(), gate));
                 }
-                GateServiceType::Undefined => log::warn!("Found undefined gate service typ"),
+                GateServiceType::Undefined => {}
             };
         }
 

@@ -3,11 +3,13 @@ use crate::{ip::IpMask, FromBytestream, IntoBytestream, UdpSocket};
 use des::{
     prelude::{module_path, par},
     time::SimTime,
+    tokio::{select, time::sleep},
 };
 use std::{
     collections::VecDeque,
     net::{IpAddr, Ipv4Addr, SocketAddr},
     str::FromStr,
+    time::Duration,
 };
 
 mod iterative;
@@ -135,23 +137,50 @@ impl DNSNameserver {
         let socket =
             UdpSocket::bind(SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), 53)).await?;
 
-        log::trace!("Created socket at {}", socket.local_addr().unwrap());
+        log::trace!(target: "inet/dns", "Created socket at {}", socket.local_addr().unwrap());
 
         let mut buf = [0u8; 512];
+        loop {
+            if self.active_transactions.is_empty() {
+                let udp = socket.recv_from(&mut buf).await;
+                let Ok((n, from)) = udp else { break };
+                let Ok(msg) = DNSMessage::from_buffer(&buf[..n]) else { continue };
 
-        while let Ok((n, client)) = socket.recv_from(&mut buf).await {
-            let vec = Vec::from(&buf[..n]);
-            let Ok(msg) = DNSMessage::from_buffer(vec) else { continue };
+                let output = self.handle(msg, from);
+                for (pkt, target) in output {
+                    let mut buf = Vec::with_capacity(512);
+                    pkt.into_bytestream(&mut buf)?;
+                    socket.send_to(&buf, target).await?;
+                }
+            } else {
+                // Wait with timeout only if active transactions
+                // else infinite loop, will not terminated unless sim end
+                select! {
+                    udp = socket.recv_from(&mut buf) => {
+                        let Ok((n, from)) = udp else { break };
+                        let Ok(msg) = DNSMessage::from_buffer(&buf[..n]) else { continue };
 
-            let output = self.handle(msg, client);
-            for (pkt, target) in output {
-                let mut buf = Vec::with_capacity(512);
-                pkt.into_bytestream(&mut buf)?;
-                socket.send_to(&buf, target).await?;
+                        let output = self.handle(msg, from);
+                        for (pkt, target) in output {
+                            let mut buf = Vec::with_capacity(512);
+                            pkt.into_bytestream(&mut buf)?;
+                            socket.send_to(&buf, target).await?;
+                        }
+                    },
+                    _ = sleep(Duration::new(5, 0)) => {
+                        let mut output = Vec::new();
+                        self.check_timeouts(&mut output);
+                        for (pkt, target) in output {
+                            let mut buf = Vec::with_capacity(512);
+                            pkt.into_bytestream(&mut buf)?;
+                            socket.send_to(&buf, target).await?;
+                        }
+                    }
+                }
             }
         }
 
-        log::trace!("Closed socket at {}", socket.local_addr().unwrap());
+        log::trace!(target: "inet/dns", "Closed socket at {}", socket.local_addr().unwrap());
 
         Ok(())
     }
@@ -175,6 +204,7 @@ impl DNSNameserver {
             if self.active_transactions[i].deadline < SimTime::now() {
                 let transaction = self.active_transactions.remove(i);
                 log::trace!(
+                    target: "inet/dns",
                     "[0x{:x}] Recursive transaction 0x{:x} timed out",
                     transaction.client_transaction,
                     transaction.local_transaction
@@ -201,6 +231,7 @@ impl DNSNameserver {
 
         let (mode, ra) = self.get_mode(&msg, client);
         log::trace!(
+            target: "inet/dns",
             "[0x{:x}] Got request from {} with {} questions in mode {:?} (ra = {})",
             msg.transaction,
             client,

@@ -5,11 +5,12 @@ use crate::{
     bsd::Fd,
     ip::{IpPacket, IpVersion},
 };
-use des::prelude::{module_id, schedule_at, GateRef, Message, MessageKind, SimTime};
+use des::prelude::{module_id, schedule_at, schedule_in, GateRef, Message, MessageKind, SimTime};
 use std::{
     fmt::{self, Display},
     io::{Error, ErrorKind, Result},
     net::{IpAddr, Ipv4Addr},
+    time::Duration,
 };
 
 mod flags;
@@ -143,12 +144,20 @@ impl Interface {
             .expect("Failed to fetch interface addr");
         ip.set_src(addr);
 
+        let target_loopback = ip.dest().is_loopback();
+
         let mut msg = Message::new().kind(ip.kind());
         match ip {
             IpPacket::V4(v4) => msg = msg.content(v4),
             IpPacket::V6(v6) => msg = msg.content(v6),
         }
-        self.send_mtu(msg.build())
+
+        if target_loopback {
+            schedule_in(msg.build(), Duration::ZERO);
+            Ok(())
+        } else {
+            self.send_mtu(msg.build())
+        }
     }
 
     pub(crate) fn get_interface_addr_for(&self, version: IpVersion) -> Option<IpAddr> {
@@ -174,10 +183,8 @@ impl Interface {
             ));
         }
 
-        // let bytes = mtu.header().length;
         self.state = self.device.send_mtu(mtu);
         if let InterfaceBusyState::Busy { until, .. } = &self.state {
-            // log::warn!("interface {} sending mtu of size {}b", self.name, bytes);
             schedule_at(
                 Message::new()
                     .kind(KIND_LINK_UNBUSY)
@@ -306,7 +313,6 @@ impl IOContext {
         let Some(interface) = self.interfaces.get_mut(content) else {
             return Some(msg)
         };
-        // log::trace!("(interface-update) {}", interface.name);
 
         let updates = interface.link_update();
         for socket in updates {

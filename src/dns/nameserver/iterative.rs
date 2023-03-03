@@ -20,6 +20,7 @@ impl DNSNameserver {
 
         if DNSString::suffix_match_len(&zone_uri, &question.qname) < k {
             log::warn!(
+                target: "inet/dns",
                 "[0x{:x}] Illdirected request for {} {} in zone {}",
                 req.transaction,
                 question.qtyp,
@@ -49,6 +50,7 @@ impl DNSNameserver {
                 if addrs.is_empty() {
                     let next_param = qname.suffix(qname.labels() - k - 1);
                     log::trace!(
+                        target: "inet/dns",
                         "[0x{:x}] Referral of request {} {} to next zone {}",
                         req.transaction,
                         qtyp,
@@ -68,6 +70,7 @@ impl DNSNameserver {
 
                     if ns.is_empty() {
                         log::error!(
+                            target: "inet/dns",
                             "[0x{:x}] Cannot refer request {} {} to any further point",
                             req.transaction,
                             qtyp,
@@ -92,6 +95,7 @@ impl DNSNameserver {
                 } else {
                     let anwser = addrs.pop_front().unwrap().clone();
                     log::trace!(
+                        target: "inet/dns",
                         "[0x{:x}] Responding to request {} {} with {} and {} additionaly records",
                         req.transaction,
                         qtyp,
@@ -139,6 +143,7 @@ impl DNSNameserver {
                 if addrs.is_empty() {
                     let next_param = qname.suffix(qname.labels() - k - 1);
                     log::trace!(
+                        target: "inet/dns",
                         "[0x{:x}] Referral of request {} {} to next zone {}",
                         req.transaction,
                         qtyp,
@@ -158,6 +163,7 @@ impl DNSNameserver {
 
                     if ns.is_empty() {
                         log::error!(
+                            target: "inet/dns",
                             "[0x{:x}] Cannot refer request {} {} to any further point",
                             req.transaction,
                             qtyp,
@@ -182,6 +188,7 @@ impl DNSNameserver {
                 } else {
                     let anwser = addrs.pop_front().unwrap().clone();
                     log::trace!(
+                        target: "inet/dns",
                         "[0x{:x}] Responding to request {} {} with {} and {} additionaly records",
                         req.transaction,
                         qtyp,

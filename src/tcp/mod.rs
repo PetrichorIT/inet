@@ -109,7 +109,8 @@ enum TcpReceiverState {
 
 impl TcpController {
     pub fn new(fd: Fd, addr: SocketAddr, config: TcpSocketConfig) -> Self {
-        inet_trace!(
+        log::trace!(
+            target: "inet/tcp",
             "tcp::create '0x{:x} with buffers {} (sender) {} (recv) at seq_no {} at ttl {}",
             fd,
             config.send_buffer_size,
@@ -171,7 +172,7 @@ impl IOContext {
         assert!(packet.tos() == PROTO_TCP);
 
         let Ok(tcp) = TcpPacket::from_buffer(packet.content()) else {
-            log::error!("received ip-packet with proto=0x06 (tcp) but content was no tcp-packet");
+            log::error!(target: "inet/tcp", "received ip-packet with proto=0x06 (tcp) but content was no tcp-packet");
             return false;
         };
 
@@ -296,7 +297,7 @@ impl IOContext {
         }
 
         if ctrl.state == TcpState::Closed && ctrl.dropped {
-            inet_trace!("tcp::drop '0x{:x} dropping socket", fd);
+            log::trace!(target: "inet/tcp", "tcp::drop '0x{:x} dropping socket", fd);
             self.bsd_close_socket(fd);
         } else {
             self.tcp_manager.insert(fd, ctrl);
@@ -332,7 +333,7 @@ impl IOContext {
         }
 
         if ctrl.state == TcpState::Closed && ctrl.dropped {
-            inet_trace!("tcp::drop '0x{:x} dropping socket", fd);
+            log::trace!(target: "inet/tcp", "tcp::drop '0x{:x} dropping socket", fd);
             self.bsd_close_socket(fd);
         } else {
             self.tcp_manager.insert(fd, ctrl);
@@ -368,7 +369,7 @@ impl IOContext {
         }
 
         if ctrl.state == TcpState::Closed && ctrl.dropped {
-            inet_trace!("tcp::drop '0x{:x} dropping socket", fd);
+            log::trace!(target: "inet/tcp", "tcp::drop '0x{:x} dropping socket", fd);
             self.bsd_close_socket(fd);
         } else {
             self.tcp_manager.insert(fd, ctrl);
@@ -404,7 +405,7 @@ impl IOContext {
 
                 pkt.window = ctrl.recv_window();
 
-                inet_trace!("tcp::closed '0x{:x} Sending SYN {{ seq_no: {} }}", ctrl.fd, pkt.seq_no);
+                log::trace!(target: "inet/tcp", "tcp::closed '0x{:x} Sending SYN {{ seq_no: {} }}", ctrl.fd, pkt.seq_no);
                 self.tcp_send_packet(
                     ctrl,
                     ctrl.ip_packet_for(pkt)
@@ -437,7 +438,7 @@ impl IOContext {
                 ctrl.sender_max_send_seq_no = ctrl.sender_next_send_seq_no + syn.window as u32;
                 ctrl.apply_syn_options(&syn.options);
 
-                inet_trace!("tcp::listen '0x{:x} window size: {}", ctrl.fd, syn.window);
+                log::trace!(target: "inet/tcp", "tcp::listen '0x{:x} window size: {}", ctrl.fd, syn.window);
 
                 let mut pkt = ctrl.create_packet(
                     TcpPacketId::Syn,
@@ -448,7 +449,8 @@ impl IOContext {
                 pkt.window = ctrl.recv_window();
                 ctrl.sender_next_send_seq_no += 1;
 
-                inet_trace!(
+                log::trace!(
+                    target: "inet/tcp", 
                     "tcp::listen '0x{:x} Sending SYNACK {{ seq_no: {}, ack: {} }}",
                     ctrl.fd,
                     pkt.seq_no,
@@ -492,7 +494,8 @@ impl IOContext {
                     ctrl.sender_state = TcpSenderState::Established;
                     ctrl.receiver_state = TcpReceiverState::Established;
                 
-                    inet_trace!(
+                    log::trace!(
+                        target: "inet/tcp", 
                         "tcp::synsent '0x{:x} Established with Sender {{ last_ack: {}, seq_no: {}, buf: {},  max_seq_no: {} }} and Receiver {{ last_recv: {} }}",
                         ctrl.fd,
                         ctrl.sender_last_ack_seq_no,
@@ -504,7 +507,7 @@ impl IOContext {
                     ctrl.state = TcpState::Established;
                     ctrl.established_interest.take().map(|v| v.wake());
                 } else {
-                    inet_trace!("tcp::synsent '0x{:x} transition to tcp::synrecv", ctrl.fd);
+                    log::trace!(target: "inet/tcp", "tcp::synsent '0x{:x} transition to tcp::synrecv", ctrl.fd);
 
                     self.send_ack(ctrl, ctrl.receiver_last_recv_seq_no + 1, ctrl.recv_window());
                     ctrl.sender_max_send_seq_no =
@@ -525,7 +528,7 @@ impl IOContext {
 
                 let pkt = ctrl.create_packet(TcpPacketId::Syn, ctrl.sender_next_send_seq_no - 1, 0);
 
-                inet_trace!("tcp::synsent '0x{:x} Re-Sending SYN {{ seq_no: {} }}", ctrl.fd, pkt.seq_no,);
+                log::trace!(target: "inet/tcp", "tcp::synsent '0x{:x} Re-Sending SYN {{ seq_no: {} }}", ctrl.fd, pkt.seq_no,);
                 self.tcp_send_packet(
                     ctrl, 
                     ctrl.ip_packet_for(pkt)
@@ -559,7 +562,8 @@ impl IOContext {
                 ctrl.sender_state = TcpSenderState::Established;
                 ctrl.receiver_state = TcpReceiverState::Established;
 
-                inet_trace!(
+                log::trace!(
+                    target: "inet/tcp", 
                     "tcp::synrecv '0x{:x} <FastOpen> Established with Sender {{ seq_no: {}, buf: {}, max_seq_no: {} }} and Receiver {{ last_ack: {} }}",
                     ctrl.fd,
                     ctrl.sender_next_send_seq_no,
@@ -588,7 +592,8 @@ impl IOContext {
                 ctrl.sender_state = TcpSenderState::Established;
                 ctrl.receiver_state = TcpReceiverState::Established;
 
-                inet_trace!(
+                log::trace!(
+                    target: "inet/tcp", 
                     "tcp::synrecv '0x{:x} Established with Sender {{ seq_no: {}, buf: {}, max_seq_no: {} }} and Receiver {{ last_ack: {} }}",
                     ctrl.fd,
                     ctrl.sender_next_send_seq_no,
@@ -609,7 +614,8 @@ impl IOContext {
                 );
                 pkt.window = ctrl.recv_window();
 
-                inet_trace!(
+                log::trace!(
+                    target: "inet/tcp", 
                     "tcp::synrecv '0x{:x} Re-Sending SYNACK {{ seq_no: {}, ack_no: {} }}",
                     ctrl.fd,
                     pkt.seq_no,
@@ -635,7 +641,7 @@ impl IOContext {
                 // -> self will not read from the recv_buffer any longer
                 // -> self must still ack the data send by the server, but no more windows
                 // -> self may posses data in the send buffer that must still be send.
-                inet_trace!("tcp::estab '0x{:x} declaring local closing intention", ctrl.fd);
+                log::trace!(target: "inet/tcp", "tcp::estab '0x{:x} declaring local closing intention", ctrl.fd);
 
                 // (0) Declere closing intention
                 ctrl.sender_state = TcpSenderState::WaitForStream;
@@ -651,7 +657,7 @@ impl IOContext {
 
                 if ctrl.receiver_last_recv_seq_no + 1 == pkt.seq_no {
                     // (0) Handle last ack from FINACK packet
-                    inet_trace!("tcp::estab '0x{:x} Got FIN responding immidiatly", ctrl.fd);
+                    log::trace!(target: "inet/tcp", "tcp::estab '0x{:x} Got FIN responding immidiatly", ctrl.fd);
                     ctrl.receiver_last_recv_seq_no = pkt.seq_no;
                     self.handle_data(ctrl, src, dest, pkt);
 
@@ -666,7 +672,7 @@ impl IOContext {
                     // (3) Skip staet
                     ctrl.receiver_state = TcpReceiverState::Closed;
                 } else {
-                    log::error!("tcp::estab '0x{:x} Got FIN but missing {} data-bytes", ctrl.fd, pkt.seq_no - (ctrl.receiver_last_recv_seq_no + 1));
+                    log::error!(target: "inet/tcp", "tcp::estab '0x{:x} Got FIN but missing {} data-bytes", ctrl.fd, pkt.seq_no - (ctrl.receiver_last_recv_seq_no + 1));
                     ctrl.receiver_state = TcpReceiverState::FinRecvWaitForData;
                     ctrl.receiver_fin_seq_no = pkt.seq_no;
 
@@ -702,7 +708,7 @@ impl IOContext {
                 // -> Both sides may try to send data, can be ignored
 
                 // (0) Handle last ACK from FINACK
-                inet_trace!("tcp::finwait1 '0x{:x} received FIN -> simultaneous close", ctrl.fd);
+                log::trace!(target: "inet/tcp", "tcp::finwait1 '0x{:x} received FIN -> simultaneous close", ctrl.fd);
                 ctrl.receiver_last_recv_seq_no = pkt.seq_no;
                 if pkt.flags.ack {
                     self.handle_data(ctrl, src,dest, pkt);
@@ -724,7 +730,7 @@ impl IOContext {
                 // -> may be ack of data packet, handle
                 // -> may be ACK of FIN
                 
-                inet_trace!("{} {}", pkt.ack_no, ctrl.sender_next_send_seq_no);
+                log::trace!(target: "inet/tcp", "{} {}", pkt.ack_no, ctrl.sender_next_send_seq_no);
 
                 // (0) Check for ACK of FIN (seq_no = nss + 1)
                 let ack_of_fin = pkt.flags.ack && pkt.ack_no == ctrl.sender_next_send_seq_no;
@@ -732,7 +738,7 @@ impl IOContext {
                     // (1) Switch to finwait2 to prevent simultaneous close
                     // -> Since ACK of FIN was send before FIN peer must be in estab
                     // thus now close_wait 
-                    inet_trace!("tcp::finwait1 '0x{:x} got ACK of FIN {}", ctrl.fd, pkt.ack_no);
+                    log::trace!(target: "inet/tcp", "tcp::finwait1 '0x{:x} got ACK of FIN {}", ctrl.fd, pkt.ack_no);
                     ctrl.state = TcpState::FinWait2;
                 } else {
                     self.handle_data(ctrl, src,dest, pkt);
@@ -754,7 +760,7 @@ impl IOContext {
                 // Wait for FIN indicating that server has decided to close.
 
                 // (0) Handle last ACK of FINACK
-                inet_trace!("tcp::finwait2 '0x{:x} going to time-wait", ctrl.fd);
+                log::trace!(target: "inet/tcp", "tcp::finwait2 '0x{:x} going to time-wait", ctrl.fd);
                 ctrl.receiver_last_recv_seq_no = pkt.seq_no;
                 
                 // (1) Send ACK for FIN
@@ -789,7 +795,7 @@ impl IOContext {
                 // (1) Check for ACK of FIN
                 let ack_of_fin = pkt.flags.ack && ctrl.sender_next_send_seq_no == pkt.ack_no;
                 if ack_of_fin {
-                    inet_trace!("tcp::closing '0x{:x} got ACK of FIN {}", ctrl.fd, pkt.ack_no);
+                    log::trace!(target: "inet/tcp", "tcp::closing '0x{:x} got ACK of FIN {}", ctrl.fd, pkt.ack_no);
                     // (2) Switch to time_wait
                     ctrl.set_timer(ctrl.timewait);
                     ctrl.state = TcpState::TimeWait;
@@ -808,7 +814,7 @@ impl IOContext {
             TcpEvent::Timeout() => {
                 // After waiting for errors ensure close the socket.
                 ctrl.reset_connection_pars();
-                inet_trace!("tcp::timewait '0x{:x} Closed", ctrl.fd);
+                log::trace!(target: "inet/tcp", "tcp::timewait '0x{:x} Closed", ctrl.fd);
                 ctrl.state = TcpState::Closed;
             }
             TcpEvent::SysRecv() => unimplemented!(),
@@ -828,7 +834,7 @@ impl IOContext {
             TcpEvent::SysClose() => {
                 // Once the application agrees to close 
                 // send ACK of FIN
-                inet_trace!("tcp::closewait '0x{:x}", ctrl.fd);
+                log::trace!(target: "inet/tcp", "tcp::closewait '0x{:x}", ctrl.fd);
 
                 // (0) Send own FIN
                 let pkt = ctrl.create_packet(TcpPacketId::Fin, ctrl.sender_next_send_seq_no + 1, 0);
@@ -853,14 +859,15 @@ impl IOContext {
                 // (0) Each last ack will be only for FIN (else simultaneous close)
                 ctrl.reset_connection_pars();
                 ctrl.state = TcpState::Closed;
-                inet_trace!("tcp::lastack '0x{:x} Closed", ctrl.fd);
+                log::trace!(target: "inet/tcp", "tcp::lastack '0x{:x} Closed", ctrl.fd);
             }
             _ => {},
         }
     }
 
     fn handle_data(&mut self, ctrl: &mut TcpController, src: IpAddr, dest:IpAddr, pkt: TcpPacket) {
-        inet_trace!(
+        log::trace!(
+            target: "inet/tcp", 
             "tcp::data '0x{:x} Data {{ ack: {}, max: {}, seq: {}, buf: {} }} with Packet {{ seq_no: {}, ack_no: {}, data: {} }}",
             ctrl.fd,
             ctrl.sender_last_ack_seq_no,
@@ -884,7 +891,7 @@ impl IOContext {
                 let n = pkt.ack_no - ctrl.sender_last_ack_seq_no;
                 ctrl.sender_buffer.free(n as usize);
 
-                inet_trace!("tcp::data '0x{:x} freeing acked data: {} bytes", ctrl.fd, n);
+                log::trace!(target: "inet/tcp", "tcp::data '0x{:x} freeing acked data: {} bytes", ctrl.fd, n);
 
                 // freeBuffers
                 ctrl.sender_last_ack_seq_no = pkt.ack_no;
@@ -924,7 +931,7 @@ impl IOContext {
         // (B) Handle data part
         if !pkt.content.is_empty() {
             if pkt.seq_no != ctrl.receiver_last_recv_seq_no + 1 {
-                log::error!("tcp::data '0x{:x} got out of order packet seq_no: {} with {} bytes",
+                log::error!(target: "inet/tcp", "tcp::data '0x{:x} got out of order packet seq_no: {} with {} bytes",
                     ctrl.fd,
                     pkt.seq_no,
                     pkt.content.len(),
@@ -932,7 +939,7 @@ impl IOContext {
                 return
             }
 
-            inet_trace!("tcp::data '0x{:x} [[ received {} bytes starting at {} ]]", ctrl.fd, pkt.content.len(), pkt.seq_no);
+            log::trace!(target: "inet/tcp", "tcp::data '0x{:x} [[ received {} bytes starting at {} ]]", ctrl.fd, pkt.content.len(), pkt.seq_no);
             ctrl.receiver_buffer.state();
 
             // (0) Capture the length of the readable slice before the incoming packet
@@ -964,7 +971,7 @@ impl IOContext {
             // (4) If we are in queue to send a FINACK check for the finack
             if ctrl.receiver_state == TcpReceiverState::FinRecvWaitForData 
                 && ctrl.receiver_last_recv_seq_no == ctrl.receiver_fin_seq_no {
-                inet_trace!("tcp::data '0x{:x} Sending FINACK {}(+1) for client", ctrl.fd, ctrl.receiver_fin_seq_no);
+                log::trace!(target: "inet/tcp", "tcp::data '0x{:x} Sending FINACK {}(+1) for client", ctrl.fd, ctrl.receiver_fin_seq_no);
                 // Send FIN of ACK
                 self.send_ack(ctrl, ctrl.receiver_last_recv_seq_no + 1, ctrl.recv_window());
                 ctrl.state = TcpState::CloseWait;
@@ -983,7 +990,6 @@ impl IOContext {
 
         // // FIN may be send without window
         // if ctrl.sender_max_send_seq_no == ctrl.sender_next_send_seq_no.saturating_sub(2) && true {
-        //     inet_trace!("FIN without window");
         //     ctrl.sender_max_send_seq_no += 1;
         // }
 
@@ -1015,7 +1021,7 @@ impl IOContext {
             // (1) Peek the data from the sender_buffer (n = size)
             let n = ctrl.sender_buffer.peek_at(&mut buf,  ctrl.sender_next_send_seq_no);
             buf.truncate(n);
-            inet_trace!("tcp::data '0x{:x} [[ sending {} bytes (seq_no: {} max {}) ]]", ctrl.fd, n, ctrl.sender_next_send_seq_no, ctrl.sender_max_send_seq_no);
+            log::trace!(target: "inet/tcp", "tcp::data '0x{:x} [[ sending {} bytes (seq_no: {} max {}) ]]", ctrl.fd, n, ctrl.sender_next_send_seq_no, ctrl.sender_max_send_seq_no);
 
             // (2) Create a TCPData packet with the data embedded.
             let tcp = TcpPacket {
@@ -1040,7 +1046,6 @@ impl IOContext {
             ctrl.sender_next_send_seq_no += n as u32;
         }
 
-        // log::error!("{:?} {} {}", ctrl.sender_state, ctrl.sender_next_send_seq_no, ctrl.sender_next_send_buffer_seq_no);
         if ctrl.sender_state == TcpSenderState::WaitForStream
             && ctrl.sender_next_send_seq_no >= ctrl.sender_next_send_buffer_seq_no {
             // Send FIN after completed stream
@@ -1049,7 +1054,7 @@ impl IOContext {
     }
 
     fn send_client_fin(&mut self, ctrl: &mut TcpController) {
-        inet_trace!("tcp::estab '0x{:x} Initialing shutdown with FIN", ctrl.fd);
+        log::trace!(target: "inet/tcp", "tcp::estab '0x{:x} Initialing shutdown with FIN", ctrl.fd);
         let pkt = ctrl.create_packet(
             TcpPacketId::Fin,
             ctrl.sender_next_send_seq_no,
@@ -1067,7 +1072,6 @@ impl IOContext {
     }
 
     pub(self) fn tcp_try_write(&mut self, fd: Fd, buf: &[u8]) -> Result<usize> {
-        // log::debug!("::tcp_try_send");
         // (0) Get the socket
         let Some(mut ctrl) = self.tcp_manager.remove(&fd) else {
             return Err(Error::new(ErrorKind::InvalidInput, "invalid fd - socket dropped"))
@@ -1095,7 +1099,6 @@ impl IOContext {
 
 
     pub(self) fn tcp_try_read(&mut self, fd: Fd, buf: &mut [u8]) -> Result<usize> {
-        // log::debug!("::tcp_try_recv");
         // (0) Get the socket
         let Some(mut ctrl) = self.tcp_manager.remove(&fd) else {
             return Err(Error::new(ErrorKind::InvalidInput, "invalid fd - socket dropped"))
@@ -1123,7 +1126,7 @@ impl IOContext {
         {
             let window = ctrl.recv_window();
             let ack_no = ctrl.receiver_last_recv_seq_no;
-            inet_trace!("tcp::estab '0x{:x} advertising a {} byte window at {}", ctrl.fd, window, ack_no);
+            log::trace!(target: "inet/tcp", "tcp::estab '0x{:x} advertising a {} byte window at {}", ctrl.fd, window, ack_no);
             self.send_ack(&mut ctrl, ack_no , window);
         }
 
@@ -1133,7 +1136,6 @@ impl IOContext {
     }
 
     pub(self) fn tcp_try_peek(&mut self, fd: Fd, buf: &mut [u8]) -> Result<usize> {
-        // log::debug!("::tcp_try_peek");
         // (0) Get the socket
         let Some(mut ctrl) = self.tcp_manager.remove(&fd) else {
             return Err(Error::new(ErrorKind::InvalidInput, "invalid fd - socket dropped"))
@@ -1152,7 +1154,7 @@ impl IOContext {
     }
 
     fn handle_data_timeout(&mut self, ctrl: &mut TcpController) {
-        inet_trace!("tcp::data '0x{:x} TIMEOUT", ctrl.fd);
+        log::trace!(target: "inet/tcp", "tcp::data '0x{:x} TIMEOUT", ctrl.fd);
         // TODO: Handle permit packets
         ctrl.sender_next_send_seq_no = ctrl.sender_last_ack_seq_no + 1;
         ctrl.set_data_timer();
@@ -1265,7 +1267,7 @@ impl TcpController {
     }
 
     fn set_data_timer(&mut self) {
-        log::debug!("Setting data timer for {}", SimTime::now() + self.timeout);
+        log::debug!(target: "inet/tcp", "Setting data timer for {}", SimTime::now() + self.timeout);
         self.timer += 1;
         schedule_in(
             Message::new().kind(KIND_IO_TIMEOUT).id(self.timer).content(self.fd).build(),
@@ -1274,7 +1276,7 @@ impl TcpController {
     }
 
     fn cancel_timer(&mut self) {
-        log::debug!("Cancel timer");
+        log::debug!(target: "inet/tcp", "Cancel timer");
         self.timer += 1;
     }
 
@@ -1292,7 +1294,6 @@ impl TcpController {
     }
 
     fn set_timer(&mut self, expiration: Duration) {
-        // inet_trace!("Setting normal timer");
         self.timer += 1;
         schedule_in(
             Message::new().kind(KIND_IO_TIMEOUT).id(self.timer).content(self.fd).build(),
@@ -1318,7 +1319,8 @@ impl TcpController {
     }
 
     pub fn current_state_print(&self) {
-        inet_trace!(
+        log::trace!(
+            target: "inet/tcp", 
             "{:?}: Send {{ seq_no: {} buf_no: {}, max_no: {}, acked: {} }} and Recv {{ seq_no: {}, data: {} }}",
             self.state,
             self.sender_next_send_seq_no,
@@ -1330,10 +1332,3 @@ impl TcpController {
         );
     }
 }
-
-// impl Drop for TcpController {
-//     fn drop(&mut self) {
-//         // panic!();
-//         log::trace!("### DROPPING MANAGER FOR '0x{:x} ###", self.fd);
-//     }
-// }

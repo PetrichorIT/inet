@@ -36,7 +36,7 @@ impl Router for ParBasedRoutingDeamon {
             self.fwd.insert(addr, port.clone());
         }
 
-        log::trace!("setup router with {} nodes", self.fwd.len())
+        log::trace!(target: "inet/routing", "setup router with {} nodes", self.fwd.len())
     }
 
     fn accepts(&mut self, _: &des::prelude::Message) -> bool {
@@ -51,10 +51,8 @@ impl Router for ParBasedRoutingDeamon {
                 };
 
                 if let Some(target) = self.fwd.get(&IpAddr::V4(ip.dest)) {
-                    // log::trace!("forwarding p{} to gate {}", ip.dest, target.output.path());
                     send(msg, &target.output);
                 } else {
-                    // log::trace!("forwarding p{} to uplink", ip.dest);
                     send(msg, "up")
                 }
 
@@ -66,10 +64,8 @@ impl Router for ParBasedRoutingDeamon {
                 };
 
                 if let Some(target) = self.fwd.get(&IpAddr::V6(ip.dest)) {
-                    // log::trace!("forwarding p{} to gate {}", ip.dest, target.output.path());
                     send(msg, &target.output);
                 } else {
-                    // log::trace!("forwarding p{} to uplink", ip.dest);
                     send(msg, "up")
                 }
 

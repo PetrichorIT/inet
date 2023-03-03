@@ -361,7 +361,7 @@ impl IOContext {
     }
 
     pub(super) fn tcp_drop_stream(&mut self, fd: Fd) {
-        log::debug!("closing '0x{:x}", fd);
+        log::debug!(target: "inet/tcp", "closing '0x{:x}", fd);
         self.syscall(fd, TcpSyscall::Close());
     }
 }

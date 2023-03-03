@@ -14,7 +14,7 @@ impl Module for LANRouter {
     }
 
     fn at_sim_start(&mut self, _stage: usize) {
-        add_plugin(RoutingPlugin(ParBasedRoutingDeamon::new()), 1);
+        add_plugin(RoutingPlugin::new(ParBasedRoutingDeamon::new()), 1);
     }
 }
 

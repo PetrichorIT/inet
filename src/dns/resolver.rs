@@ -1,6 +1,10 @@
 use std::io::Result;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
 use std::str::FromStr;
+use std::time::Duration;
+
+use des::tokio::select;
+use des::tokio::time::sleep;
 
 use crate::dns::DNSType;
 use crate::UdpSocket;
@@ -160,7 +164,17 @@ impl sealed::ToSocketAddrsPriv for (&str, u16) {
 
         loop {
             let mut buf = vec![0u8; 512];
-            let (n, _) = socket.recv_from(&mut buf).await?;
+            let n = select! {
+                result = socket.recv_from(&mut buf) => {
+                    result?.0
+                },
+                _ = sleep(Duration::new(5, 0)) => {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::TimedOut,
+                        "failed to lookup address information: request timed out"
+                    ))
+                }
+            };
             buf.truncate(n);
 
             let mut response = DNSMessage::from_buffer(buf)?;
@@ -171,6 +185,10 @@ impl sealed::ToSocketAddrsPriv for (&str, u16) {
                     DNSResponseCode::NxDomain => return Err(std::io::Error::new(
                         std::io::ErrorKind::Other,
                         "failed to lookup address information: nodename nor servname provided, or not known"
+                    )),
+                    DNSResponseCode::ServFail => return Err(std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        "failed to lookup address information: dns resolver failed"
                     )),
                     _ => unimplemented!()
                 }

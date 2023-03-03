@@ -9,6 +9,10 @@ version = "0.1.0"
 name = "inet-bin"
 path = "bin/main.rs"
 
+[[bin]]
+name = "dns-bin"
+path = "dns_bin/main.rs"
+
 [dependencies]
 async-trait = "*"
 bytestream = "0.4"

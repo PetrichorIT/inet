@@ -12,7 +12,8 @@ pub(super) struct TcpBuffer {
 
 impl TcpBuffer {
     pub fn state(&self) {
-        inet_trace!(
+        log::trace!(
+            target: "inet/tcp",
             "TcpBuffer({}) [{:<4} ..(data).. {:<4} ..(zero).. {:<4}]",
             self.cap(),
             self.tail_seq_no,

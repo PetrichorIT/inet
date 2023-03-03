@@ -71,10 +71,11 @@ impl IOContext {
         }
 
         let Ok(udp) = UDPPacket::from_buffer(packet.content()) else {
-            log::error!("received ip-packet with proto=0x11 (udp) but content was no udp-packet");
+            log::error!(target: "inet/udp", "received ip-packet with proto=0x11 (udp) but content was no udp-packet");
             return false;
         };
 
+        let is_loopback = last_gate.is_none();
         let src = SocketAddr::new(packet.src(), udp.src_port);
         let dest = SocketAddr::new(packet.dest(), udp.dest_port);
 
@@ -83,6 +84,22 @@ impl IOContext {
         };
 
         let Some((fd, udp_handle)) = self.udp_manager.iter_mut().find(|(_, socket)| socket.local_addr == dest) else {
+            if is_loopback {
+                // All interfaces are valid
+                let Some((fd, udp_handle)) = self.udp_manager.iter_mut().find(|(_, socket)| socket.local_addr.port() == dest.port()) else { 
+                    return false 
+                };
+                self.sockets.get(fd).unwrap();
+
+                udp_handle.incoming.push_back((src, dest, udp));
+                if let Some(interest) = &udp_handle.interest {
+                    if interest.is_readable() {
+                        udp_handle.interest.take().unwrap().wake();
+                    }
+                }
+                
+                return true
+            }
             return false
         };
 
@@ -108,7 +125,7 @@ impl IOContext {
         last_gate: Option<GateRef>,
     ) -> bool {
         let Ok(udp) = UDPPacket::from_buffer(packet.content()) else {
-            log::error!("received ip-packet with proto=0x11 (udp) but content was no udp-packet");
+            log::error!(target: "inet/udp", "received ip-packet with proto=0x11 (udp) but content was no udp-packet");
             return false;
         };
 

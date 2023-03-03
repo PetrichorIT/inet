@@ -237,7 +237,8 @@ impl IOContext {
 
         self.tcp_manager.insert(stream_socket, ctrl);
 
-        inet_trace!(
+        log::trace!(
+            target: "inet/tcp",
             "tcp::accept '0x{:x} {} bound to local {}",
             stream_socket,
             con.peer_addr,
