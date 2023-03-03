@@ -89,8 +89,9 @@ impl IOContext {
                 let Some((fd, udp_handle)) = self.udp_manager.iter_mut().find(|(_, socket)| socket.local_addr.port() == dest.port()) else { 
                     return false 
                 };
-                self.sockets.get(fd).unwrap();
+                let socket = self.sockets.get_mut(fd).unwrap();
 
+                socket.recv_q += udp.content.len();
                 udp_handle.incoming.push_back((src, dest, udp));
                 if let Some(interest) = &udp_handle.interest {
                     if interest.is_readable() {
@@ -103,12 +104,12 @@ impl IOContext {
             return false
         };
 
-        let socket = self.sockets.get(fd).expect("underlying os socket dropped");
-
+        let socket = self.sockets.get_mut(fd).expect("underlying os socket dropped");
         if socket.interface != ifid {
             return false;
         }
 
+        socket.recv_q += udp.content.len();
         udp_handle.incoming.push_back((src, dest, udp));
         if let Some(interest) = &udp_handle.interest {
             if interest.is_readable() {
@@ -137,11 +138,12 @@ impl IOContext {
                 continue
             };
 
-            let socket = self.sockets.get(fd).expect("underlying os socket dropped");
+            let socket = self.sockets.get_mut(fd).expect("underlying os socket dropped");
             if socket.interface != ifid {
                 continue;
             }
 
+            socket.recv_q += udp.content.len();
             udp_handle.incoming.push_back((src, dest, udp.clone()));
             if let Some(interest) = &udp_handle.interest {
                 if interest.is_readable() {
@@ -194,18 +196,18 @@ impl IOContext {
     }
 
     pub(super) fn udp_send_to(&mut self, fd: Fd, target: SocketAddr, buf: &[u8]) -> Result<usize> {
-        let Some(socket) = self.udp_manager.get(&fd) else {
+        let Some(mng) = self.udp_manager.get_mut(&fd) else {
             return Err(Error::new(ErrorKind::InvalidInput, "invalid fd - socket dropped"))
         };
 
         // (1.1) Check version match
-        if socket.local_addr.is_ipv4() != target.is_ipv4() {
+        if mng.local_addr.is_ipv4() != target.is_ipv4() {
             return Err(Error::new(ErrorKind::InvalidInput, "ip version missmatch"));
         }
 
         // (1.2) Check Broadcast
         if let IpAddr::V4(dest_addr) = target.ip() {
-            if dest_addr.is_broadcast() && !socket.broadcast {
+            if dest_addr.is_broadcast() && !mng.broadcast {
                 return Err(Error::new(
                     ErrorKind::Other,
                     "cannot send broadcast without broadcast flag enabled",
@@ -214,15 +216,15 @@ impl IOContext {
         }
 
         let udp_packet = UDPPacket {
-            src_port: socket.local_addr.port(),
+            src_port: mng.local_addr.port(),
             dest_port: target.port(),
             checksum: 0,
             content: Vec::from(buf),
         };
-
         let content = udp_packet.into_buffer()?;
 
-        match (socket.local_addr.ip(), target.ip()) {
+
+        match (mng.local_addr.ip(), target.ip()) {
             (IpAddr::V4(local), IpAddr::V4(target)) => {
                 let ip = Ipv4Packet {
                     dscp: 0,
@@ -233,7 +235,7 @@ impl IOContext {
                         mf: false,
                     },
                     fragment_offset: 0,
-                    ttl: socket.ttl,
+                    ttl: mng.ttl,
                     proto: PROTO_UDP,
 
                     src: local,
@@ -244,8 +246,9 @@ impl IOContext {
 
                 let socket_info = self
                     .sockets
-                    .get(&fd)
+                    .get_mut(&fd)
                     .expect("Socket should not have been dropped");
+                socket_info.send_q += buf.len();
 
                 let Some(interface) = self.interfaces.get_mut(&socket_info.interface) else {
                     return Err(Error::new(ErrorKind::Other, "interface down"))
@@ -258,7 +261,7 @@ impl IOContext {
                 let ip = Ipv6Packet {
                     traffic_class: 0,
                     flow_label: 0,
-                    hop_limit: socket.ttl,
+                    hop_limit: mng.ttl,
 
                     next_header: PROTO_UDP,
 
@@ -270,8 +273,9 @@ impl IOContext {
 
                 let socket_info = self
                     .sockets
-                    .get(&fd)
+                    .get_mut(&fd)
                     .expect("Socket should not have been dropped");
+                socket_info.send_q += buf.len();
 
                 let Some(interface) = self.interfaces.get_mut(&socket_info.interface) else {
                     return Err(Error::new(ErrorKind::Other, "interface down"))

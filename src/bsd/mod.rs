@@ -28,6 +28,9 @@ pub struct Socket {
     pub protocol: i32,
     pub fd: Fd,
     pub interface: u64,
+
+    pub recv_q: usize,
+    pub send_q: usize,
 }
 
 impl IOContext {
@@ -61,6 +64,9 @@ impl IOContext {
             protocol,
             fd,
             interface: 0,
+
+            recv_q: 0,
+            send_q: 0,
         };
         log::trace!(
             target: "inet/bsd",

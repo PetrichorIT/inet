@@ -17,6 +17,7 @@ pub use buf::*;
 
 mod types;
 use types::*;
+pub use types::TcpState;
 
 pub(super) mod api;
 pub use api::{OwnedReadHalf, OwnedWriteHalf, ReadHalf, WriteHalf, ReuniteError};
@@ -40,7 +41,7 @@ pub(super) const PROTO_TCP: u8 = 0x06;
 #[derive(Debug)]
 pub(crate) struct TcpController {
     // # General
-    state: TcpState,
+    pub(crate) state: TcpState,
     local_addr: SocketAddr,
     peer_addr: SocketAddr,
     dropped: bool,

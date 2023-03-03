@@ -6,13 +6,13 @@ pub use common::*;
 #[macro_use]
 mod macros;
 
+pub mod bsd;
 pub mod dhcp;
 pub mod dns;
+pub mod interface;
 pub mod ip;
 pub mod routing;
-
-pub mod bsd;
-pub mod interface;
+pub mod utils;
 
 mod udp;
 use des::net::plugin::PluginPanicPolicy;

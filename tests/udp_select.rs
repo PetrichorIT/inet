@@ -5,6 +5,7 @@ use des::{
 };
 use inet::{
     interface::{add_interface, get_ip, Interface, NetworkDevice},
+    utils::netstat,
     *,
 };
 
@@ -107,6 +108,8 @@ impl AsyncModule for C {
                     else => log::error!("what happened"),
                 );
             }
+
+            println!("{:#?}", netstat());
         }));
     }
 
