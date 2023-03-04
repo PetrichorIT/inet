@@ -1,5 +1,7 @@
 //! BSD sockets.
 
+use crate::interface::IfId;
+
 use super::{
     interface::{InterfaceName, InterfaceStatus},
     IOContext,
@@ -27,7 +29,7 @@ pub struct Socket {
     pub typ: SocketType,
     pub protocol: i32,
     pub fd: Fd,
-    pub interface: u64,
+    pub interface: IfId,
 
     pub recv_q: usize,
     pub send_q: usize,
@@ -63,7 +65,7 @@ impl IOContext {
             typ,
             protocol,
             fd,
-            interface: 0,
+            interface: IfId::null(),
 
             recv_q: 0,
             send_q: 0,
@@ -301,7 +303,7 @@ impl IOContext {
         }
     }
 
-    pub(super) fn bsd_socket_link_update(&mut self, fd: Fd) {
+    pub(super) fn bsd_socket_link_update(&mut self, fd: Fd, _ifid: IfId) {
         use SocketDomain::*;
         use SocketType::*;
 
@@ -334,7 +336,7 @@ impl IOContext {
             return Err(Error::new(ErrorKind::InvalidInput, "invalid fd - socket dropped"))
         };
 
-        if socket.interface == 0 {
+        if socket.interface == IfId::null() {
             return Ok(None);
         }
 

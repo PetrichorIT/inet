@@ -30,7 +30,7 @@ fn main() {
         .unwrap(),
     );
     app.include_par_file("bin/main.par");
-    let rt = Runtime::new_with(app, RuntimeOptions::seeded(123));
+    let rt = Runtime::new_with(app, RuntimeOptions::seeded(123).max_time(10.0.into()));
 
     let _result = rt.run().unwrap();
 }

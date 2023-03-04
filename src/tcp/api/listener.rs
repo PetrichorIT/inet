@@ -5,6 +5,7 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 
 use crate::bsd::*;
+use crate::ip::IpPacketRef;
 use crate::tcp::interest::{TcpInterest, TcpInterestGuard};
 use crate::tcp::types::{TcpEvent, TcpSyscall};
 use crate::tcp::{TcpController, TcpPacket};
@@ -31,6 +32,7 @@ pub struct TcpListener {
     pub(crate) fd: Fd,
 }
 
+#[derive(Debug)]
 pub(crate) struct TcpListenerHandle {
     pub(crate) local_addr: SocketAddr,
 
@@ -45,6 +47,29 @@ pub(crate) struct TcpListenerPendingConnection {
     pub(crate) peer_addr: SocketAddr,
 
     pub(crate) packet: (IpAddr, IpAddr, TcpPacket),
+}
+
+impl TcpListenerHandle {
+    pub(crate) fn push_incoming(&mut self, src: SocketAddr, packet: IpPacketRef, tcp: TcpPacket) {
+        if self.incoming.len() < self.config.listen_backlog as usize {
+            self.incoming.push_back(TcpListenerPendingConnection {
+                local_addr: self.local_addr,
+                peer_addr: src,
+                packet: (packet.src(), packet.dest(), tcp),
+            });
+
+            // Wake up
+            let mut i = 0;
+            while i < self.interests.len() {
+                if matches!(self.interests[i].interest, TcpInterest::TcpAccept(_)) {
+                    let w = self.interests.swap_remove(i);
+                    w.waker.wake();
+                } else {
+                    i += 1;
+                }
+            }
+        }
+    }
 }
 
 impl TcpListener {
@@ -224,6 +249,8 @@ impl IOContext {
         };
 
         let stream_socket = self.bsd_dup_socket(fd)?;
+        self.bsd_bind_peer(stream_socket, con.peer_addr)?;
+
         let mut ctrl = TcpController::new(
             stream_socket,
             self.bsd_get_socket_addr(stream_socket)?,

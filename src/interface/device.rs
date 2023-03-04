@@ -30,7 +30,7 @@ impl NetworkDevice {
         }
     }
 
-    pub(super) fn send_mtu(&self, mtu: Message) -> InterfaceBusyState {
+    pub(super) fn send(&self, mtu: Message) -> InterfaceBusyState {
         match self {
             Self::LoopbackDevice => {
                 schedule_in(mtu, Duration::ZERO);

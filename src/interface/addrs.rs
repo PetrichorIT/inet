@@ -70,6 +70,7 @@ impl InterfaceAddr {
     /// Indicates whether the given ip is valid on the interface address.
     pub fn matches_ip(&self, ip: IpAddr) -> bool {
         match self {
+            // # Default cases
             Self::Inet { addr, netmask } if ip.is_ipv4() => {
                 let ip = if let IpAddr::V4(v) = ip {
                     v
@@ -81,11 +82,18 @@ impl InterfaceAddr {
                     return true;
                 }
 
+                // TODO: think about this is this good ?
+                // if ip.is_loopback() {
+                //     return true;
+                // }
+
                 let ip_u32 = u32::from_be_bytes(ip.octets());
                 let addr_u32 = u32::from_be_bytes(addr.octets());
                 let mask_u32 = u32::from_be_bytes(netmask.octets());
+
                 mask_u32 & ip_u32 == mask_u32 & addr_u32
             }
+
             Self::Inet6 {
                 addr, prefixlen, ..
             } if ip.is_ipv6() => {
@@ -139,5 +147,105 @@ impl fmt::Display for InterfaceAddr {
                 }
             ),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::str::FromStr;
+
+    use super::*;
+
+    #[test]
+    fn singular_addr_space_v4() {
+        let iface = InterfaceAddr::Inet {
+            addr: [192, 168, 2, 110].into(),
+            netmask: [255, 255, 255, 255].into(),
+        };
+
+        assert_eq!(
+            iface.matches_ip(IpAddr::from_str("192.168.2.110").unwrap()),
+            true
+        );
+        assert_eq!(
+            iface.matches_ip(IpAddr::from_str("192.168.2.111").unwrap()),
+            false
+        );
+        assert_eq!(
+            iface.matches_ip(
+                Ipv4Addr::from_str("192.168.2.110")
+                    .unwrap()
+                    .to_ipv6_compatible()
+                    .into()
+            ),
+            false
+        );
+        assert_eq!(
+            iface.matches_ip(
+                Ipv4Addr::from_str("192.168.2.110")
+                    .unwrap()
+                    .to_ipv6_mapped()
+                    .into()
+            ),
+            false
+        );
+    }
+
+    #[test]
+    fn loopback_namespace_v4() {
+        let iface = InterfaceAddr::Inet {
+            addr: [127, 0, 0, 1].into(),
+            netmask: [255, 255, 255, 0].into(),
+        };
+
+        assert_eq!(
+            iface.matches_ip(IpAddr::from_str("127.0.0.1").unwrap()),
+            true
+        );
+        assert_eq!(
+            iface.matches_ip(IpAddr::from_str("127.0.0.19").unwrap()),
+            true
+        );
+        assert_eq!(
+            iface.matches_ip(IpAddr::from_str("127.0.0.255").unwrap()),
+            true
+        );
+        assert_eq!(
+            iface.matches_ip(IpAddr::from_str("192.168.2.111").unwrap()),
+            false
+        );
+        assert_eq!(
+            iface.matches_ip(
+                Ipv4Addr::from_str("127.0.0.19")
+                    .unwrap()
+                    .to_ipv6_compatible()
+                    .into()
+            ),
+            false
+        );
+        assert_eq!(
+            iface.matches_ip(
+                Ipv4Addr::from_str("127.0.0.19")
+                    .unwrap()
+                    .to_ipv6_mapped()
+                    .into()
+            ),
+            false
+        );
+    }
+
+    #[test]
+    fn broadcast_v4() {
+        let iface = InterfaceAddr::Inet {
+            addr: [192, 168, 2, 110].into(),
+            netmask: [255, 255, 255, 255].into(),
+        };
+
+        assert_eq!(
+            iface.matches_ip(IpAddr::from_str("255.255.255.255").unwrap()),
+            true
+        );
+
+        assert_eq!(iface.matches_ip(IpAddr::from_str("fe::80").unwrap()), false);
     }
 }

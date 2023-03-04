@@ -23,7 +23,7 @@ thread_local! {
 pub(super) const KIND_IO_TIMEOUT: MessageKind = 0x0128;
 
 pub struct IOContext {
-    pub(super) interfaces: HashMap<u64, Interface>,
+    pub(super) interfaces: HashMap<IfId, Interface>,
     pub(super) sockets: HashMap<Fd, Socket>,
 
     pub(super) udp_manager: HashMap<Fd, UdpManager>,

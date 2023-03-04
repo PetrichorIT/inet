@@ -5,7 +5,9 @@ use crate::{
     bsd::Fd,
     ip::{IpPacket, IpVersion},
 };
-use des::prelude::{module_id, schedule_at, schedule_in, GateRef, Message, MessageKind, SimTime};
+use des::prelude::{
+    module_id, schedule_at, schedule_in, GateRef, Message, MessageBody, MessageKind, SimTime,
+};
 use std::{
     fmt::{self, Display},
     io::{Error, ErrorKind, Result},
@@ -33,6 +35,28 @@ macro_rules! hash {
         ($v).hash(&mut s);
         s.finish()
     }};
+}
+
+/// Interface identifier.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, MessageBody)]
+#[repr(transparent)]
+pub struct IfId(u64);
+
+impl IfId {
+    pub(crate) const fn null() -> IfId {
+        IfId(0)
+    }
+}
+
+impl fmt::Debug for IfId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        <Self as Display>::fmt(self, f)
+    }
+}
+impl Display for IfId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "0x{:x}", self.0)
+    }
 }
 
 // # Interface
@@ -156,7 +180,7 @@ impl Interface {
             schedule_in(msg.build(), Duration::ZERO);
             Ok(())
         } else {
-            self.send_mtu(msg.build())
+            self.send(msg.build())
         }
     }
 
@@ -175,7 +199,7 @@ impl Interface {
         None
     }
 
-    pub(crate) fn send_mtu(&mut self, mtu: Message) -> Result<()> {
+    pub(crate) fn send(&mut self, message: Message) -> Result<()> {
         if self.state != InterfaceBusyState::Idle {
             return Err(Error::new(
                 ErrorKind::WouldBlock,
@@ -183,12 +207,12 @@ impl Interface {
             ));
         }
 
-        self.state = self.device.send_mtu(mtu);
+        self.state = self.device.send(message);
         if let InterfaceBusyState::Busy { until, .. } = &self.state {
             schedule_at(
                 Message::new()
                     .kind(KIND_LINK_UNBUSY)
-                    .content(self.name.hash)
+                    .content(self.name.id)
                     .build(),
                 *until,
             );
@@ -228,7 +252,7 @@ impl Interface {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct InterfaceName {
     pub(super) name: String,
-    pub(super) hash: u64,
+    pub(super) id: IfId,
     pub(super) parent: Option<Box<InterfaceName>>,
 }
 
@@ -238,7 +262,7 @@ impl InterfaceName {
         let hash = hash!(name);
         Self {
             name,
-            hash,
+            id: IfId(hash),
             parent: None,
         }
     }
@@ -294,10 +318,10 @@ pub enum InterfaceBusyState {
 
 impl IOContext {
     pub(super) fn add_interface(&mut self, iface: Interface) {
-        if self.interfaces.get(&iface.name.hash).is_some() {
+        if self.interfaces.get(&iface.name.id).is_some() {
             unimplemented!()
         } else {
-            self.interfaces.insert(iface.name.hash, iface);
+            self.interfaces.insert(iface.name.id, iface);
         }
     }
 
@@ -306,64 +330,36 @@ impl IOContext {
     }
 
     pub(super) fn capture_link_update(&mut self, msg: Message) -> Option<Message> {
-        let Some(content) = msg.try_content::<u64>() else {
+        let Some(ifid) = msg.try_content::<IfId>() else {
             return Some(msg)
         };
 
-        let Some(interface) = self.interfaces.get_mut(content) else {
+        let Some(interface) = self.interfaces.get_mut(ifid) else {
             return Some(msg)
         };
 
         let updates = interface.link_update();
         for socket in updates {
-            self.bsd_socket_link_update(socket);
+            self.bsd_socket_link_update(socket, *ifid);
         }
         None
     }
 
     pub(super) fn get_interface_for_ip_packet(
         &self,
-        ip: IpAddr,
+        dest: IpAddr,
         last_gate: Option<GateRef>,
-    ) -> Vec<u64> {
+    ) -> Vec<IfId> {
         let mut ifaces = self
             .interfaces
             .iter()
             .filter(|(_, iface)| iface.status == InterfaceStatus::Active && iface.flags.up)
             .filter(|(_, iface)| iface.last_gate_matches(&last_gate))
-            .filter(|(_, iface)| iface.addrs.iter().any(|addr| addr.matches_ip(ip)))
+            .filter(|(_, iface)| iface.addrs.iter().any(|addr| addr.matches_ip(dest)))
             .collect::<Vec<_>>();
 
         ifaces.sort_by(|(_, l), (_, r)| r.prio.cmp(&l.prio));
 
         ifaces.into_iter().map(|v| *v.0).collect::<Vec<_>>()
-    }
-
-    /// Returns ethernet mac address for a given IOContext
-    pub fn get_mac_address(&self) -> Result<Option<[u8; 6]>> {
-        for (_, interface) in &self.interfaces {
-            for addr in &interface.addrs {
-                if let InterfaceAddr::Ether { addr } = addr {
-                    return Ok(Some(*addr));
-                }
-            }
-        }
-
-        Ok(None)
-    }
-
-    pub fn get_ip(&self) -> Option<IpAddr> {
-        for (_, interface) in &self.interfaces {
-            for addr in &interface.addrs {
-                if let InterfaceAddr::Inet { addr, .. } = addr {
-                    return Some(IpAddr::V4(*addr));
-                }
-                if let InterfaceAddr::Inet6 { addr, .. } = addr {
-                    return Some(IpAddr::V6(*addr));
-                }
-            }
-        }
-
-        None
     }
 }

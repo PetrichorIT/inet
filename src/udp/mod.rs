@@ -50,6 +50,17 @@ pub(super) enum UdpSocketState {
     Connected(SocketAddr),
 }
 
+impl UdpManager {
+    pub(super) fn push_incoming(&mut self, src: SocketAddr, dest: SocketAddr, udp: UDPPacket) {
+        self.incoming.push_back((src, dest, udp));
+        if let Some(interest) = &self.interest {
+            if interest.is_readable() {
+                self.interest.take().unwrap().wake();
+            }
+        }
+    }
+}
+
 impl IOContext {
     // returns consumed
     pub(super) fn capture_udp_packet(
@@ -66,9 +77,7 @@ impl IOContext {
             }
         }
 
-        if is_broadcast(packet.dest()) {
-            return self.capture_udp_packet_broadcast(packet, last_gate);
-        }
+        let is_broadcast = is_broadcast(packet.dest());
 
         let Ok(udp) = UDPPacket::from_buffer(packet.content()) else {
             log::error!(target: "inet/udp", "received ip-packet with proto=0x11 (udp) but content was no udp-packet");
@@ -79,79 +88,36 @@ impl IOContext {
         let src = SocketAddr::new(packet.src(), udp.src_port);
         let dest = SocketAddr::new(packet.dest(), udp.dest_port);
 
-        let Some(ifid) = self.get_interface_for_ip_packet(packet.dest(), last_gate).pop() else {
-            return false
-        };
-
-        let Some((fd, udp_handle)) = self.udp_manager.iter_mut().find(|(_, socket)| socket.local_addr == dest) else {
-            if is_loopback {
-                // All interfaces are valid
-                let Some((fd, udp_handle)) = self.udp_manager.iter_mut().find(|(_, socket)| socket.local_addr.port() == dest.port()) else { 
-                    return false 
-                };
-                let socket = self.sockets.get_mut(fd).unwrap();
-
-                socket.recv_q += udp.content.len();
-                udp_handle.incoming.push_back((src, dest, udp));
-                if let Some(interest) = &udp_handle.interest {
-                    if interest.is_readable() {
-                        udp_handle.interest.take().unwrap().wake();
-                    }
-                }
-                
-                return true
-            }
-            return false
-        };
-
-        let socket = self.sockets.get_mut(fd).expect("underlying os socket dropped");
-        if socket.interface != ifid {
-            return false;
-        }
-
-        socket.recv_q += udp.content.len();
-        udp_handle.incoming.push_back((src, dest, udp));
-        if let Some(interest) = &udp_handle.interest {
-            if interest.is_readable() {
-                udp_handle.interest.take().unwrap().wake();
-            }
-        }
-
-        true
-    }
-
-    fn capture_udp_packet_broadcast(
-        &mut self,
-        packet: IpPacketRef,
-        last_gate: Option<GateRef>,
-    ) -> bool {
-        let Ok(udp) = UDPPacket::from_buffer(packet.content()) else {
-            log::error!(target: "inet/udp", "received ip-packet with proto=0x11 (udp) but content was no udp-packet");
-            return false;
-        };
-
-        let src = SocketAddr::new(packet.src(), udp.src_port);
-        let dest = SocketAddr::new(packet.dest(), udp.dest_port);
-
+        let mut recved = false;
         for ifid in self.get_interface_for_ip_packet(packet.dest(), last_gate) {
-            let Some((fd, udp_handle)) = self.udp_manager.iter_mut().find(|(_, socket)| socket.local_addr.port() == udp.dest_port) else {
-                continue
+            // println!("{:#?}", self.sockets);
+            // println!("{ifid} := {}", self.interfaces.get(&ifid).unwrap().name);
+            // println!("dest = {dest} ifid = {ifid} is_loopback = {is_loopback}");
+
+            let Some((fd, socket)) = self.sockets.iter_mut().find(
+                |(_,v)| v.typ == SocketType::SOCK_DGRAM && v.addr.port() == dest.port() && if is_loopback { v.addr.is_ipv4() == dest.is_ipv4() } else { v.addr == dest && ifid == v.interface }
+            ) else {
+                continue;
+            };
+            socket.recv_q += udp.content.len();
+            // println!("sock : {fd}");
+
+            let Some(udp_mng) = self.udp_manager.get_mut(fd) else {
+                log::error!(target: "inet/udp", "found udp socket, but missing udp manager");
+                continue;
             };
 
-            let socket = self.sockets.get_mut(fd).expect("underlying os socket dropped");
-            if socket.interface != ifid {
-                continue;
-            }
-
-            socket.recv_q += udp.content.len();
-            udp_handle.incoming.push_back((src, dest, udp.clone()));
-            if let Some(interest) = &udp_handle.interest {
-                if interest.is_readable() {
-                    udp_handle.interest.take().unwrap().wake();
-                }
+            if is_broadcast {
+                udp_mng.push_incoming(src, dest, udp.clone());
+                recved = true;
+                // continue
+            } else {
+                udp_mng.push_incoming(src, dest, udp);
+                return true;
             }
         }
-        false
+
+        recved
     }
 }
 
@@ -222,7 +188,6 @@ impl IOContext {
             content: Vec::from(buf),
         };
         let content = udp_packet.into_buffer()?;
-
 
         match (mng.local_addr.ip(), target.ip()) {
             (IpAddr::V4(local), IpAddr::V4(target)) => {

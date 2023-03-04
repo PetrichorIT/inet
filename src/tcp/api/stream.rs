@@ -3,6 +3,7 @@ use crate::{
     bsd::*,
     bsd::*,
     dns::{lookup_host, ToSocketAddrs},
+    interface::IfId,
     tcp::{
         interest::{TcpInterest, TcpInterestGuard},
         types::{TcpEvent, TcpState, TcpSyscall},
@@ -265,7 +266,7 @@ impl IOContext {
                 ))
             };
 
-            let socket_bound = socket.interface != 0;
+            let socket_bound = socket.interface != IfId::null();
             if !socket_bound {
                 let sock_typ = socket.domain;
                 let unspecified = match sock_typ {
