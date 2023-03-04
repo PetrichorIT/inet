@@ -15,6 +15,8 @@ pub use par_based::ParBasedRoutingDeamon;
 mod plugin;
 pub use plugin::RoutingPlugin;
 
+use crate::IOPlugin;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RoutingInformation {
     pub ports: Vec<RoutingPort>,
@@ -50,10 +52,16 @@ pub struct RoutingPort {
     pub name: String,
     pub input: GateRef,
     pub output: GateRef,
+    pub peer: Option<RoutingPeer>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RoutingPeer {
+    pub addr: IpAddr,
 }
 
 impl RoutingPort {
-    pub fn new(input: GateRef, output: GateRef) -> Self {
+    pub fn new(input: GateRef, output: GateRef, peer: Option<RoutingPeer>) -> Self {
         let iname = input.name();
         let oname = output.name();
 
@@ -61,6 +69,7 @@ impl RoutingPort {
             name: merge_str(iname, oname),
             input,
             output,
+            peer,
         }
     }
 
@@ -75,6 +84,7 @@ impl RoutingPort {
                         .path_start()
                         .map(|v| v.owner().id())
                         .unwrap_or(ModuleId::NULL);
+
                     let other = gates.iter().find(|v| {
                         v.path_end()
                             .map(|v| v.owner().id())
@@ -86,17 +96,23 @@ impl RoutingPort {
                     let Some(other) = other else {
                         continue;
                     };
-                    // println!("{}")
-                    ports.push(RoutingPort::new(gate, other.clone()));
+
+                    let peer = other
+                        .path_end()
+                        .unwrap()
+                        .owner()
+                        .get_plugin_state::<IOPlugin, Option<IpAddr>>()
+                        .flatten()
+                        .map(|addr| RoutingPeer { addr });
+
+                    ports.push(RoutingPort::new(gate, other.clone(), peer));
                 }
                 GateServiceType::Output => {
                     let id = gate
                         .path_end()
                         .map(|v| v.owner().id())
                         .unwrap_or(ModuleId::NULL);
-                    // println!("{:?}", gate.previous_gate());
-                    // println!("{}", gate.path_end().unwrap().path());
-                    // println!("Searching gate for {} with id {}", gate.path(), id);
+
                     let other = gates.iter().find(|v| {
                         v.path_start()
                             .map(|v| v.owner().id())
@@ -108,7 +124,16 @@ impl RoutingPort {
                     let Some(other) = other else {
                         continue;
                     };
-                    ports.push(RoutingPort::new(other.clone(), gate));
+
+                    let peer = gate
+                        .path_end()
+                        .unwrap()
+                        .owner()
+                        .get_plugin_state::<IOPlugin, Option<IpAddr>>()
+                        .flatten()
+                        .map(|addr| RoutingPeer { addr });
+
+                    ports.push(RoutingPort::new(other.clone(), gate, peer));
                 }
                 GateServiceType::Undefined => {}
             };

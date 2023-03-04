@@ -1,3 +1,5 @@
+use std::any::Any;
+
 use super::IOContext;
 use des::{net::plugin::Plugin, prelude::Message};
 
@@ -30,5 +32,11 @@ impl Plugin for IOPlugin {
     fn event_end(&mut self) {
         self.ctx = IOContext::swap_in(self.prev.take());
         assert!(self.ctx.is_some());
+    }
+
+    fn state(&self) -> Box<dyn Any> {
+        let ip = self.ctx.as_ref().map(|ctx| ctx.get_ip()).flatten();
+        // log::info!("returning {:?} at ", ip);
+        Box::new(ip)
     }
 }
