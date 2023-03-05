@@ -1,0 +1,30 @@
+isp1.router.dhcp = true
+isp1.router.dhcp_addr = 104.0.0.1
+isp1.router.dhcp_subnet = 255.255.255.0
+isp1.router.dhcp_router = 104.0.0.1
+isp1.router.dhcp_dns = 104.0.0.1
+
+isp1.router.dns = true
+isp1.router.dns_recusive = true
+isp1.router.dns_root = false
+isp1.router.dns_zonefile = dhs/isp1.dns
+
+srv1.router.dhcp = true
+srv1.router.dhcp_addr = 69.0.0.1
+srv1.router.dhcp_subnet = 255.255.255.0
+srv1.router.dhcp_router = 69.0.0.1
+
+isp1.node[0].dns = true
+isp1.node[0].dns_recusive = false
+isp1.node[0].dns_root = true
+isp1.node[0].dns_zonefile = dhs/root.dns
+
+isp1.node[1].dns = true
+isp1.node[1].dns_recusive = false
+isp1.node[1].dns_root = false
+isp1.node[1].dns_zonefile = dhs/org.dns
+
+isp1.node[2].dns = true
+isp1.node[2].dns_recusive = false
+isp1.node[2].dns_root = false
+isp1.node[2].dns_zonefile = dhs/example.org.dns
