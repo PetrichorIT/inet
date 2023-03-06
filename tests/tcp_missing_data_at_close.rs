@@ -9,9 +9,9 @@ use std::{
 
 use des::prelude::*;
 use inet::{
-    bsd::AsRawFd,
     interface::*,
     ip::Ipv4Packet,
+    socket::AsRawFd,
     tcp::{TcpDebugPlugin, TcpPacket},
     FromBytestream, TcpSocket,
 };
@@ -131,7 +131,7 @@ impl AsyncModule for TcpServer {
     }
 
     async fn at_sim_end(&mut self) {
-        use inet::bsd::bsd_socket_info;
+        use inet::socket::bsd_socket_info;
 
         assert!(self.done.load(SeqCst));
         assert!(bsd_socket_info(self.fd.load(SeqCst)).is_none());
@@ -193,7 +193,7 @@ impl AsyncModule for TcpClient {
     }
 
     async fn at_sim_end(&mut self) {
-        use inet::bsd::bsd_socket_info;
+        use inet::socket::bsd_socket_info;
 
         assert!(self.done.load(SeqCst));
         assert!(bsd_socket_info(self.fd.load(SeqCst)).is_none());

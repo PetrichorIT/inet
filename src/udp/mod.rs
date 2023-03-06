@@ -1,4 +1,4 @@
-use super::{bsd::*, IOContext};
+use super::{socket::*, IOContext};
 use crate::{
     ip::{IpPacket, IpPacketRef, Ipv4Flags, Ipv4Packet, Ipv6Packet},
     FromBytestream, IntoBytestream,

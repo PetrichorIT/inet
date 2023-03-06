@@ -1,7 +1,7 @@
 use std::{io, net::SocketAddr};
 
 use crate::{
-    bsd::{SocketDomain, SocketType},
+    socket::{SocketDomain, SocketType},
     tcp::TcpState,
     IOContext,
 };
@@ -31,7 +31,7 @@ pub enum NetstatConnectionProto {
 
 impl NetstatConnectionProto {
     fn new(domain: SocketDomain, typ: SocketType) -> Self {
-        use crate::bsd::{SocketDomain::*, SocketType::*};
+        use crate::socket::{SocketDomain::*, SocketType::*};
         match (domain, typ) {
             (AF_INET, SOCK_DGRAM) => Self::Udp4,
             (AF_INET6, SOCK_DGRAM) => Self::Udp6,
@@ -46,7 +46,7 @@ pub fn netstat() -> io::Result<Netstat> {
     IOContext::try_with_current(|ctx| {
         let mut active_connections = Vec::new();
         for (fd, socket) in &ctx.sockets {
-            use crate::bsd::{SocketDomain::*, SocketType::*};
+            use crate::socket::{SocketDomain::*, SocketType::*};
 
             let proto = NetstatConnectionProto::new(socket.domain, socket.typ);
             match (socket.domain, socket.typ) {

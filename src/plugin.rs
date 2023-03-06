@@ -26,7 +26,18 @@ impl Plugin for IOPlugin {
     }
 
     fn capture_incoming(&mut self, msg: Message) -> Option<Message> {
-        IOContext::with_current(|ctx| ctx.capture(msg))
+        IOContext::with_current(|ctx| {
+            use crate::interface2::LinkLayerResult;
+            let result = ctx.recv_linklayer(msg);
+            let (msg, ifid) = match result {
+                LinkLayerResult::Consumed() => return None,
+                LinkLayerResult::PassThrough(msg) => return Some(msg),
+                LinkLayerResult::NetworkingPacket(m, i) => (m, i),
+            };
+            let _ = ifid;
+            Some(msg)
+        })
+        // IOContext::with_current(|ctx| ctx.capture(msg))
     }
 
     fn event_end(&mut self) {

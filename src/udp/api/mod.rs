@@ -1,9 +1,9 @@
 use des::tokio::io::{Interest, Ready};
 
 use crate::{
-    bsd::Fd,
     dns::{lookup_host, ToSocketAddrs},
     interface::InterfaceName,
+    socket::Fd,
     udp::UDPPacket,
     IOContext,
 };

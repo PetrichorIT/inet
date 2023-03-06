@@ -1,6 +1,6 @@
 use super::{TcpListener, TcpSocketConfig, TcpStream, TcpStreamInner};
-use crate::bsd::{Fd, SocketDomain, SocketType};
 use crate::dns::lookup_host;
+use crate::socket::{Fd, SocketDomain, SocketType};
 use crate::tcp::interest::TcpInterest;
 use crate::IOContext;
 use std::cell::RefCell;

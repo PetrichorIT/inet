@@ -4,8 +4,8 @@ use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use std::task::{Context, Poll};
 
-use crate::bsd::*;
 use crate::ip::IpPacketRef;
+use crate::socket::*;
 use crate::tcp::interest::{TcpInterest, TcpInterestGuard};
 use crate::tcp::types::{TcpEvent, TcpSyscall};
 use crate::tcp::{TcpController, TcpPacket};

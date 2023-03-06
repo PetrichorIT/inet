@@ -140,8 +140,23 @@ impl FromBytestream for Ipv4Packet {
         })
     }
 }
+
 impl MessageBody for Ipv4Packet {
     fn byte_len(&self) -> usize {
         20 + self.content.len()
+    }
+}
+
+impl IntoBytestream for Ipv4Addr {
+    type Error = std::io::Error;
+    fn into_bytestream(&self, bytestream: &mut impl Write) -> Result<(), Self::Error> {
+        bytestream.write_all(&self.octets())
+    }
+}
+
+impl FromBytestream for Ipv4Addr {
+    type Error = std::io::Error;
+    fn from_bytestream(bytestream: &mut Cursor<impl AsRef<[u8]>>) -> Result<Self, Self::Error> {
+        Ok(Ipv4Addr::from(u32::read_from(bytestream, BigEndian)?))
     }
 }

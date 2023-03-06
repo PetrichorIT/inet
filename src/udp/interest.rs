@@ -2,7 +2,7 @@ use std::io::{Error, ErrorKind, Result};
 use std::task::Poll;
 use std::{future::Future, task::Waker};
 
-use crate::bsd::Fd;
+use crate::socket::Fd;
 use crate::IOContext;
 use des::tokio::io::{Interest, Ready};
 

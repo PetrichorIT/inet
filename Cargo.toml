@@ -17,6 +17,10 @@ path = "dns_bin/main.rs"
 name = "ideal-bin"
 path = "ideal_bin/main.rs"
 
+[[bin]]
+name = "arp-bin"
+path = "arp/main.rs"
+
 [dependencies]
 async-trait = "*"
 bytestream = "0.4"

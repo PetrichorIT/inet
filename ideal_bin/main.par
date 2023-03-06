@@ -14,17 +14,20 @@ srv1.router.dhcp_addr = 69.0.0.1
 srv1.router.dhcp_subnet = 255.255.255.0
 srv1.router.dhcp_router = 69.0.0.1
 
-isp1.node[0].dns = true
-isp1.node[0].dns_recusive = false
-isp1.node[0].dns_root = true
-isp1.node[0].dns_zonefile = dhs/root.dns
+srv1.node[0].dns = true
+srv1.node[0].dns_recusive = false
+srv1.node[0].dns_root = true
+srv1.node[0].dns_zonefile = dhs/root.dns
 
-isp1.node[1].dns = true
-isp1.node[1].dns_recusive = false
-isp1.node[1].dns_root = false
-isp1.node[1].dns_zonefile = dhs/org.dns
+srv1.node[1].dns = true
+srv1.node[1].dns_recusive = false
+srv1.node[1].dns_root = false
+srv1.node[1].dns_zonefile = dhs/org.dns
 
-isp1.node[2].dns = true
-isp1.node[2].dns_recusive = false
-isp1.node[2].dns_root = false
-isp1.node[2].dns_zonefile = dhs/example.org.dns
+srv1.node[2].dns = true
+srv1.node[2].dns_recusive = false
+srv1.node[2].dns_root = false
+srv1.node[2].dns_zonefile = dhs/example.org.dns
+
+srv1.node[3].hostname = www.example.org
+srv1.node[4].hostname = streaming.example.org

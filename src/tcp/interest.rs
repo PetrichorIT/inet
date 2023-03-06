@@ -6,7 +6,7 @@ use std::{
 
 use des::tokio::io::{Interest, Ready};
 
-use crate::{bsd::Fd, IOContext};
+use crate::{socket::Fd, IOContext};
 
 use super::types::TcpState;
 

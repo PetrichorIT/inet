@@ -1,4 +1,6 @@
 use crate::{
+    arp::{ARPConfig, ARPTable},
+    interface2,
     ip::{IpPacketRef, Ipv4Packet, Ipv6Packet, KIND_IPV4, KIND_IPV6},
     IOPlugin,
 };
@@ -7,11 +9,11 @@ use des::{
     prelude::{Message, MessageKind},
     runtime::random,
 };
-use std::{cell::RefCell, collections::HashMap, net::Ipv4Addr, panic::UnwindSafe};
+use std::{cell::RefCell, collections::HashMap, net::Ipv4Addr, panic::UnwindSafe, time::Duration};
 
 use super::{
-    bsd::*,
     interface::*,
+    socket::*,
     tcp::{api::TcpListenerHandle, TcpController, PROTO_TCP},
     udp::{UdpManager, PROTO_UDP},
 };
@@ -23,6 +25,9 @@ thread_local! {
 pub(super) const KIND_IO_TIMEOUT: MessageKind = 0x0128;
 
 pub struct IOContext {
+    pub(super) interfaces2: HashMap<interface2::IfId, interface2::Interface>,
+    pub(super) arp: ARPTable,
+
     pub(super) interfaces: HashMap<IfId, Interface>,
     pub(super) sockets: HashMap<Fd, Socket>,
 
@@ -37,6 +42,11 @@ pub struct IOContext {
 impl IOContext {
     pub fn empty() -> Self {
         Self {
+            interfaces2: HashMap::new(),
+            arp: ARPTable::new(ARPConfig {
+                validity: Duration::from_secs(200),
+            }),
+
             interfaces: HashMap::new(),
             sockets: HashMap::new(),
 

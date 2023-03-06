@@ -2,8 +2,8 @@
 
 use super::IOContext;
 use crate::{
-    bsd::Fd,
     ip::{IpPacket, IpVersion},
+    socket::Fd,
 };
 use des::prelude::{
     module_id, schedule_at, schedule_in, GateRef, Message, MessageBody, MessageKind, SimTime,

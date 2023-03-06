@@ -355,3 +355,24 @@ fn v6_with_content() -> std::io::Result<()> {
 
     Ok(())
 }
+
+#[test]
+fn ipv4_addr() {
+    let addr = Ipv4Addr::new(1, 2, 3, 4);
+    assert_eq!(
+        addr,
+        Ipv4Addr::from_buffer(addr.into_buffer().unwrap()).unwrap()
+    );
+
+    let addr = Ipv4Addr::new(0, 2, 3, 4);
+    assert_eq!(
+        addr,
+        Ipv4Addr::from_buffer(addr.into_buffer().unwrap()).unwrap()
+    );
+
+    let addr = Ipv4Addr::new(255, 255, 3, 4);
+    assert_eq!(
+        addr,
+        Ipv4Addr::from_buffer(addr.into_buffer().unwrap()).unwrap()
+    );
+}

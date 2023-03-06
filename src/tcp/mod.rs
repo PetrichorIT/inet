@@ -34,8 +34,8 @@ mod debug;
 pub use debug::*;
 
 use crate::{
-    bsd::{Fd, SocketType},
     ip::{IpPacket, IpPacketRef, IpVersion, Ipv4Flags, Ipv4Packet, Ipv6Packet},
+    socket::{Fd, SocketType},
     FromBytestream, IntoBytestream,
 };
 

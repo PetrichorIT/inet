@@ -42,6 +42,14 @@ impl RoutingInformation {
         self.ports.iter().find(|p| p.input == *gate).cloned()
     }
 
+    pub fn port_index_for(&self, gate: &GateRef) -> Option<usize> {
+        self.ports
+            .iter()
+            .enumerate()
+            .find(|(_, p)| p.input == *gate)
+            .map(|(i, _)| i)
+    }
+
     pub fn port_by_name(&self, s: &str) -> Option<RoutingPort> {
         self.ports.iter().find(|p| p.name == s).cloned()
     }
