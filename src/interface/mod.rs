@@ -1,31 +1,13 @@
-//! Network interfaces and devices.
+use std::collections::VecDeque;
+use std::io;
+use std::io::Error;
+use std::io::ErrorKind;
 
-use super::IOContext;
-use crate::{
-    ip::{IpPacket, IpVersion},
-    socket::Fd,
-};
-use des::prelude::{
-    module_id, schedule_at, schedule_in, GateRef, Message, MessageBody, MessageKind, SimTime,
-};
-use std::{
-    fmt::{self, Display},
-    io::{Error, ErrorKind, Result},
-    net::{IpAddr, Ipv4Addr},
-    time::Duration,
-};
-
-mod flags;
-pub use flags::InterfaceFlags;
-
-mod addrs;
-pub use addrs::InterfaceAddr;
-
-mod device;
-pub use device::NetworkDevice;
-
-mod api;
-pub use api::*;
+use crate::arp::ARPPacket;
+use crate::arp::KIND_ARP;
+use crate::socket::Fd;
+use crate::IOContext;
+use des::prelude::*;
 
 macro_rules! hash {
     ($v:expr) => {{
@@ -37,34 +19,25 @@ macro_rules! hash {
     }};
 }
 
-/// Interface identifier.
-#[derive(Clone, Copy, PartialEq, Eq, Hash, MessageBody)]
-#[repr(transparent)]
-pub struct IfId(u64);
+mod api;
+pub use self::api::*;
 
-impl IfId {
-    pub(crate) const fn null() -> IfId {
-        IfId(0)
-    }
-}
+mod device;
+pub use self::device::*;
 
-impl fmt::Debug for IfId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        <Self as Display>::fmt(self, f)
-    }
-}
-impl Display for IfId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "0x{:x}", self.0)
-    }
-}
+mod mac;
+pub use self::mac::*;
 
-// # Interface
+mod types;
+pub use self::types::*;
 
-pub(super) const KIND_LINK_UNBUSY: MessageKind = 0x0500;
+mod flags;
+pub use flags::*;
 
-/// A network interface.
-#[derive(Debug, Clone, PartialEq, Eq)]
+mod addrs;
+pub use self::addrs::*;
+
+#[derive(Debug)]
 pub struct Interface {
     /// The name of the interface
     pub name: InterfaceName,
@@ -80,160 +53,53 @@ pub struct Interface {
     pub state: InterfaceBusyState,
 
     pub(crate) prio: usize,
+    pub(crate) buffer: VecDeque<Message>,
+}
+
+#[derive(Debug)]
+pub enum LinkLayerResult {
+    /// The packet does not attach to any link layer interface, so its custom made.
+    /// Pass it through the entires IOPlugin
+    PassThrough(Message),
+    /// The packet was consumed by the link layer thus neeeds no futher
+    /// processing,
+    Consumed(),
+    /// The packet was received on the given interface and should be
+    /// passed through to the network layer.
+    NetworkingPacket(Message, IfId),
+    /// An IO timeout for the networking layer.
+    Timeout(Message),
 }
 
 impl Interface {
+    pub fn ethv4(device: NetworkDevice, v4: Ipv4Addr) -> Interface {
+        Interface {
+            name: InterfaceName::new("en0"),
+            device,
+            flags: InterfaceFlags::en0(),
+            addrs: vec![InterfaceAddr::Inet {
+                addr: v4,
+                netmask: Ipv4Addr::new(255, 255, 255, 255),
+            }],
+            status: InterfaceStatus::Active,
+            state: InterfaceBusyState::Idle,
+            prio: 100,
+            buffer: VecDeque::new(),
+        }
+    }
+
     /// Creates a loopback interface
     pub fn loopback() -> Self {
-        Self {
+        Interface {
             name: "lo0".into(),
-            device: NetworkDevice::LoopbackDevice,
+            device: NetworkDevice::loopback(),
             flags: InterfaceFlags::loopback(),
             addrs: Vec::from(InterfaceAddr::loopback()),
             status: InterfaceStatus::Active,
             prio: 100,
             state: InterfaceBusyState::Idle,
+            buffer: VecDeque::new(),
         }
-    }
-
-    pub fn ethernet(ip_addrs: &[IpAddr], device: NetworkDevice) -> Self {
-        let mut addrs = Vec::new();
-        let id = module_id().0.to_be_bytes();
-        addrs.push(InterfaceAddr::Ether {
-            addr: [0xff, 0, 0, 0, id[1], id[0]],
-        });
-        for addr in ip_addrs {
-            match addr {
-                IpAddr::V4(v4) => {
-                    addrs.push(InterfaceAddr::Inet {
-                        addr: *v4,
-                        netmask: Ipv4Addr::new(255, 255, 255, 0),
-                    });
-                    addrs.push(InterfaceAddr::Inet6 {
-                        addr: v4.to_ipv6_mapped(),
-                        prefixlen: 128,
-                        scope_id: None,
-                    });
-                }
-                IpAddr::V6(v6) => {
-                    addrs.push(InterfaceAddr::Inet6 {
-                        addr: *v6,
-                        prefixlen: 128,
-                        scope_id: None,
-                    });
-                    if let Some(v4) = v6.to_ipv4_mapped() {
-                        addrs.push(InterfaceAddr::Inet {
-                            addr: v4,
-                            netmask: Ipv4Addr::new(255, 255, 255, 0),
-                        });
-                    }
-                }
-            }
-        }
-
-        Self {
-            name: "en0".into(),
-            device,
-            flags: InterfaceFlags::en0(),
-            addrs,
-            status: InterfaceStatus::Active,
-            prio: 5,
-            state: InterfaceBusyState::Idle,
-        }
-    }
-
-    /// Creates a loopback interface
-    pub fn en0(ether: [u8; 6], v4: Ipv4Addr, device: NetworkDevice) -> Self {
-        Self {
-            name: "en0".into(),
-            device,
-            flags: InterfaceFlags::en0(),
-            addrs: Vec::from(InterfaceAddr::en0(ether, v4)),
-            status: InterfaceStatus::Active,
-            prio: 10,
-            state: InterfaceBusyState::Idle,
-        }
-    }
-
-    pub(crate) fn send_ip(&mut self, mut ip: IpPacket) -> Result<()> {
-        assert!(
-            self.status == InterfaceStatus::Active,
-            "Cannot send on inactive context"
-        );
-
-        let version = ip.version();
-
-        let addr = self
-            .get_interface_addr_for(version)
-            .expect("Failed to fetch interface addr");
-        ip.set_src(addr);
-
-        let target_loopback = ip.dest().is_loopback();
-
-        let mut msg = Message::new().kind(ip.kind());
-        match ip {
-            IpPacket::V4(v4) => msg = msg.content(v4),
-            IpPacket::V6(v6) => msg = msg.content(v6),
-        }
-
-        if target_loopback {
-            schedule_in(msg.build(), Duration::ZERO);
-            Ok(())
-        } else {
-            self.send(msg.build())
-        }
-    }
-
-    pub(crate) fn get_interface_addr_for(&self, version: IpVersion) -> Option<IpAddr> {
-        for addr in &self.addrs {
-            match (addr, version) {
-                (InterfaceAddr::Inet { addr, .. }, IpVersion::V4) => {
-                    return Some(IpAddr::V4(*addr))
-                }
-                (InterfaceAddr::Inet6 { addr, .. }, IpVersion::V6) => {
-                    return Some(IpAddr::V6(*addr))
-                }
-                _ => {}
-            }
-        }
-        None
-    }
-
-    pub(crate) fn send(&mut self, message: Message) -> Result<()> {
-        if self.state != InterfaceBusyState::Idle {
-            return Err(Error::new(
-                ErrorKind::WouldBlock,
-                "interface is busy - would block",
-            ));
-        }
-
-        self.state = self.device.send(message);
-        if let InterfaceBusyState::Busy { until, .. } = &self.state {
-            schedule_at(
-                Message::new()
-                    .kind(KIND_LINK_UNBUSY)
-                    .content(self.name.id)
-                    .build(),
-                *until,
-            );
-        }
-
-        Ok(())
-    }
-
-    pub(super) fn link_update(&mut self) -> Vec<Fd> {
-        assert!(!self.device.is_busy(), "Link notif send invalid message");
-        let mut swap = InterfaceBusyState::Idle;
-        std::mem::swap(&mut swap, &mut self.state);
-
-        let InterfaceBusyState::Busy { interests, .. } = swap else {
-            panic!("Huh failure")
-        };
-        interests
-    }
-
-    pub(super) fn last_gate_matches(&self, last_gate: &Option<GateRef>) -> bool {
-        self.device.last_gate_matches(last_gate)
     }
 
     pub(super) fn add_write_interest(&mut self, fd: Fd) {
@@ -242,124 +108,129 @@ impl Interface {
         }
     }
 
+    pub fn ipv4_addr(&self) -> Option<Ipv4Addr> {
+        self.addrs.iter().find_map(|a| {
+            if let InterfaceAddr::Inet { addr, .. } = a {
+                Some(*addr)
+            } else {
+                None
+            }
+        })
+    }
+
+    pub fn send_buffered(&mut self, msg: Message) -> io::Result<()> {
+        if self.is_busy() {
+            self.buffer.push_back(msg);
+            Ok(())
+        } else {
+            self.send(msg)
+        }
+    }
+
+    pub fn send(&mut self, msg: Message) -> io::Result<()> {
+        if self.state != InterfaceBusyState::Idle {
+            return Err(Error::new(
+                ErrorKind::WouldBlock,
+                "interface is busy - would block",
+            ));
+        }
+
+        self.state = self.device.send(msg);
+        self.schedule_link_update();
+
+        Ok(())
+    }
+
+    pub fn schedule_link_update(&self) {
+        if let InterfaceBusyState::Busy { until, .. } = &self.state {
+            schedule_at(Message::from(LinkUpdate(self.name.id)), *until);
+        }
+    }
+
+    pub fn recv_link_update(&mut self) -> Vec<Fd> {
+        assert!(!self.device.is_busy(), "Link notif send invalid message");
+        if let Some(msg) = self.buffer.pop_front() {
+            // still busy with link layer events.
+            self.state.merge_new(self.device.send(msg));
+            self.schedule_link_update();
+
+            Vec::new()
+        } else {
+            // finally unbusy, so networking layer can continue to work.
+            let mut swap = InterfaceBusyState::Idle;
+            std::mem::swap(&mut swap, &mut self.state);
+
+            let InterfaceBusyState::Busy { interests, .. } = swap else {
+                panic!("Huh failure")
+            };
+            interests
+        }
+    }
+
     pub fn is_busy(&self) -> bool {
         matches!(self.state, InterfaceBusyState::Busy { .. })
     }
 }
 
-// # Interface Name
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct InterfaceName {
-    pub(super) name: String,
-    pub(super) id: IfId,
-    pub(super) parent: Option<Box<InterfaceName>>,
-}
-
-impl InterfaceName {
-    pub fn new(s: impl AsRef<str>) -> Self {
-        let name = s.as_ref().to_string();
-        let hash = hash!(name);
-        Self {
-            name,
-            id: IfId(hash),
-            parent: None,
-        }
-    }
-}
-
-impl Display for InterfaceName {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if let Some(parent) = self.parent.as_ref() {
-            write!(f, "{}:{}", parent, self.name)
-        } else {
-            self.name.fmt(f)
-        }
-    }
-}
-
-impl<T: AsRef<str>> From<T> for InterfaceName {
-    fn from(value: T) -> Self {
-        Self::new(value)
-    }
-}
-
-// # Interface Status
-
-/// The status of a network interface
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
-pub enum InterfaceStatus {
-    /// The interface is active and can be used.
-    Active,
-    /// The interface is only pre-configures not really there.
-    #[default]
-    Inactive,
-}
-
-impl fmt::Display for InterfaceStatus {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> std::result::Result<(), fmt::Error> {
-        match self {
-            Self::Active => write!(f, "active"),
-            Self::Inactive => write!(f, "inactive"),
-        }
-    }
-}
-
-// # Busy state
-
-/// The state of the interface
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum InterfaceBusyState {
-    Idle,
-    Busy { until: SimTime, interests: Vec<Fd> },
-}
-
-// # IOContext
-
 impl IOContext {
-    pub(super) fn add_interface(&mut self, iface: Interface) {
-        if self.interfaces.get(&iface.name.id).is_some() {
-            unimplemented!()
-        } else {
-            self.interfaces.insert(iface.name.id, iface);
+    pub fn recv_linklayer(&mut self, msg: Message) -> LinkLayerResult {
+        use LinkLayerResult::*;
+        let dest = MacAddress::from(msg.header().dest);
+
+        // Precheck for link layer updates
+        if msg.header().kind == KIND_LINK_UPDATE {
+            let Some(&update) = msg.try_content::<LinkUpdate>() else {
+                log::error!(target: "inet/link", "found message with kind KIND_LINK_UPDATE, did not contain link updates");
+                return PassThrough(msg)
+            };
+            self.recv_linklayer_update(update);
+
+            return Consumed();
+        }
+
+        if msg.header().kind == KIND_IO_TIMEOUT {
+            // TODO: check ARP Timeout
+            return Timeout(msg);
+        }
+
+        // Define the physical device the packet arrived.
+        let Some((ifid, iface)) = self.device_for_message(&msg) else {
+            return PassThrough(msg)
+        };
+
+        // Check that packet is addressed correctly.
+        if iface.device.addr != dest && !dest.is_broadcast() {
+            return PassThrough(msg);
+        }
+
+        let ifid = *ifid;
+        if msg.header().kind == KIND_ARP {
+            let Some(arp) = msg.try_content::<ARPPacket>() else {
+                log::error!(target: "inet/arp", "found message with kind 0x0806 (arp), but did not contain ARP packet");
+                return PassThrough(msg);
+            };
+
+            return self.recv_arp(ifid, &msg, arp);
+        }
+
+        NetworkingPacket(msg, ifid)
+    }
+
+    fn recv_linklayer_update(&mut self, update: LinkUpdate) {
+        let Some(iface) = self.ifaces.get_mut(&update.0) else {
+            return;
+        };
+
+        let ifid = iface.name.id;
+        let fds = iface.recv_link_update();
+        for fd in fds {
+            self.socket_link_update(fd, ifid);
         }
     }
 
-    pub(super) fn get_interfaces(&self) -> Vec<Interface> {
-        self.interfaces.values().cloned().collect::<Vec<_>>()
-    }
-
-    pub(super) fn capture_link_update(&mut self, msg: Message) -> Option<Message> {
-        let Some(ifid) = msg.try_content::<IfId>() else {
-            return Some(msg)
-        };
-
-        let Some(interface) = self.interfaces.get_mut(ifid) else {
-            return Some(msg)
-        };
-
-        let updates = interface.link_update();
-        for socket in updates {
-            self.bsd_socket_link_update(socket, *ifid);
-        }
-        None
-    }
-
-    pub(super) fn get_interface_for_ip_packet(
-        &self,
-        dest: IpAddr,
-        last_gate: Option<GateRef>,
-    ) -> Vec<IfId> {
-        let mut ifaces = self
-            .interfaces
+    fn device_for_message(&self, msg: &Message) -> Option<(&IfId, &Interface)> {
+        self.ifaces
             .iter()
-            .filter(|(_, iface)| iface.status == InterfaceStatus::Active && iface.flags.up)
-            .filter(|(_, iface)| iface.last_gate_matches(&last_gate))
-            .filter(|(_, iface)| iface.addrs.iter().any(|addr| addr.matches_ip(dest)))
-            .collect::<Vec<_>>();
-
-        ifaces.sort_by(|(_, l), (_, r)| r.prio.cmp(&l.prio));
-
-        ifaces.into_iter().map(|v| *v.0).collect::<Vec<_>>()
+            .find(|(_, iface)| iface.device.last_gate_matches(&msg.header().last_gate))
     }
 }

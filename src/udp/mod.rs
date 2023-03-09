@@ -1,16 +1,16 @@
 use super::{socket::*, IOContext};
 use crate::{
-    ip::{IpPacket, IpPacketRef, Ipv4Flags, Ipv4Packet, Ipv6Packet},
+    interface::IfId,
+    ip::{IpPacketRef, Ipv4Flags, Ipv4Packet},
     FromBytestream, IntoBytestream,
 };
 use std::{
     collections::VecDeque,
     io::{Error, ErrorKind, Result},
-    net::{IpAddr, SocketAddr},
+    net::{IpAddr, Ipv4Addr, SocketAddr},
 };
 
 mod pkt;
-use des::prelude::GateRef;
 pub use pkt::*;
 
 mod api;
@@ -61,21 +61,32 @@ impl UdpManager {
     }
 }
 
+fn is_broadcast(ip: IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(v4) => v4.is_broadcast(),
+        _ => false,
+    }
+}
+
+fn is_valid_dest_for(dest: &SocketAddr, addr: &SocketAddr) -> bool {
+    match addr {
+        SocketAddr::V4(addrv4) => {
+            if addrv4.ip().is_broadcast() {
+                return dest.port() == addrv4.port();
+            }
+            if dest.ip() == IpAddr::V4(Ipv4Addr::UNSPECIFIED) {
+                return dest.port() == addrv4.port();
+            }
+            dest == addr
+        }
+        SocketAddr::V6(_) => dest == addr,
+    }
+}
+
 impl IOContext {
     // returns consumed
-    pub(super) fn capture_udp_packet(
-        &mut self,
-        packet: IpPacketRef,
-        last_gate: Option<GateRef>,
-    ) -> bool {
+    pub(super) fn recv_udp_packet(&mut self, packet: IpPacketRef, ifid: IfId) -> bool {
         assert_eq!(packet.tos(), PROTO_UDP);
-
-        fn is_broadcast(ip: IpAddr) -> bool {
-            match ip {
-                IpAddr::V4(v4) => v4.is_broadcast(),
-                _ => false,
-            }
-        }
 
         let is_broadcast = is_broadcast(packet.dest());
 
@@ -84,40 +95,77 @@ impl IOContext {
             return false;
         };
 
-        let is_loopback = last_gate.is_none();
         let src = SocketAddr::new(packet.src(), udp.src_port);
         let dest = SocketAddr::new(packet.dest(), udp.dest_port);
 
-        let mut recved = false;
-        for ifid in self.get_interface_for_ip_packet(packet.dest(), last_gate) {
-            // println!("{:#?}", self.sockets);
-            // println!("{ifid} := {}", self.interfaces.get(&ifid).unwrap().name);
-            // println!("dest = {dest} ifid = {ifid} is_loopback = {is_loopback}");
+        let mut iter = self.sockets.iter_mut().filter(|(_, sock)| {
+            sock.typ == SocketType::SOCK_DGRAM && is_valid_dest_for(&sock.addr, &dest)
+        });
 
-            let Some((fd, socket)) = self.sockets.iter_mut().find(
-                |(_,v)| v.typ == SocketType::SOCK_DGRAM && v.addr.port() == dest.port() && if is_loopback { v.addr.is_ipv4() == dest.is_ipv4() } else { v.addr == dest && ifid == v.interface }
-            ) else {
-                continue;
-            };
-            socket.recv_q += udp.content.len();
-            // println!("sock : {fd}");
+        if is_broadcast {
+            let mut recvd = false;
+            for (fd, sock) in iter {
+                sock.recv_q += udp.content.len();
 
-            let Some(udp_mng) = self.udp_manager.get_mut(fd) else {
-                log::error!(target: "inet/udp", "found udp socket, but missing udp manager");
-                continue;
-            };
+                let Some(mng) = self.udp_manager.get_mut(fd) else {
+                    log::error!(target: "inet/udp", "found udp socket, but missing udp manager");
+                    return false;
+                };
 
-            if is_broadcast {
-                udp_mng.push_incoming(src, dest, udp.clone());
-                recved = true;
-                // continue
-            } else {
-                udp_mng.push_incoming(src, dest, udp);
-                return true;
+                mng.push_incoming(src, dest, udp.clone());
+                recvd = true;
             }
+            recvd
+        } else {
+            let Some((fd, sock)) = iter.next() else {
+                return false;
+            };
+            if !sock.interface.contains(&ifid) {
+                log::error!(target: "inet/udp", "interface missmatch");
+                return false;
+            }
+
+            sock.recv_q += udp.content.len();
+
+            let Some(mng) = self.udp_manager.get_mut(fd) else {
+                log::error!(target: "inet/udp", "found udp socket, but missing udp manager");
+                return false;
+            };
+
+            mng.push_incoming(src, dest, udp);
+            true
         }
 
-        recved
+        // let mut recved = false;
+        // for ifid in self.get_interface_for_ip_packet(packet.dest(), last_gate) {
+        //     // println!("{:#?}", self.sockets);
+        //     // println!("{ifid} := {}", self.interfaces.get(&ifid).unwrap().name);
+        //     // println!("dest = {dest} ifid = {ifid} is_loopback = {is_loopback}");
+
+        //     let Some((fd, socket)) = self.sockets.iter_mut().find(
+        //         |(_,v)| v.typ == SocketType::SOCK_DGRAM && v.addr.port() == dest.port() && if is_loopback { v.addr.is_ipv4() == dest.is_ipv4() } else { v.addr == dest && ifid == v.interface }
+        //     ) else {
+        //         continue;
+        //     };
+        //     socket.recv_q += udp.content.len();
+        //     // println!("sock : {fd}");
+
+        //     let Some(udp_mng) = self.udp_manager.get_mut(fd) else {
+        //         log::error!(target: "inet/udp", "found udp socket, but missing udp manager");
+        //         continue;
+        //     };
+
+        //     if is_broadcast {
+        //         udp_mng.push_incoming(src, dest, udp.clone());
+        //         recved = true;
+        //         // continue
+        //     } else {
+        //         udp_mng.push_incoming(src, dest, udp);
+        //         return true;
+        //     }
+        // }
+
+        // recved
     }
 }
 
@@ -129,10 +177,10 @@ impl IOContext {
             SocketDomain::AF_INET6
         };
 
-        let socket: Fd = self.bsd_create_socket(domain, SocketType::SOCK_DGRAM, 0)?;
+        let socket: Fd = self.create_socket(domain, SocketType::SOCK_DGRAM, 0)?;
 
-        let baddr = self.bsd_bind_socket(socket, addr).map_err(|e| {
-            let _ = self.bsd_close_socket(socket);
+        let baddr = self.bind_socket(socket, addr).map_err(|e| {
+            let _ = self.close_socket(socket);
             e
         })?;
 
@@ -157,7 +205,7 @@ impl IOContext {
         };
 
         socket.state = UdpSocketState::Connected(peer);
-        self.bsd_bind_peer(fd, peer)?;
+        self.bind_peer(fd, peer)?;
         Ok(())
     }
 
@@ -215,39 +263,37 @@ impl IOContext {
                     .expect("Socket should not have been dropped");
                 socket_info.send_q += buf.len();
 
-                let Some(interface) = self.interfaces.get_mut(&socket_info.interface) else {
-                    return Err(Error::new(ErrorKind::Other, "interface down"))
-                };
-
-                interface.send_ip(IpPacket::V4(ip))?;
+                let ifid = socket_info.interface.clone();
+                self.send_ip_packet_v4(ifid, ip, true)?;
                 Ok(buf.len())
             }
-            (IpAddr::V6(local), IpAddr::V6(target)) => {
-                let ip = Ipv6Packet {
-                    traffic_class: 0,
-                    flow_label: 0,
-                    hop_limit: mng.ttl,
+            (IpAddr::V6(_local), IpAddr::V6(_target)) => {
+                // let ip = Ipv6Packet {
+                //     traffic_class: 0,
+                //     flow_label: 0,
+                //     hop_limit: mng.ttl,
 
-                    next_header: PROTO_UDP,
+                //     next_header: PROTO_UDP,
 
-                    src: local,
-                    dest: target,
+                //     src: local,
+                //     dest: target,
 
-                    content,
-                };
+                //     content,
+                // };
 
-                let socket_info = self
-                    .sockets
-                    .get_mut(&fd)
-                    .expect("Socket should not have been dropped");
-                socket_info.send_q += buf.len();
+                // let socket_info = self
+                //     .sockets
+                //     .get_mut(&fd)
+                //     .expect("Socket should not have been dropped");
+                // socket_info.send_q += buf.len();
 
-                let Some(interface) = self.interfaces.get_mut(&socket_info.interface) else {
-                    return Err(Error::new(ErrorKind::Other, "interface down"))
-                };
+                // let Some(interface) = self.ifaces.get_mut(&socket_info.interface.unwrap_ifid()) else {
+                //     return Err(Error::new(ErrorKind::Other, "interface down"))
+                // };
 
-                interface.send_ip(IpPacket::V6(ip))?;
-                Ok(buf.len())
+                // interface.send_ip(IpPacket::V6(ip))?;
+                // Ok(buf.len())
+                todo!()
             }
             _ => unreachable!(),
         }
@@ -255,6 +301,6 @@ impl IOContext {
 
     pub(super) fn udp_drop(&mut self, fd: Fd) {
         self.udp_manager.remove(&fd);
-        let _ = self.bsd_close_socket(fd);
+        let _ = self.close_socket(fd);
     }
 }

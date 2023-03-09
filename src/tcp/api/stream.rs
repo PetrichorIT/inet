@@ -78,12 +78,12 @@ impl TcpStream {
 
     /// Returns the local address that this stream is bound to.
     pub fn local_addr(&self) -> Result<SocketAddr> {
-        IOContext::with_current(|ctx| ctx.bsd_get_socket_addr(self.inner.fd))
+        IOContext::with_current(|ctx| ctx.get_socket_addr(self.inner.fd))
     }
 
     /// Returns the peer address that this stream is bound to.
     pub fn peer_addr(&self) -> Result<SocketAddr> {
-        IOContext::with_current(|ctx| ctx.bsd_get_socket_peer(self.inner.fd))
+        IOContext::with_current(|ctx| ctx.get_socket_peer(self.inner.fd))
     }
 
     /// Waits for any of the requested ready states.
@@ -266,7 +266,7 @@ impl IOContext {
                 ))
             };
 
-            let socket_bound = socket.interface != IfId::null();
+            let socket_bound = socket.interface != SocketIfaceBinding::NotBound;
             if !socket_bound {
                 let sock_typ = socket.domain;
                 let unspecified = match sock_typ {
@@ -278,7 +278,7 @@ impl IOContext {
                     }
                     _ => unreachable!(),
                 };
-                self.bsd_bind_socket(fd, unspecified)?;
+                self.bind_socket(fd, unspecified)?;
             }
 
             (fd, config.unwrap())
@@ -294,15 +294,15 @@ impl IOContext {
                 SocketAddr::V6(SocketAddrV6::new(Ipv6Addr::UNSPECIFIED, 0, 0, 0))
             };
 
-            let fd = self.bsd_create_socket(domain, SocketType::SOCK_STREAM, 0)?;
-            let addr = self.bsd_bind_socket(fd, unspecified)?;
+            let fd = self.create_socket(domain, SocketType::SOCK_STREAM, 0)?;
+            let addr = self.bind_socket(fd, unspecified)?;
 
             let config = config.unwrap_or(TcpSocketConfig::listener(addr));
             (fd, config)
         };
 
-        self.bsd_bind_peer(fd, peer);
-        let mut ctrl = TcpController::new(fd, self.bsd_get_socket_addr(fd)?, config);
+        self.bind_peer(fd, peer);
+        let mut ctrl = TcpController::new(fd, self.get_socket_addr(fd)?, config);
         self.process_state_closed(&mut ctrl, TcpEvent::SysOpen(peer));
 
         self.tcp_manager.insert(fd, ctrl);

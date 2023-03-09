@@ -43,9 +43,14 @@ impl NetstatConnectionProto {
 }
 
 pub fn netstat() -> io::Result<Netstat> {
-    IOContext::try_with_current(|ctx| {
+    IOContext::try_with_current(|ctx| ctx.netstat())
+        .ok_or(io::Error::new(io::ErrorKind::Other, "Missing IO plugin"))
+}
+
+impl IOContext {
+    pub fn netstat(&mut self) -> Netstat {
         let mut active_connections = Vec::new();
-        for (fd, socket) in &ctx.sockets {
+        for (fd, socket) in &self.sockets {
             use crate::socket::{SocketDomain::*, SocketType::*};
 
             let proto = NetstatConnectionProto::new(socket.domain, socket.typ);
@@ -61,7 +66,7 @@ pub fn netstat() -> io::Result<Netstat> {
                     })
                 }
                 (AF_INET, SOCK_STREAM) | (AF_INET6, SOCK_STREAM) => {
-                    let Some(mng) = ctx.tcp_manager.get(fd) else { continue };
+                    let Some(mng) = self.tcp_manager.get(fd) else { continue };
                     active_connections.push(NetstatConnection {
                         proto,
                         recv_q: socket.recv_q,
@@ -76,6 +81,5 @@ pub fn netstat() -> io::Result<Netstat> {
         }
 
         Netstat { active_connections }
-    })
-    .ok_or(io::Error::new(io::ErrorKind::Other, "Missing IO plugin"))
+    }
 }

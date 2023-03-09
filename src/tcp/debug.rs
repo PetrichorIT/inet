@@ -2,7 +2,6 @@ use des::net::plugin::Plugin;
 use des::prelude::*;
 
 use crate::{
-    interface::KIND_LINK_UNBUSY,
     ip::{Ipv4Packet, Ipv6Packet, KIND_IPV4, KIND_IPV6},
     FromBytestream,
 };

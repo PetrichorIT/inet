@@ -8,7 +8,7 @@ use std::{
 
 use des::prelude::*;
 
-use crate::{dhcp::MESSAGE_KIND_DHCP, interface::get_ip};
+use crate::{dhcp::MESSAGE_KIND_DHCP, utils::get_ip};
 
 use super::common::{DHCPMessage, DHCPOp, DHCPOpsTyp, DHCPParameter};
 

@@ -1,12 +1,21 @@
 use des::time::SimTime;
-use std::{collections::HashMap, net::Ipv4Addr, time::Duration};
+use std::{
+    collections::HashMap,
+    hash::Hash,
+    net::{IpAddr, Ipv4Addr},
+    time::Duration,
+};
 
-use crate::{interface2::IfId, interface2::MacAddress, ip::Ipv4Packet};
+use crate::{
+    interface::IfId,
+    interface::{Interface, MacAddress},
+    ip::Ipv4Packet,
+};
 
 pub struct ARPTable {
-    map: HashMap<Ipv4Addr, ARPEntry>,
-    config: ARPConfig,
-    buffer: HashMap<Ipv4Addr, Vec<Ipv4Packet>>,
+    pub(super) map: HashMap<Ipv4Addr, ARPEntryInternal>,
+    pub(super) config: ARPConfig,
+    pub(super) buffer: HashMap<Ipv4Addr, Vec<Ipv4Packet>>,
 }
 
 pub struct ARPConfig {
@@ -14,7 +23,7 @@ pub struct ARPConfig {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct ARPEntry {
+pub struct ARPEntryInternal {
     pub hostname: Option<String>,
     pub ip: Ipv4Addr,
     pub mac: MacAddress,
@@ -31,7 +40,22 @@ impl ARPTable {
         }
     }
 
-    pub fn lookup(&self, ip: &Ipv4Addr) -> Option<&ARPEntry> {
+    pub fn lookup_for_iface(&self, ip: &Ipv4Addr, iface: &Interface) -> Option<(MacAddress, IfId)> {
+        self.lookup(ip).map(|e| (e.mac, e.iface)).or_else(|| {
+            let looback = iface.flags.loopback && ip.is_loopback();
+            let self_addr = iface
+                .addrs
+                .iter()
+                .any(|addr| addr.matches_ip(IpAddr::V4(*ip)));
+            if looback || self_addr {
+                Some((iface.device.addr, iface.name.id))
+            } else {
+                None
+            }
+        })
+    }
+
+    pub fn lookup(&self, ip: &Ipv4Addr) -> Option<&ARPEntryInternal> {
         let Some(value) = self.map.get(ip) else {
             return None
         };
@@ -42,18 +66,26 @@ impl ARPTable {
         }
     }
 
-    pub fn add(&mut self, mut entry: ARPEntry) -> Option<Vec<Ipv4Packet>> {
+    #[must_use]
+    pub fn add(&mut self, mut entry: ARPEntryInternal) -> Option<Vec<Ipv4Packet>> {
         let ip = entry.ip;
-        entry.expires = SimTime::now() + self.config.validity;
+        if entry.expires == SimTime::ZERO {
+            entry.expires = SimTime::now() + self.config.validity;
+        }
+
         let _ = self.map.insert(ip, entry);
-        // if old.is_none() {
-        //     log::trace!(target: "inet/arp", "new entry {ip}")
-        // }
         self.buffer.remove(&ip)
     }
 
     pub fn wait_for_arp(&mut self, ip: Ipv4Packet) {
         let dest = ip.dest;
         self.buffer.entry(dest).or_insert(Vec::new()).push(ip)
+    }
+
+    pub fn active_lookup(&mut self, ip: &Ipv4Addr) -> bool {
+        self.buffer
+            .get(ip)
+            .map(|buf| !buf.is_empty())
+            .unwrap_or(false)
     }
 }

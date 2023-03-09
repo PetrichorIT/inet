@@ -26,11 +26,11 @@ impl AsyncModule for Ping {
     }
 
     async fn at_sim_start(&mut self, _: usize) {
-        add_interface(Interface::en0(
-            random(),
+        add_interface(Interface::ethv4(
+            NetworkDevice::eth(),
             Ipv4Addr::new(1, 1, 1, 1),
-            NetworkDevice::eth_default(),
-        ));
+        ))
+        .unwrap();
 
         let out = self.out.clone();
         let echoed = self.echoed.clone();
@@ -100,11 +100,11 @@ impl AsyncModule for Pong {
     }
 
     async fn at_sim_start(&mut self, _: usize) {
-        add_interface(Interface::en0(
-            random(),
+        add_interface(Interface::ethv4(
+            NetworkDevice::eth(),
             Ipv4Addr::new(2, 2, 2, 2),
-            NetworkDevice::eth_default(),
-        ));
+        ))
+        .unwrap();
 
         self.handle = Some(spawn(async move {
             sleep(Duration::from_secs(1)).await;
@@ -114,6 +114,7 @@ impl AsyncModule for Pong {
             while acc < 4098 {
                 let mut buf = [0u8; 1024];
                 let (n, from) = socket.recv_from(&mut buf).await.unwrap();
+                dbg!(from);
                 acc += n;
                 socket.send_to(&buf[..n], from).await.unwrap();
             }

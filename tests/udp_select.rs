@@ -4,8 +4,8 @@ use des::{
     tokio::{spawn, task::JoinHandle, time::sleep},
 };
 use inet::{
-    interface::{add_interface, get_ip, Interface, NetworkDevice},
-    utils::netstat,
+    interface::{add_interface, Interface, NetworkDevice},
+    utils::{get_ip, netstat},
     *,
 };
 
@@ -32,11 +32,11 @@ impl AsyncModule for A {
             "b" => 2,
             _ => unreachable!(),
         };
-        add_interface(Interface::en0(
-            random(),
+        add_interface(Interface::ethv4(
+            NetworkDevice::eth(),
             Ipv4Addr::new(c, c, c, c),
-            NetworkDevice::eth_default(),
-        ));
+        ))
+        .unwrap();
 
         self.handle = Some(spawn(async move {
             sleep(Duration::from_secs(1)).await;
@@ -75,11 +75,11 @@ impl AsyncModule for C {
     }
 
     async fn at_sim_start(&mut self, _: usize) {
-        add_interface(Interface::en0(
-            random(),
+        add_interface(Interface::ethv4(
+            NetworkDevice::eth(),
             Ipv4Addr::new(3, 3, 3, 3),
-            NetworkDevice::eth_default(),
-        ));
+        ))
+        .unwrap();
 
         self.handle = Some(spawn(async move {
             sleep(Duration::from_secs(1)).await;
@@ -118,21 +118,7 @@ impl AsyncModule for C {
     }
 }
 
-struct Main;
-impl Module for Main {
-    fn new() -> Self {
-        Self
-    }
-
-    fn handle_message(&mut self, msg: Message) {
-        let g = msg.header().last_gate.as_ref().unwrap().pos();
-        match g {
-            0 | 1 => send(msg, ("out", 2)),
-            2 => panic!(),
-            _ => unreachable!(),
-        }
-    }
-}
+type Main = inet::utils::LinkLayerSwitch;
 
 #[test]
 fn udp_select() {

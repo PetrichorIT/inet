@@ -15,10 +15,10 @@ impl AsyncModule for EdgeNode {
     }
 
     async fn at_sim_start(&mut self, _stage: usize) {
-        let ip = par("addr").unwrap().parse::<IpAddr>().unwrap();
+        let ip = par("addr").unwrap().parse::<Ipv4Addr>().unwrap();
 
-        add_interface(Interface::ethernet(&[ip], NetworkDevice::eth_default()));
-        add_interface(Interface::loopback());
+        add_interface(Interface::ethv4(NetworkDevice::eth(), ip)).unwrap();
+        add_interface(Interface::loopback()).unwrap();
 
         if format!("{ip}") == "100.100.1.102" || format!("{ip}") == "100.100.3.101" {
             des::tokio::spawn(async move {

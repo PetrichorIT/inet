@@ -73,7 +73,7 @@ impl Future for UdpInterest {
                     return Poll::Ready(Err(Error::new(ErrorKind::InvalidInput, "invalid fd - socket dropped")))
                 };
 
-                let Some(interface) = ctx.interfaces.get_mut(&socket.interface) else {
+                let Some(interface) = ctx.ifaces.get_mut(&socket.interface.unwrap_ifid()) else {
                     self.resolved = true;
                     return Poll::Ready(Err(Error::new(ErrorKind::InvalidInput, "interface down")))
                 };
@@ -84,12 +84,11 @@ impl Future for UdpInterest {
                         interest: self.clone(),
                         waker: cx.waker().clone(),
                     });
-
-                    Poll::Pending
-                } else {
-                    self.resolved = true;
-                    Poll::Ready(Ok(Ready::WRITABLE))
+                    return Poll::Pending;
                 }
+
+                self.resolved = true;
+                Poll::Ready(Ok(Ready::WRITABLE))
             });
         }
 

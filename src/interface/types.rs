@@ -4,6 +4,7 @@ use std::fmt;
 use crate::socket::Fd;
 
 pub(crate) const KIND_LINK_UPDATE: MessageKind = 0x0500;
+pub(crate) const KIND_IO_TIMEOUT: MessageKind = 0x0128;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, MessageBody)]
 pub struct LinkUpdate(pub IfId);
@@ -21,6 +22,7 @@ pub struct IfId(u64);
 
 impl IfId {
     pub const NULL: IfId = IfId(0);
+    pub const BROADCAST: IfId = IfId(u64::MAX);
 }
 
 impl fmt::Debug for IfId {
@@ -36,9 +38,9 @@ impl fmt::Display for IfId {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct InterfaceName {
-    pub(super) name: String,
-    pub(super) id: IfId,
-    pub(super) parent: Option<Box<InterfaceName>>,
+    pub(crate) name: String,
+    pub(crate) id: IfId,
+    pub(crate) parent: Option<Box<InterfaceName>>,
 }
 
 impl InterfaceName {

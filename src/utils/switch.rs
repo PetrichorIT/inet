@@ -3,7 +3,7 @@ use std::{
     iter::repeat_with,
 };
 
-use crate::{arp::ARPPacket, interface2::MacAddress, routing::RoutingInformation};
+use crate::{arp::ARPPacket, interface::MacAddress, ip::Ipv4Packet, routing::RoutingInformation};
 use des::prelude::*;
 
 pub const KIND_SWITCH_WAKEUP: MessageKind = 0x0600;
@@ -52,6 +52,12 @@ impl Module for LinkLayerSwitch {
                     self.forward(msg.dup::<ARPPacket>(), i);
                     continue;
                 }
+
+                if msg.can_cast::<Ipv4Packet>() {
+                    self.forward(msg.dup::<Ipv4Packet>(), i);
+                    continue;
+                }
+
                 log::error!(target: "inet/switch", "could not duplicate packet {}: unexpected content", msg.str())
             }
         } else {
@@ -62,6 +68,10 @@ impl Module for LinkLayerSwitch {
 
             self.forward(msg, *port)
         }
+    }
+
+    fn at_sim_end(&mut self) {
+        assert!(self.queues.iter().all(|q| q.is_empty()))
     }
 }
 

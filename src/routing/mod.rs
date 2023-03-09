@@ -135,11 +135,13 @@ impl RoutingPort {
 
                     let peer = gate
                         .path_end()
-                        .unwrap()
-                        .owner()
-                        .get_plugin_state::<IOPlugin, Option<IpAddr>>()
-                        .flatten()
-                        .map(|addr| RoutingPeer { addr });
+                        .map(|e| {
+                            e.owner()
+                                .get_plugin_state::<IOPlugin, Option<IpAddr>>()
+                                .flatten()
+                                .map(|addr| RoutingPeer { addr })
+                        })
+                        .flatten();
 
                     ports.push(RoutingPort::new(other.clone(), gate, peer));
                 }

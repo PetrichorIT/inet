@@ -3,7 +3,7 @@ use std::{io::Cursor, net::Ipv4Addr};
 use bytestream::{ByteOrder::BigEndian, StreamReader, StreamWriter};
 use des::{prelude::MessageBody, runtime::random};
 
-use crate::interface::get_mac_address;
+use crate::utils::get_mac_address;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, MessageBody)]
 pub struct DHCPMessage {

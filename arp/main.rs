@@ -5,7 +5,7 @@ use des::{
 };
 use inet::{
     debug,
-    interface2::{add_interface2, Interface, NetworkDevice},
+    interface::{add_interface, Interface, NetworkDevice},
     ip::{IpPacket, Ipv4Flags, Ipv4Packet},
 };
 
@@ -24,7 +24,7 @@ impl AsyncModule for Node {
 
     async fn at_sim_start(&mut self, _stage: usize) {
         let ip = par("addr").unwrap().parse().unwrap();
-        add_interface2(Interface::ethv4(NetworkDevice::eth_default(), ip)).unwrap();
+        add_interface(Interface::ethv4(NetworkDevice::eth(), ip)).unwrap();
 
         self.ip = ip;
 

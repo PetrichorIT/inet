@@ -34,12 +34,13 @@ mod debug;
 pub use debug::*;
 
 use crate::{
+    interface::KIND_IO_TIMEOUT,
     ip::{IpPacket, IpPacketRef, IpVersion, Ipv4Flags, Ipv4Packet, Ipv6Packet},
     socket::{Fd, SocketType},
     FromBytestream, IntoBytestream,
 };
 
-use super::{IOContext, KIND_IO_TIMEOUT};
+use super::IOContext;
 
 pub(super) const PROTO_TCP: u8 = 0x06;
 
@@ -174,55 +175,55 @@ impl IOContext {
         packet: IpPacketRef,
         last_gate: Option<GateRef>,
     ) -> bool {
-        assert!(packet.tos() == PROTO_TCP);
+        // assert!(packet.tos() == PROTO_TCP);
 
-        let Ok(tcp) = TcpPacket::from_buffer(packet.content()) else {
-            log::error!(target: "inet/tcp", "received ip-packet with proto=0x06 (tcp) but content was no tcp-packet");
-            return false;
-        };
+        // let Ok(tcp) = TcpPacket::from_buffer(packet.content()) else {
+        //     log::error!(target: "inet/tcp", "received ip-packet with proto=0x06 (tcp) but content was no tcp-packet");
+        //     return false;
+        // };
 
-        let src = SocketAddr::new(packet.src(), tcp.src_port);
-        let dest = SocketAddr::new(packet.dest(), tcp.dest_port);
+        // let src = SocketAddr::new(packet.src(), tcp.src_port);
+        // let dest = SocketAddr::new(packet.dest(), tcp.dest_port);
 
-        for ifid in self.get_interface_for_ip_packet(packet.dest(), last_gate) {
-            let mut possible_sockets = self
-                .sockets
-                .iter_mut()
-                .filter(|(_, v)| {
-                    v.typ == SocketType::SOCK_STREAM && v.addr == dest && v.interface == ifid
-                })
-                .collect::<Vec<_>>();
-            if possible_sockets.is_empty() {
-                continue;
-            }
+        // for ifid in self.get_interface_for_ip_packet(packet.dest(), last_gate) {
+        //     let mut possible_sockets = self
+        //         .sockets
+        //         .iter_mut()
+        //         .filter(|(_, v)| {
+        //             v.typ == SocketType::SOCK_STREAM && v.addr == dest && v.interface == ifid
+        //         })
+        //         .collect::<Vec<_>>();
+        //     if possible_sockets.is_empty() {
+        //         continue;
+        //     }
 
-            if let Some((fd, socket)) = possible_sockets.iter_mut().find(|(_, v)| v.peer == src) {
-                // EndToEnd connection
-                socket.recv_q += tcp.content.len();
-                let Some(tcp_mng) = self.tcp_manager.get(fd) else {
-                    log::error!(target: "inet/tcp", "found tcp socket, but missing tcp manager");
-                    continue;
-                };
+        //     if let Some((fd, socket)) = possible_sockets.iter_mut().find(|(_, v)| v.peer == src) {
+        //         // EndToEnd connection
+        //         socket.recv_q += tcp.content.len();
+        //         let Some(tcp_mng) = self.tcp_manager.get(fd) else {
+        //             log::error!(target: "inet/tcp", "found tcp socket, but missing tcp manager");
+        //             continue;
+        //         };
 
-                let fd = **fd;
-                self.process(fd, packet, tcp);
-                return true;
-            } else {
-                let (fd, socket) = possible_sockets
-                    .into_iter()
-                    .find(|(_, v)| v.peer.ip().is_unspecified() && v.peer.port() == 0)
-                    .unwrap();
+        //         let fd = **fd;
+        //         self.process(fd, packet, tcp);
+        //         return true;
+        //     } else {
+        //         let (fd, socket) = possible_sockets
+        //             .into_iter()
+        //             .find(|(_, v)| v.peer.ip().is_unspecified() && v.peer.port() == 0)
+        //             .unwrap();
 
-                let Some(tcp_lis) = self.tcp_listeners.get_mut(fd) else {
-                    panic!();
-                    log::error!(target: "inet/tcp", "found tcp socket, but missing tcp listener");
-                    continue;
-                };
+        //         let Some(tcp_lis) = self.tcp_listeners.get_mut(fd) else {
+        //             panic!();
+        //             log::error!(target: "inet/tcp", "found tcp socket, but missing tcp listener");
+        //             continue;
+        //         };
 
-                tcp_lis.push_incoming(src, packet, tcp);
-                return true;
-            }
-        }
+        //         tcp_lis.push_incoming(src, packet, tcp);
+        //         return true;
+        //     }
+        // }
 
         false
     }
@@ -231,12 +232,12 @@ impl IOContext {
         ctrl.sender_queue.push_back(ip);
 
         let Some(socket) = self.sockets.get(&ctrl.fd) else { return };
-        let Some(interface) = self.interfaces.get_mut(&socket.interface) else { return };
+        let Some(interface) = self.ifaces.get_mut(&socket.interface.unwrap_ifid()) else { return };
 
         if !interface.is_busy() {
-            interface
-                .send_ip(ctrl.sender_queue.pop_front().unwrap())
-                .unwrap();
+            // interface
+            //     .send_ip(ctrl.sender_queue.pop_front().unwrap())
+            //     .unwrap();
         } else {
             interface.add_write_interest(ctrl.fd);
         }
@@ -248,12 +249,12 @@ impl IOContext {
         };
 
         let Some(socket) = self.sockets.get(&ctrl.fd) else { return };
-        let Some(interface) = self.interfaces.get_mut(&socket.interface) else { return };
+        let Some(interface) = self.ifaces.get_mut(&socket.interface.unwrap_ifid()) else { return };
 
         if !interface.is_busy() {
-            interface
-                .send_ip(ctrl.sender_queue.pop_front().unwrap())
-                .unwrap();
+            // interface
+            //     .send_ip(ctrl.sender_queue.pop_front().unwrap())
+            //     .unwrap();
 
             if !ctrl.sender_queue.is_empty() {
                 interface.add_write_interest(ctrl.fd);
@@ -302,7 +303,7 @@ impl IOContext {
 
         if ctrl.state == TcpState::Closed && ctrl.dropped {
             log::trace!(target: "inet/tcp", "tcp::drop '0x{:x} dropping socket", fd);
-            self.bsd_close_socket(fd);
+            self.close_socket(fd);
         } else {
             self.tcp_manager.insert(fd, ctrl);
         }
@@ -338,7 +339,7 @@ impl IOContext {
 
         if ctrl.state == TcpState::Closed && ctrl.dropped {
             log::trace!(target: "inet/tcp", "tcp::drop '0x{:x} dropping socket", fd);
-            self.bsd_close_socket(fd);
+            self.close_socket(fd);
         } else {
             self.tcp_manager.insert(fd, ctrl);
         }
@@ -374,7 +375,7 @@ impl IOContext {
 
         if ctrl.state == TcpState::Closed && ctrl.dropped {
             log::trace!(target: "inet/tcp", "tcp::drop '0x{:x} dropping socket", fd);
-            self.bsd_close_socket(fd);
+            self.close_socket(fd);
         } else {
             self.tcp_manager.insert(fd, ctrl);
         }
@@ -390,7 +391,7 @@ impl IOContext {
             }
             TcpEvent::SysOpen(peer) => {
                 ctrl.peer_addr = peer;
-                self.bsd_bind_peer(ctrl.fd, peer);
+                self.bind_peer(ctrl.fd, peer);
 
                 ctrl.sender_state = TcpSenderState::Opening;
                 ctrl.receiver_state = TcpReceiverState::Opening;

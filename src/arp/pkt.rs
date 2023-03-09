@@ -1,4 +1,4 @@
-use crate::interface2::MacAddress;
+use crate::interface::MacAddress;
 use crate::{FromBytestream, IntoBytestream};
 use bytestream::ByteOrder::BigEndian;
 use bytestream::{StreamReader, StreamWriter};

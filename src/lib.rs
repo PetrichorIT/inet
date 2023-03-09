@@ -11,7 +11,6 @@ pub mod debug;
 pub mod dhcp;
 pub mod dns;
 pub mod interface;
-pub mod interface2;
 pub mod ip;
 pub mod routing;
 pub mod socket;

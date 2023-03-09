@@ -51,12 +51,12 @@ impl ReadHalf<'_> {
 
     /// Returns the local address that this stream is bound to.
     pub fn local_addr(&self) -> Result<SocketAddr> {
-        IOContext::with_current(|ctx| ctx.bsd_get_socket_addr(self.stream.inner.fd))
+        IOContext::with_current(|ctx| ctx.get_socket_addr(self.stream.inner.fd))
     }
 
     /// Returns the peer address that this stream is bound to.
     pub fn peer_addr(&self) -> Result<SocketAddr> {
-        IOContext::with_current(|ctx| ctx.bsd_get_socket_peer(self.stream.inner.fd))
+        IOContext::with_current(|ctx| ctx.get_socket_peer(self.stream.inner.fd))
     }
 
     /// DEPRECATED
@@ -119,12 +119,12 @@ impl WriteHalf<'_> {
 
     /// Returns the local address that this stream is bound to.
     pub fn local_addr(&self) -> Result<SocketAddr> {
-        IOContext::with_current(|ctx| ctx.bsd_get_socket_addr(self.stream.inner.fd))
+        IOContext::with_current(|ctx| ctx.get_socket_addr(self.stream.inner.fd))
     }
 
     /// Returns the peer address that this stream is bound to.
     pub fn peer_addr(&self) -> Result<SocketAddr> {
-        IOContext::with_current(|ctx| ctx.bsd_get_socket_peer(self.stream.inner.fd))
+        IOContext::with_current(|ctx| ctx.get_socket_peer(self.stream.inner.fd))
     }
 
     /// Waits for any of the requested ready states.

@@ -23,11 +23,8 @@ impl AsyncModule for Client {
 
     async fn at_sim_start(&mut self, _stage: usize) {
         let ip = par("addr").unwrap().parse::<Ipv4Addr>().unwrap();
-        add_interface(Interface::ethernet(
-            &[ip.into()],
-            NetworkDevice::eth_default(),
-        ));
-        add_interface(Interface::loopback());
+        add_interface(Interface::ethv4(NetworkDevice::eth(), ip)).unwrap();
+        add_interface(Interface::loopback()).unwrap();
 
         schedule_in(Message::new().kind(2334).build(), Duration::from_secs(10));
 
@@ -145,10 +142,7 @@ impl AsyncModule for DNSServer0 {
 
     async fn at_sim_start(&mut self, _stage: usize) {
         let ip = par("addr").unwrap().parse::<Ipv4Addr>().unwrap();
-        add_interface(Interface::ethernet(
-            &[ip.into()],
-            NetworkDevice::eth_default(),
-        ));
+        add_interface(Interface::ethv4(NetworkDevice::eth(), ip)).unwrap();
 
         schedule_in(Message::new().kind(1111).build(), Duration::ZERO);
     }
@@ -188,10 +182,7 @@ impl AsyncModule for DNSServer1 {
 
     async fn at_sim_start(&mut self, _stage: usize) {
         let ip = par("addr").unwrap().parse::<Ipv4Addr>().unwrap();
-        add_interface(Interface::ethernet(
-            &[ip.into()],
-            NetworkDevice::eth_default(),
-        ));
+        add_interface(Interface::ethv4(NetworkDevice::eth(), ip)).unwrap();
 
         schedule_in(Message::new().kind(1111).build(), Duration::ZERO);
     }
@@ -223,10 +214,7 @@ impl AsyncModule for DNSServer2 {
 
     async fn at_sim_start(&mut self, _stage: usize) {
         let ip = par("addr").unwrap().parse::<Ipv4Addr>().unwrap();
-        add_interface(Interface::ethernet(
-            &[ip.into()],
-            NetworkDevice::eth_default(),
-        ));
+        add_interface(Interface::ethv4(NetworkDevice::eth(), ip)).unwrap();
 
         schedule_in(Message::new().kind(7912).build(), Duration::from_secs(5));
     }
@@ -243,34 +231,16 @@ impl AsyncModule for DNSServer2 {
     }
 }
 
-const RMAP: [Ipv4Addr; 6] = [
-    Ipv4Addr::new(200, 3, 43, 125),
-    Ipv4Addr::new(100, 3, 43, 125),
-    Ipv4Addr::new(100, 78, 43, 100),
-    Ipv4Addr::new(100, 100, 100, 100),
-    Ipv4Addr::new(100, 78, 43, 200),
-    Ipv4Addr::new(192, 168, 2, 178),
-];
+// const RMAP: [Ipv4Addr; 6] = [
+//     Ipv4Addr::new(200, 3, 43, 125),
+//     Ipv4Addr::new(100, 3, 43, 125),
+//     Ipv4Addr::new(100, 78, 43, 100),
+//     Ipv4Addr::new(100, 100, 100, 100),
+//     Ipv4Addr::new(100, 78, 43, 200),
+//     Ipv4Addr::new(192, 168, 2, 178),
+// ];
 
-struct Router {}
-impl Module for Router {
-    fn new() -> Self {
-        Self {}
-    }
-
-    fn num_sim_start_stages(&self) -> usize {
-        2
-    }
-
-    fn handle_message(&mut self, msg: Message) {
-        if let Some(content) = msg.try_content::<Ipv4Packet>() {
-            let Some((i, _)) = RMAP.iter().enumerate().find(|(_, &v)| v == content.dest) else {
-                return
-            };
-            send(msg, ("out", i))
-        }
-    }
-}
+type Router = inet::utils::LinkLayerSwitch;
 
 struct Main;
 impl Module for Main {
@@ -296,6 +266,6 @@ fn main() {
         .unwrap(),
     );
     rt.include_par_file("dns_bin/main.par");
-    let rt = Runtime::new(rt);
+    let rt = Runtime::new_with(rt, RuntimeOptions::seeded(123));
     let _ = rt.run();
 }

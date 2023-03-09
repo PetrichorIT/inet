@@ -1,18 +1,13 @@
 use crate::{
     arp::{ARPConfig, ARPTable},
-    interface2,
-    ip::{IpPacketRef, Ipv4Packet, Ipv6Packet, KIND_IPV4, KIND_IPV6},
+    interface::{IfId, Interface, LinkLayerResult, KIND_LINK_UPDATE},
+    ip::{IpPacketRef, Ipv4Packet, KIND_IPV4},
     IOPlugin,
 };
-use des::{
-    net::plugin::PluginError,
-    prelude::{Message, MessageKind},
-    runtime::random,
-};
-use std::{cell::RefCell, collections::HashMap, net::Ipv4Addr, panic::UnwindSafe, time::Duration};
+use des::{net::plugin::PluginError, prelude::Message};
+use std::{cell::RefCell, collections::HashMap, panic::UnwindSafe, time::Duration};
 
 use super::{
-    interface::*,
     socket::*,
     tcp::{api::TcpListenerHandle, TcpController, PROTO_TCP},
     udp::{UdpManager, PROTO_UDP},
@@ -22,13 +17,10 @@ thread_local! {
     static CURRENT: RefCell<Option<IOContext>> = const { RefCell::new(None) };
 }
 
-pub(super) const KIND_IO_TIMEOUT: MessageKind = 0x0128;
-
 pub struct IOContext {
-    pub(super) interfaces2: HashMap<interface2::IfId, interface2::Interface>,
+    pub(super) ifaces: HashMap<IfId, Interface>,
     pub(super) arp: ARPTable,
 
-    pub(super) interfaces: HashMap<IfId, Interface>,
     pub(super) sockets: HashMap<Fd, Socket>,
 
     pub(super) udp_manager: HashMap<Fd, UdpManager>,
@@ -42,12 +34,11 @@ pub struct IOContext {
 impl IOContext {
     pub fn empty() -> Self {
         Self {
-            interfaces2: HashMap::new(),
+            ifaces: HashMap::new(),
             arp: ARPTable::new(ARPConfig {
                 validity: Duration::from_secs(200),
             }),
 
-            interfaces: HashMap::new(),
             sockets: HashMap::new(),
 
             udp_manager: HashMap::new(),
@@ -59,22 +50,22 @@ impl IOContext {
         }
     }
 
-    pub fn loopback_only() -> Self {
-        let mut this = Self::empty();
-        this.add_interface(Interface::loopback());
-        this
-    }
+    // pub fn loopback_only() -> Self {
+    //     let mut this = Self::empty();
+    //     this.add_interface2(Interface::loopback());
+    //     this
+    // }
 
-    pub fn eth_default(v4: Ipv4Addr) -> Self {
-        Self::eth_with_addr(v4, random())
-    }
+    // pub fn eth_default(v4: Ipv4Addr) -> Self {
+    //     Self::eth_with_addr(v4, random())
+    // }
 
-    pub fn eth_with_addr(v4: Ipv4Addr, mac: [u8; 6]) -> Self {
-        let mut this = Self::empty();
-        this.add_interface(Interface::loopback());
-        this.add_interface(Interface::en0(mac, v4, NetworkDevice::eth_default()));
-        this
-    }
+    // pub fn eth_with_addr(v4: Ipv4Addr, mac: [u8; 6]) -> Self {
+    //     let mut this = Self::empty();
+    //     this.add_interface2(Interface::loopback());
+    //     this.add_interface2(Interface::en0(mac, v4, NetworkDevice::eth_default()));
+    //     this
+    // }
 
     pub fn set(self) {
         Self::swap_in(Some(self));
@@ -112,7 +103,21 @@ impl IOContext {
 }
 
 impl IOContext {
-    pub(super) fn capture(&mut self, msg: Message) -> Option<Message> {
+    pub fn recv(&mut self, msg: Message) -> Option<Message> {
+        use LinkLayerResult::*;
+
+        // Packets that are passed to the networking layer, are
+        // not nessecarily addressed to any valid ip addr, but are valid for
+        // the local MAC addr
+        let l2 = self.recv_linklayer(msg);
+
+        let (msg, ifid) = match l2 {
+            PassThrough(msg) => return Some(msg),
+            Consumed() => return None,
+            NetworkingPacket(msg, ifid) => (msg, ifid),
+            Timeout(timeout) => return self.networking_layer_io_timeout(timeout),
+        };
+
         let kind = msg.header().kind;
         match kind {
             KIND_IPV4 => {
@@ -123,61 +128,30 @@ impl IOContext {
 
                 match ip.proto {
                     PROTO_UDP => {
-                        if self
-                            .capture_udp_packet(IpPacketRef::V4(ip), msg.header().last_gate.clone())
-                        {
+                        let consumed = self.recv_udp_packet(IpPacketRef::V4(ip), ifid);
+                        if consumed {
                             None
                         } else {
                             Some(msg)
                         }
                     }
                     PROTO_TCP => {
-                        if self
-                            .capture_tcp_packet(IpPacketRef::V4(ip), msg.header().last_gate.clone())
-                        {
+                        let consumed = self.capture_tcp_packet(IpPacketRef::V4(ip), todo!());
+                        if consumed {
                             None
                         } else {
                             Some(msg)
                         }
                     }
-                    _ => Some(msg),
+                    _ => unreachable!(),
                 }
             }
-            KIND_IPV6 => {
-                let Some(ip) = msg.try_content::<Ipv6Packet>() else {
-                    log::error!(target: "inet", "received eth-packet with kind=0x08DD (ip) but content was no ipv6-packet");
-                    return Some(msg)
-                };
-
-                match ip.next_header {
-                    PROTO_UDP => {
-                        if self
-                            .capture_udp_packet(IpPacketRef::V6(ip), msg.header().last_gate.clone())
-                        {
-                            None
-                        } else {
-                            Some(msg)
-                        }
-                    }
-                    PROTO_TCP => {
-                        if self
-                            .capture_tcp_packet(IpPacketRef::V6(ip), msg.header().last_gate.clone())
-                        {
-                            None
-                        } else {
-                            Some(msg)
-                        }
-                    }
-                    _ => Some(msg),
-                }
-            }
-            KIND_LINK_UNBUSY => self.capture_link_update(msg),
-            KIND_IO_TIMEOUT => self.capture_io_timeout(msg),
+            KIND_LINK_UPDATE => panic!("HUH"),
             _ => Some(msg),
         }
     }
 
-    fn capture_io_timeout(&mut self, msg: Message) -> Option<Message> {
+    fn networking_layer_io_timeout(&mut self, msg: Message) -> Option<Message> {
         let Some(fd) = msg.try_content::<Fd>() else {
             return None;
         };
@@ -195,16 +169,6 @@ impl IOContext {
         }
 
         None
-    }
-
-    pub(super) fn create_fd(&mut self) -> Fd {
-        loop {
-            self.fd = self.fd.wrapping_add(1);
-            if self.sockets.get(&self.fd).is_some() {
-                continue;
-            }
-            return self.fd;
-        }
     }
 }
 

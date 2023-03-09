@@ -51,11 +51,11 @@ impl AsyncModule for TcpServer {
     async fn at_sim_start(&mut self, _: usize) {
         add_plugin(TcpDebugPlugin, 1);
 
-        add_interface(Interface::en0(
-            random(),
+        add_interface(Interface::ethv4(
+            NetworkDevice::eth(),
             Ipv4Addr::new(100, 100, 100, 100),
-            NetworkDevice::eth_default(),
-        ));
+        ))
+        .unwrap();
 
         let done = self.done.clone();
         let fd = self.fd.clone();
@@ -123,11 +123,11 @@ impl AsyncModule for TcpClient {
     async fn at_sim_start(&mut self, _: usize) {
         add_plugin(TcpDebugPlugin, 1);
 
-        add_interface(Interface::en0(
-            random(),
+        add_interface(Interface::ethv4(
+            NetworkDevice::eth(),
             Ipv4Addr::new(200, 200, 200, 200),
-            NetworkDevice::eth_default(),
-        ));
+        ))
+        .unwrap();
 
         let done = self.done.clone();
         let fd = self.fd.clone();

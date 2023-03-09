@@ -8,7 +8,7 @@ use des::prelude::*;
 use super::common::{DHCPMessage, DHCPOpsTyp};
 use crate::{
     dhcp::{common::DHCPParameter, MESSAGE_KIND_DHCP},
-    interface::get_mac_address,
+    utils::get_mac_address,
     IOContext,
 };
 
@@ -145,7 +145,8 @@ impl DHCPClient {
                 // Commit values to tokio
                 let mac = get_mac_address().unwrap();
                 let mac = mac.unwrap_or(random());
-                IOContext::eth_with_addr(self.addr, mac).set();
+                // IOContext::eth_with_addr(self.addr, mac).set();
+                // FIXME
                 self.done = true;
                 send(Message::new().kind(1000).content(self.addr).build(), "out")
             }

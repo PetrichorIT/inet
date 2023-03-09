@@ -161,7 +161,7 @@ impl TcpListener {
 
     /// Returns the local address that this socket is bound to.
     pub fn local_addr(&self) -> Result<SocketAddr> {
-        IOContext::with_current(|ctx| ctx.bsd_get_socket_addr(self.fd))
+        IOContext::with_current(|ctx| ctx.get_socket_addr(self.fd))
     }
     /// Gets the value of the IP_TTL option for this socket.
     ///
@@ -212,10 +212,10 @@ impl IOContext {
             } else {
                 SocketDomain::AF_INET6
             };
-            let fd = self.bsd_create_socket(domain, SocketType::SOCK_STREAM, 0)?;
+            let fd = self.create_socket(domain, SocketType::SOCK_STREAM, 0)?;
 
-            addr = self.bsd_bind_socket(fd, addr).map_err(|e| {
-                self.bsd_close_socket(self.fd);
+            addr = self.bind_socket(fd, addr).map_err(|e| {
+                self.close_socket(self.fd);
                 e
             })?;
             fd
@@ -248,14 +248,11 @@ impl IOContext {
             None => return Err(Error::new(ErrorKind::WouldBlock, "WouldBlock")),
         };
 
-        let stream_socket = self.bsd_dup_socket(fd)?;
-        self.bsd_bind_peer(stream_socket, con.peer_addr)?;
+        let stream_socket = self.dup_socket(fd)?;
+        self.bind_peer(stream_socket, con.peer_addr)?;
 
-        let mut ctrl = TcpController::new(
-            stream_socket,
-            self.bsd_get_socket_addr(stream_socket)?,
-            config,
-        );
+        let mut ctrl =
+            TcpController::new(stream_socket, self.get_socket_addr(stream_socket)?, config);
 
         self.syscall(stream_socket, TcpSyscall::Listen());
 
@@ -282,6 +279,6 @@ impl IOContext {
 
     pub(super) fn tcp_drop_listener(&mut self, fd: Fd) {
         self.tcp_listeners.remove(&fd);
-        self.bsd_close_socket(fd);
+        self.close_socket(fd);
     }
 }

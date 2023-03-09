@@ -22,14 +22,14 @@ impl AsyncModule for SocketBind {
     }
 
     async fn at_sim_start(&mut self, _: usize) {
-        add_interface(Interface::loopback());
+        add_interface(Interface::loopback()).unwrap();
 
         self.handle = Some(tokio::spawn(async move {
             let sock0 = UdpSocket::bind("0.0.0.0:0").await.unwrap();
             let device = sock0.device().unwrap();
             assert_eq!(device, Some(InterfaceName::new("lo0")));
             let addr = sock0.local_addr().unwrap();
-            assert_eq!(addr, SocketAddr::from_str("127.0.0.1:1024").unwrap());
+            assert_eq!(addr, SocketAddr::from_str("0.0.0.0:1024").unwrap());
             let _peer = sock0.peer_addr().unwrap_err();
             drop(sock0);
 
@@ -37,14 +37,14 @@ impl AsyncModule for SocketBind {
             let device = sock1.device().unwrap();
             assert_eq!(device, Some(InterfaceName::new("lo0")));
             let addr = sock1.local_addr().unwrap();
-            assert_eq!(addr, SocketAddr::from_str("127.0.0.1:1025").unwrap());
+            assert_eq!(addr, SocketAddr::from_str("0.0.0.0:1025").unwrap());
             let _peer = sock1.peer_addr().unwrap_err();
 
             let sock2 = UdpSocket::bind("0.0.0.0:1024").await.unwrap();
             let device = sock2.device().unwrap();
             assert_eq!(device, Some(InterfaceName::new("lo0")));
             let addr = sock2.local_addr().unwrap();
-            assert_eq!(addr, SocketAddr::from_str("127.0.0.1:1024").unwrap());
+            assert_eq!(addr, SocketAddr::from_str("0.0.0.0:1024").unwrap());
             let _peer = sock2.peer_addr().unwrap_err();
             drop(sock2);
 
@@ -54,14 +54,14 @@ impl AsyncModule for SocketBind {
             let device = sock3.device().unwrap();
             assert_eq!(device, Some(InterfaceName::new("lo0")));
             let addr = sock3.local_addr().unwrap();
-            assert_eq!(addr, SocketAddr::from_str("127.0.0.1:1026").unwrap());
+            assert_eq!(addr, SocketAddr::from_str("0.0.0.0:1026").unwrap());
             let _peer = sock3.peer_addr().unwrap_err();
 
             let sock4 = UdpSocket::bind("0.0.0.0:0").await.unwrap();
             let device = sock4.device().unwrap();
             assert_eq!(device, Some(InterfaceName::new("lo0")));
             let addr = sock4.local_addr().unwrap();
-            assert_eq!(addr, SocketAddr::from_str("127.0.0.1:1027").unwrap());
+            assert_eq!(addr, SocketAddr::from_str("0.0.0.0:1027").unwrap());
             let _peer = sock4.peer_addr().unwrap_err();
 
             drop((sock1, sock3, sock4))
@@ -99,11 +99,11 @@ impl AsyncModule for UdpEcho4200 {
         Self {}
     }
     async fn at_sim_start(&mut self, _: usize) {
-        add_interface(Interface::en0(
-            random(),
+        add_interface(Interface::ethv4(
+            NetworkDevice::eth(),
             Ipv4Addr::new(42, 42, 42, 42),
-            NetworkDevice::eth_default(),
-        ));
+        ))
+        .unwrap();
 
         tokio::spawn(async move {
             let socket = UdpSocket::bind("0.0.0.0:42").await.unwrap();
@@ -139,11 +139,11 @@ impl AsyncModule for UdpSingleEchoSender {
     }
 
     async fn at_sim_start(&mut self, _: usize) {
-        add_interface(Interface::en0(
-            random(),
+        add_interface(Interface::ethv4(
+            NetworkDevice::eth(),
             Ipv4Addr::new(1, 1, 1, 1),
-            NetworkDevice::eth_default(),
-        ));
+        ))
+        .unwrap();
 
         self.handle = Some(tokio::spawn(async move {
             let sock = UdpSocket::bind("0.0.0.0:0").await.unwrap();
@@ -227,11 +227,11 @@ impl AsyncModule for UdpSingleClusteredSender {
     }
 
     async fn at_sim_start(&mut self, _: usize) {
-        add_interface(Interface::en0(
-            random(),
+        add_interface(Interface::ethv4(
+            NetworkDevice::eth(),
             Ipv4Addr::new(1, 1, 1, 1),
-            NetworkDevice::eth_default(),
-        ));
+        ))
+        .unwrap();
 
         self.handle = Some(tokio::spawn(async move {
             let sock = UdpSocket::bind("0.0.0.0:0").await.unwrap();
@@ -324,11 +324,11 @@ impl AsyncModule for UdpConcurrentClients {
     }
 
     async fn at_sim_start(&mut self, _: usize) {
-        add_interface(Interface::en0(
-            random(),
+        add_interface(Interface::ethv4(
+            NetworkDevice::eth(),
             Ipv4Addr::new(1, 1, 1, 1),
-            NetworkDevice::eth_default(),
-        ));
+        ))
+        .unwrap();
 
         self.handle = Some(tokio::spawn(async move {
             let h1 = tokio::spawn(async move {

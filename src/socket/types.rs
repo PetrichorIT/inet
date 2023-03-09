@@ -1,5 +1,3 @@
-use crate::interface::InterfaceAddr;
-
 /// The communication domain of a socket.
 #[allow(nonstandard_style)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -29,16 +27,6 @@ pub enum SocketDomain {
     AF_VSOCK,
     AF_KCM,
     AF_XDP,
-}
-
-impl SocketDomain {
-    pub(super) fn valid_for_interface_addr(&self, iaddr: &InterfaceAddr) -> bool {
-        match (self, iaddr) {
-            (Self::AF_INET, InterfaceAddr::Inet { .. }) => true,
-            (Self::AF_INET6, InterfaceAddr::Inet6 { .. }) => true,
-            _ => false,
-        }
-    }
 }
 
 /// The type of communications semantics use in the socket.

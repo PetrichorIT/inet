@@ -11,7 +11,7 @@ pub struct MacAddress([u8; 6]);
 
 impl MacAddress {
     pub const NULL: MacAddress = MacAddress([0; 6]);
-    pub const BROADCAST: MacAddress = MacAddress([0; 6]);
+    pub const BROADCAST: MacAddress = MacAddress([0xff; 6]);
 
     pub fn gen() -> MacAddress {
         MacAddress(random())

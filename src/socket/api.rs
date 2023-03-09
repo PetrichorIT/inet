@@ -24,7 +24,7 @@ use std::{io::Result, net::SocketAddr};
 /// to use is specific to the “communication domain” in which
 /// communication is to take place.
 pub fn socket(domain: SocketDomain, typ: SocketType, protocol: i32) -> Result<Fd> {
-    IOContext::with_current(|ctx| ctx.bsd_create_socket(domain, typ, protocol))
+    IOContext::with_current(|ctx| ctx.create_socket(domain, typ, protocol))
 }
 
 /// bind - bind name to a socket.
@@ -39,7 +39,7 @@ pub fn socket(domain: SocketDomain, typ: SocketType, protocol: i32) -> Result<Fd
 /// It is normally necessary to assign a local address using bind()
 /// before a SOCK_STREAM socket may receive connections.
 pub fn bind(sockfd: Fd, addr: SocketAddr) -> Result<()> {
-    IOContext::with_current(|ctx| ctx.bsd_bind_socket(sockfd, addr))?;
+    IOContext::with_current(|ctx| ctx.bind_socket(sockfd, addr))?;
     Ok(())
 }
 
@@ -51,7 +51,7 @@ pub fn bind(sockfd: Fd, addr: SocketAddr) -> Result<()> {
 /// removed (regardless of the file descriptor that was used to
 /// obtain the lock).
 pub fn close(fd: Fd) -> Result<()> {
-    IOContext::with_current(|ctx| ctx.bsd_close_socket(fd))
+    IOContext::with_current(|ctx| ctx.close_socket(fd))
 }
 
 #[doc(hidden)]

@@ -17,10 +17,11 @@ impl Module for A {
     }
 
     fn at_sim_start(&mut self, _stage: usize) {
-        add_interface(Interface::ethernet(
-            &[IpAddr::from_str("192.168.2.100").unwrap()],
-            NetworkDevice::eth_default(),
-        ));
+        add_interface(Interface::ethv4(
+            NetworkDevice::eth(),
+            Ipv4Addr::from_str("192.168.2.100").unwrap(),
+        ))
+        .unwrap();
     }
 }
 impl Module for B {
@@ -29,10 +30,11 @@ impl Module for B {
     }
 
     fn at_sim_start(&mut self, _stage: usize) {
-        add_interface(Interface::ethernet(
-            &[IpAddr::from_str("192.168.2.200").unwrap()],
-            NetworkDevice::eth_default(),
-        ));
+        add_interface(Interface::ethv4(
+            NetworkDevice::eth(),
+            Ipv4Addr::from_str("192.168.2.100").unwrap(),
+        ))
+        .unwrap();
     }
 }
 impl Module for C {
