@@ -1,7 +1,7 @@
 //! Internet-Protocol.
 
 use des::net::message::MessageKind;
-use std::net::IpAddr;
+use std::net::{IpAddr, Ipv4Addr};
 
 mod mask;
 pub use mask::*;
@@ -106,4 +106,15 @@ impl IpPacket {
             Self::V6(v6) => IpAddr::V6(v6.dest),
         }
     }
+}
+
+pub(crate) fn ipv4_matches_subnet(ip: Ipv4Addr, subnet: Ipv4Addr, mask: Ipv4Addr) -> bool {
+    let ip = ip.octets();
+    let subnet = subnet.octets();
+    let mask = mask.octets();
+
+    mask[0] & ip[0] == mask[0] & subnet[0]
+        && mask[1] & ip[1] == mask[1] & subnet[1]
+        && mask[2] & ip[2] == mask[2] & subnet[2]
+        && mask[3] & ip[3] == mask[3] & subnet[3]
 }

@@ -4,7 +4,7 @@ use des::prelude::{par_for, send};
 
 use crate::ip::{Ipv4Packet, Ipv6Packet, KIND_IPV4, KIND_IPV6};
 
-use super::{Router, RoutingInformation, RoutingPort};
+use super::{super::RoutingPort, Router, RoutingInformation};
 pub struct ParBasedRoutingDeamon {
     info: RoutingInformation,
     fwd: HashMap<IpAddr, RoutingPort>,

@@ -271,7 +271,7 @@ impl IOContext {
             if let Some(_iaddr) = interface
                 .addrs
                 .iter()
-                .find(|iaddr| iaddr.matches_ip(addr.ip()))
+                .find(|iaddr| iaddr.matches_ip_subnet(addr.ip()))
             {
                 // Found the right interface
                 if interface.status == InterfaceStatus::Inactive {

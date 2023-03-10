@@ -5,7 +5,7 @@ use des::{
     time::SimTime,
 };
 
-use crate::routing::RoutingInformation;
+use crate::routing::{RoutingInformation, RoutingPort};
 
 use super::{InterfaceBusyState, MacAddress};
 
@@ -66,6 +66,24 @@ impl NetworkDevice {
                 }
             }
         }
+    }
+
+    pub fn eth_select(f: impl Fn(&RoutingPort) -> bool) -> Self {
+        let rinfo = RoutingInformation::collect();
+        for r in rinfo.ports {
+            let valid = f(&r);
+            if valid {
+                return Self {
+                    addr: MacAddress::gen(),
+                    inner: NetworkDeviceInner::EthernetDevice {
+                        output: r.output,
+                        input: r.input,
+                    },
+                };
+            }
+        }
+
+        unimplemented!()
     }
 
     pub(super) fn send(&self, mut msg: Message) -> InterfaceBusyState {

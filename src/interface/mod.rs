@@ -73,13 +73,22 @@ pub enum LinkLayerResult {
 
 impl Interface {
     pub fn ethv4(device: NetworkDevice, v4: Ipv4Addr) -> Interface {
+        Self::ethv4_named("en0", device, v4, Ipv4Addr::new(255, 255, 255, 0))
+    }
+
+    pub fn ethv4_named(
+        name: impl AsRef<str>,
+        device: NetworkDevice,
+        subnet: Ipv4Addr,
+        mask: Ipv4Addr,
+    ) -> Interface {
         Interface {
-            name: InterfaceName::new("en0"),
+            name: InterfaceName::new(name),
             device,
             flags: InterfaceFlags::en0(),
             addrs: vec![InterfaceAddr::Inet {
-                addr: v4,
-                netmask: Ipv4Addr::new(255, 255, 255, 255),
+                addr: subnet,
+                netmask: mask,
             }],
             status: InterfaceStatus::Active,
             state: InterfaceBusyState::Idle,
@@ -108,10 +117,10 @@ impl Interface {
         }
     }
 
-    pub fn ipv4_addr(&self) -> Option<Ipv4Addr> {
+    pub fn ipv4_subnet(&self) -> Option<(Ipv4Addr, Ipv4Addr)> {
         self.addrs.iter().find_map(|a| {
-            if let InterfaceAddr::Inet { addr, .. } = a {
-                Some(*addr)
+            if let InterfaceAddr::Inet { addr, netmask } = a {
+                Some((*addr, *netmask))
             } else {
                 None
             }

@@ -1,6 +1,6 @@
 use crate::{ip::Ipv4Packet, FromBytestream};
 
-use super::{Router, RoutingInformation, RoutingPort};
+use super::{super::RoutingPort, Router, RoutingInformation};
 use des::prelude::*;
 use std::collections::HashMap;
 

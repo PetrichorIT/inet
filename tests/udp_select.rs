@@ -32,9 +32,11 @@ impl AsyncModule for A {
             "b" => 2,
             _ => unreachable!(),
         };
-        add_interface(Interface::ethv4(
+        add_interface(Interface::ethv4_named(
+            "en0",
             NetworkDevice::eth(),
             Ipv4Addr::new(c, c, c, c),
+            Ipv4Addr::UNSPECIFIED,
         ))
         .unwrap();
 
@@ -75,9 +77,11 @@ impl AsyncModule for C {
     }
 
     async fn at_sim_start(&mut self, _: usize) {
-        add_interface(Interface::ethv4(
+        add_interface(Interface::ethv4_named(
+            "en0",
             NetworkDevice::eth(),
             Ipv4Addr::new(3, 3, 3, 3),
+            Ipv4Addr::UNSPECIFIED,
         ))
         .unwrap();
 

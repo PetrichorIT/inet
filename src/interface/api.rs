@@ -6,7 +6,7 @@ use std::{
 use des::{prelude::module_name, time::SimTime};
 
 use super::{Interface, InterfaceAddr, MacAddress};
-use crate::{arp::ARPEntryInternal, IOContext};
+use crate::{arp::ARPEntryInternal, routing::Ipv4Gateway, IOContext};
 
 pub fn add_interface(iface: Interface) -> io::Result<()> {
     IOContext::with_current(|ctx| ctx.add_interface(iface))
@@ -22,7 +22,8 @@ impl IOContext {
         } else {
             // TODO: check nondup
 
-            if !iface.flags.loopback && iface.ipv4_addr().is_some() {
+            // (0) Check if the iface can be used as a valid broadcast target.
+            if !iface.flags.loopback && iface.ipv4_subnet().is_some() {
                 let _ = self.arp.add(ARPEntryInternal {
                     hostname: None,
                     ip: Ipv4Addr::BROADCAST,
@@ -30,8 +31,17 @@ impl IOContext {
                     iface: iface.name.id,
                     expires: SimTime::MAX,
                 });
+
+                self.ipv4router.add_entry(
+                    Ipv4Addr::BROADCAST,
+                    Ipv4Addr::BROADCAST,
+                    Ipv4Gateway::Broadcast,
+                    iface.name.id,
+                    usize::MAX,
+                );
             }
 
+            // (1) Add all interface addrs to ARP
             for addr in &iface.addrs {
                 let InterfaceAddr::Inet { addr, .. } = addr else {
                     continue;
@@ -44,6 +54,17 @@ impl IOContext {
                     iface: iface.name.id,
                     expires: SimTime::MAX,
                 });
+            }
+
+            // (2) Add interface subnet to routing table.
+            if let Some((addr, mask)) = iface.ipv4_subnet() {
+                self.ipv4router.add_entry(
+                    addr,
+                    mask,
+                    Ipv4Gateway::Local,
+                    iface.name.id,
+                    usize::MAX / 4,
+                )
             }
 
             self.ifaces.insert(iface.name.id, iface);

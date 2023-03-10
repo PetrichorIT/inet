@@ -3,7 +3,7 @@ use std::net::IpAddr;
 use des::{prelude::*, net::plugin::add_plugin};
 use inet::{
     ip::{IpMask, Ipv6Packet, Ipv4Packet, Ipv4Mask, KIND_IPV4, KIND_IPV6},
-    routing::{ParBasedRoutingDeamon, RoutingInformation, RoutingPlugin, RoutingPort},
+    routing::{router::{ParBasedRoutingDeamon, RoutingPlugin}, RoutingInformation,  RoutingPort},
 };
 
 pub struct LANRouter {}

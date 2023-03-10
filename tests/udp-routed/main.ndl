@@ -1,0 +1,69 @@
+link LAN {
+    jitter: 0.0,
+    latency: 0.01,
+    bitrate: 10000000,
+}
+
+link WAN {
+    jitter: 0.0,
+    latency: 0.05,
+    bitrate: 100000000,
+}
+
+module Node {
+    gates {
+        in @input,
+        out @output,
+    }
+}
+
+module Switch {
+    gates {
+        in[5] @input,
+        out[5] @output,
+
+        downlink @input,
+        uplink @output,
+    }
+}
+
+module Router {
+    gates {
+        lan_in @input,
+        lan_out @output,
+        wan_in @input,
+        wan_out @output,
+    }
+}
+
+module Main {
+    submodules {
+        left[5]: Node,
+        left_switch: Switch,
+
+        right[5]: Node,
+        right_switch: Switch,
+
+        lrouter: Router,
+        rrouter: Router,
+    }
+
+    connections {
+        left/out --> LAN --> left_switch/in,
+        left/in <-- LAN <-- left_switch/out,
+
+        right/out --> LAN --> right_switch/in,
+        right/in <-- LAN <-- right_switch/out,
+
+        left_switch/uplink --> LAN --> lrouter/lan_in,
+        left_switch/downlink <-- LAN <-- lrouter/lan_out,
+
+        right_switch/uplink --> LAN --> rrouter/lan_in,
+        right_switch/downlink <-- LAN <-- rrouter/lan_out,
+
+        lrouter/wan_out --> WAN --> rrouter/wan_in,
+        lrouter/wan_in <-- WAN <-- rrouter/wan_out,
+    }
+}
+
+entry Main;

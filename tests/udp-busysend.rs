@@ -26,7 +26,13 @@ impl AsyncModule for Ping {
     }
 
     async fn at_sim_start(&mut self, _: usize) {
-        add_interface(Interface::ethv4(NetworkDevice::eth(), [1, 1, 1, 1].into())).unwrap();
+        add_interface(Interface::ethv4_named(
+            "en0",
+            NetworkDevice::eth(),
+            [1, 1, 1, 1].into(),
+            Ipv4Addr::UNSPECIFIED,
+        ))
+        .unwrap();
 
         self.handle = Some(spawn(async move {
             let mut c = 0;
@@ -79,7 +85,13 @@ impl AsyncModule for Pong {
     }
 
     async fn at_sim_start(&mut self, _: usize) {
-        add_interface(Interface::ethv4(NetworkDevice::eth(), [2, 2, 2, 2].into())).unwrap();
+        add_interface(Interface::ethv4_named(
+            "en0",
+            NetworkDevice::eth(),
+            [2, 2, 2, 2].into(),
+            Ipv4Addr::UNSPECIFIED,
+        ))
+        .unwrap();
 
         self.handle = Some(spawn(async move {
             let mut bytes = 0;

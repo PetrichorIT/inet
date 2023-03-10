@@ -67,18 +67,17 @@ impl ARPTable {
     }
 
     #[must_use]
-    pub fn add(&mut self, mut entry: ARPEntryInternal) -> Option<Vec<Ipv4Packet>> {
+    pub fn add(&mut self, mut entry: ARPEntryInternal) -> Option<(Ipv4Addr, Vec<Ipv4Packet>)> {
         let ip = entry.ip;
         if entry.expires == SimTime::ZERO {
             entry.expires = SimTime::now() + self.config.validity;
         }
 
         let _ = self.map.insert(ip, entry);
-        self.buffer.remove(&ip)
+        self.buffer.remove(&ip).map(|msgs| (ip, msgs))
     }
 
-    pub fn wait_for_arp(&mut self, ip: Ipv4Packet) {
-        let dest = ip.dest;
+    pub fn wait_for_arp(&mut self, ip: Ipv4Packet, dest: Ipv4Addr) {
         self.buffer.entry(dest).or_insert(Vec::new()).push(ip)
     }
 

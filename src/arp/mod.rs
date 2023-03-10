@@ -2,6 +2,7 @@ use std::io::{self, Error, ErrorKind};
 use std::net::{IpAddr, Ipv4Addr};
 
 use crate::ip::{IpPacket, Ipv4Packet, KIND_IPV4};
+use crate::routing::Ipv4Gateway;
 use crate::socket::SocketIfaceBinding;
 use crate::{interface::*, IOContext};
 use des::prelude::Message;
@@ -35,10 +36,15 @@ impl IOContext {
                         expires: SimTime::ZERO,
                     });
 
-                    if let Some(sendable) = sendable {
+                    if let Some((trg, sendable)) = sendable {
                         for pkt in sendable {
-                            self.send_ip_packet_v4(SocketIfaceBinding::Bound(ifid), pkt, true)
-                                .unwrap();
+                            self.send_lan_local_ipv4_packet(
+                                SocketIfaceBinding::Bound(ifid),
+                                trg,
+                                pkt,
+                                true,
+                            )
+                            .unwrap();
                         }
                     };
                 }
@@ -97,16 +103,21 @@ impl IOContext {
                         "receiving arp response for {} is {} (sending {})",
                         arp.dest_paddr,
                         arp.dest_haddr,
-                        sendable.as_ref().map(|v| v.len()).unwrap_or(0)
+                        sendable.as_ref().map(|v| v.1.len()).unwrap_or(0)
                     );
 
-                    let Some(sendable) = sendable else {
+                    let Some((trg, sendable)) = sendable else {
                         return Consumed();
                     };
 
                     for pkt in sendable {
-                        self.send_ip_packet_v4(SocketIfaceBinding::Bound(ifid), pkt, true)
-                            .unwrap();
+                        self.send_lan_local_ipv4_packet(
+                            SocketIfaceBinding::Bound(ifid),
+                            trg,
+                            pkt,
+                            true,
+                        )
+                        .unwrap();
                     }
                 }
                 Consumed()
@@ -116,19 +127,70 @@ impl IOContext {
 
     pub fn send_ip_packet(&mut self, ifid: SocketIfaceBinding, pkt: IpPacket) -> io::Result<()> {
         match pkt {
-            IpPacket::V4(v4) => self.send_ip_packet_v4(ifid, v4, false),
+            IpPacket::V4(v4) => self.send_ipv4_packet(ifid, v4, false),
             _ => Ok(()),
         }
     }
 
-    pub fn send_ip_packet_v4(
+    pub fn send_ipv4_packet(
         &mut self,
         ifid: SocketIfaceBinding,
+        pkt: Ipv4Packet,
+        buffered: bool,
+    ) -> io::Result<()> {
+        for line in self.route() {
+            log::debug!("{line:?}")
+        }
+
+        // (0) Routing table destintation lookup
+        let Some((route, rifid)) = self.ipv4router.loopuk_gateway(pkt.dest) else {
+            return Err(Error::new(
+                ErrorKind::Other,
+                "no gateway network reachable"
+            ))
+        };
+
+        log::info!("r: {route:?} via {}", self.ifaces.get(&rifid).unwrap().name);
+
+        match route {
+            Ipv4Gateway::Local => self.send_lan_local_ipv4_packet(
+                SocketIfaceBinding::Bound(*rifid),
+                pkt.dest,
+                pkt,
+                buffered,
+            ),
+            Ipv4Gateway::Gateway(gw) => self.send_lan_local_ipv4_packet(
+                SocketIfaceBinding::Bound(*rifid),
+                *gw,
+                pkt,
+                buffered,
+            ),
+            // TODO: move logic to extra, non-arp fn
+            Ipv4Gateway::Broadcast => {
+                self.send_lan_local_ipv4_packet(ifid, pkt.dest, pkt, buffered)
+            }
+        }
+    }
+
+    // pub fn send_gateway_ipv4_packet(
+    //     &mut self,
+    //     ifid: IfId,
+    //     mut pkt: Ipv4Packet,
+    //     gateway: Ipv4Addr,
+    //     buffered: bool,
+    // ) -> io::Result<()> {
+    //     Ok(())
+    // }
+
+    pub fn send_lan_local_ipv4_packet(
+        &mut self,
+        ifid: SocketIfaceBinding,
+        dest: Ipv4Addr,
         mut pkt: Ipv4Packet,
         buffered: bool,
     ) -> io::Result<()> {
-        let Some((mac, ifid)) = self.arp_lookup_for_ipv4(&pkt.dest, &ifid) else {
-            self.arp_missing_addr_mapping(ifid, pkt)?;
+        let Some((mac, ifid)) = self.arp_lookup_for_ipv4(&dest, &ifid) else {
+            self.arp_missing_addr_mapping(ifid, pkt, dest)?;
             return Ok(())
         };
 
@@ -140,14 +202,13 @@ impl IOContext {
         };
 
         if mac == MacAddress::BROADCAST && !iface.flags.broadcast {
-            panic!("braodcast {} :: {}", mac, pkt.dest);
-            // return Err(Error::new(
-            //     ErrorKind::AddrNotAvailable,
-            //     "cannot send broadcast packet on non-broadcast interface",
-            // ));
+            return Err(Error::new(
+                ErrorKind::AddrNotAvailable,
+                "cannot send broadcast packet on non-broadcast interface",
+            ));
         }
 
-        pkt.src = iface.ipv4_addr().unwrap();
+        pkt.src = iface.ipv4_subnet().unwrap().0;
 
         let msg = Message::new()
             .kind(KIND_IPV4)
@@ -213,16 +274,14 @@ impl IOContext {
         &mut self,
         ifid: SocketIfaceBinding,
         pkt: Ipv4Packet,
+        dest: Ipv4Addr,
     ) -> io::Result<()> {
-        let dest = pkt.dest;
         let active_lookup = self.arp.active_lookup(&dest);
-        self.arp.wait_for_arp(pkt);
+        self.arp.wait_for_arp(pkt, dest);
 
         if active_lookup {
             return Ok(());
         }
-
-        log::trace!(target: "inet/arp", "missing address resolution for {}, initiating ARP request", dest);
 
         let iface = match ifid {
             SocketIfaceBinding::Bound(ifid) => {
@@ -256,12 +315,17 @@ impl IOContext {
             }
         };
 
+        log::trace!(target: "inet/arp", "missing address resolution for {}, initiating ARP request at {}", dest, iface.name);
+
         let request = ARPPacket {
             htype: 1,
             ptype: 0x0800,
             operation: ARPOperation::Request,
             src_haddr: iface.device.addr,
-            src_paddr: iface.ipv4_addr().unwrap_or(Ipv4Addr::UNSPECIFIED),
+            src_paddr: iface
+                .ipv4_subnet()
+                .map(|v| v.0)
+                .unwrap_or(Ipv4Addr::UNSPECIFIED),
             dest_haddr: MacAddress::NULL,
             dest_paddr: dest,
         };

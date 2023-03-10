@@ -99,9 +99,11 @@ impl AsyncModule for UdpEcho4200 {
         Self {}
     }
     async fn at_sim_start(&mut self, _: usize) {
-        add_interface(Interface::ethv4(
+        add_interface(Interface::ethv4_named(
+            "en0",
             NetworkDevice::eth(),
             Ipv4Addr::new(42, 42, 42, 42),
+            Ipv4Addr::UNSPECIFIED,
         ))
         .unwrap();
 
@@ -139,9 +141,11 @@ impl AsyncModule for UdpSingleEchoSender {
     }
 
     async fn at_sim_start(&mut self, _: usize) {
-        add_interface(Interface::ethv4(
+        add_interface(Interface::ethv4_named(
+            "en0",
             NetworkDevice::eth(),
             Ipv4Addr::new(1, 1, 1, 1),
+            Ipv4Addr::UNSPECIFIED,
         ))
         .unwrap();
 
@@ -174,10 +178,6 @@ impl AsyncModule for UdpSingleEchoSender {
 #[serial]
 fn udp_echo_single_client() {
     inet::init();
-    // ScopedLogger::new()
-    //     .interal_max_log_level(log::LevelFilter::Warn)
-    //     .finish()
-    //     .unwrap();
 
     let mut app = NetworkRuntime::new(());
 
@@ -227,9 +227,11 @@ impl AsyncModule for UdpSingleClusteredSender {
     }
 
     async fn at_sim_start(&mut self, _: usize) {
-        add_interface(Interface::ethv4(
+        add_interface(Interface::ethv4_named(
+            "en0",
             NetworkDevice::eth(),
             Ipv4Addr::new(1, 1, 1, 1),
+            Ipv4Addr::UNSPECIFIED,
         ))
         .unwrap();
 
@@ -271,10 +273,7 @@ impl AsyncModule for UdpSingleClusteredSender {
 #[serial]
 fn udp_echo_clustered_echo() {
     inet::init();
-    // ScopedLogger::new()
-    //     .interal_max_log_level(log::LevelFilter::Warn)
-    //     .finish()
-    //     .unwrap();
+    // Logger::new().set_logger();
 
     let mut app = NetworkRuntime::new(());
 
@@ -324,9 +323,11 @@ impl AsyncModule for UdpConcurrentClients {
     }
 
     async fn at_sim_start(&mut self, _: usize) {
-        add_interface(Interface::ethv4(
+        add_interface(Interface::ethv4_named(
+            "en0",
             NetworkDevice::eth(),
             Ipv4Addr::new(1, 1, 1, 1),
+            Ipv4Addr::UNSPECIFIED,
         ))
         .unwrap();
 
@@ -401,10 +402,6 @@ impl AsyncModule for UdpConcurrentClients {
 #[serial]
 fn udp_echo_concurrent_clients() {
     inet::init();
-    // ScopedLogger::new()
-    //     .interal_max_log_level(log::LevelFilter::Warn)
-    //     .finish()
-    //     .unwrap();
 
     let mut app = NetworkRuntime::new(());
 

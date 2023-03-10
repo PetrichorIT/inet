@@ -1,19 +1,12 @@
 use des::prelude::*;
 
-mod random;
-pub use random::RandomRoutingDeamon;
+pub mod router;
 
-mod backward;
-pub use backward::BackwardRoutingDeamon;
+mod table;
+pub use self::table::*;
 
-mod stacked;
-pub use stacked::StackedRoutingDeamon;
-
-mod par_based;
-pub use par_based::ParBasedRoutingDeamon;
-
-mod plugin;
-pub use plugin::RoutingPlugin;
+mod api;
+pub use self::api::*;
 
 use crate::IOPlugin;
 
@@ -187,10 +180,4 @@ fn merge_str(lhs: &str, rhs: &str) -> String {
         }
     }
     s
-}
-
-pub trait Router {
-    fn initalize(&mut self, routing_info: RoutingInformation);
-    fn accepts(&mut self, msg: &Message) -> bool;
-    fn route(&mut self, msg: Message) -> Result<(), Message>;
 }

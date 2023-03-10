@@ -26,9 +26,11 @@ impl AsyncModule for Ping {
     }
 
     async fn at_sim_start(&mut self, _: usize) {
-        add_interface(Interface::ethv4(
+        add_interface(Interface::ethv4_named(
+            "en0",
             NetworkDevice::eth(),
             Ipv4Addr::new(1, 1, 1, 1),
+            Ipv4Addr::UNSPECIFIED,
         ))
         .unwrap();
 
@@ -100,9 +102,11 @@ impl AsyncModule for Pong {
     }
 
     async fn at_sim_start(&mut self, _: usize) {
-        add_interface(Interface::ethv4(
+        add_interface(Interface::ethv4_named(
+            "en0",
             NetworkDevice::eth(),
             Ipv4Addr::new(2, 2, 2, 2),
+            Ipv4Addr::UNSPECIFIED,
         ))
         .unwrap();
 

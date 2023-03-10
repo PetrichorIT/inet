@@ -6,6 +6,7 @@ use des::{
 use inet::{
     arp::arpa,
     interface::{add_interface, Interface, NetworkDevice},
+    ip::Ipv4Packet,
     UdpSocket,
 };
 
@@ -74,7 +75,13 @@ impl AsyncModule for Node {
     }
 
     async fn handle_message(&mut self, msg: Message) {
-        panic!("msg :: {} :: {}", msg.str(), module_name())
+        panic!(
+            "msg :: {} :: {} // {:?} -> {:?}",
+            msg.str(),
+            module_name(),
+            msg.content::<Ipv4Packet>().src,
+            msg.content::<Ipv4Packet>().dest
+        )
     }
 }
 
@@ -111,9 +118,9 @@ impl Module for Main {
 #[test]
 fn udp_lan() {
     inet::init();
-    Logger::new()
-        // .interal_max_log_level(log::LevelFilter::Trace)
-        .set_logger();
+    // Logger::new()
+    // .interal_max_log_level(log::LevelFilter::Trace)
+    // .set_logger();
 
     let app = NdlApplication::new("tests/udp-lan/main.ndl", registry![Node, Switch, Main])
         .map_err(|e| println!("{e}"))

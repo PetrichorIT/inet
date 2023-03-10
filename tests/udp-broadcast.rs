@@ -38,6 +38,10 @@ impl AsyncModule for Node {
         let expected: usize = par("expected").unwrap().parse().unwrap();
 
         self.handles.push(tokio::spawn(async move {
+            if targets.is_empty() {
+                return;
+            }
+
             let sock = UdpSocket::bind("0.0.0.0:0").await.unwrap();
             sock.set_broadcast(true).unwrap();
             for target in targets {
@@ -49,6 +53,10 @@ impl AsyncModule for Node {
         }));
 
         self.handles.push(tokio::spawn(async move {
+            if expected == 0 {
+                return;
+            }
+
             let sock = UdpSocket::bind("0.0.0.0:100").await.unwrap();
             let mut acc = 0;
             while acc < expected {

@@ -35,7 +35,7 @@ impl InterfaceAddr {
         [
             InterfaceAddr::Inet {
                 addr: Ipv4Addr::LOCALHOST,
-                netmask: Ipv4Addr::new(255, 0, 0, 0),
+                netmask: Ipv4Addr::new(255, 255, 255, 0),
             },
             InterfaceAddr::Inet6 {
                 addr: Ipv6Addr::LOCALHOST,
@@ -67,8 +67,38 @@ impl InterfaceAddr {
         ]
     }
 
-    /// Indicates whether the given ip is valid on the interface address.
     pub fn matches_ip(&self, ip: IpAddr) -> bool {
+        match self {
+            // # Default cases
+            Self::Inet { addr, .. } if ip.is_ipv4() => {
+                let ip = if let IpAddr::V4(v) = ip {
+                    v
+                } else {
+                    unreachable!()
+                };
+
+                if ip.is_broadcast() {
+                    return true;
+                }
+
+                *addr == ip
+            }
+
+            Self::Inet6 { addr, .. } if ip.is_ipv6() => {
+                let ip = if let IpAddr::V6(v) = ip {
+                    v
+                } else {
+                    unreachable!()
+                };
+
+                *addr == ip
+            }
+            _ => false,
+        }
+    }
+
+    /// Indicates whether the given ip is valid on the interface address.
+    pub fn matches_ip_subnet(&self, ip: IpAddr) -> bool {
         match self {
             // # Default cases
             Self::Inet { addr, netmask } if ip.is_ipv4() => {
@@ -164,15 +194,15 @@ mod tests {
         };
 
         assert_eq!(
-            iface.matches_ip(IpAddr::from_str("192.168.2.110").unwrap()),
+            iface.matches_ip_subnet(IpAddr::from_str("192.168.2.110").unwrap()),
             true
         );
         assert_eq!(
-            iface.matches_ip(IpAddr::from_str("192.168.2.111").unwrap()),
+            iface.matches_ip_subnet(IpAddr::from_str("192.168.2.111").unwrap()),
             false
         );
         assert_eq!(
-            iface.matches_ip(
+            iface.matches_ip_subnet(
                 Ipv4Addr::from_str("192.168.2.110")
                     .unwrap()
                     .to_ipv6_compatible()
@@ -181,7 +211,7 @@ mod tests {
             false
         );
         assert_eq!(
-            iface.matches_ip(
+            iface.matches_ip_subnet(
                 Ipv4Addr::from_str("192.168.2.110")
                     .unwrap()
                     .to_ipv6_mapped()
@@ -199,23 +229,23 @@ mod tests {
         };
 
         assert_eq!(
-            iface.matches_ip(IpAddr::from_str("127.0.0.1").unwrap()),
+            iface.matches_ip_subnet(IpAddr::from_str("127.0.0.1").unwrap()),
             true
         );
         assert_eq!(
-            iface.matches_ip(IpAddr::from_str("127.0.0.19").unwrap()),
+            iface.matches_ip_subnet(IpAddr::from_str("127.0.0.19").unwrap()),
             true
         );
         assert_eq!(
-            iface.matches_ip(IpAddr::from_str("127.0.0.255").unwrap()),
+            iface.matches_ip_subnet(IpAddr::from_str("127.0.0.255").unwrap()),
             true
         );
         assert_eq!(
-            iface.matches_ip(IpAddr::from_str("192.168.2.111").unwrap()),
+            iface.matches_ip_subnet(IpAddr::from_str("192.168.2.111").unwrap()),
             false
         );
         assert_eq!(
-            iface.matches_ip(
+            iface.matches_ip_subnet(
                 Ipv4Addr::from_str("127.0.0.19")
                     .unwrap()
                     .to_ipv6_compatible()
@@ -224,7 +254,7 @@ mod tests {
             false
         );
         assert_eq!(
-            iface.matches_ip(
+            iface.matches_ip_subnet(
                 Ipv4Addr::from_str("127.0.0.19")
                     .unwrap()
                     .to_ipv6_mapped()
@@ -242,10 +272,13 @@ mod tests {
         };
 
         assert_eq!(
-            iface.matches_ip(IpAddr::from_str("255.255.255.255").unwrap()),
+            iface.matches_ip_subnet(IpAddr::from_str("255.255.255.255").unwrap()),
             true
         );
 
-        assert_eq!(iface.matches_ip(IpAddr::from_str("fe::80").unwrap()), false);
+        assert_eq!(
+            iface.matches_ip_subnet(IpAddr::from_str("fe::80").unwrap()),
+            false
+        );
     }
 }

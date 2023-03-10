@@ -2,10 +2,17 @@ use crate::{
     arp::{ARPConfig, ARPTable},
     interface::{IfId, Interface, LinkLayerResult, KIND_LINK_UPDATE},
     ip::{IpPacketRef, Ipv4Packet, KIND_IPV4},
+    routing::Ipv4RoutingTable,
     IOPlugin,
 };
 use des::{net::plugin::PluginError, prelude::Message};
-use std::{cell::RefCell, collections::HashMap, panic::UnwindSafe, time::Duration};
+use std::{
+    cell::RefCell,
+    collections::HashMap,
+    net::{IpAddr, Ipv4Addr},
+    panic::UnwindSafe,
+    time::Duration,
+};
 
 use super::{
     socket::*,
@@ -19,7 +26,9 @@ thread_local! {
 
 pub struct IOContext {
     pub(super) ifaces: HashMap<IfId, Interface>,
+
     pub(super) arp: ARPTable,
+    pub(super) ipv4router: Ipv4RoutingTable,
 
     pub(super) sockets: HashMap<Fd, Socket>,
 
@@ -35,9 +44,11 @@ impl IOContext {
     pub fn empty() -> Self {
         Self {
             ifaces: HashMap::new(),
+
             arp: ARPTable::new(ARPConfig {
                 validity: Duration::from_secs(200),
             }),
+            ipv4router: Ipv4RoutingTable::new(),
 
             sockets: HashMap::new(),
 
@@ -110,7 +121,6 @@ impl IOContext {
         // not nessecarily addressed to any valid ip addr, but are valid for
         // the local MAC addr
         let l2 = self.recv_linklayer(msg);
-
         let (msg, ifid) = match l2 {
             PassThrough(msg) => return Some(msg),
             Consumed() => return None,
@@ -125,6 +135,26 @@ impl IOContext {
                     log::error!(target: "inet", "received eth-packet with kind=0x0800 (ip) but content was no ipv4-packet");
                     return Some(msg)
                 };
+
+                let iface = self.ifaces.get(&ifid).unwrap();
+
+                // (0) Check whether the received ip packet is addressed for the local machine
+                let local_dest = ip.dest == Ipv4Addr::BROADCAST
+                    || iface
+                        .addrs
+                        .iter()
+                        .any(|addr| addr.matches_ip(IpAddr::V4(ip.dest)));
+                if !local_dest {
+                    // (1) Reroute packet.
+                    match self.send_ipv4_packet(
+                        SocketIfaceBinding::Any(self.ifaces.keys().copied().collect()),
+                        ip.clone(),
+                        true,
+                    ) {
+                        Ok(()) => return None,
+                        Err(e) => panic!("not yet impl: forwarding without route: {}", e),
+                    };
+                }
 
                 match ip.proto {
                     PROTO_UDP => {
