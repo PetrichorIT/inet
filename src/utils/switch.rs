@@ -3,7 +3,12 @@ use std::{
     iter::repeat_with,
 };
 
-use crate::{arp::ARPPacket, interface::MacAddress, ip::Ipv4Packet, routing::RoutingInformation};
+use crate::{
+    arp::ARPPacket,
+    interface::MacAddress,
+    ip::{Ipv4Packet, Ipv6Packet},
+    routing::RoutingInformation,
+};
 use des::prelude::*;
 
 pub const KIND_SWITCH_WAKEUP: MessageKind = 0x0600;
@@ -55,6 +60,11 @@ impl Module for LinkLayerSwitch {
 
                 if msg.can_cast::<Ipv4Packet>() {
                     self.forward(msg.dup::<Ipv4Packet>(), i);
+                    continue;
+                }
+
+                if msg.can_cast::<Ipv6Packet>() {
+                    self.forward(msg.dup::<Ipv6Packet>(), i);
                     continue;
                 }
 

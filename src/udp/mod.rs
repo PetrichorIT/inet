@@ -1,13 +1,13 @@
 use super::{socket::*, IOContext};
 use crate::{
     interface::IfId,
-    ip::{IpPacketRef, Ipv4Flags, Ipv4Packet},
+    ip::{IpPacket, IpPacketRef, Ipv4Flags, Ipv4Packet, Ipv6Packet},
     FromBytestream, IntoBytestream,
 };
 use std::{
     collections::VecDeque,
     io::{Error, ErrorKind, Result},
-    net::{IpAddr, Ipv4Addr, SocketAddr},
+    net::{IpAddr, SocketAddr},
 };
 
 mod pkt;
@@ -68,18 +68,19 @@ fn is_broadcast(ip: IpAddr) -> bool {
     }
 }
 
-fn is_valid_dest_for(dest: &SocketAddr, addr: &SocketAddr) -> bool {
-    match addr {
+fn is_valid_dest_for(socket_addr: &SocketAddr, packet_addr: &SocketAddr) -> bool {
+    if socket_addr.ip().is_unspecified() {
+        return socket_addr.port() == packet_addr.port();
+    }
+
+    match packet_addr {
         SocketAddr::V4(addrv4) => {
             if addrv4.ip().is_broadcast() {
-                return dest.port() == addrv4.port();
+                return socket_addr.port() == addrv4.port();
             }
-            if dest.ip() == IpAddr::V4(Ipv4Addr::UNSPECIFIED) {
-                return dest.port() == addrv4.port();
-            }
-            dest == addr
+            socket_addr == packet_addr
         }
-        SocketAddr::V6(_) => dest == addr,
+        SocketAddr::V6(_) => socket_addr == packet_addr,
     }
 }
 
@@ -135,37 +136,6 @@ impl IOContext {
             mng.push_incoming(src, dest, udp);
             true
         }
-
-        // let mut recved = false;
-        // for ifid in self.get_interface_for_ip_packet(packet.dest(), last_gate) {
-        //     // println!("{:#?}", self.sockets);
-        //     // println!("{ifid} := {}", self.interfaces.get(&ifid).unwrap().name);
-        //     // println!("dest = {dest} ifid = {ifid} is_loopback = {is_loopback}");
-
-        //     let Some((fd, socket)) = self.sockets.iter_mut().find(
-        //         |(_,v)| v.typ == SocketType::SOCK_DGRAM && v.addr.port() == dest.port() && if is_loopback { v.addr.is_ipv4() == dest.is_ipv4() } else { v.addr == dest && ifid == v.interface }
-        //     ) else {
-        //         continue;
-        //     };
-        //     socket.recv_q += udp.content.len();
-        //     // println!("sock : {fd}");
-
-        //     let Some(udp_mng) = self.udp_manager.get_mut(fd) else {
-        //         log::error!(target: "inet/udp", "found udp socket, but missing udp manager");
-        //         continue;
-        //     };
-
-        //     if is_broadcast {
-        //         udp_mng.push_incoming(src, dest, udp.clone());
-        //         recved = true;
-        //         // continue
-        //     } else {
-        //         udp_mng.push_incoming(src, dest, udp);
-        //         return true;
-        //     }
-        // }
-
-        // recved
     }
 }
 
@@ -264,36 +234,33 @@ impl IOContext {
                 socket_info.send_q += buf.len();
 
                 let ifid = socket_info.interface.clone();
-                self.send_ipv4_packet(ifid, ip, true)?;
+
+                self.send_ip_packet(ifid, IpPacket::V4(ip), true)?;
                 Ok(buf.len())
             }
-            (IpAddr::V6(_local), IpAddr::V6(_target)) => {
-                // let ip = Ipv6Packet {
-                //     traffic_class: 0,
-                //     flow_label: 0,
-                //     hop_limit: mng.ttl,
+            (IpAddr::V6(local), IpAddr::V6(target)) => {
+                let ip = Ipv6Packet {
+                    traffic_class: 0,
+                    flow_label: 0,
+                    next_header: PROTO_UDP,
+                    hop_limit: 128,
 
-                //     next_header: PROTO_UDP,
+                    src: local,
+                    dest: target,
 
-                //     src: local,
-                //     dest: target,
+                    content,
+                };
 
-                //     content,
-                // };
+                let socket_info = self
+                    .sockets
+                    .get_mut(&fd)
+                    .expect("Socket should not have been dropped");
+                socket_info.send_q += buf.len();
 
-                // let socket_info = self
-                //     .sockets
-                //     .get_mut(&fd)
-                //     .expect("Socket should not have been dropped");
-                // socket_info.send_q += buf.len();
+                let ifid = socket_info.interface.clone();
 
-                // let Some(interface) = self.ifaces.get_mut(&socket_info.interface.unwrap_ifid()) else {
-                //     return Err(Error::new(ErrorKind::Other, "interface down"))
-                // };
-
-                // interface.send_ip(IpPacket::V6(ip))?;
-                // Ok(buf.len())
-                todo!()
+                self.send_ip_packet(ifid, IpPacket::V6(ip), true)?;
+                Ok(buf.len())
             }
             _ => unreachable!(),
         }

@@ -1,8 +1,8 @@
 use crate::{
     arp::{ARPConfig, ARPTable},
     interface::{IfId, Interface, LinkLayerResult, KIND_LINK_UPDATE},
-    ip::{IpPacketRef, Ipv4Packet, KIND_IPV4},
-    routing::Ipv4RoutingTable,
+    ip::{IpPacket, IpPacketRef, Ipv4Packet, Ipv6Packet, KIND_IPV4, KIND_IPV6},
+    routing::{Ipv4RoutingTable, Ipv6RoutingTable},
     IOPlugin,
 };
 use des::{net::plugin::PluginError, prelude::Message};
@@ -29,6 +29,7 @@ pub struct IOContext {
 
     pub(super) arp: ARPTable,
     pub(super) ipv4router: Ipv4RoutingTable,
+    pub(super) ipv6router: Ipv6RoutingTable,
 
     pub(super) sockets: HashMap<Fd, Socket>,
 
@@ -49,6 +50,7 @@ impl IOContext {
                 validity: Duration::from_secs(200),
             }),
             ipv4router: Ipv4RoutingTable::new(),
+            ipv6router: Ipv6RoutingTable::new(),
 
             sockets: HashMap::new(),
 
@@ -121,6 +123,7 @@ impl IOContext {
         // not nessecarily addressed to any valid ip addr, but are valid for
         // the local MAC addr
         let l2 = self.recv_linklayer(msg);
+        // log::debug!("- {l2:?}");
         let (msg, ifid) = match l2 {
             PassThrough(msg) => return Some(msg),
             Consumed() => return None,
@@ -145,10 +148,19 @@ impl IOContext {
                         .iter()
                         .any(|addr| addr.matches_ip(IpAddr::V4(ip.dest)));
                 if !local_dest {
-                    // (1) Reroute packet.
-                    match self.send_ipv4_packet(
+                    // (0) Check TTL
+                    let mut pkt = ip.clone();
+                    pkt.ttl = pkt.ttl.saturating_sub(1);
+
+                    if pkt.ttl == 0 {
+                        log::warn!(target: "inet/route", "dropping packet due to ttl");
+                        return None;
+                    }
+
+                    // (2) Reroute packet.
+                    match self.send_ip_packet(
                         SocketIfaceBinding::Any(self.ifaces.keys().copied().collect()),
-                        ip.clone(),
+                        IpPacket::V4(pkt),
                         true,
                     ) {
                         Ok(()) => return None,
@@ -157,6 +169,7 @@ impl IOContext {
                 }
 
                 match ip.proto {
+                    0 => return Some(msg),
                     PROTO_UDP => {
                         let consumed = self.recv_udp_packet(IpPacketRef::V4(ip), ifid);
                         if consumed {
@@ -173,7 +186,63 @@ impl IOContext {
                             Some(msg)
                         }
                     }
-                    _ => unreachable!(),
+                    k => panic!("internal error: unreachable code :: proto = {k}"),
+                }
+            }
+            KIND_IPV6 => {
+                let Some(ip) = msg.try_content::<Ipv6Packet>() else {
+                    log::error!(target: "inet", "received eth-packet with kind=0x0800 (ip) but content was no ipv4-packet");
+                    return Some(msg)
+                };
+
+                let iface = self.ifaces.get(&ifid).unwrap();
+
+                // (0) Check whether the received ip packet is addressed for the local machine
+                let local_dest = /*ip.dest ==  Ipv6Addr::BROADCAST
+                    || */iface
+                        .addrs
+                        .iter()
+                        .any(|addr| addr.matches_ip(IpAddr::V6(ip.dest)));
+                if !local_dest {
+                    // (0) Check TTL
+                    let mut pkt = ip.clone();
+                    pkt.hop_limit = pkt.hop_limit.saturating_sub(1);
+
+                    if pkt.hop_limit == 0 {
+                        log::warn!(target: "inet/route", "dropping packet due to ttl");
+                        return None;
+                    }
+
+                    // (2) Reroute packet.
+                    match self.send_ip_packet(
+                        SocketIfaceBinding::Any(self.ifaces.keys().copied().collect()),
+                        IpPacket::V6(pkt),
+                        true,
+                    ) {
+                        Ok(()) => return None,
+                        Err(e) => panic!("not yet impl: forwarding without route: {}", e),
+                    };
+                }
+
+                match ip.next_header {
+                    0 => return Some(msg),
+                    PROTO_UDP => {
+                        let consumed = self.recv_udp_packet(IpPacketRef::V6(ip), ifid);
+                        if consumed {
+                            None
+                        } else {
+                            Some(msg)
+                        }
+                    }
+                    PROTO_TCP => {
+                        let consumed = self.capture_tcp_packet(IpPacketRef::V6(ip), todo!());
+                        if consumed {
+                            None
+                        } else {
+                            Some(msg)
+                        }
+                    }
+                    k => panic!("internal error: unreachable code :: proto = {k}"),
                 }
             }
             KIND_LINK_UPDATE => panic!("HUH"),

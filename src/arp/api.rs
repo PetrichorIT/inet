@@ -1,7 +1,7 @@
 use std::{
     fmt::Display,
     io::{self, Error, ErrorKind},
-    net::Ipv4Addr,
+    net::IpAddr,
 };
 
 use des::time::SimTime;
@@ -14,7 +14,7 @@ use crate::{
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ArpEntry {
     pub hostname: Option<String>,
-    pub ip: Ipv4Addr,
+    pub ip: IpAddr,
     pub mac: MacAddress,
     pub iface: InterfaceName,
     pub permanent: bool,

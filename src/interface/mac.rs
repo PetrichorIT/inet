@@ -13,6 +13,10 @@ impl MacAddress {
     pub const NULL: MacAddress = MacAddress([0; 6]);
     pub const BROADCAST: MacAddress = MacAddress([0xff; 6]);
 
+    pub fn as_slice(&self) -> &[u8] {
+        &self.0
+    }
+
     pub fn gen() -> MacAddress {
         MacAddress(random())
     }

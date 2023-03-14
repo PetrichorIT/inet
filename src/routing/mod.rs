@@ -2,8 +2,11 @@ use des::prelude::*;
 
 pub mod router;
 
-mod table;
-pub use self::table::*;
+mod tablev6;
+pub use self::tablev6::*;
+
+mod tablev4;
+pub use self::tablev4::*;
 
 mod api;
 pub use self::api::*;
@@ -152,6 +155,32 @@ impl RoutingPort {
         // }
 
         ports
+    }
+}
+
+pub(crate) enum IpGateway {
+    Local,
+    Broadcast,
+    Gateway(IpAddr),
+}
+
+impl From<Ipv4Gateway> for IpGateway {
+    fn from(value: Ipv4Gateway) -> Self {
+        match value {
+            Ipv4Gateway::Local => IpGateway::Local,
+            Ipv4Gateway::Broadcast => IpGateway::Broadcast,
+            Ipv4Gateway::Gateway(ip) => IpGateway::Gateway(ip.into()),
+        }
+    }
+}
+
+impl From<Ipv6Gateway> for IpGateway {
+    fn from(value: Ipv6Gateway) -> Self {
+        match value {
+            Ipv6Gateway::Local => IpGateway::Local,
+            Ipv6Gateway::Broadcast => IpGateway::Broadcast,
+            Ipv6Gateway::Gateway(ip) => IpGateway::Gateway(ip.into()),
+        }
     }
 }
 

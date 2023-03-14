@@ -6,7 +6,7 @@ use des::{
 use inet::{
     arp::arpa,
     interface::{add_interface, Interface, NetworkDevice},
-    ip::Ipv4Packet,
+    ip::Ipv6Packet,
     UdpSocket,
 };
 
@@ -27,32 +27,51 @@ impl AsyncModule for Node {
         }
 
         let ip = par("addr").unwrap().parse().unwrap();
-        add_interface(Interface::ethv4(NetworkDevice::eth(), ip)).unwrap();
+        add_interface(Interface::eth(NetworkDevice::eth(), ip)).unwrap();
 
         let target: String = par("targets").unwrap().parse_string();
         let targets = target
             .trim()
             .split(',')
             .filter(|s| !s.is_empty())
-            .map(|v| Ipv4Addr::new(100, 0, 0, v.parse::<u8>().unwrap() + 100))
+            .map(|v| {
+                Ipv6Addr::from([
+                    0xfe,
+                    0x80,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0xaa,
+                    v.parse::<u8>().unwrap(),
+                ])
+            })
             .collect::<Vec<_>>();
 
         let expected: usize = par("expected").unwrap().parse().unwrap();
 
         self.handles.push(tokio::spawn(async move {
-            let sock = UdpSocket::bind("0.0.0.0:0").await.unwrap();
+            let sock = UdpSocket::bind(":::0").await.unwrap();
             for target in targets {
                 sleep(Duration::from_secs_f64(random())).await;
                 let buf = [42; 42];
                 log::info!("sending 42 bytes to {target}");
-                sock.send_to(&buf, SocketAddrV4::new(target, 100))
+                sock.send_to(&buf, SocketAddrV6::new(target, 100, 0, 0))
                     .await
                     .unwrap();
             }
         }));
 
         self.handles.push(tokio::spawn(async move {
-            let sock = UdpSocket::bind("0.0.0.0:100").await.unwrap();
+            let sock = UdpSocket::bind(":::100").await.unwrap();
             for _ in 0..expected {
                 let mut buf = [0u8; 1024];
                 let (n, from) = sock.recv_from(&mut buf).await.unwrap();
@@ -75,13 +94,14 @@ impl AsyncModule for Node {
     }
 
     async fn handle_message(&mut self, msg: Message) {
-        panic!(
+        log::error!(
             "msg :: {} :: {} // {:?} -> {:?}",
             msg.str(),
             module_name(),
-            msg.content::<Ipv4Packet>().src,
-            msg.content::<Ipv4Packet>().dest
-        )
+            msg.content::<Ipv6Packet>().src,
+            msg.content::<Ipv6Packet>().dest
+        );
+        panic!()
     }
 }
 
@@ -116,7 +136,7 @@ impl Module for Main {
 }
 
 #[test]
-fn udp_lan() {
+fn udp_lan_v6() {
     inet::init();
     // Logger::new()
     // .interal_max_log_level(log::LevelFilter::Trace)
@@ -126,7 +146,7 @@ fn udp_lan() {
         .map_err(|e| println!("{e}"))
         .unwrap();
     let mut app = NetworkRuntime::new(app);
-    app.include_par_file("tests/udp-lan/main.par");
+    app.include_par_file("tests/udp-lan/v6.par");
     let rt = Runtime::new_with(app, RuntimeOptions::seeded(123));
     let _ = rt.run();
 }

@@ -1,0 +1,33 @@
+link LAN {
+    jitter: 0.0,
+    latency: 0.001,
+    bitrate: 10000000,
+}
+
+module Node {
+    gates {
+        in @input,
+        out @output,
+    }
+}
+
+module Switch {
+    gates {
+        in[5] @input,
+        out[5] @output,
+    }
+}
+
+module Main {
+    submodules {
+        node[5]: Node,
+        switch: Switch,
+    }
+
+    connections {
+        node/out --> LAN --> switch/in,
+        node/in <-- LAN <-- switch/out,
+    }
+}
+
+entry Main;

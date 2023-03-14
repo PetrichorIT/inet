@@ -1,0 +1,5 @@
+node[0].addr = fe80::aa00
+node[1].addr = fe80::aa01
+node[2].addr = fe80::aa02
+node[3].addr = fe80::aa03
+node[4].addr = fe80::aa04

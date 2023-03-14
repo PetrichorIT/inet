@@ -72,8 +72,40 @@ pub enum LinkLayerResult {
 }
 
 impl Interface {
+    pub fn eth(device: NetworkDevice, ip: IpAddr) -> Interface {
+        match ip {
+            IpAddr::V4(v4) => Self::ethv4(device, v4),
+            IpAddr::V6(v6) => Self::ethv6(device, v6),
+        }
+    }
+
     pub fn ethv4(device: NetworkDevice, v4: Ipv4Addr) -> Interface {
         Self::ethv4_named("en0", device, v4, Ipv4Addr::new(255, 255, 255, 0))
+    }
+
+    pub fn ethv6(device: NetworkDevice, v6: Ipv6Addr) -> Interface {
+        Self::ethv6_named("en1", device, v6)
+    }
+
+    pub fn ethv6_named(
+        name: impl AsRef<str>,
+        device: NetworkDevice,
+        subnet: Ipv6Addr,
+    ) -> Interface {
+        Interface {
+            name: InterfaceName::new(name),
+            device,
+            flags: InterfaceFlags::en0(),
+            addrs: vec![InterfaceAddr::Inet6 {
+                addr: subnet,
+                prefixlen: 64,
+                scope_id: None,
+            }],
+            status: InterfaceStatus::Active,
+            state: InterfaceBusyState::Idle,
+            prio: 200,
+            buffer: VecDeque::new(),
+        }
     }
 
     pub fn ethv4_named(
@@ -121,6 +153,20 @@ impl Interface {
         self.addrs.iter().find_map(|a| {
             if let InterfaceAddr::Inet { addr, netmask } = a {
                 Some((*addr, *netmask))
+            } else {
+                None
+            }
+        })
+    }
+
+    pub fn ipv6_subnet(&self) -> Option<(Ipv6Addr, Ipv6Addr)> {
+        self.addrs.iter().find_map(|a| {
+            if let InterfaceAddr::Inet6 {
+                addr, prefixlen, ..
+            } = a
+            {
+                let mask = Ipv6Addr::from(!(u128::MAX.overflowing_shr(*prefixlen as u32).0));
+                Some((*addr, mask))
             } else {
                 None
             }

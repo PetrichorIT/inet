@@ -1,7 +1,7 @@
 //! Internet-Protocol.
 
 use des::net::message::MessageKind;
-use std::net::{IpAddr, Ipv4Addr};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
 mod mask;
 pub use mask::*;
@@ -76,22 +76,6 @@ impl IpPacket {
         }
     }
 
-    pub(crate) fn kind(&self) -> MessageKind {
-        if self.is_v4() {
-            KIND_IPV4
-        } else {
-            KIND_IPV6
-        }
-    }
-
-    pub(crate) fn set_src(&mut self, src: IpAddr) {
-        match (self, src) {
-            (Self::V4(v4), IpAddr::V4(addr)) => v4.src = addr,
-            (Self::V6(v6), IpAddr::V6(addr)) => v6.src = addr,
-            _ => unreachable!(),
-        }
-    }
-
     pub fn is_v4(&self) -> bool {
         matches!(self, Self::V4(_))
     }
@@ -100,10 +84,41 @@ impl IpPacket {
         matches!(self, Self::V6(_))
     }
 
-    pub(crate) fn dest(&self) -> IpAddr {
+    pub fn dest(&self) -> IpAddr {
         match self {
-            Self::V4(v4) => IpAddr::V4(v4.dest),
-            Self::V6(v6) => IpAddr::V6(v6.dest),
+            Self::V4(pkt) => pkt.dest.into(),
+            Self::V6(pkt) => pkt.dest.into(),
+        }
+    }
+
+    pub fn new(src: IpAddr, dest: IpAddr, content: Vec<u8>) -> Self {
+        use IpAddr::*;
+        match (src, dest) {
+            (V4(src), V4(dest)) => IpPacket::V4(Ipv4Packet {
+                dscp: 0,
+                enc: 0,
+                identification: 0,
+                flags: Ipv4Flags {
+                    df: false,
+                    mf: false,
+                },
+                fragment_offset: 0,
+                ttl: 128,
+                proto: 0,
+                src,
+                dest,
+                content,
+            }),
+            (V6(src), V6(dest)) => IpPacket::V6(Ipv6Packet {
+                traffic_class: 0,
+                flow_label: 0,
+                next_header: 0,
+                hop_limit: 128,
+                src,
+                dest,
+                content,
+            }),
+            _ => unreachable!(),
         }
     }
 }
@@ -117,4 +132,18 @@ pub(crate) fn ipv4_matches_subnet(ip: Ipv4Addr, subnet: Ipv4Addr, mask: Ipv4Addr
         && mask[1] & ip[1] == mask[1] & subnet[1]
         && mask[2] & ip[2] == mask[2] & subnet[2]
         && mask[3] & ip[3] == mask[3] & subnet[3]
+}
+
+pub(crate) fn ipv6_matches_subnet(ip: Ipv6Addr, subnet: Ipv6Addr, mask: Ipv6Addr) -> bool {
+    let ip = ip.octets();
+    let subnet = subnet.octets();
+    let mask = mask.octets();
+
+    for i in 0..16 {
+        if ip[i] & mask[i] != subnet[i] & mask[i] {
+            return false;
+        }
+    }
+
+    true
 }

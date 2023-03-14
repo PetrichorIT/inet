@@ -1,21 +1,16 @@
 use des::time::SimTime;
-use std::{
-    collections::HashMap,
-    hash::Hash,
-    net::{IpAddr, Ipv4Addr},
-    time::Duration,
-};
+use std::{collections::HashMap, hash::Hash, net::IpAddr, time::Duration};
 
 use crate::{
     interface::IfId,
     interface::{Interface, MacAddress},
-    ip::Ipv4Packet,
+    ip::IpPacket,
 };
 
 pub struct ARPTable {
-    pub(super) map: HashMap<Ipv4Addr, ARPEntryInternal>,
+    pub(super) map: HashMap<IpAddr, ARPEntryInternal>,
     pub(super) config: ARPConfig,
-    pub(super) buffer: HashMap<Ipv4Addr, Vec<Ipv4Packet>>,
+    pub(super) buffer: HashMap<IpAddr, Vec<IpPacket>>,
 }
 
 pub struct ARPConfig {
@@ -25,7 +20,7 @@ pub struct ARPConfig {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ARPEntryInternal {
     pub hostname: Option<String>,
-    pub ip: Ipv4Addr,
+    pub ip: IpAddr,
     pub mac: MacAddress,
     pub iface: IfId,
     pub expires: SimTime,
@@ -40,13 +35,10 @@ impl ARPTable {
         }
     }
 
-    pub fn lookup_for_iface(&self, ip: &Ipv4Addr, iface: &Interface) -> Option<(MacAddress, IfId)> {
+    pub fn lookup_for_iface(&self, ip: &IpAddr, iface: &Interface) -> Option<(MacAddress, IfId)> {
         self.lookup(ip).map(|e| (e.mac, e.iface)).or_else(|| {
             let looback = iface.flags.loopback && ip.is_loopback();
-            let self_addr = iface
-                .addrs
-                .iter()
-                .any(|addr| addr.matches_ip(IpAddr::V4(*ip)));
+            let self_addr = iface.addrs.iter().any(|addr| addr.matches_ip(*ip));
             if looback || self_addr {
                 Some((iface.device.addr, iface.name.id))
             } else {
@@ -55,7 +47,7 @@ impl ARPTable {
         })
     }
 
-    pub fn lookup(&self, ip: &Ipv4Addr) -> Option<&ARPEntryInternal> {
+    pub fn lookup(&self, ip: &IpAddr) -> Option<&ARPEntryInternal> {
         let Some(value) = self.map.get(ip) else {
             return None
         };
@@ -67,7 +59,7 @@ impl ARPTable {
     }
 
     #[must_use]
-    pub fn add(&mut self, mut entry: ARPEntryInternal) -> Option<(Ipv4Addr, Vec<Ipv4Packet>)> {
+    pub fn add(&mut self, mut entry: ARPEntryInternal) -> Option<(IpAddr, Vec<IpPacket>)> {
         let ip = entry.ip;
         if entry.expires == SimTime::ZERO {
             entry.expires = SimTime::now() + self.config.validity;
@@ -77,11 +69,11 @@ impl ARPTable {
         self.buffer.remove(&ip).map(|msgs| (ip, msgs))
     }
 
-    pub fn wait_for_arp(&mut self, ip: Ipv4Packet, dest: Ipv4Addr) {
+    pub fn wait_for_arp(&mut self, ip: IpPacket, dest: IpAddr) {
         self.buffer.entry(dest).or_insert(Vec::new()).push(ip)
     }
 
-    pub fn active_lookup(&mut self, ip: &Ipv4Addr) -> bool {
+    pub fn active_lookup(&mut self, ip: &IpAddr) -> bool {
         self.buffer
             .get(ip)
             .map(|buf| !buf.is_empty())
