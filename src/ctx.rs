@@ -46,9 +46,7 @@ impl IOContext {
         Self {
             ifaces: HashMap::new(),
 
-            arp: ARPTable::new(ARPConfig {
-                validity: Duration::from_secs(200),
-            }),
+            arp: ARPTable::new(),
             ipv4router: Ipv4RoutingTable::new(),
             ipv6router: Ipv6RoutingTable::new(),
 

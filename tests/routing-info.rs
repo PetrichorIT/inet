@@ -32,7 +32,7 @@ impl Module for B {
     fn at_sim_start(&mut self, _stage: usize) {
         add_interface(Interface::ethv4(
             NetworkDevice::eth(),
-            Ipv4Addr::from_str("192.168.2.100").unwrap(),
+            Ipv4Addr::from_str("192.168.2.200").unwrap(),
         ))
         .unwrap();
     }
@@ -51,8 +51,15 @@ impl Module for Main {
         if stage == 1 {
             let r = RoutingInformation::collect();
 
-            assert_eq!(r.ports[0].output.pos(), 2);
-            assert_eq!(r.ports[0].peer, None);
+            println!("{r:#?}");
+
+            assert_eq!(r.ports[0].output.pos(), 0);
+            assert_eq!(
+                r.ports[0].peer,
+                Some(RoutingPeer {
+                    addr: IpAddr::from_str("192.168.2.100").unwrap()
+                })
+            );
 
             assert_eq!(r.ports[1].output.pos(), 1);
             assert_eq!(
@@ -62,13 +69,8 @@ impl Module for Main {
                 })
             );
 
-            assert_eq!(r.ports[2].output.pos(), 0);
-            assert_eq!(
-                r.ports[2].peer,
-                Some(RoutingPeer {
-                    addr: IpAddr::from_str("192.168.2.100").unwrap()
-                })
-            );
+            assert_eq!(r.ports[2].output.pos(), 2);
+            assert_eq!(r.ports[2].peer, None);
         }
     }
     fn num_sim_start_stages(&self) -> usize {

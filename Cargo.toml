@@ -10,23 +10,15 @@ name = "inet-bin"
 path = "bin/main.rs"
 
 [[bin]]
-name = "dns-bin"
-path = "dns_bin/main.rs"
-
-[[bin]]
 name = "ideal-bin"
 path = "ideal_bin/main.rs"
-
-[[bin]]
-name = "arp-bin"
-path = "arp/main.rs"
 
 [dependencies]
 async-trait = "*"
 bytestream = "0.4"
 # des = {git = "https://github.com/PetrichorIT/des", branch = "master", features = ["full"]}
-des = { path = "../des/des", features = ["full"]}
+des = {path = "../des/des", features = ["full"]}
 log = {version = "*", features = ["max_level_trace"]}
 
 [dev-dependencies]
-serial_test = "0.10"
+serial_test = "1.0.0"

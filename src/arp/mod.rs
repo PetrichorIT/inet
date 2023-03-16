@@ -31,7 +31,7 @@ impl IOContext {
                 // (0) Add sender entry to local arp table
                 if !arp.src_ip_addr().is_unspecified() {
                     // log::trace!(target: "inet/arp", "receiving arp request for {}", arp.dest_paddr);
-                    let sendable = self.arp.add(ARPEntryInternal {
+                    let sendable = self.arp.update(ARPEntryInternal {
                         hostname: None,
                         ip: arp.src_ip_addr().into(),
                         mac: arp.src_mac_addr(),
@@ -89,7 +89,7 @@ impl IOContext {
             ARPOperation::Response => {
                 // (0) Add response data to ARP table (not requester, was allready added)
                 if !arp.dest_ip_addr().is_unspecified() {
-                    let sendable = self.arp.add(ARPEntryInternal {
+                    let sendable = self.arp.update(ARPEntryInternal {
                         hostname: None,
                         ip: arp.dest_ip_addr().into(),
                         mac: arp.dest_mac_addr(),
@@ -214,7 +214,9 @@ impl IOContext {
 
         match pkt {
             IpPacket::V4(mut pkt) => {
-                pkt.src = iface.ipv4_subnet().unwrap().0;
+                if pkt.src.is_unspecified() {
+                    pkt.src = iface.ipv4_subnet().unwrap().0;
+                }
                 let msg = Message::new()
                     .kind(KIND_IPV4)
                     .src(iface.device.addr.into())
@@ -229,7 +231,9 @@ impl IOContext {
                 }
             }
             IpPacket::V6(mut pkt) => {
-                pkt.src = iface.ipv6_subnet().unwrap().0;
+                if pkt.src.is_unspecified() {
+                    pkt.src = iface.ipv6_subnet().unwrap().0;
+                }
                 let msg = Message::new()
                     .kind(KIND_IPV6)
                     .src(iface.device.addr.into())

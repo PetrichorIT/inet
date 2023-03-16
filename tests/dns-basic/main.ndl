@@ -1,0 +1,85 @@
+module Basic {
+    gates {
+        in @input,
+        out @output,
+    }
+}
+
+module Client: Basic {}
+
+module DNSServer0: Basic {}
+
+module DNSServer1: Basic {}
+
+module DNSServer2: Basic {}
+
+
+module Switch {
+    gates {
+        in[10] @input,
+        out[10] @output,
+    }
+}
+
+module Router {
+    gates {
+        wan_in @input,
+        wan_out @output,
+        lan_in @input,
+        lan_out @output,
+    }
+}
+
+link LANLink {
+    bitrate: 80000000,
+    jitter: 0.0,
+    latency: 0.005,
+}
+
+link WANLink {
+    bitrate: 800000000,
+     jitter: 0.0,
+    latency: 0.05,
+}
+
+module Main {
+    submodules {
+        switch: Switch,
+        r1: Router,
+        r2: Router,
+
+        // LAN 1
+        client: Client,
+        dns0: DNSServer0,
+        dns1: DNSServer1,
+        dns1alt: DNSServer1,
+
+        // LAN 2
+        dns2alt: DNSServer2,
+    }
+
+    connections {
+        client/out --> LANLink --> switch/in[0],
+        client/in <-- LANLink <-- switch/out[0],
+
+        dns0/out --> LANLink --> switch/in[1],
+        dns0/in <-- LANLink <-- switch/out[1],
+
+        dns1/out --> LANLink --> switch/in[2],
+        dns1/in <-- LANLink <-- switch/out[2],
+
+        dns1alt/out --> LANLink --> switch/in[4],
+        dns1alt/in <-- LANLink <-- switch/out[4],
+
+        r1/lan_out --> LANLink --> switch/in[5],
+        r1/lan_in <-- LANLink <-- switch/out[5],
+
+        r1/wan_out --> WANLink --> r2/wan_in,
+        r1/wan_in <-- WANLink <-- r2/wan_out,
+
+        r2/lan_out --> LANLink --> dns2alt/in,
+        r2/lan_in <-- LANLink <-- dns2alt/out,
+    }
+}
+
+entry Main;

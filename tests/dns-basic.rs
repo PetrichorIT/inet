@@ -3,6 +3,7 @@ use inet::{
     dns::*,
     interface::{add_interface, Interface, NetworkDevice},
     ip::{IpMask, Ipv4Packet},
+    routing::{add_routing_entry, set_default_gateway},
 };
 
 /*
@@ -14,17 +15,26 @@ DNS2 = www
 
 // # CLIENT
 
-struct Client {}
+struct Client {
+    suc: bool,
+}
 #[async_trait::async_trait]
 impl AsyncModule for Client {
     fn new() -> Self {
-        Self {}
+        Self { suc: false }
     }
 
     async fn at_sim_start(&mut self, _stage: usize) {
         let ip = par("addr").unwrap().parse::<Ipv4Addr>().unwrap();
-        add_interface(Interface::ethv4(NetworkDevice::eth(), ip)).unwrap();
+        add_interface(Interface::ethv4_named(
+            "en0",
+            NetworkDevice::eth(),
+            ip,
+            Ipv4Addr::new(255, 0, 0, 0),
+        ))
+        .unwrap();
         add_interface(Interface::loopback()).unwrap();
+        set_default_gateway([ip.octets()[0], 0, 0, 1].into()).unwrap();
 
         schedule_in(Message::new().kind(2334).build(), Duration::from_secs(10));
 
@@ -66,8 +76,9 @@ impl AsyncModule for Client {
                         for addr in iter {
                             log::info!(">>> {}", addr)
                         }
+                        self.suc = true
                     }
-                    Err(e) => log::error!(">>> {}", e),
+                    Err(e) => panic!("{e}"),
                 }
             }
             _ => {
@@ -81,46 +92,9 @@ impl AsyncModule for Client {
             }
         }
     }
-}
 
-struct DNSLocal {}
-#[async_trait::async_trait]
-impl AsyncModule for DNSLocal {
-    fn new() -> Self {
-        Self {}
-    }
-
-    async fn at_sim_start(&mut self, _: usize) {
-        // let ip = par("addr").unwrap().parse::<Ipv4Addr>().unwrap();
-        // add_interface(Interface::ethernet(
-        //     &[ip.into()],
-        //     NetworkDevice::eth_default(),
-        // ));
-
-        // tokio::spawn(async move {
-        //     let mut server = DNSNameserver::new(
-        //         DNSNodeInformation {
-        //             zone: DNSString::from(format!("{}", ip)),
-        //             domain_name: DNSString::new(""),
-        //             ip: IpAddr::V4(ip),
-        //         },
-        //         DNSSOAResourceRecord {
-        //             name: DNSString::new(""),
-        //             class: DNSClass::Internet,
-        //             ttl: 7000,
-        //             mname: DNSString::new(""),
-        //             rname: DNSString::new(""),
-        //             serial: 7000,
-        //             refresh: 7000,
-        //             retry: 7000,
-        //             expire: 7000,
-        //             minimum: 7000,
-        //         },
-        //     );
-
-        //     server.allow_recursive_for(IpMask::catch_all_v4());
-        //     server.launch().await.unwrap();
-        // });
+    async fn at_sim_end(&mut self) {
+        assert!(self.suc, "Did not finish succesfully")
     }
 }
 
@@ -134,15 +108,26 @@ impl AsyncModule for DNSServer0 {
     fn new() -> Self {
         Self {
             server: Some(
-                DNSNameserver::from_zonefile("org", "dns_bin/zonefiles/", "ns0.namservers.org.")
-                    .unwrap(),
+                DNSNameserver::from_zonefile(
+                    "org",
+                    "tests/dns-basic/zonefiles/",
+                    "ns0.namservers.org.",
+                )
+                .unwrap(),
             ),
         }
     }
 
     async fn at_sim_start(&mut self, _stage: usize) {
         let ip = par("addr").unwrap().parse::<Ipv4Addr>().unwrap();
-        add_interface(Interface::ethv4(NetworkDevice::eth(), ip)).unwrap();
+        add_interface(Interface::ethv4_named(
+            "en0",
+            NetworkDevice::eth(),
+            ip,
+            Ipv4Addr::new(255, 0, 0, 0),
+        ))
+        .unwrap();
+        set_default_gateway([ip.octets()[0], 0, 0, 1].into()).unwrap();
 
         schedule_in(Message::new().kind(1111).build(), Duration::ZERO);
     }
@@ -168,7 +153,7 @@ impl AsyncModule for DNSServer1 {
             server: Some(
                 DNSNameserver::from_zonefile(
                     "example.org.",
-                    "dns_bin/zonefiles/",
+                    "tests/dns-basic/zonefiles/",
                     if module_name() == "dns1" {
                         "ns1.example.org."
                     } else {
@@ -182,9 +167,15 @@ impl AsyncModule for DNSServer1 {
 
     async fn at_sim_start(&mut self, _stage: usize) {
         let ip = par("addr").unwrap().parse::<Ipv4Addr>().unwrap();
-        add_interface(Interface::ethv4(NetworkDevice::eth(), ip)).unwrap();
-
+        add_interface(Interface::ethv4_named(
+            "en0",
+            NetworkDevice::eth(),
+            ip,
+            Ipv4Addr::new(255, 0, 0, 0),
+        ))
+        .unwrap();
         schedule_in(Message::new().kind(1111).build(), Duration::ZERO);
+        set_default_gateway([ip.octets()[0], 0, 0, 1].into()).unwrap();
     }
 
     async fn handle_message(&mut self, msg: Message) {
@@ -206,15 +197,26 @@ impl AsyncModule for DNSServer2 {
     fn new() -> Self {
         Self {
             server: Some(
-                DNSNameserver::from_zonefile(".", "dns_bin/zonefiles/", "a.root-servers.net.")
-                    .unwrap(),
+                DNSNameserver::from_zonefile(
+                    ".",
+                    "tests/dns-basic/zonefiles/",
+                    "a.root-servers.net.",
+                )
+                .unwrap(),
             ),
         }
     }
 
     async fn at_sim_start(&mut self, _stage: usize) {
         let ip = par("addr").unwrap().parse::<Ipv4Addr>().unwrap();
-        add_interface(Interface::ethv4(NetworkDevice::eth(), ip)).unwrap();
+        add_interface(Interface::ethv4_named(
+            "en0",
+            NetworkDevice::eth(),
+            ip,
+            Ipv4Addr::new(255, 0, 0, 0),
+        ))
+        .unwrap();
+        set_default_gateway([ip.octets()[0], 0, 0, 1].into()).unwrap();
 
         schedule_in(Message::new().kind(7912).build(), Duration::from_secs(5));
     }
@@ -231,16 +233,39 @@ impl AsyncModule for DNSServer2 {
     }
 }
 
-// const RMAP: [Ipv4Addr; 6] = [
-//     Ipv4Addr::new(200, 3, 43, 125),
-//     Ipv4Addr::new(100, 3, 43, 125),
-//     Ipv4Addr::new(100, 78, 43, 100),
-//     Ipv4Addr::new(100, 100, 100, 100),
-//     Ipv4Addr::new(100, 78, 43, 200),
-//     Ipv4Addr::new(192, 168, 2, 178),
-// ];
+type Switch = inet::utils::LinkLayerSwitch;
 
-type Router = inet::utils::LinkLayerSwitch;
+struct Router;
+impl Module for Router {
+    fn new() -> Self {
+        Router
+    }
+
+    fn at_sim_start(&mut self, _stage: usize) {
+        let ip = par("addr").unwrap().parse().unwrap();
+        add_interface(Interface::ethv4(
+            NetworkDevice::eth_select(|p| p.input.name() == "lan_in"),
+            ip,
+        ))
+        .unwrap();
+
+        add_interface(Interface::ethv4_named(
+            "wan0",
+            NetworkDevice::eth_select(|p| p.input.name() == "wan_in"),
+            ip,
+            Ipv4Addr::UNSPECIFIED,
+        ))
+        .unwrap();
+
+        let rev_net = Ipv4Addr::new(if ip.octets()[0] == 100 { 200 } else { 100 }, 0, 0, 0);
+        let rev = Ipv4Addr::new(if ip.octets()[0] == 100 { 200 } else { 100 }, 0, 0, 1);
+        add_routing_entry(rev_net, Ipv4Addr::new(255, 0, 0, 0), rev).unwrap();
+    }
+
+    fn handle_message(&mut self, msg: Message) {
+        log::debug!("{}", msg.str());
+    }
+}
 
 struct Main;
 impl Module for Main {
@@ -249,23 +274,24 @@ impl Module for Main {
     }
 }
 
-fn main() {
+#[test]
+fn dns_basic() {
     inet::init();
 
-    Logger::new()
-        .interal_max_log_level(log::LevelFilter::Warn)
-        .try_set_logger()
-        .unwrap();
+    // Logger::new()
+    //     .interal_max_log_level(log::LevelFilter::Warn)
+    //     .try_set_logger()
+    //     .unwrap();
 
     let mut rt = NetworkRuntime::new(
         NdlApplication::new(
-            "dns_bin/main.ndl",
-            registry![Main, Router, DNSServer0, DNSServer1, DNSServer2, DNSLocal, Client],
+            "tests/dns-basic/main.ndl",
+            registry![Main, Switch, DNSServer0, DNSServer1, DNSServer2, Client, Router],
         )
         .map_err(|e| println!("{e}"))
         .unwrap(),
     );
-    rt.include_par_file("dns_bin/main.par");
+    rt.include_par_file("tests/dns-basic/main.par");
     let rt = Runtime::new_with(rt, RuntimeOptions::seeded(123));
     let _ = rt.run();
 }

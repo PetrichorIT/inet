@@ -268,7 +268,7 @@ impl IOContext {
         }
         // Find right interface
         for (ifid, interface) in self.ifaces.iter() {
-            if let Some(_iaddr) = interface
+            if let Some(_) = interface
                 .addrs
                 .iter()
                 .find(|iaddr| iaddr.matches_ip_subnet(addr.ip()))

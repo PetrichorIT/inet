@@ -84,6 +84,13 @@ impl IpPacket {
         matches!(self, Self::V6(_))
     }
 
+    pub fn src(&self) -> IpAddr {
+        match self {
+            Self::V4(pkt) => pkt.src.into(),
+            Self::V6(pkt) => pkt.src.into(),
+        }
+    }
+
     pub fn dest(&self) -> IpAddr {
         match self {
             Self::V4(pkt) => pkt.dest.into(),

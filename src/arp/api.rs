@@ -41,9 +41,9 @@ pub fn arpa() -> io::Result<Vec<ArpEntry>> {
 
 impl IOContext {
     pub fn arpa(&mut self) -> Vec<ArpEntry> {
-        let mut results = Vec::with_capacity(self.arp.map.len());
+        let mut results = Vec::with_capacity(self.arp.len());
         let now = SimTime::now();
-        for entry in self.arp.map.values() {
+        for entry in self.arp.entries() {
             if entry.expires < now {
                 continue;
             }

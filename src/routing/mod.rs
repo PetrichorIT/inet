@@ -78,86 +78,47 @@ impl RoutingPort {
     }
 
     pub fn collect() -> Vec<RoutingPort> {
-        let mut gates = gates();
+        let gates = gates();
         let mut ports = Vec::new();
-        while let Some(gate) = gates.pop() {
-            let typ = inferred_service_type(&gate);
-            match typ {
-                GateServiceType::Input => {
-                    let id = gate
-                        .path_start()
-                        .map(|v| v.owner().id())
-                        .unwrap_or(ModuleId::NULL);
 
-                    let other = gates.iter().find(|v| {
-                        v.path_end()
-                            .map(|v| v.owner().id())
-                            .unwrap_or(ModuleId::NULL)
-                            == id
-                            && inferred_service_type(*v) == GateServiceType::Output
-                    });
+        // (0) Preprocessing
+        let mut inputs = Vec::with_capacity(gates.len() / 2);
+        let mut outputs = Vec::with_capacity(gates.len() / 2);
 
-                    let Some(other) = other else {
-                        continue;
-                    };
-
-                    let peer = other
-                        .path_end()
-                        .unwrap()
-                        .owner()
-                        .get_plugin_state::<IOPlugin, Option<IpAddr>>()
-                        .flatten()
-                        .map(|addr| RoutingPeer { addr });
-
-                    ports.push(RoutingPort::new(gate, other.clone(), peer));
-                }
-                GateServiceType::Output => {
-                    let id = gate
-                        .path_end()
-                        .map(|v| v.owner().id())
-                        .unwrap_or(ModuleId::NULL);
-
-                    let other = gates.iter().find(|v| {
-                        v.path_start()
-                            .map(|v| v.owner().id())
-                            .unwrap_or(ModuleId::NULL)
-                            == id
-                            && inferred_service_type(*v) == GateServiceType::Input
-                    });
-
-                    let Some(other) = other else {
-                        continue;
-                    };
-
-                    let peer = gate
-                        .path_end()
-                        .map(|e| {
-                            e.owner()
-                                .get_plugin_state::<IOPlugin, Option<IpAddr>>()
-                                .flatten()
-                                .map(|addr| RoutingPeer { addr })
-                        })
-                        .flatten();
-
-                    ports.push(RoutingPort::new(other.clone(), gate, peer));
-                }
-                GateServiceType::Undefined => {}
-            };
+        for gate in gates {
+            match gate.service_type() {
+                GateServiceType::Input => inputs.push(gate),
+                GateServiceType::Output => outputs.push(gate),
+                _ => {}
+            }
         }
 
-        // for port in &ports {
-        //     println!(
-        //         "Port {} input {} output {}",
-        //         port.name,
-        //         port.input.path(),
-        //         port.output.path()
-        //     );
-        // }
+        // (1) Presorting for better performance
+        // TODO
+
+        // (2) Search for valid paths
+
+        for output in outputs {
+            let Some((peer, addr)) = output.path_end().map(|e| (e.owner().id(), e.owner().get_plugin_state::<IOPlugin, Option<IpAddr>>().flatten().map(|addr| RoutingPeer { addr }))) else {
+                continue;
+            };
+
+            let pair = inputs.iter().find(|g| {
+                let Some(pair_peer) = g.path_start().map(|s| s.owner().id()) else {
+                    return false;
+                };
+                pair_peer == peer
+            });
+
+            let Some(pair) = pair else { continue };
+            ports.push(RoutingPort::new(pair.clone(), output, addr));
+        }
 
         ports
     }
 }
 
+#[derive(Debug)]
 pub(crate) enum IpGateway {
     Local,
     Broadcast,

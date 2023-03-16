@@ -8,13 +8,14 @@ use crate::{
 };
 
 pub struct ARPTable {
-    pub(super) map: HashMap<IpAddr, ARPEntryInternal>,
-    pub(super) config: ARPConfig,
-    pub(super) buffer: HashMap<IpAddr, Vec<IpPacket>>,
+    map: HashMap<IpAddr, ARPEntryInternal>,
+    config: ARPConfig,
+    requests: HashMap<IpAddr, ActiveRequest>,
 }
 
 pub struct ARPConfig {
     pub validity: Duration,
+    pub timeout: Duration,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -26,12 +27,38 @@ pub struct ARPEntryInternal {
     pub expires: SimTime,
 }
 
+struct ActiveRequest {
+    deadline: SimTime,
+    buffer: Vec<IpPacket>,
+}
+
+impl Default for ARPConfig {
+    fn default() -> Self {
+        Self {
+            validity: Duration::from_secs(200),
+            timeout: Duration::from_secs(2),
+        }
+    }
+}
+
 impl ARPTable {
-    pub fn new(config: ARPConfig) -> Self {
+    pub fn len(&self) -> usize {
+        self.map.len()
+    }
+
+    pub fn entries(&self) -> impl Iterator<Item = &ARPEntryInternal> {
+        self.map.values()
+    }
+
+    pub fn new() -> Self {
+        Self::new_with(ARPConfig::default())
+    }
+
+    pub fn new_with(config: ARPConfig) -> Self {
         Self {
             map: HashMap::new(),
             config,
-            buffer: HashMap::new(),
+            requests: HashMap::new(),
         }
     }
 
@@ -59,24 +86,39 @@ impl ARPTable {
     }
 
     #[must_use]
-    pub fn add(&mut self, mut entry: ARPEntryInternal) -> Option<(IpAddr, Vec<IpPacket>)> {
+    pub fn update(&mut self, mut entry: ARPEntryInternal) -> Option<(IpAddr, Vec<IpPacket>)> {
+        self.tick();
+
         let ip = entry.ip;
         if entry.expires == SimTime::ZERO {
             entry.expires = SimTime::now() + self.config.validity;
         }
 
         let _ = self.map.insert(ip, entry);
-        self.buffer.remove(&ip).map(|msgs| (ip, msgs))
+        self.requests.remove(&ip).map(|msgs| (ip, msgs.buffer))
     }
 
     pub fn wait_for_arp(&mut self, ip: IpPacket, dest: IpAddr) {
-        self.buffer.entry(dest).or_insert(Vec::new()).push(ip)
+        self.tick();
+
+        self.requests
+            .entry(dest)
+            .or_insert(ActiveRequest {
+                deadline: SimTime::now() + self.config.timeout,
+                buffer: Vec::with_capacity(4),
+            })
+            .buffer
+            .push(ip);
     }
 
     pub fn active_lookup(&mut self, ip: &IpAddr) -> bool {
-        self.buffer
+        self.requests
             .get(ip)
-            .map(|buf| !buf.is_empty())
+            .map(|buf| !buf.buffer.is_empty())
             .unwrap_or(false)
+    }
+
+    pub fn tick(&mut self) {
+        self.requests.retain(|_, req| req.deadline > SimTime::now());
     }
 }

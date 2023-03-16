@@ -83,7 +83,7 @@ impl NetworkDevice {
             }
         }
 
-        unimplemented!()
+        unimplemented!("{:?}", RoutingInformation::collect())
     }
 
     pub(super) fn send(&self, mut msg: Message) -> InterfaceBusyState {
