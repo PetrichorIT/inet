@@ -1,0 +1,11 @@
+node[0].addr = fe80::aa00
+node[1].addr = fe80::aa01
+node[2].addr = fe80::aa02
+node[3].addr = fe80::aa03
+node[4].addr = fe80::aa04
+
+node[0].targets = 1,2,3,4,1,2,3,4,0
+node[1].targets = 2,2,1,2,3,3,4
+node[2].targets = 1,1,1,0,0
+node[3].targets = 2,2,2,0,0,1
+node[4].targets = 0,2,2,1,4,4,4,2

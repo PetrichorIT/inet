@@ -1,6 +1,5 @@
 use des::{net::plugin::add_plugin, registry, tokio};
 use std::{
-    io::ErrorKind,
     str::FromStr,
     sync::{
         atomic::{AtomicBool, AtomicU32, Ordering::SeqCst},
@@ -16,9 +15,11 @@ use inet::{
     TcpListener, TcpStream,
 };
 use serial_test::serial;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+const LIMIT: usize = 100_000;
 
 struct Link {}
-
 impl Module for Link {
     fn new() -> Self {
         Self {}
@@ -52,7 +53,7 @@ impl AsyncModule for TcpServer {
 
         add_interface(Interface::ethv4(
             NetworkDevice::eth(),
-            Ipv4Addr::new(100, 100, 100, 100),
+            Ipv4Addr::new(69, 0, 0, 100),
         ))
         .unwrap();
 
@@ -64,31 +65,26 @@ impl AsyncModule for TcpServer {
             log::info!("Server bound");
             assert_eq!(
                 sock.local_addr().unwrap(),
-                SocketAddr::from_str("100.100.100.100:2000").unwrap()
+                SocketAddr::from_str("0.0.0.0:2000").unwrap()
             );
 
             let (mut stream, addr) = sock.accept().await.unwrap();
             log::info!("Established stream");
             fd.store(stream.as_raw_fd(), SeqCst);
-            assert_eq!(addr, SocketAddr::from_str("200.200.200.200:1024").unwrap());
+            assert_eq!(addr, SocketAddr::from_str("69.0.0.200:1024").unwrap());
 
-            let mut buf = [0u8; 100];
-            let err = stream.try_read(&mut buf).unwrap_err();
-            assert_eq!(err.kind(), ErrorKind::WouldBlock);
-
-            use tokio::io::AsyncReadExt;
-            let mut buf = [0u8; 500];
+            let mut buf = [0u8; 4096];
             let mut acc = 0;
             loop {
-                let Ok(n) = stream.read(&mut buf).await else { break };
-                log::info!("received {} bytes", n);
-
+                let n = stream.read(&mut buf).await.unwrap();
                 if n == 0 {
                     break;
                 }
+                stream.write_all(&buf[..n]).await.unwrap();
                 acc += n;
             }
-            assert_eq!(acc, 2000);
+
+            assert_eq!(acc, LIMIT);
 
             log::info!("Server done");
             done.store(true, SeqCst);
@@ -125,11 +121,11 @@ impl AsyncModule for TcpClient {
     }
 
     async fn at_sim_start(&mut self, _: usize) {
-        add_plugin(TcpDebugPlugin, 1);
+        add_plugin(TcpDebugPlugin, 0);
 
         add_interface(Interface::ethv4(
             NetworkDevice::eth(),
-            Ipv4Addr::new(200, 200, 200, 200),
+            Ipv4Addr::new(69, 0, 0, 200),
         ))
         .unwrap();
 
@@ -138,13 +134,27 @@ impl AsyncModule for TcpClient {
 
         tokio::spawn(async move {
             use tokio::io::AsyncWriteExt;
-            let mut stream = TcpStream::connect("100.100.100.100:2000").await.unwrap();
+            let mut stream = TcpStream::connect("69.0.0.100:2000").await.unwrap();
             fd.store(stream.as_raw_fd(), SeqCst);
 
             log::info!("Established stream");
 
-            let buf = vec![42; 2000];
-            stream.write_all(&buf).await.unwrap();
+            let mut acc = 0;
+            // let mut waiting_to_confirm = VecDeque::with_capacity(4096);
+
+            while acc < LIMIT {
+                let k = (random::<usize>() % 4096).min(LIMIT - acc);
+                let buf = std::iter::repeat_with(|| random::<u8>())
+                    .take(k)
+                    .collect::<Vec<_>>();
+
+                stream.write_all(&buf).await.unwrap();
+                let mut ret = vec![0u8; k];
+                stream.read_exact(&mut ret).await.unwrap();
+
+                assert_eq!(buf, ret);
+                acc += k;
+            }
 
             log::info!("Client done");
             done.store(true, SeqCst);
@@ -174,13 +184,10 @@ impl Module for Main {
 
 #[test]
 #[serial]
-fn tcp_close_data_complete() {
+fn tcp_echo_100k() {
     inet::init();
 
-    // ScopedLogger::new()
-    //     .interal_max_log_level(log::LevelFilter::Warn)
-    //     .finish()
-    //     .unwrap();
+    // Logger::new().set_logger();
 
     let app = NetworkRuntime::new(
         NdlApplication::new("tests/tcp.ndl", registry![Link, TcpServer, TcpClient, Main])
@@ -189,11 +196,10 @@ fn tcp_close_data_complete() {
     );
     let rt = Runtime::new_with(
         app,
-        RuntimeOptions::seeded(123)
-            // .max_itr(100)
-            .max_time(SimTime::from_duration(Duration::from_secs(3))),
+        RuntimeOptions::seeded(123), // .max_itr(100)
+                                     // .max_time(SimTime::from_duration(Duration::from_secs(3))),
     );
     let (_, time, profiler) = rt.run().unwrap();
-    assert_eq!(time.as_secs(), 1);
-    assert!(profiler.event_count < 200);
+    assert_eq!(time.as_secs(), 10);
+    assert!(profiler.event_count < 8000);
 }

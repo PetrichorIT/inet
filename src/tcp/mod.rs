@@ -34,9 +34,9 @@ mod debug;
 pub use debug::*;
 
 use crate::{
-    interface::KIND_IO_TIMEOUT,
+    interface::{IfId, KIND_IO_TIMEOUT},
     ip::{IpPacket, IpPacketRef, IpVersion, Ipv4Flags, Ipv4Packet, Ipv6Packet},
-    socket::{Fd, SocketType},
+    socket::{Fd, SocketIfaceBinding, SocketType},
     FromBytestream, IntoBytestream,
 };
 
@@ -169,34 +169,78 @@ impl TcpController {
     }
 }
 
+fn is_valid_dest_for(socket_addr: &SocketAddr, packet_addr: &SocketAddr) -> bool {
+    if socket_addr.ip().is_unspecified() {
+        return socket_addr.port() == packet_addr.port();
+    }
+
+    match packet_addr {
+        SocketAddr::V4(addrv4) => socket_addr == packet_addr,
+        SocketAddr::V6(_) => socket_addr == packet_addr,
+    }
+}
+
 impl IOContext {
-    pub(super) fn capture_tcp_packet(
-        &mut self,
-        packet: IpPacketRef,
-        last_gate: Option<GateRef>,
-    ) -> bool {
-        // assert!(packet.tos() == PROTO_TCP);
+    pub(super) fn capture_tcp_packet(&mut self, packet: IpPacketRef, ifid: IfId) -> bool {
+        assert!(packet.tos() == PROTO_TCP);
 
-        // let Ok(tcp) = TcpPacket::from_buffer(packet.content()) else {
-        //     log::error!(target: "inet/tcp", "received ip-packet with proto=0x06 (tcp) but content was no tcp-packet");
-        //     return false;
-        // };
+        let Ok(tcp) = TcpPacket::from_buffer(packet.content()) else {
+            log::error!(target: "inet/tcp", "received ip-packet with proto=0x06 (tcp) but content was no tcp-packet");
+            return false;
+        };
 
-        // let src = SocketAddr::new(packet.src(), tcp.src_port);
-        // let dest = SocketAddr::new(packet.dest(), tcp.dest_port);
+        let src = SocketAddr::new(packet.src(), tcp.src_port);
+        let dest = SocketAddr::new(packet.dest(), tcp.dest_port);
+
+        // (0) All sockets that are bound to the correct destination (local) address
+        let mut iter = self
+            .sockets
+            .iter_mut()
+            .filter(|(_, sock)| {
+                sock.typ == SocketType::SOCK_STREAM && is_valid_dest_for(&sock.addr, &dest)
+            })
+            .collect::<Vec<_>>();
+
+        if let Some((fd, sock)) = iter.iter_mut().find(|v| v.1.peer == src) {
+            // (1) Active stream socket
+            if !sock.interface.contains(&ifid) {
+                log::error!(target: "inet/tcp", "interface missmatch");
+                return false;
+            }
+
+            sock.recv_q += tcp.content.len();
+
+            let Some(mng) = self.tcp_manager.get_mut(fd) else {
+                log::error!(target: "inet/tcp", "found tcp socket, but missing tcp manager");
+                return false;
+            };
+
+            let fd = **fd;
+            self.process(fd, packet, tcp);
+
+            true
+        } else {
+            // (2) No active stream socket, maybe listen socket is possible
+            let Some((fd, sock)) = iter.iter().find(|s| s.1.peer.ip().is_unspecified() && s.1.peer.port() == 0) else {
+                // (3) No valid connection endpoint.
+                return false;
+            };
+
+            if !sock.interface.contains(&ifid) {
+                log::error!(target: "inet/tcp", "interface missmatch");
+                return false;
+            }
+
+            let Some(tcp_lis) = self.tcp_listeners.get_mut(fd) else {
+                log::error!(target: "inet/tcp", "found tcp socket, but missing tcp listener");
+                return false;
+            };
+
+            tcp_lis.push_incoming(src, packet, tcp);
+            true
+        }
 
         // for ifid in self.get_interface_for_ip_packet(packet.dest(), last_gate) {
-        //     let mut possible_sockets = self
-        //         .sockets
-        //         .iter_mut()
-        //         .filter(|(_, v)| {
-        //             v.typ == SocketType::SOCK_STREAM && v.addr == dest && v.interface == ifid
-        //         })
-        //         .collect::<Vec<_>>();
-        //     if possible_sockets.is_empty() {
-        //         continue;
-        //     }
-
         //     if let Some((fd, socket)) = possible_sockets.iter_mut().find(|(_, v)| v.peer == src) {
         //         // EndToEnd connection
         //         socket.recv_q += tcp.content.len();
@@ -224,20 +268,19 @@ impl IOContext {
         //         return true;
         //     }
         // }
-
-        false
     }
 
     pub(crate) fn tcp_send_packet(&mut self, ctrl: &mut TcpController, ip: IpPacket) {
         ctrl.sender_queue.push_back(ip);
-
         let Some(socket) = self.sockets.get(&ctrl.fd) else { return };
         let Some(interface) = self.ifaces.get_mut(&socket.interface.unwrap_ifid()) else { return };
 
         if !interface.is_busy() {
-            // interface
-            //     .send_ip(ctrl.sender_queue.pop_front().unwrap())
-            //     .unwrap();
+            self.send_ip_packet(
+                socket.interface.clone(),
+                ctrl.sender_queue.pop_front().unwrap(),
+                true,
+            );
         } else {
             interface.add_write_interest(ctrl.fd);
         }
@@ -252,10 +295,13 @@ impl IOContext {
         let Some(interface) = self.ifaces.get_mut(&socket.interface.unwrap_ifid()) else { return };
 
         if !interface.is_busy() {
-            // interface
-            //     .send_ip(ctrl.sender_queue.pop_front().unwrap())
-            //     .unwrap();
+            let pkt = ctrl.sender_queue.pop_front().unwrap();
+            if !ctrl.sender_queue.is_empty() {
+                interface.add_write_interest(ctrl.fd);
+            }
 
+            self.send_ip_packet(socket.interface.clone(), pkt, true);
+        } else {
             if !ctrl.sender_queue.is_empty() {
                 interface.add_write_interest(ctrl.fd);
             }
@@ -269,7 +315,8 @@ impl IOContext {
             return
         };
 
-        assert_eq!(ip.dest(), ctrl.local_addr.ip());
+        // TODO: assertion must check validity in terms of zero binds
+        // assert_eq!(ip.dest(), ctrl.local_addr.ip());
         assert_eq!(pkt.dest_port, ctrl.local_addr.port());
 
         // Missing PERM
@@ -725,7 +772,7 @@ impl IOContext {
                 // -> may be ack of data packet, handle
                 // -> may be ACK of FIN
 
-                log::trace!(target: "inet/tcp", "{} {}", pkt.ack_no, ctrl.sender_next_send_seq_no);
+                // log::trace!(target: "inet/tcp", "{} {}", pkt.ack_no, ctrl.sender_next_send_seq_no);
 
                 // (0) Check for ACK of FIN (seq_no = nss + 1)
                 let ack_of_fin = pkt.flags.ack && pkt.ack_no == ctrl.sender_next_send_seq_no;
@@ -959,7 +1006,7 @@ impl IOContext {
             }
 
             // (3) Acknowledge the data that was send
-            self.send_ack(ctrl, ctrl.receiver_last_recv_seq_no, ctrl.recv_window());
+            self.send_ack(ctrl, ctrl.receiver_last_recv_seq_no + 1, ctrl.recv_window());
 
             ctrl.receiver_buffer.state();
 

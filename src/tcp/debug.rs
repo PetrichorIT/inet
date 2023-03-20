@@ -12,9 +12,9 @@ use super::{TcpPacket, PROTO_TCP};
 pub struct TcpDebugPlugin;
 
 impl TcpDebugPlugin {
-    fn log(&self, src: IpAddr, dest: IpAddr, tcp: TcpPacket) {
+    fn log(&self, prefix: &str, src: IpAddr, dest: IpAddr, tcp: TcpPacket) {
         log::warn!(
-            "> {} --> {} [ {} seq: {} ack: {} win: {} content: {} bytes]",
+            "{prefix} {} --> {} [ {} seq: {} ack: {} win: {} content: {} bytes]",
             SocketAddr::new(src, tcp.src_port),
             SocketAddr::new(dest, tcp.dest_port),
             tcp.flags,
@@ -32,17 +32,34 @@ impl Plugin for TcpDebugPlugin {
             let ip = msg.content::<Ipv4Packet>();
             if ip.proto == PROTO_TCP {
                 let tcp = TcpPacket::from_buffer(&ip.content).unwrap();
-                self.log(IpAddr::V4(ip.src), IpAddr::V4(ip.dest), tcp);
+                self.log(">>", IpAddr::V4(ip.src), IpAddr::V4(ip.dest), tcp);
             }
         }
         if msg.header().kind == KIND_IPV6 {
             let ip = msg.content::<Ipv6Packet>();
             if ip.next_header == PROTO_TCP {
                 let tcp = TcpPacket::from_buffer(&ip.content).unwrap();
-                self.log(IpAddr::V6(ip.src), IpAddr::V6(ip.dest), tcp)
+                self.log(">>", IpAddr::V6(ip.src), IpAddr::V6(ip.dest), tcp)
             }
         }
+        Some(msg)
+    }
 
+    fn capture_outgoing(&mut self, msg: Message) -> Option<Message> {
+        if msg.header().kind == KIND_IPV4 {
+            let ip = msg.content::<Ipv4Packet>();
+            if ip.proto == PROTO_TCP {
+                let tcp = TcpPacket::from_buffer(&ip.content).unwrap();
+                self.log("<<", IpAddr::V4(ip.src), IpAddr::V4(ip.dest), tcp);
+            }
+        }
+        if msg.header().kind == KIND_IPV6 {
+            let ip = msg.content::<Ipv6Packet>();
+            if ip.next_header == PROTO_TCP {
+                let tcp = TcpPacket::from_buffer(&ip.content).unwrap();
+                self.log("<<", IpAddr::V6(ip.src), IpAddr::V6(ip.dest), tcp)
+            }
+        }
         Some(msg)
     }
 }

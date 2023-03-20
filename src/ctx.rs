@@ -176,7 +176,7 @@ impl IOContext {
                         }
                     }
                     PROTO_TCP => {
-                        let consumed = self.capture_tcp_packet(IpPacketRef::V4(ip), todo!());
+                        let consumed = self.capture_tcp_packet(IpPacketRef::V4(ip), ifid);
                         if consumed {
                             None
                         } else {
@@ -232,7 +232,7 @@ impl IOContext {
                         }
                     }
                     PROTO_TCP => {
-                        let consumed = self.capture_tcp_packet(IpPacketRef::V6(ip), todo!());
+                        let consumed = self.capture_tcp_packet(IpPacketRef::V6(ip), ifid);
                         if consumed {
                             None
                         } else {

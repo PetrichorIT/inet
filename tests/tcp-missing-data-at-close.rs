@@ -68,7 +68,7 @@ impl AsyncModule for TcpServer {
 
         add_interface(Interface::ethv4(
             NetworkDevice::eth(),
-            Ipv4Addr::new(100, 100, 100, 100),
+            Ipv4Addr::new(69, 0, 0, 100),
         ))
         .unwrap();
 
@@ -156,7 +156,7 @@ impl AsyncModule for TcpClient {
 
         add_interface(Interface::ethv4(
             NetworkDevice::eth(),
-            Ipv4Addr::new(200, 200, 200, 200),
+            Ipv4Addr::new(69, 0, 0, 200),
         ))
         .unwrap();
 
@@ -170,7 +170,7 @@ impl AsyncModule for TcpClient {
             sock.set_recv_buffer_size(1024).unwrap();
 
             let mut stream = sock
-                .connect(SocketAddr::from_str("100.100.100.100:2000").unwrap())
+                .connect(SocketAddr::from_str("69.0.0.100:2000").unwrap())
                 .await
                 .unwrap();
 
@@ -212,10 +212,7 @@ impl Module for Main {
 fn tcp_missing_data_at_close() {
     inet::init();
 
-    // ScopedLogger::new()
-    //     .interal_max_log_level(log::LevelFilter::Warn)
-    //     .finish()
-    //     .unwrap();
+    // Logger::new().set_logger();
 
     let app = NetworkRuntime::new(
         NdlApplication::new("tests/tcp.ndl", registry![Link, TcpServer, TcpClient, Main])

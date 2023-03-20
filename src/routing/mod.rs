@@ -145,6 +145,7 @@ impl From<Ipv6Gateway> for IpGateway {
     }
 }
 
+#[allow(unused)]
 fn inferred_service_type(gate: &GateRef) -> GateServiceType {
     match gate.service_type() {
         GateServiceType::Undefined => {

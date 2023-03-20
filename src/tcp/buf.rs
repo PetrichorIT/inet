@@ -277,8 +277,8 @@ impl TcpBufferState {
     ///
     pub(super) fn free_slice(&mut self, n: u32) {
         let Some(first) = self.slices.first_mut() else {
-        panic!()
-    };
+            panic!()
+        };
         if first.1 < n {
             panic!()
         }
