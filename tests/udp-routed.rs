@@ -31,7 +31,7 @@ impl AsyncModule for Node {
         add_interface(Interface::ethv4(NetworkDevice::eth(), ip)).unwrap();
         set_default_gateway([ip.octets()[0], 0, 0, 1].into()).unwrap();
 
-        let target: String = par("targets").unwrap().parse_string();
+        let target: String = par("targets").unwrap().into_inner();
         let targets = target
             .trim()
             .split(',')
@@ -132,7 +132,7 @@ impl Module for Main {
             for i in 0..5 {
                 let s = par_for("targets", &format!("{side}[{i}]"))
                     .unwrap()
-                    .parse_string();
+                    .into_inner();
                 if s.trim().is_empty() {
                     continue;
                 }
@@ -152,7 +152,9 @@ impl Module for Main {
         for (side, prefix) in [("left", 100), ("right", 200)] {
             for i in 0..5 {
                 let ip = Ipv4Addr::new(prefix, 0, 0, 100 + i);
-                par_for("expected", &format!("{side}[{i}]")).set(targets.get(&ip).unwrap_or(&0));
+                par_for("expected", &format!("{side}[{i}]"))
+                    .set(targets.get(&ip).unwrap_or(&0))
+                    .unwrap();
             }
         }
     }

@@ -1,5 +1,5 @@
 use crate::{
-    arp::{ARPConfig, ARPTable},
+    arp::ARPTable,
     interface::{IfId, Interface, LinkLayerResult, KIND_LINK_UPDATE},
     ip::{IpPacket, IpPacketRef, Ipv4Packet, Ipv6Packet, KIND_IPV4, KIND_IPV6},
     routing::{Ipv4RoutingTable, Ipv6RoutingTable},
@@ -11,7 +11,6 @@ use std::{
     collections::HashMap,
     net::{IpAddr, Ipv4Addr},
     panic::UnwindSafe,
-    time::Duration,
 };
 
 use super::{

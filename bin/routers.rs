@@ -44,7 +44,7 @@ impl Module for WANRouter {
 
                 match end.name() {
                     "down" => {                      
-                        let Some(addr) = par_for("addr", end.owner().path().as_parent_str()).as_optional() else {
+                        let Some(addr) = par_for("addr", end.owner().path().as_parent_str()).as_option() else {
                             continue;
                         };
 

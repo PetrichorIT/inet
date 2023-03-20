@@ -28,7 +28,7 @@ impl Router for ParBasedRoutingDeamon {
                 continue;
             };
 
-            let Some(par) = par_for("addr", peer.owner().path().as_str()).as_optional() else {
+            let Some(par) = par_for("addr", peer.owner().path().as_str()).as_option() else {
                 continue;
             };
 

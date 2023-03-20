@@ -94,7 +94,7 @@ impl DNSNameserver {
         let node = DNSNodeInformation {
             zone,
             domain_name: domain_name.into(),
-            ip: IpAddr::from_str(&par("addr").as_optional().expect(&format!(
+            ip: IpAddr::from_str(&par("addr").as_option().expect(&format!(
                 "failed to get par 'addr' for module {}",
                 module_path()
             )))

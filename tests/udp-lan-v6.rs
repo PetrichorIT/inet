@@ -29,7 +29,7 @@ impl AsyncModule for Node {
         let ip = par("addr").unwrap().parse().unwrap();
         add_interface(Interface::eth(NetworkDevice::eth(), ip)).unwrap();
 
-        let target: String = par("targets").unwrap().parse_string();
+        let target: String = par("targets").unwrap().into_inner();
         let targets = target
             .trim()
             .split(',')
@@ -118,7 +118,7 @@ impl Module for Main {
         for i in 0..5 {
             let s = par_for("targets", &format!("node[{i}]"))
                 .unwrap()
-                .parse_string();
+                .into_inner();
             targets.extend(
                 s.trim()
                     .split(',')
@@ -130,7 +130,7 @@ impl Module for Main {
         for i in 0..5 {
             let c = targets.iter().filter(|e| **e == i).count();
             let par = par_for("expected", &format!("node[{i}]"));
-            par.set(c);
+            par.set(c).unwrap();
         }
     }
 }
