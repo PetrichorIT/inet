@@ -1,11 +1,14 @@
 use crate::{
-    arp::ARPTable,
+    arp::ArpTable,
     interface::{IfId, Interface, LinkLayerResult, KIND_LINK_UPDATE},
     ip::{IpPacket, IpPacketRef, Ipv4Packet, Ipv6Packet, KIND_IPV4, KIND_IPV6},
     routing::{Ipv4RoutingTable, Ipv6RoutingTable},
     IOPlugin,
 };
-use des::{net::plugin::PluginError, prelude::Message};
+use des::{
+    net::plugin::PluginError,
+    prelude::{module_path, Message},
+};
 use std::{
     cell::RefCell,
     collections::HashMap,
@@ -26,7 +29,7 @@ thread_local! {
 pub struct IOContext {
     pub(super) ifaces: HashMap<IfId, Interface>,
 
-    pub(super) arp: ARPTable,
+    pub(super) arp: ArpTable,
     pub(super) ipv4router: Ipv4RoutingTable,
     pub(super) ipv6router: Ipv6RoutingTable,
 
@@ -45,7 +48,7 @@ impl IOContext {
         Self {
             ifaces: HashMap::new(),
 
-            arp: ARPTable::new(),
+            arp: ArpTable::new(),
             ipv4router: Ipv4RoutingTable::new(),
             ipv6router: Ipv6RoutingTable::new(),
 
@@ -161,7 +164,11 @@ impl IOContext {
                         true,
                     ) {
                         Ok(()) => return None,
-                        Err(e) => panic!("not yet impl: forwarding without route: {}", e),
+                        Err(e) => panic!(
+                            "[{}] not yet impl: forwarding without route: {}",
+                            module_path(),
+                            e
+                        ),
                     };
                 }
 

@@ -111,7 +111,7 @@ impl Module for Router {
 
         let rev_net = Ipv4Addr::new(if ip.octets()[0] == 100 { 200 } else { 100 }, 0, 0, 0);
         let rev = Ipv4Addr::new(if ip.octets()[0] == 100 { 200 } else { 100 }, 0, 0, 1);
-        add_routing_entry(rev_net, Ipv4Addr::new(255, 255, 255, 0), rev).unwrap();
+        add_routing_entry(rev_net, Ipv4Addr::new(255, 255, 255, 0), rev, "wan0").unwrap();
     }
 
     fn handle_message(&mut self, msg: Message) {

@@ -7,19 +7,19 @@ use crate::{
     ip::IpPacket,
 };
 
-pub struct ARPTable {
-    map: HashMap<IpAddr, ARPEntryInternal>,
-    config: ARPConfig,
+pub struct ArpTable {
+    map: HashMap<IpAddr, ArpEntryInternal>,
+    config: ArpConfig,
     requests: HashMap<IpAddr, ActiveRequest>,
 }
 
-pub struct ARPConfig {
+pub struct ArpConfig {
     pub validity: Duration,
     pub timeout: Duration,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct ARPEntryInternal {
+pub struct ArpEntryInternal {
     pub hostname: Option<String>,
     pub ip: IpAddr,
     pub mac: MacAddress,
@@ -32,7 +32,7 @@ struct ActiveRequest {
     buffer: Vec<IpPacket>,
 }
 
-impl Default for ARPConfig {
+impl Default for ArpConfig {
     fn default() -> Self {
         Self {
             validity: Duration::from_secs(200),
@@ -41,20 +41,20 @@ impl Default for ARPConfig {
     }
 }
 
-impl ARPTable {
+impl ArpTable {
     pub fn len(&self) -> usize {
         self.map.len()
     }
 
-    pub fn entries(&self) -> impl Iterator<Item = &ARPEntryInternal> {
+    pub fn entries(&self) -> impl Iterator<Item = &ArpEntryInternal> {
         self.map.values()
     }
 
     pub fn new() -> Self {
-        Self::new_with(ARPConfig::default())
+        Self::new_with(ArpConfig::default())
     }
 
-    pub fn new_with(config: ARPConfig) -> Self {
+    pub fn new_with(config: ArpConfig) -> Self {
         Self {
             map: HashMap::new(),
             config,
@@ -74,7 +74,7 @@ impl ARPTable {
         })
     }
 
-    pub fn lookup(&self, ip: &IpAddr) -> Option<&ARPEntryInternal> {
+    pub fn lookup(&self, ip: &IpAddr) -> Option<&ArpEntryInternal> {
         let Some(value) = self.map.get(ip) else {
             return None
         };
@@ -86,7 +86,7 @@ impl ARPTable {
     }
 
     #[must_use]
-    pub fn update(&mut self, mut entry: ARPEntryInternal) -> Option<(IpAddr, Vec<IpPacket>)> {
+    pub fn update(&mut self, mut entry: ArpEntryInternal) -> Option<(IpAddr, Vec<IpPacket>)> {
         self.tick();
 
         let ip = entry.ip;

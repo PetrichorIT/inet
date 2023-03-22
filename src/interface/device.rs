@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use des::{
-    prelude::{schedule_in, send, GateRef, Message},
+    prelude::{schedule_in, send, ChannelRef, GateRef, Message},
     time::SimTime,
 };
 
@@ -11,25 +11,59 @@ use super::{InterfaceBusyState, MacAddress};
 
 /// A descriptor for a network device that handles the
 /// sending and receiving of MTUs.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub struct NetworkDevice {
     pub addr: MacAddress,
     inner: NetworkDeviceInner,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 enum NetworkDeviceInner {
     /// The loopback device.
     LoopbackDevice,
     /// A network link described by two gates.
-    EthernetDevice { output: GateRef, input: GateRef },
+    EthernetDevice {
+        output: GateRef,
+        input: GateRef,
+        channel: Option<ChannelRef>,
+    },
+}
+
+impl NetworkDeviceInner {
+    fn loopback() -> Self {
+        Self::LoopbackDevice
+    }
+
+    fn ethernet(output: GateRef, input: GateRef) -> Self {
+        let mut gate = output.clone();
+        while let Some(next_gate) = gate.next_gate() {
+            // (0) check whether the current link contains a channel.
+            if let Some(channel) = gate.channel() {
+                return Self::EthernetDevice {
+                    output,
+                    input,
+                    channel: Some(channel),
+                };
+            }
+
+            gate = next_gate
+        }
+
+        // No channel attached to gate chain.
+        log::warn!(target: "inet/iface", "creating ethernet device with non-delayed link (staring at {})", output.path());
+        Self::EthernetDevice {
+            output,
+            input,
+            channel: None,
+        }
+    }
 }
 
 impl NetworkDevice {
     pub fn loopback() -> Self {
         Self {
             addr: MacAddress::NULL,
-            inner: NetworkDeviceInner::LoopbackDevice,
+            inner: NetworkDeviceInner::loopback(),
         }
     }
 
@@ -41,10 +75,7 @@ impl NetworkDevice {
                 let port = rinfo.ports.swap_remove(0);
                 Self {
                     addr: MacAddress::gen(),
-                    inner: NetworkDeviceInner::EthernetDevice {
-                        output: port.output,
-                        input: port.input,
-                    },
+                    inner: NetworkDeviceInner::ethernet(port.output, port.input),
                 }
             }
             _ => {
@@ -56,10 +87,7 @@ impl NetworkDevice {
                 if let Some(inout) = inout {
                     Self {
                         addr: MacAddress::gen(),
-                        inner: NetworkDeviceInner::EthernetDevice {
-                            output: inout.output,
-                            input: inout.input,
-                        },
+                        inner: NetworkDeviceInner::ethernet(inout.output, inout.input),
                     }
                 } else {
                     panic!("cannot create default ethernet device, module has mutiple valid ports, but not (in/out)")
@@ -75,10 +103,7 @@ impl NetworkDevice {
             if valid {
                 return Self {
                     addr: MacAddress::gen(),
-                    inner: NetworkDeviceInner::EthernetDevice {
-                        output: r.output,
-                        input: r.input,
-                    },
+                    inner: NetworkDeviceInner::ethernet(r.output, r.input),
                 };
             }
         }
@@ -93,10 +118,16 @@ impl NetworkDevice {
                 schedule_in(msg, Duration::ZERO);
                 InterfaceBusyState::Idle
             }
-            NetworkDeviceInner::EthernetDevice { output, .. } => {
-                if let Some(channel) = output.channel() {
+            NetworkDeviceInner::EthernetDevice {
+                output, channel, ..
+            } => {
+                if let Some(channel) = channel {
                     // Add the additionall delay to ensure the ChannelUnbusy event
                     // was at t1 < t2
+
+                    // TODO: Is this delay still nessecary, since channels are now instantly
+                    // busied with the call of send() thus channel updates are inorder before any
+                    // link updates will arrive.
                     let tft = channel.calculate_busy(&msg) + Duration::from_nanos(1);
                     send(msg, output);
 
@@ -105,6 +136,7 @@ impl NetworkDevice {
                         interests: Vec::new(),
                     }
                 } else {
+                    send(msg, output);
                     InterfaceBusyState::Idle
                 }
             }

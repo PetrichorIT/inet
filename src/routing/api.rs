@@ -11,8 +11,13 @@ pub fn set_default_gateway(ip: Ipv4Addr) -> io::Result<()> {
         .ok_or(Error::new(ErrorKind::Other, "missing IO Context"))?
 }
 
-pub fn add_routing_entry(addr: Ipv4Addr, mask: Ipv4Addr, gw: Ipv4Addr) -> io::Result<()> {
-    IOContext::try_with_current(|ctx| ctx.add_routing_entry(addr, mask, gw))
+pub fn add_routing_entry(
+    addr: Ipv4Addr,
+    mask: Ipv4Addr,
+    gw: Ipv4Addr,
+    interface: &str,
+) -> io::Result<()> {
+    IOContext::try_with_current(|ctx| ctx.add_routing_entry(addr, mask, gw, interface))
         .ok_or(Error::new(ErrorKind::Other, "missing IO Context"))?
 }
 
@@ -51,24 +56,25 @@ impl IOContext {
 
     pub fn add_routing_entry(
         &mut self,
-        addr: Ipv4Addr,
+        subnet: Ipv4Addr,
         mask: Ipv4Addr,
         gw: Ipv4Addr,
+        interface: &str,
     ) -> io::Result<()> {
+        // Defines a route to a subnet via a gateway and a defined interface
+
         let Some(iface) = self.ifaces.values().find(|iface| {
             iface
-                .addrs
-                .iter()
-                .any(|addr| addr.matches_ip_subnet(IpAddr::V4(gw)))
+                .name.name == interface
         }) else {
             return Err(Error::new(
                 ErrorKind::Other,
-                "gateway cannot be on any local subnet"
+                "interface not found"
             ))
         };
 
         self.ipv4router
-            .add_entry(addr, mask, Ipv4Gateway::Gateway(gw), iface.name.id, 1);
+            .add_entry(subnet, mask, Ipv4Gateway::Gateway(gw), iface.name.id, 1);
         Ok(())
     }
 }

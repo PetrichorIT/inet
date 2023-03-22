@@ -18,10 +18,12 @@ mod api;
 pub use self::api::*;
 
 impl IOContext {
-    pub fn recv_arp(&mut self, ifid: IfId, msg: &Message, arp: &ARPPacket) -> LinkLayerResult {
+    pub fn recv_arp(&mut self, ifid: IfId, msg: &Message, arp: &ArpPacket) -> LinkLayerResult {
         use LinkLayerResult::*;
         // assert_eq!(arp.ptype, 0x0800);
         assert_eq!(arp.htype, 1);
+
+        // log::debug!("{ifid} {arp:?}");
 
         match arp.operation {
             ARPOperation::Request => {
@@ -31,7 +33,7 @@ impl IOContext {
                 // (0) Add sender entry to local arp table
                 if !arp.src_ip_addr().is_unspecified() {
                     // log::trace!(target: "inet/arp", "receiving arp request for {}", arp.dest_paddr);
-                    let sendable = self.arp.update(ARPEntryInternal {
+                    let sendable = self.arp.update(ArpEntryInternal {
                         hostname: None,
                         ip: arp.src_ip_addr().into(),
                         mac: arp.src_mac_addr(),
@@ -89,7 +91,7 @@ impl IOContext {
             ARPOperation::Response => {
                 // (0) Add response data to ARP table (not requester, was allready added)
                 if !arp.dest_ip_addr().is_unspecified() {
-                    let sendable = self.arp.update(ARPEntryInternal {
+                    let sendable = self.arp.update(ArpEntryInternal {
                         hostname: None,
                         ip: arp.dest_ip_addr().into(),
                         mac: arp.dest_mac_addr(),
@@ -153,11 +155,11 @@ impl IOContext {
         let (route, rifid): (IpGateway, IfId) = match &pkt {
             IpPacket::V4(pkt) => {
                 let Some((route, rifid)) = self.ipv4router.loopuk_gateway(pkt.dest) else {
-                return Err(Error::new(
-                    ErrorKind::Other,
-                    "no gateway network reachable"
-                ))
-            };
+                    return Err(Error::new(
+                        ErrorKind::Other,
+                        "no gateway network reachable"
+                    ))
+                };
                 (route.clone().into(), *rifid)
             }
             IpPacket::V6(pkt) => {
@@ -337,7 +339,7 @@ impl IOContext {
 
         log::trace!(target: "inet/arp", "missing address resolution for {}, initiating ARP request at {}", dest, iface.name);
 
-        let request = ARPPacket::new_request(
+        let request = ArpPacket::new_request(
             iface.device.addr,
             if dest.is_ipv4() {
                 iface

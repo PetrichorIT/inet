@@ -23,13 +23,13 @@ fn main() {
 
     let mut app: NetworkRuntime<NdlApplication> = NetworkRuntime::new(
         NdlApplication::new(
-            "bin/main.ndl",
+            "inet-bin/main.ndl",
             registry![TypeA, TypeB, TypeC, LANRouter, WANRouter, EdgeNode, Main],
         )
         .map_err(|e| println!("{e}"))
         .unwrap(),
     );
-    app.include_par_file("bin/main.par");
+    app.include_par_file("inet-bin/main.par");
     let rt = Runtime::new_with(app, RuntimeOptions::seeded(123).max_time(10.0.into()));
 
     let _result = rt.run().unwrap();

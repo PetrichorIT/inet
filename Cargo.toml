@@ -7,11 +7,15 @@ version = "0.1.0"
 
 [[bin]]
 name = "inet-bin"
-path = "bin/main.rs"
+path = "inet-bin/main.rs"
 
 [[bin]]
 name = "ideal-bin"
 path = "ideal_bin/main.rs"
+
+[[bin]]
+name = "dns-tcp-bin"
+path = "dns-tcp-bin/main.rs"
 
 [dependencies]
 async-trait = "*"

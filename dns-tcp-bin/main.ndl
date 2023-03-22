@@ -1,0 +1,93 @@
+link LANLink {
+    jitter: 0.0,
+    bitrate: 10000000,
+    latency: 0.005
+}
+
+link WANLink {
+    jitter: 0.0,
+    bitrate: 100000000,
+    latency: 0.05
+}
+
+module Node {
+    gates {
+        in @input,
+        out @output
+    }
+}
+
+module Switch {
+    gates {
+        in[5] @input,
+        out[5] @output,
+
+        gwin @input,
+        gwout @output,
+    }
+}
+
+module Router {
+    gates {
+        lan_in @input,
+        lan_out @output,
+
+        wan_in[3] @input,
+        wan_out[3] @output
+    }
+}
+
+module LAN {
+    gates {
+        wan_in[3],
+        wan_out[3],
+    }
+
+    submodules {
+        node[5]: Node,
+        switch: Switch,
+        router: Router,
+    }
+
+    connections {
+        node/out --> LANLink --> switch/in,
+        node/in <-- LANLink <-- switch/out,
+
+        router/lan_out --> LANLink --> switch/gwin,
+        router/lan_in <-- LANLink <-- switch/gwout,
+
+        wan_in --> router/wan_in,
+        wan_out <-- router/wan_out,
+    }
+}
+
+module Main {
+    submodules {
+        a: LAN,
+        b: LAN,
+        c: LAN,
+        d: LAN,
+    }
+
+    connections {
+        a/wan_out[0] --> WANLink --> b/wan_in[0],
+        a/wan_out[1] --> WANLink --> c/wan_in[0],
+        a/wan_out[2] --> WANLink --> d/wan_in[0],
+
+        a/wan_in[0] <-- WANLink <-- b/wan_out[0],
+        a/wan_in[1] <-- WANLink <-- c/wan_out[0],
+        a/wan_in[2] <-- WANLink <-- d/wan_out[0],
+
+        b/wan_out[1] --> WANLink --> c/wan_in[1],
+        b/wan_out[2] --> WANLink --> d/wan_in[1],
+
+        b/wan_in[1] <-- WANLink <-- c/wan_out[1],
+        b/wan_in[2] <-- WANLink <-- d/wan_out[1],
+
+        c/wan_out[2] --> WANLink --> d/wan_in[2],
+
+        c/wan_in[2] <-- WANLink <-- d/wan_out[2],
+    }
+}
+
+entry Main;

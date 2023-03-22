@@ -10,7 +10,7 @@ use std::{
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct ARPPacket {
+pub struct ArpPacket {
     pub htype: u16,
     pub ptype: u16,
     haddrlen: u8,
@@ -19,7 +19,7 @@ pub struct ARPPacket {
     raw: Vec<u8>,
 }
 
-impl ARPPacket {
+impl ArpPacket {
     // Read only
 
     pub fn is_ipv4_ethernet(&self) -> bool {
@@ -180,7 +180,7 @@ impl ARPPacket {
     }
 }
 
-impl IntoBytestream for ARPPacket {
+impl IntoBytestream for ArpPacket {
     type Error = std::io::Error;
     fn into_bytestream(&self, bytestream: &mut impl Write) -> Result<(), Self::Error> {
         self.htype.write_to(bytestream, BigEndian)?;
@@ -194,7 +194,7 @@ impl IntoBytestream for ARPPacket {
     }
 }
 
-impl FromBytestream for ARPPacket {
+impl FromBytestream for ArpPacket {
     type Error = std::io::Error;
     fn from_bytestream(bytestream: &mut Cursor<impl AsRef<[u8]>>) -> Result<Self, Self::Error> {
         let htype = u16::read_from(bytestream, BigEndian)?;
@@ -208,7 +208,7 @@ impl FromBytestream for ARPPacket {
         let mut buf = vec![0u8; size as usize];
         bytestream.read_exact(&mut buf)?;
 
-        Ok(ARPPacket {
+        Ok(ArpPacket {
             htype,
             ptype,
             haddrlen,
@@ -219,7 +219,7 @@ impl FromBytestream for ARPPacket {
     }
 }
 
-impl MessageBody for ARPPacket {
+impl MessageBody for ArpPacket {
     fn byte_len(&self) -> usize {
         self.raw.len() + 8
     }
@@ -258,7 +258,7 @@ mod tests {
 
     #[test]
     fn ipv4_ethernet_request() {
-        let r = ARPPacket::new_v4_request(
+        let r = ArpPacket::new_v4_request(
             [1, 2, 3, 4, 5, 6].into(),
             Ipv4Addr::new(1, 2, 3, 4),
             Ipv4Addr::new(255, 254, 253, 252),
@@ -271,7 +271,7 @@ mod tests {
         assert_eq!(r.src_ipv4_addr(), Ipv4Addr::new(1, 2, 3, 4));
         assert_eq!(r.dest_ipv4_addr(), Ipv4Addr::new(255, 254, 253, 252));
 
-        let r = ARPPacket::from_buffer(r.into_buffer().unwrap()).unwrap();
+        let r = ArpPacket::from_buffer(r.into_buffer().unwrap()).unwrap();
         assert_eq!(r.htype, 1);
         assert_eq!(r.ptype, 0x0800);
         assert_eq!(r.src_mac_addr(), [1, 2, 3, 4, 5, 6].into());
@@ -282,7 +282,7 @@ mod tests {
 
     #[test]
     fn ipv6_ethernet_request() {
-        let r = ARPPacket::new_v6_request(
+        let r = ArpPacket::new_v6_request(
             [1, 2, 3, 4, 5, 6].into(),
             Ipv6Addr::new(1, 2, 3, 4, 5, 6, 7, 8),
             Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 0),
@@ -295,7 +295,7 @@ mod tests {
         assert_eq!(r.src_ipv6_addr(), Ipv6Addr::new(1, 2, 3, 4, 5, 6, 7, 8));
         assert_eq!(r.dest_ipv6_addr(), Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 0));
 
-        let r = ARPPacket::from_buffer(r.into_buffer().unwrap()).unwrap();
+        let r = ArpPacket::from_buffer(r.into_buffer().unwrap()).unwrap();
         assert_eq!(r.htype, 1);
         assert_eq!(r.ptype, 0x86DD);
         assert_eq!(r.src_mac_addr(), [1, 2, 3, 4, 5, 6].into());

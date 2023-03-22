@@ -4,7 +4,7 @@ use std::{
 };
 
 use crate::{
-    arp::ARPPacket,
+    arp::ArpPacket,
     interface::MacAddress,
     ip::{Ipv4Packet, Ipv6Packet},
     routing::RoutingInformation,
@@ -53,8 +53,8 @@ impl Module for LinkLayerSwitch {
                 }
 
                 // Broadcast ethernet packet.
-                if msg.can_cast::<ARPPacket>() {
-                    self.forward(msg.dup::<ARPPacket>(), i);
+                if msg.can_cast::<ArpPacket>() {
+                    self.forward(msg.dup::<ArpPacket>(), i);
                     continue;
                 }
 

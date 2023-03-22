@@ -3,7 +3,7 @@ use std::io;
 use std::io::Error;
 use std::io::ErrorKind;
 
-use crate::arp::ARPPacket;
+use crate::arp::ArpPacket;
 use crate::arp::KIND_ARP;
 use crate::socket::Fd;
 use crate::IOContext;
@@ -260,7 +260,7 @@ impl IOContext {
 
         let ifid = *ifid;
         if msg.header().kind == KIND_ARP {
-            let Some(arp) = msg.try_content::<ARPPacket>() else {
+            let Some(arp) = msg.try_content::<ArpPacket>() else {
                 log::error!(target: "inet/arp", "found message with kind 0x0806 (arp), but did not contain ARP packet");
                 return PassThrough(msg);
             };
