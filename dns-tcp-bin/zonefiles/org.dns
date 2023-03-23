@@ -1,0 +1,12 @@
+org. 7000 IN SOA ns0.namservers.org admin@org.org (7000 7000 7000 7000 7000)
+
+org. 7000 IN NS ns0.nameservers.org.
+org. 7000 IN NS ns1.nameservers.org.
+ns0.example.org. 7000 IN A 100.3.0.101
+ns1.example.org. 7000 IN A 100.3.0.102
+
+example.org. 7000 IN NS ns.example.org.
+ns.example.org. 7000 IN A 100.3.0.103
+
+test.org. 7000 IN NS ns.test.org.
+ns.test.org. 7000 IN A 100.3.0.104

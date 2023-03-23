@@ -10,12 +10,15 @@ link WANLink {
     latency: 0.05
 }
 
-module Node {
+module NodeLike {
     gates {
         in @input,
         out @output
     }
 }
+
+module Node: NodeLike {}
+module Dns: NodeLike {}
 
 module Switch {
     gates {
@@ -44,7 +47,7 @@ module LAN {
     }
 
     submodules {
-        node[5]: Node,
+        node[5]: dyn NodeLike,
         switch: Switch,
         router: Router,
     }
@@ -63,10 +66,10 @@ module LAN {
 
 module Main {
     submodules {
-        a: LAN,
-        b: LAN,
-        c: LAN,
-        d: LAN,
+        a: LAN { node = Node },
+        b: LAN { node = Node },
+        c: LAN { node = Node },
+        d: LAN { node = Dns },
     }
 
     connections {

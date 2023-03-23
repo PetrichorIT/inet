@@ -1,8 +1,3 @@
-use std::sync::{
-    atomic::{AtomicUsize, Ordering},
-    Arc,
-};
-
 use des::{
     prelude::*,
     registry,
@@ -13,9 +8,15 @@ use des::{
     },
 };
 use inet::{
+    dns::*,
     interface::{add_interface, Interface, NetworkDevice},
+    ip::IpMask,
     routing::{add_routing_entry, set_default_gateway, RoutingInformation},
     TcpListener, TcpStream,
+};
+use std::sync::{
+    atomic::{AtomicUsize, Ordering},
+    Arc,
 };
 
 struct Node {
@@ -66,30 +67,19 @@ impl AsyncModule for Node {
             }
         });
 
-        // read targets
-        let targets = par_for("addrs", "")
-            .unwrap()
-            .into_inner()
-            .split(",")
-            .map(|v| v.trim().parse::<Ipv4Addr>())
-            .flatten()
-            .collect::<Vec<_>>();
+        tokio::spawn(async move {
+            let mut server = DNSNameserver::client(addr.into());
+
+            server.allow_recursive_for(IpMask::catch_all_v4());
+            server.launch().await.unwrap();
+        });
 
         self.handle = Some(tokio::spawn(async move {
-            // if !par("enabled")
-            //     .as_option()
-            //     .unwrap_or("false".to_string())
-            //     .parse::<bool>()
-            //     .unwrap()
-            // {
-            //     return 0;
-            // }
-
             let mut n = 0;
             loop {
                 sleep(Duration::from_secs_f64(random::<f64>())).await;
 
-                let target = targets[random::<usize>() % targets.len()];
+                let target = DOMAINS[random::<usize>() % DOMAINS.len()];
                 let mut stream = TcpStream::connect((target, 5000)).await.unwrap();
 
                 stream.write(&[42; 100]).await.unwrap();
@@ -111,6 +101,51 @@ impl AsyncModule for Node {
 
         par_for("send", "").set(send).unwrap();
         par_for("recv", "").set(recv).unwrap();
+    }
+}
+
+struct Dns {}
+#[async_trait::async_trait]
+impl AsyncModule for Dns {
+    fn new() -> Self {
+        Self {}
+    }
+
+    fn num_sim_start_stages(&self) -> usize {
+        2
+    }
+
+    async fn at_sim_start(&mut self, stage: usize) {
+        if stage == 0 {
+            return;
+        }
+
+        let gateway = par("gateway").unwrap().parse().unwrap();
+        let addr = par("addr").unwrap().parse().unwrap();
+        let mask = par("mask").unwrap().parse().unwrap();
+
+        add_interface(Interface::ethv4_named(
+            "en0",
+            NetworkDevice::eth(),
+            addr,
+            mask,
+        ))
+        .unwrap();
+        add_interface(Interface::loopback()).unwrap();
+
+        set_default_gateway(gateway).unwrap();
+
+        let zone = par("zone").unwrap().into_inner();
+        let domain_name = par("domain").unwrap().into_inner();
+
+        tokio::spawn(async move {
+            let mut dns =
+                DNSNameserver::from_zonefile(&zone, "dns-tcp-bin/zonefiles", domain_name).unwrap();
+            if zone == "." {
+                dns.declare_root_ns();
+            }
+            dns.launch().await.unwrap();
+        });
     }
 }
 
@@ -182,6 +217,19 @@ impl Module for Router {
 
 type Switch = inet::utils::LinkLayerSwitch;
 
+const DOMAINS: [&str; 10] = [
+    "www.example.org",
+    "ftp.example.org",
+    "log.example.org",
+    "info.example.org",
+    "admin.example.org",
+    "www.test.org",
+    "ftp.test.org",
+    "log.test.org",
+    "info.test.org",
+    "admin.test.org",
+];
+
 struct LAN;
 impl Module for LAN {
     fn new() -> LAN {
@@ -215,6 +263,10 @@ impl Module for LAN {
             par_for("mask", format!("{}.node[{i}]", module_name()))
                 .set(mask)
                 .unwrap();
+        }
+
+        if module_name() == "d" {
+            return;
         }
 
         let addrs = addrs
@@ -254,6 +306,17 @@ impl Module for Main {
             par("recv").unwrap().parse::<usize>().unwrap()
         );
 
+        // println!(
+        //     "{:#?}",
+        //     par("addrs")
+        //         .unwrap()
+        //         .into_inner()
+        //         .split(",")
+        //         .map(|v| v.parse::<Ipv4Addr>())
+        //         .flatten()
+        //         .collect::<Vec<_>>()
+        // );
+
         log::info!(
             "processed {} bytes",
             par("recv").unwrap().parse::<usize>().unwrap()
@@ -269,18 +332,12 @@ fn main() {
 
     let app = NdlApplication::new(
         "dns-tcp-bin/main.ndl",
-        registry![Node, Router, Switch, LAN, Main],
+        registry![Node, Router, Switch, LAN, Main, Dns],
     )
     .map_err(|e| println!("{e}"))
     .unwrap();
     let mut app = NetworkRuntime::new(app);
     app.include_par_file("dns-tcp-bin/main.par");
     let rt = Runtime::new_with(app, RuntimeOptions::seeded(123));
-    let (app, _, _) = rt.run().unwrap();
-    app.globals()
-        .topology
-        .lock()
-        .unwrap()
-        .write_to_svg("dns-tcp-bin/topo")
-        .unwrap();
+    let (_, _, _) = rt.run().unwrap();
 }

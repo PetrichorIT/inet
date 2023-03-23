@@ -62,6 +62,28 @@ struct DNSTransaction {
 }
 
 impl DNSNameserver {
+    pub fn client(ip: IpAddr) -> Self {
+        DNSNameserver::new(
+            DNSNodeInformation {
+                zone: DNSString::from(format!("{}", ip)),
+                domain_name: DNSString::new(""),
+                ip,
+            },
+            DNSSOAResourceRecord {
+                name: DNSString::new(""),
+                class: DNSClass::Internet,
+                ttl: 7000,
+                mname: DNSString::new(""),
+                rname: DNSString::new(""),
+                serial: 7000,
+                refresh: 7000,
+                retry: 7000,
+                expire: 7000,
+                minimum: 7000,
+            },
+        )
+    }
+
     pub fn new(node: DNSNodeInformation, soa: DNSSOAResourceRecord) -> Self {
         Self {
             node,

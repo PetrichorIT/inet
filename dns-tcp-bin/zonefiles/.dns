@@ -1,0 +1,14 @@
+% <Name> <TTL> <Class> <SOA> <MNAME> <RNAME> <SERIAL> <REFRESH> <RETRY> <EXPIRE> <MINIMUM>
+. 7000 IN SOA a.root-servers.net. admin@a.net (7000 7000 7000 7000 700)
+
+% <ZONE> <TTL> <CLASS> <NS> <NSDOMAIN> Top is sekf
+. 1800 IN NS a.root-server.net.
+. 1800 IN NS b.root-servers.net.
+
+% Subzone
+org. 1800 IN NS ns0.nameservers.org.
+org. 1800 IN NS ns1.nameservers.org.
+
+% <DOMAIN> <TTL> <CLASS> <TYP> <ADDR>
+ns0.nameservers.org. 1800 IN A 100.3.0.101
+ns1.nameservers.org. 1800 IN A 100.3.0.102

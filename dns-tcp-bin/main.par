@@ -11,3 +11,20 @@ d.addr = 100.3.0.0
 d.mask = 255.255.0.0
 
 a.node[0].enabled = true
+
+d.node[0].zone = .
+d.node[0].domain = a.root-server.org
+
+d.node[1].zone = org
+d.node[1].domain = ns0.nameservers.org
+
+d.node[2].zone = org
+d.node[2].domain = ns1.nameservers.org
+
+d.node[3].zone = example.org.
+d.node[3].domain = ns.example.org
+
+d.node[4].zone = test.org.
+d.node[4].domain = ns.test.org
+
+
