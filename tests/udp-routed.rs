@@ -1,10 +1,9 @@
-use std::collections::HashMap;
-
 use des::{
     prelude::*,
     registry,
     tokio::{task::JoinHandle, time::sleep},
 };
+use fxhash::{FxBuildHasher, FxHashMap};
 use inet::{
     interface::{add_interface, Interface, NetworkDevice},
     routing::{add_routing_entry, set_default_gateway},
@@ -126,7 +125,7 @@ impl Module for Main {
     }
 
     fn at_sim_start(&mut self, _stage: usize) {
-        let mut targets = HashMap::new();
+        let mut targets = FxHashMap::with_hasher(FxBuildHasher::default());
 
         for side in ["left", "right"] {
             for i in 0..5 {

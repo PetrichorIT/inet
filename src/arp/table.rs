@@ -1,5 +1,6 @@
 use des::time::SimTime;
-use std::{collections::HashMap, hash::Hash, net::IpAddr, time::Duration};
+use fxhash::{FxBuildHasher, FxHashMap};
+use std::{hash::Hash, net::IpAddr, time::Duration};
 
 use crate::{
     interface::IfId,
@@ -8,9 +9,9 @@ use crate::{
 };
 
 pub struct ArpTable {
-    map: HashMap<IpAddr, ArpEntryInternal>,
+    map: FxHashMap<IpAddr, ArpEntryInternal>,
     config: ArpConfig,
-    requests: HashMap<IpAddr, ActiveRequest>,
+    requests: FxHashMap<IpAddr, ActiveRequest>,
 }
 
 pub struct ArpConfig {
@@ -56,9 +57,9 @@ impl ArpTable {
 
     pub fn new_with(config: ArpConfig) -> Self {
         Self {
-            map: HashMap::new(),
+            map: FxHashMap::with_hasher(FxBuildHasher::default()),
             config,
-            requests: HashMap::new(),
+            requests: FxHashMap::with_hasher(FxBuildHasher::default()),
         }
     }
 

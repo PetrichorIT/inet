@@ -9,9 +9,9 @@ use des::{
     net::plugin::PluginError,
     prelude::{module_path, Message},
 };
+use fxhash::{FxBuildHasher, FxHashMap};
 use std::{
     cell::RefCell,
-    collections::HashMap,
     net::{IpAddr, Ipv4Addr},
     panic::UnwindSafe,
 };
@@ -27,17 +27,17 @@ thread_local! {
 }
 
 pub struct IOContext {
-    pub(super) ifaces: HashMap<IfId, Interface>,
+    pub(super) ifaces: FxHashMap<IfId, Interface>,
 
     pub(super) arp: ArpTable,
     pub(super) ipv4router: Ipv4RoutingTable,
     pub(super) ipv6router: Ipv6RoutingTable,
 
-    pub(super) sockets: HashMap<Fd, Socket>,
+    pub(super) sockets: FxHashMap<Fd, Socket>,
 
-    pub(super) udp_manager: HashMap<Fd, UdpManager>,
-    pub(super) tcp_manager: HashMap<Fd, TcpController>,
-    pub(super) tcp_listeners: HashMap<Fd, TcpListenerHandle>,
+    pub(super) udp_manager: FxHashMap<Fd, UdpManager>,
+    pub(super) tcp_manager: FxHashMap<Fd, TcpController>,
+    pub(super) tcp_listeners: FxHashMap<Fd, TcpListenerHandle>,
 
     pub(super) fd: Fd,
     pub(super) port: u16,
@@ -46,17 +46,17 @@ pub struct IOContext {
 impl IOContext {
     pub fn empty() -> Self {
         Self {
-            ifaces: HashMap::new(),
+            ifaces: FxHashMap::with_hasher(FxBuildHasher::default()),
 
             arp: ArpTable::new(),
             ipv4router: Ipv4RoutingTable::new(),
             ipv6router: Ipv6RoutingTable::new(),
 
-            sockets: HashMap::new(),
+            sockets: FxHashMap::with_hasher(FxBuildHasher::default()),
 
-            udp_manager: HashMap::new(),
-            tcp_manager: HashMap::new(),
-            tcp_listeners: HashMap::new(),
+            udp_manager: FxHashMap::with_hasher(FxBuildHasher::default()),
+            tcp_manager: FxHashMap::with_hasher(FxBuildHasher::default()),
+            tcp_listeners: FxHashMap::with_hasher(FxBuildHasher::default()),
 
             fd: 100,
             port: 1024,

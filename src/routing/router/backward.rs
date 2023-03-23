@@ -2,11 +2,11 @@ use crate::{ip::Ipv4Packet, FromBytestream};
 
 use super::{super::RoutingPort, Router, RoutingInformation};
 use des::prelude::*;
-use std::collections::HashMap;
+use fxhash::{FxBuildHasher, FxHashMap};
 
 pub struct BackwardRoutingDeamon<R: Router> {
     info: RoutingInformation,
-    knowledge: HashMap<Ipv4Addr, RoutingPort>,
+    knowledge: FxHashMap<Ipv4Addr, RoutingPort>,
     fallback: R,
 }
 
@@ -14,7 +14,7 @@ impl<R: Router> BackwardRoutingDeamon<R> {
     pub fn new(fallback: R) -> Self {
         Self {
             info: RoutingInformation::emtpy(),
-            knowledge: HashMap::new(),
+            knowledge: FxHashMap::with_hasher(FxBuildHasher::default()),
             fallback,
         }
     }

@@ -2,4 +2,4 @@
 - make :: bind to all v4/v6 capabple interfaces
 - at loopback socket: if a non loopback addr is targeted, do not try to resolve with ARP
 
-- HashMap without random state
+- FxHashMap without random state

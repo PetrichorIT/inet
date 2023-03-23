@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::FxHashMap;
 
 use des::{prelude::*, registry};
 use inet::{
@@ -83,14 +83,14 @@ impl Module for Node {
 }
 
 struct Switch {
-    entries: HashMap<IpAddr, GateRef>,
+    entries: FxHashMap<IpAddr, GateRef>,
     n: usize,
 }
 
 impl Module for Switch {
     fn new() -> Self {
         Self {
-            entries: HashMap::new(),
+            entries: FxHashMap::new(),
             n: 0,
         }
     }

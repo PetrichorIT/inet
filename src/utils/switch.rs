@@ -1,7 +1,4 @@
-use std::{
-    collections::{HashMap, VecDeque},
-    iter::repeat_with,
-};
+use std::{collections::VecDeque, iter::repeat_with};
 
 use crate::{
     arp::ArpPacket,
@@ -10,13 +7,14 @@ use crate::{
     routing::RoutingInformation,
 };
 use des::prelude::*;
+use fxhash::{FxBuildHasher, FxHashMap};
 
 pub const KIND_SWITCH_WAKEUP: MessageKind = 0x0600;
 
 pub struct LinkLayerSwitch {
     info: RoutingInformation,
     // mac addr --> RoutingPort index
-    mapping: HashMap<MacAddress, usize>,
+    mapping: FxHashMap<MacAddress, usize>,
     // index of RoutingPort in info --> queue
     queues: Vec<VecDeque<Message>>,
 }
@@ -25,7 +23,7 @@ impl Module for LinkLayerSwitch {
     fn new() -> Self {
         Self {
             info: RoutingInformation::emtpy(),
-            mapping: HashMap::new(),
+            mapping: FxHashMap::with_hasher(FxBuildHasher::default()),
             queues: Vec::new(),
         }
     }

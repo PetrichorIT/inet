@@ -1,5 +1,4 @@
 use std::{
-    collections::HashMap,
     hash::Hash,
     net::{IpAddr, Ipv4Addr, SocketAddr},
     ops::{Deref, DerefMut},
@@ -7,6 +6,7 @@ use std::{
 };
 
 use des::prelude::*;
+use fxhash::{FxBuildHasher, FxHashMap};
 
 use crate::{dhcp::MESSAGE_KIND_DHCP, utils::get_ip};
 
@@ -14,14 +14,14 @@ use super::common::{DHCPMessage, DHCPOp, DHCPOpsTyp, DHCPParameter};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DHCPServer {
-    transactions: HashMap<u32, (SimTime, TransactionState)>,
+    transactions: FxHashMap<u32, (SimTime, TransactionState)>,
     addr: Ipv4Addr,
 
     // pars
     gate: Option<GateRef>,
 
     // state
-    reserved: HashMap<Ipv4Addr, [u8; 8]>,
+    reserved: FxHashMap<Ipv4Addr, [u8; 8]>,
 
     // config
     config: DHCPServerConfig,
@@ -43,7 +43,7 @@ struct TransactionState {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DHCPServerConfig {
-    static_ow: HashMap<[u8; 8], Ipv4Addr>,
+    static_ow: FxHashMap<[u8; 8], Ipv4Addr>,
 
     subnet_mask: Ipv4Addr,
     subnet_range_start: Ipv4Addr,
@@ -98,7 +98,7 @@ impl DHCPServerConfig {
 impl Default for DHCPServerConfig {
     fn default() -> Self {
         Self {
-            static_ow: HashMap::new(),
+            static_ow: FxHashMap::with_hasher(FxBuildHasher::default()),
 
             subnet_mask: Ipv4Addr::UNSPECIFIED,
             subnet_range_start: Ipv4Addr::UNSPECIFIED,
@@ -119,10 +119,10 @@ impl DHCPServer {
         } else {
             Ipv4Addr::UNSPECIFIED
         };
-        let mut reserved = HashMap::new();
+        let mut reserved = FxHashMap::with_hasher(FxBuildHasher::default());
         reserved.insert(addr, [0; 8]);
         DHCPServer {
-            transactions: HashMap::new(),
+            transactions: FxHashMap::with_hasher(FxBuildHasher::default()),
             addr,
 
             reserved,

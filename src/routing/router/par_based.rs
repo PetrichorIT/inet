@@ -1,20 +1,19 @@
-use std::{collections::HashMap, net::IpAddr};
-
-use des::prelude::{par_for, send};
-
 use crate::ip::{Ipv4Packet, Ipv6Packet, KIND_IPV4, KIND_IPV6};
+use des::prelude::{par_for, send};
+use fxhash::{FxBuildHasher, FxHashMap};
+use std::net::IpAddr;
 
 use super::{super::RoutingPort, Router, RoutingInformation};
 pub struct ParBasedRoutingDeamon {
     info: RoutingInformation,
-    fwd: HashMap<IpAddr, RoutingPort>,
+    fwd: FxHashMap<IpAddr, RoutingPort>,
 }
 
 impl ParBasedRoutingDeamon {
     pub fn new() -> Self {
         Self {
             info: RoutingInformation::emtpy(),
-            fwd: HashMap::new(),
+            fwd: FxHashMap::with_hasher(FxBuildHasher::default()),
         }
     }
 }

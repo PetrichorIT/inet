@@ -20,6 +20,7 @@ path = "dns-tcp-bin/main.rs"
 [dependencies]
 async-trait = "*"
 bytestream = "0.4"
+fxhash = "0.2.1"
 # des = {git = "https://github.com/PetrichorIT/des", branch = "master", features = ["full"]}
 des = {path = "../des/des", features = ["full"]}
 log = {version = "*", features = ["max_level_trace"]}
