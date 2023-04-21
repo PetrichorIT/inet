@@ -131,7 +131,7 @@ fn udp_select() {
     // .interal_max_log_level(log::LevelFilter::Info)
     // .set_logger();
 
-    let app = NetworkRuntime::new(
+    let app = NetworkApplication::new(
         NdlApplication::new("tests/triangle.ndl", registry![A, B, C, Main])
             .map_err(|e| println!("{e}"))
             .unwrap(),

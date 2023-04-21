@@ -283,7 +283,7 @@ fn dns_basic() {
     //     .try_set_logger()
     //     .unwrap();
 
-    let mut rt = NetworkRuntime::new(
+    let mut rt = NetworkApplication::new(
         NdlApplication::new(
             "tests/dns-basic/main.ndl",
             registry![Main, Switch, DNSServer0, DNSServer1, DNSServer2, Client, Router],

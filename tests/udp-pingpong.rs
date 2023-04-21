@@ -140,7 +140,7 @@ fn udp_pingpong() {
     // .interal_max_log_level(log::LevelFilter::Trace)
     // .set_logger();
 
-    let app = NetworkRuntime::new(
+    let app = NetworkApplication::new(
         NdlApplication::new("tests/pingpong.ndl", registry![Ping, Pong, Main])
             .map_err(|e| println!("{e}"))
             .unwrap(),

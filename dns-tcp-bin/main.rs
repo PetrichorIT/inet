@@ -336,8 +336,17 @@ fn main() {
     )
     .map_err(|e| println!("{e}"))
     .unwrap();
-    let mut app = NetworkRuntime::new(app);
+    let mut app = NetworkApplication::new(app);
     app.include_par_file("dns-tcp-bin/main.par");
     let rt = Runtime::new_with(app, RuntimeOptions::seeded(123));
-    let (_, _, _) = rt.run().unwrap();
+    let (app, _, _) = rt.run().unwrap();
+
+    println!(
+        "{:?}",
+        app.globals()
+            .topology
+            .lock()
+            .unwrap()
+            .all_links_bidiretional()
+    );
 }

@@ -169,7 +169,7 @@ fn main() {
         .try_set_logger()
         .unwrap();
     let _ = Runtime::new_with(
-        NetworkRuntime::new(
+        NetworkApplication::new(
             NdlApplication::new("dhcp_bin/main.ndl", registry![Node, Main, Switch])
                 .map_err(|e| println!("{e}"))
                 .unwrap(),

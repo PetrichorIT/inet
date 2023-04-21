@@ -79,13 +79,13 @@ fn udp_empty_socket_bind() {
     inet::init();
     // ScopedLogger::new().finish().unwrap();
 
-    let mut app = NetworkRuntime::new(());
+    let mut app = NetworkApplication::new(());
 
     let module = SocketBind::build_named(ObjectPath::from("root"), &mut app);
-    app.create_module(module);
+    app.register_module(module);
 
     let rt = Runtime::new_with(app, RuntimeOptions::seeded(123));
-    let RuntimeResult::Finished { .. } = rt.run() else {
+    let RuntimeResult::EmptySimulation { .. } = rt.run() else {
         panic!("Unexpected runtime result")
     };
 }
@@ -179,7 +179,7 @@ impl AsyncModule for UdpSingleEchoSender {
 fn udp_echo_single_client() {
     inet::init();
 
-    let mut app = NetworkRuntime::new(());
+    let mut app = NetworkApplication::new(());
 
     let server = UdpEcho4200::build_named(ObjectPath::from("server"), &mut app);
     let client = UdpSingleEchoSender::build_named(ObjectPath::from("client"), &mut app);
@@ -204,8 +204,8 @@ fn udp_echo_single_client() {
     co.set_channel(cschan);
     so.set_channel(scchan);
 
-    app.create_module(server);
-    app.create_module(client);
+    app.register_module(server);
+    app.register_module(client);
 
     let rt = Runtime::new_with(app, RuntimeOptions::seeded(123));
     let RuntimeResult::Finished { time, .. } = rt.run() else {
@@ -275,7 +275,7 @@ fn udp_echo_clustered_echo() {
     inet::init();
     // Logger::new().set_logger();
 
-    let mut app = NetworkRuntime::new(());
+    let mut app = NetworkApplication::new(());
 
     let server = UdpEcho4200::build_named(ObjectPath::from("server"), &mut app);
     let client = UdpSingleClusteredSender::build_named(ObjectPath::from("client"), &mut app);
@@ -300,8 +300,8 @@ fn udp_echo_clustered_echo() {
     co.set_channel(cschan);
     so.set_channel(scchan);
 
-    app.create_module(server);
-    app.create_module(client);
+    app.register_module(server);
+    app.register_module(client);
 
     let rt = Runtime::new_with(app, RuntimeOptions::seeded(123));
     let RuntimeResult::Finished { time, .. } = rt.run() else {
@@ -403,7 +403,7 @@ impl AsyncModule for UdpConcurrentClients {
 fn udp_echo_concurrent_clients() {
     inet::init();
 
-    let mut app = NetworkRuntime::new(());
+    let mut app = NetworkApplication::new(());
 
     let server = UdpEcho4200::build_named(ObjectPath::from("server"), &mut app);
     let client = UdpConcurrentClients::build_named(ObjectPath::from("client"), &mut app);
@@ -428,8 +428,8 @@ fn udp_echo_concurrent_clients() {
     co.set_channel(cschan);
     so.set_channel(scchan);
 
-    app.create_module(server);
-    app.create_module(client);
+    app.register_module(server);
+    app.register_module(client);
 
     let rt = Runtime::new_with(app, RuntimeOptions::seeded(123));
     let RuntimeResult::Finished { time, .. } = rt.run() else {

@@ -115,7 +115,7 @@ fn main() {
         .interal_max_log_level(log::LevelFilter::Warn)
         .try_set_logger()
         .unwrap();
-    let rt = NetworkRuntime::new(
+    let rt = NetworkApplication::new(
         NdlApplication::new("routing_bin/main.ndl", registry![Main, Router, Client])
             .map_err(|e| println!("{e}"))
             .unwrap(),

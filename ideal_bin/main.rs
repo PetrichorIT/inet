@@ -22,7 +22,7 @@ empty_module!(Main);
 fn main() {
     inet::init();
 
-    let app = NetworkRuntime::new(
+    let app = NetworkApplication::new(
         NdlApplication::new(
             "ideal_bin/main.ndl",
             registry![Client, Server, Switch, Router, Network, Main],

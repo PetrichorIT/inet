@@ -21,7 +21,7 @@ fn main() {
         .interal_max_log_level(log::LevelFilter::Warn)
         .set_logger();
 
-    let mut app: NetworkRuntime<NdlApplication> = NetworkRuntime::new(
+    let mut app: NetworkApplication<NdlApplication> = NetworkApplication::new(
         NdlApplication::new(
             "inet-bin/main.ndl",
             registry![TypeA, TypeB, TypeC, LANRouter, WANRouter, EdgeNode, Main],

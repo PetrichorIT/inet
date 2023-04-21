@@ -136,7 +136,7 @@ fn tcp_lan_v4() {
     let app = NdlApplication::new("tests/tcp-lan/main.ndl", registry![Node, Switch, Main])
         .map_err(|e| println!("{e}"))
         .unwrap();
-    let mut app = NetworkRuntime::new(app);
+    let mut app = NetworkApplication::new(app);
     app.include_par_file("tests/tcp-lan/v4.par");
     let rt = Runtime::new_with(app, RuntimeOptions::seeded(123));
     let _ = rt.run();

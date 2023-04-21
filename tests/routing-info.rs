@@ -85,11 +85,14 @@ fn routing_info() {
     //     .interal_max_log_level(log::LevelFilter::Info)
     //     .set_logger();
 
-    let app = NetworkRuntime::new(
+    let app = NetworkApplication::new(
         NdlApplication::new("tests/triangle.ndl", registry![A, B, C, Main])
             .map_err(|e| println!("{e}"))
             .unwrap(),
     );
     let rt = Runtime::new_with(app, RuntimeOptions::seeded(123).max_time(100.0.into()));
-    let _ = rt.run().unwrap();
+    match rt.run() {
+        RuntimeResult::EmptySimulation { .. } => {}
+        _ => panic!("unexpected runtime result"),
+    }
 }

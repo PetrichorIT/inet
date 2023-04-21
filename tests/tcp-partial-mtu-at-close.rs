@@ -212,7 +212,7 @@ fn tcp_partial_mtu_at_default_close() {
     //     .finish()
     //     .unwrap();
 
-    let app = NetworkRuntime::new(
+    let app = NetworkApplication::new(
         NdlApplication::new("tests/tcp.ndl", registry![Link, TcpServer, TcpClient, Main])
             .map_err(|e| println!("{e}"))
             .unwrap(),
@@ -238,7 +238,7 @@ fn tcp_partial_mtu_at_simultaneous_close() {
     //     .finish()
     //     .unwrap();
 
-    let app = NetworkRuntime::new(
+    let app = NetworkApplication::new(
         NdlApplication::new("tests/tcp.ndl", registry![Link, TcpServer, TcpClient, Main])
             .map_err(|e| println!("{e}"))
             .unwrap(),

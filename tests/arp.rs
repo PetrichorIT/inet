@@ -87,7 +87,7 @@ fn v4() {
     inet::init();
     // Logger::new().set_logger();
 
-    let mut app = NetworkRuntime::new(
+    let mut app = NetworkApplication::new(
         NdlApplication::new("tests/arp/main.ndl", registry![Node, Switch, Main])
             .map_err(|e| println!("{e}"))
             .unwrap(),
@@ -104,7 +104,7 @@ fn v6() {
     inet::init();
     // Logger::new().set_logger();
 
-    let mut app = NetworkRuntime::new(
+    let mut app = NetworkApplication::new(
         NdlApplication::new("tests/arp/main.ndl", registry![Node, Switch, Main])
             .map_err(|e| println!("{e}"))
             .unwrap(),

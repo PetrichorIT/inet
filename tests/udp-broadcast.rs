@@ -139,7 +139,7 @@ fn udp_broadcast() {
     )
     .map_err(|e| println!("{e}"))
     .unwrap();
-    let mut app = NetworkRuntime::new(app);
+    let mut app = NetworkApplication::new(app);
     app.include_par_file("tests/udp-broadcast/main.par");
     let rt = Runtime::new_with(app, RuntimeOptions::seeded(123));
     let _ = rt.run();

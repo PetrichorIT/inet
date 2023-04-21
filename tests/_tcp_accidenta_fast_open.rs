@@ -200,7 +200,7 @@
 
 //     Logger::new().set_logger();
 
-//     let app = NetworkRuntime::new(
+//     let app = NetworkApplication::new(
 //         NdlApplication::new("tests/tcp.ndl", registry![Link, TcpServer, TcpClient, Main])
 //             .map_err(|e| println!("{e}"))
 //             .unwrap(),

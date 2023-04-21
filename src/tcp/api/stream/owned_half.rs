@@ -15,7 +15,7 @@ use std::task::*;
 /// Owned read half of a [TcpStream], created by [into_split](super::TcpStream::into_split).
 ///
 /// Reading from an [OwnedReadHalf] is usually done using the convenience methods
-/// found on the [AsyncReadExt](tokio::io::AsyncReadExt) trait.
+/// found on the [AsyncReadExt](des::tokio::io::AsyncReadExt) trait.
 #[derive(Debug)]
 pub struct OwnedReadHalf {
     pub(super) inner: Arc<TcpStreamInner>,
@@ -24,7 +24,7 @@ pub struct OwnedReadHalf {
 /// Owned read half of a [TcpStream], created by [into_split](super::TcpStream::into_split).
 ///
 /// Reading from an [OwnedReadHalf] is usually done using the convenience methods
-/// found on the [AsyncReadExt](tokio::io::AsyncReadExt) trait.
+/// found on the [AsyncReadExt](des::tokio::io::AsyncReadExt) trait.
 #[derive(Debug)]
 pub struct OwnedWriteHalf {
     pub(super) inner: Arc<TcpStreamInner>,

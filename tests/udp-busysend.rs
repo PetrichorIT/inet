@@ -129,7 +129,7 @@ fn udp_busysend() {
     let app = NdlApplication::new("tests/pingpong.ndl", registry![Ping, Pong, Main])
         .map_err(|e| println!("{e}"))
         .unwrap();
-    let app = NetworkRuntime::new(app);
+    let app = NetworkApplication::new(app);
     let rt = Runtime::new_with(app, RuntimeOptions::seeded(123));
     let _ = rt.run();
 }
