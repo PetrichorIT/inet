@@ -76,13 +76,14 @@ impl Display for SocketIfaceBinding {
 }
 
 impl IOContext {
-    const POSIX_ALLOWED_COMBI: [(SocketDomain, SocketType); 6] = [
+    const POSIX_ALLOWED_COMBI: [(SocketDomain, SocketType); 7] = [
         (SocketDomain::AF_INET, SocketType::SOCK_DGRAM),
         (SocketDomain::AF_INET6, SocketType::SOCK_DGRAM),
         (SocketDomain::AF_INET, SocketType::SOCK_STREAM),
         (SocketDomain::AF_INET6, SocketType::SOCK_STREAM),
         (SocketDomain::AF_INET, SocketType::SOCK_RAW),
         (SocketDomain::AF_INET6, SocketType::SOCK_RAW),
+        (SocketDomain::AF_UNIX, SocketType::SOCK_DGRAM),
     ];
 
     pub(super) fn fd_generate(&mut self) -> Fd {

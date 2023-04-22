@@ -3,7 +3,7 @@ use crate::{
     interface::{IfId, Interface, LinkLayerResult, KIND_LINK_UPDATE},
     ip::{IpPacket, IpPacketRef, Ipv4Packet, Ipv6Packet, KIND_IPV4, KIND_IPV6},
     routing::{Ipv4RoutingTable, Ipv6RoutingTable},
-    IOPlugin,
+    uds, IOPlugin,
 };
 use des::{
     net::plugin::PluginError,
@@ -39,6 +39,8 @@ pub struct IOContext {
     pub(super) tcp_manager: FxHashMap<Fd, TcpController>,
     pub(super) tcp_listeners: FxHashMap<Fd, TcpListenerHandle>,
 
+    pub(super) uds_dgrams: FxHashMap<Fd, uds::UnixDatagramHandle>,
+
     pub(super) fd: Fd,
     pub(super) port: u16,
 }
@@ -57,6 +59,8 @@ impl IOContext {
             udp_manager: FxHashMap::with_hasher(FxBuildHasher::default()),
             tcp_manager: FxHashMap::with_hasher(FxBuildHasher::default()),
             tcp_listeners: FxHashMap::with_hasher(FxBuildHasher::default()),
+
+            uds_dgrams: FxHashMap::with_hasher(FxBuildHasher::default()),
 
             fd: 100,
             port: 1024,

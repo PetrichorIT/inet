@@ -14,6 +14,7 @@ pub mod interface;
 pub mod ip;
 pub mod routing;
 pub mod socket;
+pub mod uds;
 pub mod utils;
 
 mod udp;
