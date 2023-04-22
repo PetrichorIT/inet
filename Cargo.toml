@@ -25,6 +25,7 @@ fxhash = "0.2.1"
 des = {path = "../des/des", features = ["full"]}
 log = {version = "*", features = ["max_level_trace"]}
 bytes = "1.4.0"
+rand = "0.8.5"
 
 [dev-dependencies]
 serial_test = "1.0.0"

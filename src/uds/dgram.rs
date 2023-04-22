@@ -14,6 +14,16 @@ use crate::{
     IOContext,
 };
 
+/// An I/O object representing a Unix datagram socket.
+///
+/// A socket can be either named (associated with a filesystem path) or unnamed.
+///
+/// **Note** that in contrast to [tokio::net::UnixDatagram](des::tokio::net::UnixDatagram)
+/// named sockets of this implementaion do free the associated file, so are not persistent.
+///
+/// ## Examples
+///
+/// Associating a
 pub struct UnixDatagram {
     fd: Fd,
     rx: Mutex<Receiver<(Vec<u8>, SocketAddr)>>,
@@ -21,8 +31,8 @@ pub struct UnixDatagram {
 
 #[derive(Debug)]
 pub(crate) struct UnixDatagramHandle {
-    addr: SocketAddr,
-    peer: Option<Fd>,
+    pub(crate) addr: SocketAddr,
+    pub(crate) peer: Option<Fd>,
     tx: Sender<(Vec<u8>, SocketAddr)>,
 }
 
@@ -34,6 +44,11 @@ impl PartialEq for UnixDatagramHandle {
 impl Eq for UnixDatagramHandle {}
 
 impl UnixDatagram {
+    /// Returns the local bind addr of the socket.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the socket is invalid.
     pub fn local_addr(&self) -> Result<SocketAddr> {
         IOContext::with_current(|ctx| {
             ctx.uds_dgrams
@@ -43,13 +58,18 @@ impl UnixDatagram {
         })
     }
 
+    /// Returns the peer addr of the socket, set through [`UnixDatagram::connect`].
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the socket is invalid or has no peer addr.
     pub fn peer_addr(&self) -> Result<SocketAddr> {
         IOContext::with_current(|ctx| {
             ctx.uds_dgrams
                 .get(&self.fd)
                 .map(|h| {
                     h.peer
-                        .map(|fd| ctx.uds_dgrams.get(&fd).map(|f| f.addr.clone()))
+                        .map(|fd| dbg!(ctx.uds_dgrams.get(&fd)).map(|f| f.addr.clone()))
                         .flatten()
                         .ok_or(Error::new(ErrorKind::Other, "no peer"))
                 })
@@ -57,6 +77,15 @@ impl UnixDatagram {
         })?
     }
 
+    /// Creates a new named socket bound to a given filename.
+    ///
+    /// **Note** that bindings to a filename are exculsive, so no other
+    /// socket can bind to the same filename. Additionally the file is
+    /// completely locked.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the file objecct is exclusivly controlled by another socket.
     pub fn bind<P>(path: P) -> Result<UnixDatagram>
     where
         P: AsRef<Path>,
@@ -64,10 +93,17 @@ impl UnixDatagram {
         IOContext::with_current(|ctx| ctx.uds_dgram_bind(path.as_ref()))
     }
 
+    /// Creates a new unnamed socket.
     pub fn unbound() -> Result<UnixDatagram> {
         IOContext::with_current(|ctx| ctx.uds_dgram_unbound())
     }
 
+    /// Creates a pair of unnamed socket, connected to each other
+    /// to be used with [`UnixDatagram::send`] / [`UnixDatagram::recv`.]
+    ///
+    /// # Errors
+    ///
+    /// May fail because of internal inconsistency.
     pub fn pair() -> Result<(UnixDatagram, UnixDatagram)> {
         let a = Self::unbound()?;
         let b = Self::unbound()?;
@@ -78,6 +114,15 @@ impl UnixDatagram {
         Ok((a, b))
     }
 
+    /// Connects a socket to a peer.
+    ///
+    /// This allow for the usage of `send` / `recv``.
+    /// Note that connecting a socket to a peer socket does not mean the peer
+    /// socket connects exclusivly to the inital one.
+    ///
+    /// # Errors
+    ///
+    /// May fail if no named socket is found under the given path.
     pub fn connect<P>(&self, path: P) -> Result<()>
     where
         P: AsRef<Path>,
@@ -89,6 +134,12 @@ impl UnixDatagram {
         IOContext::with_current(|ctx| ctx.uds_dgram_connect(self.fd, addr))
     }
 
+    /// Sends a datagram to the peer.
+    ///
+    /// # Errors
+    ///
+    /// May fail if either the peer is dead, or
+    /// no peer was connected.
     pub async fn send(&self, buf: &[u8]) -> Result<usize> {
         let addr = self.local_addr()?;
         let sender = IOContext::with_current(|ctx: &mut IOContext| {
@@ -100,6 +151,11 @@ impl UnixDatagram {
         }
     }
 
+    /// Sends a datagram to the another socket.
+    ///
+    /// # Errors
+    ///
+    /// May fail if no socket was found under the given address.
     pub async fn send_to<P>(&self, buf: &[u8], target: P) -> Result<usize>
     where
         P: AsRef<Path>,
@@ -114,17 +170,26 @@ impl UnixDatagram {
         }
     }
 
+    /// Recevies a datagram from the peer.
+    ///
+    /// # Errors
+    ///
+    /// May fail if either the peer is dead, or
+    /// no peer was connected.
     pub async fn recv(&self, buf: &mut [u8]) -> Result<usize> {
-        let peer = self.peer_addr()?;
-
-        let (n, from) = self.recv_from(buf).await?;
-        if from == peer {
-            Ok(n)
-        } else {
-            Err(Error::new(ErrorKind::Other, "expected peer packet"))
+        let peered =
+            IOContext::with_current(|ctx| ctx.uds_dgrams.get(&self.fd).map(|v| v.peer.is_some()))
+                .unwrap_or(false);
+        if !peered {
+            return Err(Error::new(ErrorKind::Other, "no peer"));
         }
+
+        let (n, _from) = self.recv_from(buf).await?;
+        // may check _from later
+        Ok(n)
     }
 
+    /// Sends a datagram from any other socket.
     pub async fn recv_from(&self, buf: &mut [u8]) -> Result<(usize, SocketAddr)> {
         let (bytes, src) = match self.rx.lock().await.recv().await {
             Some(dgram) => dgram,
@@ -134,6 +199,12 @@ impl UnixDatagram {
         let n = buf.len().min(bytes.len());
         buf[..n].copy_from_slice(&bytes[..n]);
         Ok((n, src))
+    }
+}
+
+impl Drop for UnixDatagram {
+    fn drop(&mut self) {
+        IOContext::try_with_current(|ctx| ctx.uds_dgram_drop(self.fd));
     }
 }
 
@@ -236,5 +307,9 @@ impl IOContext {
         };
 
         Ok(peer.tx.clone())
+    }
+
+    fn uds_dgram_drop(&mut self, fd: Fd) {
+        self.uds_dgrams.remove(&fd);
     }
 }

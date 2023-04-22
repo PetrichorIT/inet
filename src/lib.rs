@@ -10,6 +10,7 @@ pub mod arp;
 pub mod debug;
 pub mod dhcp;
 pub mod dns;
+pub mod fs;
 pub mod interface;
 pub mod ip;
 pub mod routing;
