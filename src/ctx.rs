@@ -40,6 +40,7 @@ pub struct IOContext {
     pub(super) tcp_listeners: FxHashMap<Fd, TcpListenerHandle>,
 
     pub(super) uds_dgrams: FxHashMap<Fd, uds::UnixDatagramHandle>,
+    pub(super) uds_listeners: FxHashMap<Fd, uds::UnixListenerHandle>,
 
     pub(super) fd: Fd,
     pub(super) port: u16,
@@ -61,6 +62,7 @@ impl IOContext {
             tcp_listeners: FxHashMap::with_hasher(FxBuildHasher::default()),
 
             uds_dgrams: FxHashMap::with_hasher(FxBuildHasher::default()),
+            uds_listeners: FxHashMap::with_hasher(FxBuildHasher::default()),
 
             fd: 100,
             port: 1024,

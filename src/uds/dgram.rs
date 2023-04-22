@@ -311,5 +311,6 @@ impl IOContext {
 
     fn uds_dgram_drop(&mut self, fd: Fd) {
         self.uds_dgrams.remove(&fd);
+        let _ = self.close_socket(fd);
     }
 }

@@ -249,9 +249,9 @@ impl AsyncModule for NamedTempdir {
 #[serial]
 fn uds_named_tempdir() {
     inet::init();
-    Logger::new()
-        // .interal_max_log_level(log::LevelFilter::Trace)
-        .set_logger();
+    // Logger::new()
+    // .interal_max_log_level(log::LevelFilter::Trace)
+    // .set_logger();
 
     type Main = NamedTempdir;
 

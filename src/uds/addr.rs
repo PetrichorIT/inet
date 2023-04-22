@@ -32,7 +32,7 @@ impl Debug for SocketAddr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self.sockaddr {
             SocketAddrInner::Unnamed => write!(f, "(unamed)"),
-            SocketAddrInner::Path(ref path) => write!(f, "{:?}", path),
+            SocketAddrInner::Path(ref path) => write!(f, "{:?} (pathname)", path),
             SocketAddrInner::Abstract(ref buf) => write!(f, "{}", String::from_utf8_lossy(buf)),
         }
     }
