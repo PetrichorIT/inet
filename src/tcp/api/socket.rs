@@ -194,8 +194,8 @@ impl TcpSocket {
 
         loop {
             // Initiate connect by sending a message (better repeat)
-            let interest = TcpInterest::TcpEstablished(this.inner.fd);
-            interest.await?;
+            let interest = IOContext::with_current(|ctx| ctx.tcp_await_established(this.inner.fd))?;
+            interest.await.expect("Did not expect recv error")?;
 
             if IOContext::with_current(|ctx| ctx.tcp_connected(this.inner.fd))? {
                 return Ok(this);

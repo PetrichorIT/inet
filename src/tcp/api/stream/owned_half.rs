@@ -201,7 +201,7 @@ impl AsyncRead for OwnedReadHalf {
                     Poll::Ready(Ok(()))
                 }
                 Err(e) if e.kind() == ErrorKind::WouldBlock => {
-                    let Some(handle) = ctx.tcp_manager.get_mut(&self.inner.fd) else {
+                    let Some(handle) = ctx.tcp.streams.get_mut(&self.inner.fd) else {
                         return Poll::Ready(Err(Error::new(
                             ErrorKind::InvalidInput,
                             "socket dropped - invalid fd",
@@ -224,7 +224,7 @@ impl AsyncWrite for OwnedWriteHalf {
         IOContext::with_current(|ctx| match ctx.tcp_try_write(self.inner.fd, buf) {
             Ok(n) => Poll::Ready(Ok(n)),
             Err(e) if e.kind() == ErrorKind::WouldBlock => {
-                let Some(handle) = ctx.tcp_manager.get_mut(&self.inner.fd) else {
+                let Some(handle) = ctx.tcp.streams.get_mut(&self.inner.fd) else {
                     return Poll::Ready(Err(Error::new(
                         ErrorKind::InvalidInput,
                         "socket dropped - invalid fd",

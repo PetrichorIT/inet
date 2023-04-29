@@ -14,6 +14,7 @@ use crate::{
 use des::tokio::{
     io::{AsyncRead, AsyncWrite, Interest, ReadBuf, Ready},
     stream,
+    sync::oneshot,
 };
 use std::{
     io::{Error, ErrorKind, Result},
@@ -58,8 +59,17 @@ impl TcpStream {
 
             loop {
                 // Initiate connect by sending a message (better repeat)
-                let interest = TcpInterest::TcpEstablished(this.inner.fd);
-                match interest.await {
+
+                let estab =
+                    match IOContext::with_current(|ctx| ctx.tcp_await_established(this.inner.fd)) {
+                        Ok(estab) => estab,
+                        Err(e) => {
+                            last_err = Some(e);
+                            break;
+                        }
+                    };
+
+                match estab.await.expect("Did not expect recv error") {
                     Ok(_) => {}
                     Err(e) => {
                         last_err = Some(e);
@@ -174,7 +184,7 @@ impl AsyncRead for TcpStream {
                     Poll::Ready(Ok(()))
                 }
                 Err(e) if e.kind() == ErrorKind::WouldBlock => {
-                    let Some(handle) = ctx.tcp_manager.get_mut(&self.inner.fd) else {
+                    let Some(handle) = ctx.tcp.streams.get_mut(&self.inner.fd) else {
                         return Poll::Ready(Err(Error::new(
                             ErrorKind::InvalidInput,
                             "socket dropped - invalid fd",
@@ -197,7 +207,7 @@ impl AsyncWrite for TcpStream {
         IOContext::with_current(|ctx| match ctx.tcp_try_write(self.inner.fd, buf) {
             Ok(n) => Poll::Ready(Ok(n)),
             Err(e) if e.kind() == ErrorKind::WouldBlock => {
-                let Some(handle) = ctx.tcp_manager.get_mut(&self.inner.fd) else {
+                let Some(handle) = ctx.tcp.streams.get_mut(&self.inner.fd) else {
                     return Poll::Ready(Err(Error::new(
                         ErrorKind::InvalidInput,
                         "socket dropped - invalid fd",
@@ -305,49 +315,32 @@ impl IOContext {
         let mut ctrl = TcpController::new(fd, self.get_socket_addr(fd)?, config);
         self.process_state_closed(&mut ctrl, TcpEvent::SysOpen(peer));
 
-        self.tcp_manager.insert(fd, ctrl);
+        self.tcp.streams.insert(fd, ctrl);
 
         Ok(TcpStream {
             inner: Arc::new(TcpStreamInner { fd }),
         })
     }
 
-    // pub(super) fn tcp_create_socket(
-    //     &mut self,
-    //     peer: SocketAddr,
-    //     config: Option<TcpSocketConfig>,
-    // ) -> Result<TcpStream> {
-    //     let domain = if peer.is_ipv4() {
-    //         SocketDomain::AF_INET
-    //     } else {
-    //         SocketDomain::AF_INET6
-    //     };
-    //     let unspecified = if peer.is_ipv4() {
-    //         SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0))
-    //     } else {
-    //         SocketAddr::V6(SocketAddrV6::new(Ipv6Addr::UNSPECIFIED, 0, 0, 0))
-    //     };
+    pub fn tcp_await_established(&mut self, fd: Fd) -> Result<oneshot::Receiver<Result<()>>> {
+        let Some(tcp) = self.tcp.streams.get_mut(&fd) else {
+            return Err(Error::new(ErrorKind::InvalidInput, "invalid fd - socket dropped"))
+        };
 
-    //     let fd = self.bsd_create_socket(domain, SocketType::SOCK_STREAM, 0)?;
-    //     self.bsd_bind_socket(fd, unspecified)?;
-    //     self.bsd_bind_peer(fd, peer);
+        if tcp.syn_resend_counter >= 3 {
+            return Err(Error::new(
+                ErrorKind::NotFound,
+                "host not found - syn exceeded",
+            ));
+        }
 
-    //     Ok(TcpStream {
-    //         inner: Arc::new(TcpStreamInner { fd }),
-    //     })
-    // }
-
-    // pub(super) fn tcp_connect_socket(&mut self, fd: Fd, peer: SocketAddr) -> Result<()> {
-    //     let mut ctrl = TcpController::new(fd, self.bsd_get_socket_addr(fd)?);
-    //     self.process_state_closed(&mut ctrl, TcpEvent::SysOpen(peer));
-
-    //     self.tcp_manager.insert(fd, ctrl);
-
-    //     Ok(())
-    // }
+        let (tx, rx) = oneshot::channel();
+        assert!(tcp.established.replace(tx).is_none());
+        Ok(rx)
+    }
 
     pub(super) fn tcp_connected(&mut self, fd: Fd) -> Result<bool> {
-        let Some(tcp) = self.tcp_manager.get(&fd) else {
+        let Some(tcp) = self.tcp.streams.get(&fd) else {
             return Err(Error::new(ErrorKind::InvalidInput, "invalid fd - socket dropped"))
         };
 

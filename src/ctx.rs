@@ -18,7 +18,7 @@ use std::{
 
 use super::{
     socket::*,
-    tcp::{api::TcpListenerHandle, TcpController, PROTO_TCP},
+    tcp::{Tcp, PROTO_TCP},
     udp::{UdpManager, PROTO_UDP},
 };
 
@@ -36,8 +36,7 @@ pub struct IOContext {
     pub(super) sockets: FxHashMap<Fd, Socket>,
 
     pub(super) udp_manager: FxHashMap<Fd, UdpManager>,
-    pub(super) tcp_manager: FxHashMap<Fd, TcpController>,
-    pub(super) tcp_listeners: FxHashMap<Fd, TcpListenerHandle>,
+    pub(super) tcp: Tcp,
 
     pub(super) uds_dgrams: FxHashMap<Fd, uds::UnixDatagramHandle>,
     pub(super) uds_listeners: FxHashMap<Fd, uds::UnixListenerHandle>,
@@ -58,8 +57,8 @@ impl IOContext {
             sockets: FxHashMap::with_hasher(FxBuildHasher::default()),
 
             udp_manager: FxHashMap::with_hasher(FxBuildHasher::default()),
-            tcp_manager: FxHashMap::with_hasher(FxBuildHasher::default()),
-            tcp_listeners: FxHashMap::with_hasher(FxBuildHasher::default()),
+
+            tcp: Tcp::new(),
 
             uds_dgrams: FxHashMap::with_hasher(FxBuildHasher::default()),
             uds_listeners: FxHashMap::with_hasher(FxBuildHasher::default()),

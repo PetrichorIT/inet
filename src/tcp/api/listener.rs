@@ -128,8 +128,8 @@ impl TcpListener {
                 }
             };
 
-            let interest = TcpInterest::TcpEstablished(con.inner.fd);
-            interest.await?;
+            let interest = IOContext::with_current(|ctx| ctx.tcp_await_established(con.inner.fd))?;
+            interest.await.expect("Did not expect recv error")?;
 
             return Ok((con, peer));
         }
@@ -168,7 +168,7 @@ impl TcpListener {
     /// For more information about this option, see [set_ttl](TcpListener::set_ttl).
     pub fn ttl(&self) -> Result<u32> {
         IOContext::with_current(|ctx| {
-            if let Some(handle) = ctx.tcp_listeners.get(&self.fd) {
+            if let Some(handle) = ctx.tcp.binds.get(&self.fd) {
                 Ok(handle.config.ttl)
             } else {
                 Err(Error::new(ErrorKind::Other, "Lost Tcp"))
@@ -181,7 +181,7 @@ impl TcpListener {
     /// This value sets the time-to-live field that is used in every packet sent from this socket.
     pub fn set_ttl(&self, ttl: u32) -> Result<()> {
         IOContext::with_current(|ctx| {
-            if let Some(handle) = ctx.tcp_listeners.get_mut(&self.fd) {
+            if let Some(handle) = ctx.tcp.binds.get_mut(&self.fd) {
                 handle.config.ttl = ttl;
                 Ok(())
             } else {
@@ -228,13 +228,13 @@ impl IOContext {
 
             config: config.unwrap_or(TcpSocketConfig::listener(addr)),
         };
-        self.tcp_listeners.insert(fd, buf);
+        self.tcp.binds.insert(fd, buf);
 
         return Ok(TcpListener { fd });
     }
 
     pub(super) fn tcp_accept(&mut self, fd: Fd) -> Result<(TcpStream, SocketAddr)> {
-        let Some(handle) = self.tcp_listeners.get_mut(&fd) else {
+        let Some(handle) = self.tcp.binds.get_mut(&fd) else {
             return Err(Error::new(
                 ErrorKind::Other,
                 "Simulation context has dropped TcpListener",
@@ -259,7 +259,7 @@ impl IOContext {
         self.process_state_closed(&mut ctrl, TcpEvent::SysListen());
         self.process_state_listen(&mut ctrl, TcpEvent::Syn(con.packet));
 
-        self.tcp_manager.insert(stream_socket, ctrl);
+        self.tcp.streams.insert(stream_socket, ctrl);
 
         log::trace!(
             target: "inet/tcp",
@@ -278,7 +278,7 @@ impl IOContext {
     }
 
     pub(super) fn tcp_drop_listener(&mut self, fd: Fd) {
-        self.tcp_listeners.remove(&fd);
+        self.tcp.binds.remove(&fd);
         self.close_socket(fd);
     }
 }

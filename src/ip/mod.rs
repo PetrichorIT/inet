@@ -65,6 +65,32 @@ impl IpPacketRef<'_, '_> {
             Self::V6(v6) => IpAddr::V6(v6.dest),
         }
     }
+
+    pub fn response(&self, content: Vec<u8>) -> IpPacket {
+        match self {
+            IpPacketRef::V4(pkt) => IpPacket::V4(Ipv4Packet {
+                dscp: pkt.dscp,
+                enc: pkt.enc,
+                identification: pkt.identification,
+                flags: pkt.flags,
+                fragment_offset: pkt.fragment_offset,
+                ttl: 20,
+                proto: pkt.proto,
+                src: pkt.dest,
+                dest: pkt.src,
+                content,
+            }),
+            IpPacketRef::V6(pkt) => IpPacket::V6(Ipv6Packet {
+                traffic_class: pkt.traffic_class,
+                flow_label: pkt.flow_label,
+                next_header: pkt.next_header,
+                hop_limit: 20,
+                src: pkt.dest,
+                dest: pkt.src,
+                content,
+            }),
+        }
+    }
 }
 
 impl IpPacket {

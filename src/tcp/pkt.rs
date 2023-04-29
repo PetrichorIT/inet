@@ -52,6 +52,22 @@ macro_rules! fimpl {
     };
 }
 
+impl TcpPacket {
+    pub fn rst_for_syn(syn: &TcpPacket) -> TcpPacket {
+        TcpPacket {
+            src_port: syn.dest_port,
+            dest_port: syn.src_port,
+            seq_no: 0,
+            ack_no: syn.seq_no,
+            flags: TcpFlags::new().ack(true).rst(true),
+            window: 0,
+            urgent_ptr: 0,
+            options: Vec::new(),
+            content: Vec::new(),
+        }
+    }
+}
+
 impl TcpFlags {
     pub fn new() -> Self {
         Self::default()

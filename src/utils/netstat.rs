@@ -66,7 +66,7 @@ impl IOContext {
                     })
                 }
                 (AF_INET, SOCK_STREAM) | (AF_INET6, SOCK_STREAM) => {
-                    let Some(mng) = self.tcp_manager.get(fd) else { continue };
+                    let Some(mng) = self.tcp.streams.get(fd) else { continue };
                     active_connections.push(NetstatConnection {
                         proto,
                         recv_q: socket.recv_q,

@@ -127,14 +127,14 @@ impl AsyncWrite for UnixStream {
 
     fn poll_flush(
         self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
+        _cx: &mut Context<'_>,
     ) -> Poll<std::result::Result<(), std::io::Error>> {
         Poll::Ready(Ok(()))
     }
 
     fn poll_shutdown(
         self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
+        _cx: &mut Context<'_>,
     ) -> Poll<std::result::Result<(), std::io::Error>> {
         Poll::Ready(Ok(()))
     }

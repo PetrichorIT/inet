@@ -5,12 +5,10 @@ use des::tokio::sync::{
 use std::{
     io::{Error, ErrorKind, Result},
     path::Path,
-    sync::{self, Arc},
 };
 
 use super::{
     super::{SocketAddr, SocketAddrInner},
-    buf::Buffer,
     UnixStream,
 };
 use crate::socket::Fd;

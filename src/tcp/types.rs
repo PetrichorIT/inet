@@ -37,6 +37,7 @@ pub(super) enum TcpEvent {
     SysSend(),
     SysRecv(),
 
+    Rst((IpAddr, IpAddr, TcpPacket)),
     Syn((IpAddr, IpAddr, TcpPacket)),
     Ack((IpAddr, IpAddr, TcpPacket)),
     Fin((IpAddr, IpAddr, TcpPacket)),
