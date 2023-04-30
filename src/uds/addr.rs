@@ -12,7 +12,7 @@ pub struct SocketAddr {
 pub(super) enum SocketAddrInner {
     Unnamed,
     Path(PathBuf),
-    Abstract(Vec<u8>),
+    // Abstract(Vec<u8>),
 }
 
 impl SocketAddr {
@@ -33,7 +33,7 @@ impl Debug for SocketAddr {
         match self.sockaddr {
             SocketAddrInner::Unnamed => write!(f, "(unamed)"),
             SocketAddrInner::Path(ref path) => write!(f, "{:?} (pathname)", path),
-            SocketAddrInner::Abstract(ref buf) => write!(f, "{}", String::from_utf8_lossy(buf)),
+            // SocketAddrInner::Abstract(ref buf) => write!(f, "{}", String::from_utf8_lossy(buf)),
         }
     }
 }

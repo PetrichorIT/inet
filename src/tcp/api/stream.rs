@@ -1,4 +1,3 @@
-use super::TcpSocketConfig;
 use crate::{
     dns::{lookup_host, ToSocketAddrs},
     interface::IfId,
@@ -7,7 +6,7 @@ use crate::{
     tcp::{
         interest::{TcpInterest, TcpInterestGuard},
         types::{TcpEvent, TcpState, TcpSyscall},
-        TcpController,
+        TcpController, TcpSocketConfig,
     },
     IOContext,
 };
@@ -190,7 +189,7 @@ impl AsyncRead for TcpStream {
                             "socket dropped - invalid fd",
                         )));
                     };
-                    handle.receiver_read_interests.push(TcpInterestGuard {
+                    handle.rx_read_interests.push(TcpInterestGuard {
                         interest: TcpInterest::TcpRead(self.inner.fd),
                         waker: cx.waker().clone(),
                     });
@@ -213,7 +212,7 @@ impl AsyncWrite for TcpStream {
                         "socket dropped - invalid fd",
                     )));
                 };
-                handle.sender_write_interests.push(TcpInterestGuard {
+                handle.tx_write_interests.push(TcpInterestGuard {
                     interest: TcpInterest::TcpRead(self.inner.fd),
                     waker: cx.waker().clone(),
                 });
@@ -307,7 +306,7 @@ impl IOContext {
             let fd = self.create_socket(domain, SocketType::SOCK_STREAM, 0)?;
             let addr = self.bind_socket(fd, unspecified)?;
 
-            let config = config.unwrap_or(TcpSocketConfig::listener(addr));
+            let config = config.unwrap_or(self.tcp.config.listener(addr));
             (fd, config)
         };
 

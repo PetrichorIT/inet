@@ -21,13 +21,6 @@ pub enum TcpState {
     LastAck = 10,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct TcpSegment {
-    pub header: TcpPacket,
-    pub seq_no: u32,
-    pub len: u32,
-}
-
 #[derive(Debug)]
 #[non_exhaustive]
 pub(super) enum TcpEvent {

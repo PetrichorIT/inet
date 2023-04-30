@@ -1,7 +1,8 @@
-use super::{TcpListener, TcpSocketConfig, TcpStream, TcpStreamInner};
+use super::{TcpListener, TcpStream, TcpStreamInner};
 use crate::dns::lookup_host;
 use crate::socket::{Fd, SocketDomain, SocketType};
 use crate::tcp::interest::TcpInterest;
+use crate::tcp::TcpSocketConfig;
 use crate::IOContext;
 use std::cell::RefCell;
 use std::io::{Error, ErrorKind, Result};
@@ -19,33 +20,33 @@ pub struct TcpSocket {
 impl TcpSocket {
     /// Creates a new socket configured for IPv4.
     pub fn new_v4() -> Result<TcpSocket> {
-        Ok(TcpSocket {
-            config: RefCell::new(TcpSocketConfig::socket_v4()),
-            fd: IOContext::with_current(|ctx| {
-                ctx.create_socket(SocketDomain::AF_INET, SocketType::SOCK_STREAM, 0)
-            })?,
+        IOContext::with_current(|ctx| {
+            Ok(TcpSocket {
+                config: RefCell::new(ctx.tcp.config.socket_v4()),
+                fd: ctx.create_socket(SocketDomain::AF_INET, SocketType::SOCK_STREAM, 0)?,
+            })
         })
     }
 
     /// Creates a new socket configured for IPv6.
     pub fn new_v6() -> Result<TcpSocket> {
-        Ok(TcpSocket {
-            config: RefCell::new(TcpSocketConfig::socket_v6()),
-            fd: IOContext::with_current(|ctx| {
-                ctx.create_socket(SocketDomain::AF_INET6, SocketType::SOCK_STREAM, 0)
-            })?,
+        IOContext::with_current(|ctx| {
+            Ok(TcpSocket {
+                config: RefCell::new(ctx.tcp.config.socket_v6()),
+                fd: ctx.create_socket(SocketDomain::AF_INET6, SocketType::SOCK_STREAM, 0)?,
+            })
         })
     }
 
     /// Sets the inital sequence number.
     pub fn set_maximum_segement_size(&self, maximum_segment_size: u16) -> Result<()> {
-        self.config.borrow_mut().maximum_segment_size = maximum_segment_size;
+        self.config.borrow_mut().mss = maximum_segment_size;
         Ok(())
     }
 
     /// Gets the inital sequence number.
     pub fn maximum_segement_size(&self) -> Result<u16> {
-        Ok(self.config.borrow().maximum_segment_size)
+        Ok(self.config.borrow().mss)
     }
 
     /// Sets the inital sequence number.
@@ -94,7 +95,7 @@ impl TcpSocket {
     ///
     /// On most operating systems, this sets the SO_SNDBUF socket option.
     pub fn set_send_buffer_size(&self, size: u32) -> Result<()> {
-        self.config.borrow_mut().send_buffer_size = size;
+        self.config.borrow_mut().tx_buffer_size = size;
         Ok(())
     }
 
@@ -102,14 +103,14 @@ impl TcpSocket {
     ///
     /// On most operating systems, this is the value of the SO_SNDBUF socket option.
     pub fn send_buffer_size(&self) -> Result<u32> {
-        Ok(self.config.borrow().send_buffer_size)
+        Ok(self.config.borrow().tx_buffer_size)
     }
 
     /// Sets the size of the TCP receive buffer on this socket.
     ///
     /// On most operating systems, this sets the SO_RCVBUF socket option.
     pub fn set_recv_buffer_size(&self, size: u32) -> Result<()> {
-        self.config.borrow_mut().recv_buffer_size = size;
+        self.config.borrow_mut().rx_buffer_size = size;
         Ok(())
     }
 
@@ -117,7 +118,7 @@ impl TcpSocket {
     ///
     /// On most operating systems, this is the value of the SO_RCVBUF socket option.
     pub fn recv_buffer_size(&self) -> Result<u32> {
-        Ok(self.config.borrow().recv_buffer_size)
+        Ok(self.config.borrow().rx_buffer_size)
     }
 
     /// Sets the linger duration of this socket by setting the SO_LINGER option.

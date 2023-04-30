@@ -26,6 +26,8 @@ des = {path = "../des/des", features = ["full"]}
 log = {version = "*", features = ["max_level_trace"]}
 bytes = "1.4.0"
 rand = "0.8.5"
+plotters = "0.3.4"
+chrono = "0.4.24"
 
 [dev-dependencies]
 serial_test = "1.0.0"

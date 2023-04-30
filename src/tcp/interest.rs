@@ -102,14 +102,14 @@ impl Future for TcpInterest {
                     )));
                 };
 
-                if handle.receiver_buffer.len_continous() > 0 {
+                if handle.rx_buffer.len_continous() > 0 {
                     Poll::Ready(Ok(Ready::READABLE))
                 } else {
                     if handle.no_more_data_closed() {
                         return Poll::Ready(Err(Error::new(ErrorKind::Other, "socket closed")));
                     }
 
-                    handle.receiver_read_interests.push(TcpInterestGuard {
+                    handle.rx_read_interests.push(TcpInterestGuard {
                         interest: self.clone(),
                         waker: cx.waker().clone(),
                     });
@@ -125,10 +125,10 @@ impl Future for TcpInterest {
                     )));
                 };
 
-                if handle.sender_buffer.rem() > 0 {
+                if handle.tx_buffer.rem() > 0 {
                     Poll::Ready(Ok(Ready::WRITABLE))
                 } else {
-                    handle.sender_write_interests.push(TcpInterestGuard {
+                    handle.tx_write_interests.push(TcpInterestGuard {
                         interest: self.clone(),
                         waker: cx.waker().clone(),
                     });

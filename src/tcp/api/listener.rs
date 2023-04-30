@@ -8,13 +8,13 @@ use crate::ip::IpPacketRef;
 use crate::socket::*;
 use crate::tcp::interest::{TcpInterest, TcpInterestGuard};
 use crate::tcp::types::{TcpEvent, TcpSyscall};
-use crate::tcp::{TcpController, TcpPacket};
+use crate::tcp::{TcpController, TcpPacket, TcpSocketConfig};
 use crate::{
     dns::{lookup_host, ToSocketAddrs},
     IOContext,
 };
 
-use super::{TcpSocketConfig, TcpStream, TcpStreamInner};
+use super::{TcpStream, TcpStreamInner};
 
 /// A TCP socket server, listening for connections.
 ///
@@ -226,7 +226,7 @@ impl IOContext {
             incoming: VecDeque::new(),
             interests: Vec::new(),
 
-            config: config.unwrap_or(TcpSocketConfig::listener(addr)),
+            config: config.unwrap_or(self.tcp.config.listener(addr)),
         };
         self.tcp.binds.insert(fd, buf);
 

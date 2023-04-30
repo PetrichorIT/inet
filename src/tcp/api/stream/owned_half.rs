@@ -207,7 +207,7 @@ impl AsyncRead for OwnedReadHalf {
                             "socket dropped - invalid fd",
                         )));
                     };
-                    handle.receiver_read_interests.push(TcpInterestGuard {
+                    handle.rx_read_interests.push(TcpInterestGuard {
                         interest: TcpInterest::TcpRead(self.inner.fd),
                         waker: cx.waker().clone(),
                     });
@@ -230,7 +230,7 @@ impl AsyncWrite for OwnedWriteHalf {
                         "socket dropped - invalid fd",
                     )));
                 };
-                handle.sender_write_interests.push(TcpInterestGuard {
+                handle.tx_write_interests.push(TcpInterestGuard {
                     interest: TcpInterest::TcpRead(self.inner.fd),
                     waker: cx.waker().clone(),
                 });

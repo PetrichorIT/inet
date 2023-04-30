@@ -1,5 +1,7 @@
 use core::slice;
 
+use des::stats::{ActivityTimeline, OutVec, SlottedActivityTimeline};
+
 ///
 /// A Tcp slice_buffer
 ///
@@ -11,7 +13,6 @@ pub struct TcpBuffer {
     bytes: Box<[u8]>,
     read_head: u32,
     write_head: u32,
-
     slices: TcpBufferSlices,
 }
 
