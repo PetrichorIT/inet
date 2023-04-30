@@ -175,6 +175,10 @@ impl Interface {
 
     pub fn send_buffered(&mut self, msg: Message) -> io::Result<()> {
         if self.is_busy() {
+            // if self.buffer.len() >= 16 {
+            //     return Err(Error::new(ErrorKind::Other, "interface busy, buffer fullö"));
+            // }
+
             self.buffer.push_back(msg);
             Ok(())
         } else {

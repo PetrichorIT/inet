@@ -3,13 +3,8 @@
 import matplotlib.pyplot as plt
 
 for str in [
-    "results/connector_traffic.out",
-    "results/client_congestion_window_65.out",
-    # "results/client_ssthresh_65.out",
-    "results/client_congestion_window_66.out",
-    # "results/client_ssthresh_66.out",
-    # "results/client_congestion_window_67.out",
-    # "results/client_ssthresh_67.out",
+    "results/connector_drop.out",
+    "results/connector_drops_per_sec.out"
     ]:
     with open(str) as f:
         raw_data = f.read()

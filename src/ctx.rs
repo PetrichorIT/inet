@@ -64,7 +64,7 @@ impl IOContext {
             uds_listeners: FxHashMap::with_hasher(FxBuildHasher::default()),
 
             fd: 100,
-            port: 1024,
+            port: 2048,
         }
     }
 

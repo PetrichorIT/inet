@@ -1,10 +1,4 @@
-use std::{
-    io::{stderr, stdout},
-    sync::{atomic::AtomicUsize, Arc},
-};
-
 use des::{
-    logger::{LogFormat, LogScopeConfigurationPolicy},
     net::plugin::add_plugin,
     prelude::*,
     registry,
@@ -12,7 +6,6 @@ use des::{
         io::{AsyncReadExt, AsyncWriteExt},
         spawn,
         task::JoinHandle,
-        time::sleep,
     },
 };
 use inet::{
@@ -22,62 +15,45 @@ use inet::{
 };
 
 struct Connector {
-    freq: f64,  // the number of bytes in the last second
-    t: SimTime, // time of the last calc
+    freq: f64,   // the number of bytes in the last second
+    freq_g: f64, // the gradient,
+    t: SimTime,  // time of the last calc
 
-    drops: Arc<AtomicUsize>,
     debug: OutVec,
     debug_p: OutVec,
+    debug_g: OutVec,
 }
-#[async_trait::async_trait]
-impl AsyncModule for Connector {
+impl Module for Connector {
     fn new() -> Self {
         Self {
             freq: 0.0,
+            freq_g: 0.0,
             t: SimTime::ZERO,
-            drops: Arc::new(AtomicUsize::new(0)),
             debug_p: OutVec::new("drop".to_string(), Some(module_path())),
             debug: OutVec::new("traffic".to_string(), Some(module_path())),
+            debug_g: OutVec::new("traffic_g".to_string(), Some(module_path())),
         }
     }
 
-    async fn at_sim_start(&mut self, _: usize) {
-        let drops = self.drops.clone();
-        spawn(async move {
-            let mut recorder = OutVec::new("drops_per_sec".to_string(), Some(module_path()));
-            for _i in 0..300 {
-                sleep(Duration::from_secs(1)).await;
-                let v = drops.swap(0, std::sync::atomic::Ordering::SeqCst);
-                recorder.collect(v as f64);
-            }
-            recorder.finish();
-        });
-    }
-
-    async fn handle_message(&mut self, msg: Message) {
+    fn handle_message(&mut self, msg: Message) {
         let dur = (SimTime::now() - self.t).as_secs_f64();
         if dur > 1.0 {
             self.freq = msg.header().length as f64;
             self.t = SimTime::now();
             self.debug.collect(self.freq);
         } else {
-            let rem = (1.0 - dur) * self.freq;
+            let rem = (1.0 - dur) * self.freq + dur * self.freq_g * 0.01;
             let n_freq = rem + msg.header().length as f64;
+            self.freq_g = n_freq - self.freq;
             self.freq = n_freq;
             self.t = SimTime::now();
 
             self.debug.collect(self.freq);
+            self.debug_g.collect(self.freq_g);
         }
 
-        let prob = (self.freq / 400_000.0).min(1.0) * msg.header().length as f64 / 2000.0;
-        let prob = prob.powi(5).min(1.0);
+        let prob = (self.freq / 100_000.0).min(1.0) * msg.header().length as f64 / 2000.0;
         self.debug_p.collect(prob);
-        let distr = rand::distributions::Bernoulli::new(prob).unwrap();
-        if sample(distr) {
-            log::error!("### droping packet {}", msg.str());
-            self.drops.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-            return;
-        }
 
         match msg.header().last_gate.as_ref().map(|g| g.pos()) {
             Some(0) => send(msg, ("out", 0)),
@@ -86,8 +62,9 @@ impl AsyncModule for Connector {
         }
     }
 
-    async fn at_sim_end(&mut self) {
+    fn at_sim_end(&mut self) {
         self.debug.finish();
+        self.debug_g.finish();
         self.debug_p.finish();
     }
 }
@@ -115,12 +92,12 @@ impl AsyncModule for Client {
         cfg.debug = true;
         cfg.cong_ctrl = true;
         set_tcp_cfg(cfg).unwrap();
-        for k in 0..2 {
+        for k in 0..1 {
             self.handles.push(spawn(async move {
                 let mut sock = TcpStream::connect("69.0.0.69:1000").await.unwrap();
                 log::info!("[{k}] opening stream");
                 let mut acc = 0;
-                for i in 0..1000 {
+                for i in 0..1 {
                     let n = (random::<usize>() % 2000) + 1000;
                     let x = ((i ^ n) & 0xff) as u8;
                     acc += n;
@@ -195,17 +172,10 @@ impl Module for Main {
     }
 }
 
-struct Policy;
-impl LogScopeConfigurationPolicy for Policy {
-    fn configure(&self, _scope: &str) -> (Box<dyn des::logger::LogOutput>, LogFormat) {
-        (Box::new((stdout(), stderr())), LogFormat::NoColor)
-    }
-}
-
 fn main() {
     inet::init();
 
-    Logger::new().policy(Policy).set_logger();
+    Logger::new().set_logger();
 
     let mut app = NetworkApplication::new(
         NdlApplication::new(

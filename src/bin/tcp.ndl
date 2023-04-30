@@ -1,7 +1,8 @@
 link Link {
     bitrate: 10000000,
     jitter: 0.0,
-    latency: 0.03,
+    latency: 0.05,
+    queuesize: 4096
 }
 
 module Client {

@@ -170,8 +170,8 @@ impl Default for TcpConfig {
             rst_on_syn: true,
             nack: false,
 
-            rx_buffer_size: 0b1 << 14,
-            tx_buffer_size: 0b1 << 14,
+            rx_buffer_size: 0b1 << 15,
+            tx_buffer_size: 0b1 << 15,
             listener_backlog: 32,
 
             mss: 1024,
