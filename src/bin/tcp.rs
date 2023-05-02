@@ -205,7 +205,7 @@ impl LogScopeConfigurationPolicy for Policy {
 fn main() {
     inet::init();
 
-    Logger::new().policy(Policy).set_logger();
+//    Logger::new().policy(Policy).set_logger();
 
     let mut app = NetworkApplication::new(
         NdlApplication::new(

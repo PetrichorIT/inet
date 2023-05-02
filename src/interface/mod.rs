@@ -257,12 +257,17 @@ impl IOContext {
             return PassThrough(msg)
         };
 
+        // Capture all packets that can be addressed to a interface, event not targeted
+        let ifid = *ifid;
+        if let Err(e) = self.pcap.borrow_mut().capture(&msg, ifid, iface) {
+            log::error!(target: "inet/pcap", "failed to capture: {e}")
+        };
+
         // Check that packet is addressed correctly.
         if iface.device.addr != dest && !dest.is_broadcast() {
             return PassThrough(msg);
         }
 
-        let ifid = *ifid;
         if msg.header().kind == KIND_ARP {
             let Some(arp) = msg.try_content::<ArpPacket>() else {
                 log::error!(target: "inet/arp", "found message with kind 0x0806 (arp), but did not contain ARP packet");

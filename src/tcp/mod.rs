@@ -48,7 +48,7 @@ pub use debug::*;
 
 use super::IOContext;
 
-pub(super) const PROTO_TCP: u8 = 0x06;
+pub const PROTO_TCP: u8 = 0x06;
 
 pub(crate) struct Tcp {
     pub config: TcpConfig,
@@ -507,6 +507,7 @@ impl IOContext {
                 ctrl.state = TcpState::SynSent;
                 // syscall reply
             }
+            TcpEvent::SysClose() => {}
             _ => unimplemented!(),
         }
     }
@@ -624,14 +625,23 @@ impl IOContext {
                 ctrl.syn_resend_counter += 1;
                 if ctrl.syn_resend_counter >= 3 {
                     // Do Somthing
-                    ctrl.established.take().map(|v| v.send(Ok(())));
+                    ctrl.established.take().map(|v| {
+                        v.send(Err(Error::new(
+                            ErrorKind::ConnectionRefused,
+                            "host unreachable",
+                        )));
+                    });
+                    ctrl.state = TcpState::Closed;
                     return;
                 }
 
                 let pkt = ctrl.create_packet(TcpPacketId::Syn, ctrl.tx_next_send_seq_no - 1, 0);
-
-                log::trace!(target: "inet/tcp", "tcp::synsent '0x{:x} {:?}({:?}) Re-Sending SYN {{ seq_no: {} }}", ctrl.fd,ctrl.local_addr.port(),
-                ctrl.peer_addr.port(),pkt.seq_no,);
+                log::trace!(target: "inet/tcp", "tcp::synsent '0x{:x} {:?}({:?}) Re-Sending SYN {{ seq_no: {} }}",
+                    ctrl.fd,
+                    ctrl.local_addr.port(),
+                    ctrl.peer_addr.port(),
+                    pkt.seq_no
+                );
                 self.tcp_send_packet(ctrl, ctrl.ip_packet_for(pkt));
                 ctrl.set_timer(ctrl.timeout);
             }
@@ -702,7 +712,6 @@ impl IOContext {
 
                 self.handle_data(ctrl, src, dest, pkt)
             }
-
             TcpEvent::Timeout() => {
                 let mut pkt = ctrl.create_packet(
                     TcpPacketId::Syn,
@@ -710,6 +719,19 @@ impl IOContext {
                     ctrl.rx_last_recv_seq_no + 1,
                 );
                 pkt.window = ctrl.recv_window();
+
+                ctrl.syn_resend_counter += 1;
+                if ctrl.syn_resend_counter >= 3 {
+                    // Do Somthing
+                    ctrl.established.take().map(|v| {
+                        v.send(Err(Error::new(
+                            ErrorKind::ConnectionRefused,
+                            "host unreachable",
+                        )));
+                    });
+                    ctrl.state = TcpState::Closed;
+                    return;
+                }
 
                 log::trace!(
                     target: "inet/tcp",
@@ -725,7 +747,7 @@ impl IOContext {
 
                 ctrl.set_timer(ctrl.timeout);
             }
-            _ => unimplemented!(),
+            _ => unimplemented!("{:?}", event),
         }
     }
 

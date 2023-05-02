@@ -143,8 +143,9 @@ impl IntoBytestream for TcpPacket {
 
         let hlen = 20 + options_buf.len();
         let hlen = hlen / 4;
+        let hlen = (0b1111_0000 & (hlen << 4)) as u8;
 
-        (hlen as u8).write_to(bytestream, BigEndian)?;
+        hlen.write_to(bytestream, BigEndian)?;
         self.flags.into_bytestream(bytestream)?;
         self.window.write_to(bytestream, BigEndian)?;
 
@@ -235,7 +236,7 @@ impl FromBytestream for TcpPacket {
         let seq_no = u32::read_from(bytestream, BigEndian)?;
         let ack_no = u32::read_from(bytestream, BigEndian)?;
 
-        let hlen = u8::read_from(bytestream, BigEndian)?;
+        let hlen = u8::read_from(bytestream, BigEndian)? >> 4 & 0b1111;
         let flags = TcpFlags::from_bytestream(bytestream)?;
         let window = u16::read_from(bytestream, BigEndian)?;
 

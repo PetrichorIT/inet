@@ -83,6 +83,7 @@ impl IOContext {
                         .content(response)
                         .build();
 
+                    self.pcap.borrow_mut().capture(&msg, ifid, iface).unwrap();
                     iface.send_buffered(msg).unwrap();
                 }
 
@@ -226,6 +227,7 @@ impl IOContext {
                     .content(pkt)
                     .build();
 
+                self.pcap.borrow_mut().capture(&msg, ifid, iface).unwrap();
                 if buffered {
                     iface.send_buffered(msg)
                 } else {
@@ -243,6 +245,7 @@ impl IOContext {
                     .content(pkt)
                     .build();
 
+                self.pcap.borrow_mut().capture(&msg, ifid, iface).unwrap();
                 if buffered {
                     iface.send_buffered(msg)
                 } else {
@@ -364,6 +367,10 @@ impl IOContext {
             .content(request)
             .build();
 
+        self.pcap
+            .borrow_mut()
+            .capture(&msg, iface.name.id, iface)
+            .unwrap();
         iface.send_buffered(msg)
     }
 }

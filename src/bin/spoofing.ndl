@@ -1,0 +1,27 @@
+module Spoofer {
+    gates {
+        in @input,
+        out @output,
+    }
+}
+
+module Reader {
+    gates {
+        in @input,
+        out @output,
+    }
+}
+
+module Main {
+    submodules {
+        spoofer: Spoofer,
+        reader: Reader
+    }
+
+    connections {
+        spoofer/out --> reader/in,
+        reader/out --> spoofer/in,
+    }
+}
+
+entry Main;

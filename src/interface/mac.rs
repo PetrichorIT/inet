@@ -18,7 +18,9 @@ impl MacAddress {
     }
 
     pub fn gen() -> MacAddress {
-        MacAddress(random())
+        let mut mac = random::<[u8; 6]>();
+        mac[0] = 0b1111_1110 & mac[0];
+        MacAddress(mac)
     }
 
     pub fn is_unspecified(&self) -> bool {

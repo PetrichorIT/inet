@@ -2,6 +2,7 @@ use crate::{
     arp::ArpTable,
     interface::{IfId, Interface, LinkLayerResult, KIND_LINK_UPDATE},
     ip::{IpPacket, IpPacketRef, Ipv4Packet, Ipv6Packet, KIND_IPV4, KIND_IPV6},
+    pcap::Pcap,
     routing::{Ipv4RoutingTable, Ipv6RoutingTable},
     uds, IOPlugin,
 };
@@ -33,11 +34,11 @@ pub struct IOContext {
     pub(super) ipv4router: Ipv4RoutingTable,
     pub(super) ipv6router: Ipv6RoutingTable,
 
-    pub(super) sockets: FxHashMap<Fd, Socket>,
+    pub(super) pcap: RefCell<Pcap>,
 
+    pub(super) sockets: FxHashMap<Fd, Socket>,
     pub(super) udp_manager: FxHashMap<Fd, UdpManager>,
     pub(super) tcp: Tcp,
-
     pub(super) uds_dgrams: FxHashMap<Fd, uds::UnixDatagramHandle>,
     pub(super) uds_listeners: FxHashMap<Fd, uds::UnixListenerHandle>,
 
@@ -54,17 +55,16 @@ impl IOContext {
             ipv4router: Ipv4RoutingTable::new(),
             ipv6router: Ipv6RoutingTable::new(),
 
+            pcap: RefCell::new(Pcap::new()),
+
             sockets: FxHashMap::with_hasher(FxBuildHasher::default()),
-
             udp_manager: FxHashMap::with_hasher(FxBuildHasher::default()),
-
             tcp: Tcp::new(),
-
             uds_dgrams: FxHashMap::with_hasher(FxBuildHasher::default()),
             uds_listeners: FxHashMap::with_hasher(FxBuildHasher::default()),
 
             fd: 100,
-            port: 2048,
+            port: 1024,
         }
     }
 

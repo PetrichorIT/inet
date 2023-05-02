@@ -13,6 +13,7 @@ pub mod dns;
 pub mod fs;
 pub mod interface;
 pub mod ip;
+pub mod pcap;
 pub mod routing;
 pub mod socket;
 pub mod uds;
