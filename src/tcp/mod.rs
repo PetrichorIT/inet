@@ -970,7 +970,7 @@ impl IOContext {
                 ctrl.peer_addr.port(),);
 
                 // (0) Send own FIN
-                let pkt = ctrl.create_packet(TcpPacketId::Fin, ctrl.tx_next_send_seq_no + 1, 0);
+                let pkt = ctrl.create_packet(TcpPacketId::Fin, ctrl.tx_next_send_seq_no, 0);
                 self.tcp_send_packet(ctrl, ctrl.ip_packet_for(pkt));
 
                 // (2) Wait for ACK
@@ -1264,8 +1264,9 @@ impl IOContext {
             ctrl.tx_next_send_seq_no,
             ctrl.rx_last_recv_seq_no,
         );
-        ctrl.tx_next_send_seq_no += 1;
+
         self.tcp_send_packet(ctrl, ctrl.ip_packet_for(pkt));
+        ctrl.tx_next_send_seq_no += 1;
 
         // (1) Switch to FinWait1 expecting ACK of FIN
         ctrl.tx_state = TcpSenderState::Closing;
@@ -1490,7 +1491,7 @@ impl TcpController {
     }
 
     fn create_packet(&self, id: TcpPacketId, seq_no: u32, expected: u32) -> TcpPacket {
-        let ack = expected != 0 || id == TcpPacketId::Ack;
+        let ack = expected != 0 || id != TcpPacketId::Syn;
         let syn = id == TcpPacketId::Syn;
         let fin = id == TcpPacketId::Fin;
 
