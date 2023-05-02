@@ -197,9 +197,9 @@ impl AsyncModule for UnnamedPair {
 #[serial]
 fn uds_stream_unnamed_pair() {
     inet::init();
-    Logger::new()
-        // .interal_max_log_level(log::LevelFilter::Trace)
-        .set_logger();
+    // Logger::new()
+    // .interal_max_log_level(log::LevelFilter::Trace)
+    // .set_logger();
 
     type Main = UnnamedPair;
 
