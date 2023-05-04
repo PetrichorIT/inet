@@ -23,14 +23,14 @@ pub struct Ipv6Packet {
 
 impl IntoBytestream for Ipv6Packet {
     type Error = std::io::Error;
-    fn into_bytestream(&self, bytestream: &mut impl Write) -> Result<(), Self::Error> {
-        let byte0 = (6 << 4) | (self.traffic_class >> 4);
-        byte0.write_to(bytestream, BigEndian)?;
+    fn to_bytestream(&self, bytestream: &mut impl Write) -> Result<(), Self::Error> {
+        let header = (6 << 4) | (self.traffic_class >> 4);
+        header.write_to(bytestream, BigEndian)?;
 
         // [32..24 24..16 16..8 8..0]
         let bytes = self.flow_label.to_be_bytes();
-        let byte0 = ((self.traffic_class & 0b1111) << 4) | bytes[1] & 0b1111;
-        byte0.write_to(bytestream, BigEndian)?;
+        let byte_0 = ((self.traffic_class & 0b1111) << 4) | bytes[1] & 0b1111;
+        byte_0.write_to(bytestream, BigEndian)?;
         bytes[2].write_to(bytestream, BigEndian)?;
         bytes[3].write_to(bytestream, BigEndian)?;
 
@@ -72,7 +72,7 @@ impl FromBytestream for Ipv6Packet {
         };
 
         // println!("{:b} {:b} {:b} {:b}", byte0, byte1, byte2, byte3);
-        let traffic_class = 0u8 | ((byte0 & 0b1111) << 4) | ((byte1 >> 4) & 0b1111);
+        let traffic_class = ((byte0 & 0b1111) << 4) | ((byte1 >> 4) & 0b1111);
 
         let f2 = byte1 & 0b1111;
         let flow_label = u32::from_be_bytes([0, f2, byte2, byte3]);
@@ -83,11 +83,11 @@ impl FromBytestream for Ipv6Packet {
 
         let mut src = [0u8; 16];
         let mut dest = [0u8; 16];
-        for i in 0..16 {
-            src[i] = u8::read_from(bytestream, BigEndian)?;
+        for item in &mut src {
+            *item = u8::read_from(bytestream, BigEndian)?;
         }
-        for i in 0..16 {
-            dest[i] = u8::read_from(bytestream, BigEndian)?;
+        for item in &mut dest {
+            *item = u8::read_from(bytestream, BigEndian)?;
         }
 
         let src = Ipv6Addr::from(src);

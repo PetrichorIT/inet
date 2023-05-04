@@ -16,7 +16,7 @@ pub struct UDPPacket {
 
 impl IntoBytestream for UDPPacket {
     type Error = std::io::Error;
-    fn into_bytestream(&self, bytestream: &mut impl Write) -> Result<(), Self::Error> {
+    fn to_bytestream(&self, bytestream: &mut impl Write) -> Result<(), Self::Error> {
         self.src_port.write_to(bytestream, BigEndian)?;
         self.dest_port.write_to(bytestream, BigEndian)?;
         (8 + self.content.len() as u16).write_to(bytestream, BigEndian)?;

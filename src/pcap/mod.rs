@@ -121,21 +121,21 @@ impl Pcap {
                     ErrorKind::InvalidInput,
                     "Packet of kind {KIND_ARP} did not contain Arp Packet",
                 ))?;
-                pkt.into_bytestream(&mut buffer)?;
+                pkt.to_bytestream(&mut buffer)?;
             }
             KIND_IPV4 => {
                 let pkt = msg.try_content::<Ipv4Packet>().ok_or(Error::new(
                     ErrorKind::InvalidInput,
                     "Packet of kind {KIND_IPV4} did not contain Ipv4 Packet",
                 ))?;
-                pkt.into_bytestream(&mut buffer)?;
+                pkt.to_bytestream(&mut buffer)?;
             }
             KIND_IPV6 => {
                 let pkt = msg.try_content::<Ipv6Packet>().ok_or(Error::new(
                     ErrorKind::InvalidInput,
                     "Packet of kind {KIND_IPV6} did not contain Ipv6 Packet",
                 ))?;
-                pkt.into_bytestream(&mut buffer)?;
+                pkt.to_bytestream(&mut buffer)?;
             }
             _ => {
                 log::error!("unknown packet");

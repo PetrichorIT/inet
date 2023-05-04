@@ -32,7 +32,7 @@ pub struct Ipv4Flags {
 }
 
 impl Ipv4Flags {
-    fn as_u16(&self) -> u16 {
+    fn as_u16(self) -> u16 {
         let pat = (if self.df { 0b010u16 } else { 0u16 } | if self.mf { 0b100u16 } else { 0u16 });
         pat << 13u16
     }
@@ -40,7 +40,7 @@ impl Ipv4Flags {
 
 impl IntoBytestream for Ipv4Packet {
     type Error = std::io::Error;
-    fn into_bytestream(&self, bytestream: &mut impl Write) -> Result<(), Self::Error> {
+    fn to_bytestream(&self, bytestream: &mut impl Write) -> Result<(), Self::Error> {
         let byte0 = 0b0100_0101u8;
         byte0.write_to(bytestream, BigEndian)?;
 
@@ -149,7 +149,7 @@ impl MessageBody for Ipv4Packet {
 
 impl IntoBytestream for Ipv4Addr {
     type Error = std::io::Error;
-    fn into_bytestream(&self, bytestream: &mut impl Write) -> Result<(), Self::Error> {
+    fn to_bytestream(&self, bytestream: &mut impl Write) -> Result<(), Self::Error> {
         bytestream.write_all(&self.octets())
     }
 }

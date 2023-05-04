@@ -1,3 +1,5 @@
+#![allow(clippy::cast_possible_wrap)]
+
 use crate::{FromBytestream, IntoBytestream};
 use bytestream::{ByteOrder::BigEndian, StreamReader};
 use std::{
@@ -22,9 +24,10 @@ impl DNSString {
     /// # Panics
     ///
     /// If the provided string is not dns encodable (ASCII + max u8 chars per element)
+    #[must_use]
     pub fn new(string: impl AsRef<str>) -> Self {
         let string = string.as_ref();
-        let split = string.split(":").collect::<Vec<_>>();
+        let split = string.split(':').collect::<Vec<_>>();
         let string = match split.len() {
             1 | 2 => split[0],
             _ => panic!("Invalid network name for DNSString encoding"),
@@ -32,8 +35,8 @@ impl DNSString {
 
         let mut string = string.to_string().to_ascii_lowercase();
 
-        if !string.ends_with(".") {
-            string.push('.')
+        if !string.ends_with('.') {
+            string.push('.');
         }
 
         // Empty stirng
@@ -49,8 +52,7 @@ impl DNSString {
             string
                 .chars()
                 .all(|c| c.is_alphanumeric() || c == '.' || c == '-' || c == '@'),
-            "Failed to encoding DNSString: '{}' contains invalid characters",
-            string
+            "Failed to encoding DNSString: '{string}' contains invalid characters"
         );
 
         let mut labels = Vec::with_capacity(string.len() + string.len() / 4);
@@ -59,10 +61,8 @@ impl DNSString {
             let c = chars.next().unwrap();
             if c == '.' {
                 // current dot - first char of last label
-                let label_len = i - labels.last().map(|v| *v + 1).unwrap_or(0);
-                if label_len == 0 {
-                    panic!("Invalid empty label for DNSString encoding")
-                }
+                let label_len = i - labels.last().map_or(0, |v| *v + 1);
+                assert!(label_len != 0, "Invalid empty label for DNSString encoding");
                 labels.push(i);
             }
         }
@@ -70,22 +70,25 @@ impl DNSString {
         let this = Self { string, labels };
         for i in 0..this.labels() {
             let label = this.label(i);
-            assert!(!label.ends_with("-") && !label.starts_with("-"))
+            assert!(!label.ends_with('-') && !label.starts_with('-'));
         }
 
         this
     }
 
+    #[must_use]
     pub fn labels(&self) -> usize {
         self.labels.len()
     }
 
+    #[must_use]
     pub fn label(&self, i: usize) -> &str {
         let label_end = self.labels[i];
         let label_start = if i == 0 { 0 } else { self.labels[i - 1] + 1 };
         &self.string[label_start..label_end]
     }
 
+    #[must_use]
     pub fn suffix_match_len(lhs: &Self, rhs: &Self) -> usize {
         let mut l = lhs.labels() as isize - 1;
         let mut r = rhs.labels() as isize - 1;
@@ -101,11 +104,13 @@ impl DNSString {
         c
     }
 
+    #[must_use]
     pub fn suffix(&self, i: usize) -> &str {
         let label_start = if i == 0 { 0 } else { self.labels[i - 1] + 1 };
         &self.string[label_start..]
     }
 
+    #[must_use]
     pub fn into_inner(self) -> String {
         self.string
     }
@@ -126,13 +131,13 @@ impl Deref for DNSString {
 
 impl IntoBytestream for DNSString {
     type Error = std::io::Error;
-    fn into_bytestream(&self, bytestream: &mut impl Write) -> Result<(), Self::Error> {
+    fn to_bytestream(&self, bytestream: &mut impl Write) -> Result<(), Self::Error> {
         for i in 0..self.labels() {
             let label_str = self.label(i);
-            bytestream.write(&[label_str.len() as u8])?;
-            bytestream.write(label_str.as_bytes())?;
+            bytestream.write_all(&[label_str.len() as u8])?;
+            bytestream.write_all(label_str.as_bytes())?;
         }
-        bytestream.write(&[0])?;
+        bytestream.write_all(&[0])?;
         Ok(())
     }
 }
@@ -250,32 +255,32 @@ mod tests {
     #[test]
     fn dns_string_parsing() {
         let inp = DNSString::new("www.example.com");
-        let bytes = inp.into_buffer().unwrap();
+        let bytes = inp.to_buffer().unwrap();
         let out = DNSString::from_buffer(bytes).unwrap();
         assert_eq!(inp, out);
 
         let inp = DNSString::new("asg-erfurt.de");
-        let bytes = inp.into_buffer().unwrap();
+        let bytes = inp.to_buffer().unwrap();
         let out = DNSString::from_buffer(bytes).unwrap();
         assert_eq!(inp, out);
 
         let inp = DNSString::new("a.b.c.www.example.com:800");
-        let bytes = inp.into_buffer().unwrap();
+        let bytes = inp.to_buffer().unwrap();
         let out = DNSString::from_buffer(bytes).unwrap();
         assert_eq!(inp, out);
 
         let inp = DNSString::new("cdde.aaoa-adad.com.");
-        let bytes = inp.into_buffer().unwrap();
+        let bytes = inp.to_buffer().unwrap();
         let out = DNSString::from_buffer(bytes).unwrap();
         assert_eq!(inp, out);
 
         let inp = DNSString::new("www.out.out.out.com:80.");
-        let bytes = inp.into_buffer().unwrap();
+        let bytes = inp.to_buffer().unwrap();
         let out = DNSString::from_buffer(bytes).unwrap();
         assert_eq!(inp, out);
 
         let inp = DNSString::new("www.example.com");
-        let bytes = inp.into_buffer().unwrap();
+        let bytes = inp.to_buffer().unwrap();
         let out = DNSString::from_buffer(bytes).unwrap();
         assert_eq!(inp, out);
     }

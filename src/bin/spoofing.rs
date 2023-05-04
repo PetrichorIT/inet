@@ -53,7 +53,7 @@ impl AsyncModule for Spoofer {
                         options: Vec::new(),
                         content: Vec::new(),
                     }
-                    .into_buffer()
+                    .to_buffer()
                     .unwrap(),
                 });
                 send_ip(pkt).unwrap();

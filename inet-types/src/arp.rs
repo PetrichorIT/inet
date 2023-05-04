@@ -1,3 +1,5 @@
+#![allow(clippy::similar_names)]
+
 use super::iface::MacAddress;
 use super::{FromBytestream, IntoBytestream};
 use bytestream::ByteOrder::BigEndian;
@@ -22,28 +24,34 @@ pub struct ArpPacket {
 impl ArpPacket {
     // Read only
 
+    #[must_use]
     pub fn is_ipv4_ethernet(&self) -> bool {
         self.htype == 1 && self.ptype == 0x0800
     }
 
+    #[must_use]
     pub fn is_ipv6_ethernet(&self) -> bool {
         self.htype == 1 && self.ptype == 0x86DD
     }
 
+    #[must_use]
     pub fn src_haddr(&self) -> &[u8] {
         &self.raw[0..self.haddrlen as usize]
     }
 
+    #[must_use]
     pub fn src_paddr(&self) -> &[u8] {
         let s = self.haddrlen as usize;
         &self.raw[s..(s + self.paddrlen as usize)]
     }
 
+    #[must_use]
     pub fn dst_haddr(&self) -> &[u8] {
         let s = (self.haddrlen + self.paddrlen) as usize;
         &self.raw[s..(s + self.haddrlen as usize)]
     }
 
+    #[must_use]
     pub fn dst_paddr(&self) -> &[u8] {
         let s = (2 * self.haddrlen + self.paddrlen) as usize;
         &self.raw[s..(s + self.paddrlen as usize)]
@@ -51,6 +59,7 @@ impl ArpPacket {
 
     // Ethernet
 
+    #[must_use]
     pub fn src_mac_addr(&self) -> MacAddress {
         let bytes: [u8; 6] = self
             .src_haddr()
@@ -59,6 +68,7 @@ impl ArpPacket {
         MacAddress::from(bytes)
     }
 
+    #[must_use]
     pub fn dest_mac_addr(&self) -> MacAddress {
         let bytes: [u8; 6] = self
             .dst_haddr()
@@ -69,6 +79,7 @@ impl ArpPacket {
 
     // Ip
 
+    #[must_use]
     pub fn src_ip_addr(&self) -> IpAddr {
         if self.is_ipv4_ethernet() {
             self.src_ipv4_addr().into()
@@ -77,6 +88,7 @@ impl ArpPacket {
         }
     }
 
+    #[must_use]
     pub fn dest_ip_addr(&self) -> IpAddr {
         if self.is_ipv4_ethernet() {
             self.dest_ipv4_addr().into()
@@ -87,6 +99,7 @@ impl ArpPacket {
 
     // Ipv4
 
+    #[must_use]
     pub fn src_ipv4_addr(&self) -> Ipv4Addr {
         let bytes: [u8; 4] = self
             .src_paddr()
@@ -95,6 +108,7 @@ impl ArpPacket {
         Ipv4Addr::from(bytes)
     }
 
+    #[must_use]
     pub fn dest_ipv4_addr(&self) -> Ipv4Addr {
         let bytes: [u8; 4] = self
             .dst_paddr()
@@ -105,6 +119,7 @@ impl ArpPacket {
 
     // Ipv6
 
+    #[must_use]
     pub fn src_ipv6_addr(&self) -> Ipv6Addr {
         let bytes: [u8; 16] = self
             .src_paddr()
@@ -113,6 +128,7 @@ impl ArpPacket {
         Ipv6Addr::from(bytes)
     }
 
+    #[must_use]
     pub fn dest_ipv6_addr(&self) -> Ipv6Addr {
         let bytes: [u8; 16] = self
             .dst_paddr()
@@ -128,8 +144,9 @@ impl ArpPacket {
         &mut self.raw[s..(s + self.haddrlen as usize)]
     }
 
+    #[must_use]
     pub fn new_request(src_haddr: MacAddress, src_paddr: IpAddr, dst_paddr: IpAddr) -> Self {
-        use IpAddr::*;
+        use IpAddr::{V4, V6};
         match (src_paddr, dst_paddr) {
             (V4(src), V4(dst)) => Self::new_v4_request(src_haddr, src, dst),
             (V6(src), V6(dst)) => Self::new_v6_request(src_haddr, src, dst),
@@ -137,6 +154,7 @@ impl ArpPacket {
         }
     }
 
+    #[must_use]
     pub fn new_v4_request(src_haddr: MacAddress, src_paddr: Ipv4Addr, dst_paddr: Ipv4Addr) -> Self {
         let mut raw = Vec::with_capacity(20);
         raw.extend(src_haddr.as_slice());
@@ -153,6 +171,7 @@ impl ArpPacket {
         }
     }
 
+    #[must_use]
     pub fn new_v6_request(src_haddr: MacAddress, src_paddr: Ipv6Addr, dst_paddr: Ipv6Addr) -> Self {
         let mut raw = Vec::with_capacity(44);
         raw.extend(src_haddr.as_slice());
@@ -169,26 +188,25 @@ impl ArpPacket {
         }
     }
 
+    #[must_use]
     pub fn into_response(&self, dest_haddr: MacAddress) -> Self {
         let mut resp = self.clone();
         resp.operation = ARPOperation::Response;
         let buf = resp.dst_paddr_mut();
-        for i in 0..6 {
-            buf[i] = dest_haddr.as_slice()[i];
-        }
+        buf[..6].copy_from_slice(&dest_haddr.as_slice()[..6]);
         resp
     }
 }
 
 impl IntoBytestream for ArpPacket {
     type Error = std::io::Error;
-    fn into_bytestream(&self, bytestream: &mut impl Write) -> Result<(), Self::Error> {
+    fn to_bytestream(&self, bytestream: &mut impl Write) -> Result<(), Self::Error> {
         self.htype.write_to(bytestream, BigEndian)?;
         self.ptype.write_to(bytestream, BigEndian)?;
         self.haddrlen.write_to(bytestream, BigEndian)?;
         self.paddrlen.write_to(bytestream, BigEndian)?;
 
-        self.operation.into_bytestream(bytestream)?;
+        self.operation.to_bytestream(bytestream)?;
 
         bytestream.write_all(&self.raw)
     }
@@ -239,7 +257,7 @@ primitve_enum_repr! {
 
 impl IntoBytestream for ARPOperation {
     type Error = std::io::Error;
-    fn into_bytestream(&self, bytestream: &mut impl Write) -> Result<(), Self::Error> {
+    fn to_bytestream(&self, bytestream: &mut impl Write) -> Result<(), Self::Error> {
         self.to_raw().write_to(bytestream, BigEndian)
     }
 }
@@ -271,7 +289,7 @@ mod tests {
         assert_eq!(r.src_ipv4_addr(), Ipv4Addr::new(1, 2, 3, 4));
         assert_eq!(r.dest_ipv4_addr(), Ipv4Addr::new(255, 254, 253, 252));
 
-        let r = ArpPacket::from_buffer(r.into_buffer().unwrap()).unwrap();
+        let r = ArpPacket::from_buffer(r.to_buffer().unwrap()).unwrap();
         assert_eq!(r.htype, 1);
         assert_eq!(r.ptype, 0x0800);
         assert_eq!(r.src_mac_addr(), [1, 2, 3, 4, 5, 6].into());
@@ -295,7 +313,7 @@ mod tests {
         assert_eq!(r.src_ipv6_addr(), Ipv6Addr::new(1, 2, 3, 4, 5, 6, 7, 8));
         assert_eq!(r.dest_ipv6_addr(), Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 0));
 
-        let r = ArpPacket::from_buffer(r.into_buffer().unwrap()).unwrap();
+        let r = ArpPacket::from_buffer(r.to_buffer().unwrap()).unwrap();
         assert_eq!(r.htype, 1);
         assert_eq!(r.ptype, 0x86DD);
         assert_eq!(r.src_mac_addr(), [1, 2, 3, 4, 5, 6].into());

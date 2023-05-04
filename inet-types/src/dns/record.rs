@@ -18,8 +18,8 @@ pub struct DNSResourceRecord {
 
 impl IntoBytestream for DNSResourceRecord {
     type Error = std::io::Error;
-    fn into_bytestream(&self, bytestream: &mut impl Write) -> Result<(), Self::Error> {
-        self.name.into_bytestream(bytestream)?;
+    fn to_bytestream(&self, bytestream: &mut impl Write) -> Result<(), Self::Error> {
+        self.name.to_bytestream(bytestream)?;
 
         self.typ.to_raw().write_to(bytestream, BigEndian)?;
         self.class.to_raw().write_to(bytestream, BigEndian)?;
@@ -27,7 +27,7 @@ impl IntoBytestream for DNSResourceRecord {
 
         (self.rdata.len() as u16).write_to(bytestream, BigEndian)?;
         for byte in &self.rdata {
-            byte.write_to(bytestream, BigEndian)?
+            byte.write_to(bytestream, BigEndian)?;
         }
 
         Ok(())
@@ -45,7 +45,7 @@ impl FromBytestream for DNSResourceRecord {
         let len = u16::read_from(bytestream, BigEndian)? as usize;
         let mut rdata = Vec::with_capacity(len);
         for _ in 0..len {
-            rdata.push(u8::read_from(bytestream, BigEndian)?)
+            rdata.push(u8::read_from(bytestream, BigEndian)?);
         }
 
         Ok(DNSResourceRecord {
@@ -59,20 +59,17 @@ impl FromBytestream for DNSResourceRecord {
 }
 
 impl DNSResourceRecord {
+    #[must_use]
     pub fn as_addr(&self) -> IpAddr {
         match self.typ {
             DNSType::A => {
                 let mut bytes = [0u8; 4];
-                for i in 0..4 {
-                    bytes[i] = self.rdata[i]
-                }
+                bytes[..4].copy_from_slice(&self.rdata[..4]);
                 IpAddr::from(bytes)
             }
             DNSType::AAAA => {
                 let mut bytes = [0u8; 16];
-                for i in 0..16 {
-                    bytes[i] = self.rdata[i]
-                }
+                bytes[..16].copy_from_slice(&self.rdata[..16]);
                 IpAddr::from(bytes)
             }
             _ => unimplemented!(),
@@ -89,9 +86,8 @@ impl DNSResourceRecord {
             }
             DNSType::AAAA => {
                 let mut octets = [0u8; 16];
-                for i in 0..self.rdata.len() {
-                    octets[i] = self.rdata[i];
-                }
+                octets[..self.rdata.len()].copy_from_slice(&self.rdata);
+
                 format!("{}", Ipv6Addr::from(octets))
             }
             DNSType::NS | DNSType::CNAME | DNSType::PTR => {
@@ -199,7 +195,7 @@ impl Display for DNSType {
             DNSType::PTR => write!(f, "PTR"),
             // DNSType::A => write!(f, "A"),
             // DNSType::A => write!(f, "A"),
-            default => write!(f, "{:?}", default),
+            default => write!(f, "{default:?}"),
         }
     }
 }

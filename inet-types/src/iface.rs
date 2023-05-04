@@ -13,20 +13,24 @@ impl MacAddress {
     pub const NULL: MacAddress = MacAddress([0; 6]);
     pub const BROADCAST: MacAddress = MacAddress([0xff; 6]);
 
+    #[must_use]
     pub fn as_slice(&self) -> &[u8] {
         &self.0
     }
 
+    #[must_use]
     pub fn gen() -> MacAddress {
         let mut mac = random::<[u8; 6]>();
-        mac[0] = 0b1111_1110 & mac[0];
+        mac[0] &= 0b1111_1110;
         MacAddress(mac)
     }
 
+    #[must_use]
     pub fn is_unspecified(&self) -> bool {
         *self == MacAddress::NULL
     }
 
+    #[must_use]
     pub fn is_broadcast(&self) -> bool {
         *self == MacAddress::BROADCAST
     }
@@ -46,7 +50,7 @@ impl From<MacAddress> for [u8; 6] {
 
 impl IntoBytestream for MacAddress {
     type Error = std::io::Error;
-    fn into_bytestream(&self, bytestream: &mut impl Write) -> Result<(), Self::Error> {
+    fn to_bytestream(&self, bytestream: &mut impl Write) -> Result<(), Self::Error> {
         // BigEndian since as byte array
         bytestream.write_all(&self.0)
     }

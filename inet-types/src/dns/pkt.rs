@@ -1,10 +1,11 @@
 use crate::{FromBytestream, IntoBytestream};
-use bytestream::{ByteOrder::*, StreamReader, StreamWriter};
+use bytestream::{ByteOrder::BigEndian, StreamReader, StreamWriter};
 use std::io::{Cursor, Write};
 
 use super::{DNSClass, DNSResourceRecord, DNSString, DNSType};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct DNSMessage {
     pub transaction: u16,
     // # Headers
@@ -88,27 +89,27 @@ impl DNSMessage {
 
 impl IntoBytestream for DNSMessage {
     type Error = std::io::Error;
-    fn into_bytestream(&self, bytestream: &mut impl Write) -> Result<(), Self::Error> {
+    fn to_bytestream(&self, bytestream: &mut impl Write) -> Result<(), Self::Error> {
         self.transaction.write_to(bytestream, BigEndian)?;
 
         let mut b0 = self.opcode.to_raw() << 3;
         if self.qr {
-            b0 |= 0b1000_0000
+            b0 |= 0b1000_0000;
         }
         if self.aa {
-            b0 |= 0b0000_0100
+            b0 |= 0b0000_0100;
         }
         if self.tc {
-            b0 |= 0b0000_0010
+            b0 |= 0b0000_0010;
         }
         if self.rd {
-            b0 |= 0b0000_0001
+            b0 |= 0b0000_0001;
         }
         b0.write_to(bytestream, BigEndian)?;
 
-        let mut b1 = self.rcode.to_raw() as u8;
+        let mut b1 = self.rcode.to_raw();
         if self.ra {
-            b1 |= 0b1000_0000
+            b1 |= 0b1000_0000;
         }
         b1.write_to(bytestream, BigEndian)?;
 
@@ -118,16 +119,16 @@ impl IntoBytestream for DNSMessage {
         (self.additional.len() as u16).write_to(bytestream, BigEndian)?;
 
         for q in &self.questions {
-            q.into_bytestream(bytestream)?
+            q.to_bytestream(bytestream)?;
         }
         for a in &self.anwsers {
-            a.into_bytestream(bytestream)?
+            a.to_bytestream(bytestream)?;
         }
         for a in &self.auths {
-            a.into_bytestream(bytestream)?
+            a.to_bytestream(bytestream)?;
         }
         for a in &self.additional {
-            a.into_bytestream(bytestream)?
+            a.to_bytestream(bytestream)?;
         }
 
         Ok(())
@@ -148,16 +149,16 @@ impl FromBytestream for DNSMessage {
         let opcode = DNSOpCode::from_raw((b0 >> 3) & 0b1111).unwrap();
 
         let ra = (0b1000_0000 & b1) != 0;
-        let rcode = DNSResponseCode::from_raw((b1 & 0b1111) as u8).unwrap();
+        let rcode = DNSResponseCode::from_raw(b1 & 0b1111u8).unwrap();
 
-        let nquestions = u16::read_from(bytestream, BigEndian)?;
-        let nanwsers = u16::read_from(bytestream, BigEndian)?;
-        let nauth = u16::read_from(bytestream, BigEndian)?;
-        let nadditional = u16::read_from(bytestream, BigEndian)?;
+        let questions_len = u16::read_from(bytestream, BigEndian)?;
+        let anwsers_len = u16::read_from(bytestream, BigEndian)?;
+        let auth_len = u16::read_from(bytestream, BigEndian)?;
+        let additional_len = u16::read_from(bytestream, BigEndian)?;
 
         let mut questions = Vec::new();
 
-        for _ in 0..nquestions {
+        for _ in 0..questions_len {
             let v = DNSQuestion::from_bytestream(bytestream)?;
             questions.push(v);
         }
@@ -165,7 +166,7 @@ impl FromBytestream for DNSMessage {
         // println!("> done q");
 
         let mut anwsers = Vec::new();
-        for _ in 0..nanwsers {
+        for _ in 0..anwsers_len {
             let v = DNSResourceRecord::from_bytestream(bytestream)?;
             anwsers.push(v);
         }
@@ -173,13 +174,13 @@ impl FromBytestream for DNSMessage {
         // println!("> done a");
 
         let mut auths = Vec::new();
-        for _ in 0..nauth {
+        for _ in 0..auth_len {
             let v = DNSResourceRecord::from_bytestream(bytestream)?;
             auths.push(v);
         }
 
         let mut additional = Vec::new();
-        for _ in 0..nadditional {
+        for _ in 0..additional_len {
             let v = DNSResourceRecord::from_bytestream(bytestream)?;
             additional.push(v);
         }
@@ -255,8 +256,8 @@ pub struct DNSQuestion {
 
 impl IntoBytestream for DNSQuestion {
     type Error = std::io::Error;
-    fn into_bytestream(&self, bytestream: &mut impl Write) -> Result<(), Self::Error> {
-        self.qname.into_bytestream(bytestream)?;
+    fn to_bytestream(&self, bytestream: &mut impl Write) -> Result<(), Self::Error> {
+        self.qname.to_bytestream(bytestream)?;
         self.qtyp.to_raw().write_to(bytestream, BigEndian)?;
         self.qclass.to_raw().write_to(bytestream, BigEndian)?;
 

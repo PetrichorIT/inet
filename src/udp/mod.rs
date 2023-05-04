@@ -201,7 +201,7 @@ impl IOContext {
             checksum: 0,
             content: Vec::from(buf),
         };
-        let content = udp_packet.into_buffer()?;
+        let content = udp_packet.to_buffer()?;
 
         match (mng.local_addr.ip(), target.ip()) {
             (IpAddr::V4(local), IpAddr::V4(target)) => {

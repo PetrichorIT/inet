@@ -38,6 +38,7 @@ pub enum IpPacketRef<'a, 'b> {
 }
 
 impl IpPacketRef<'_, '_> {
+    #[must_use]
     pub fn tos(&self) -> u8 {
         match self {
             Self::V4(v4) => v4.proto,
@@ -45,6 +46,7 @@ impl IpPacketRef<'_, '_> {
         }
     }
 
+    #[must_use]
     pub fn content(&self) -> &Vec<u8> {
         match self {
             Self::V4(v4) => &v4.content,
@@ -52,6 +54,7 @@ impl IpPacketRef<'_, '_> {
         }
     }
 
+    #[must_use]
     pub fn src(&self) -> IpAddr {
         match self {
             Self::V4(v4) => IpAddr::V4(v4.src),
@@ -59,6 +62,7 @@ impl IpPacketRef<'_, '_> {
         }
     }
 
+    #[must_use]
     pub fn dest(&self) -> IpAddr {
         match self {
             Self::V4(v4) => IpAddr::V4(v4.dest),
@@ -66,6 +70,7 @@ impl IpPacketRef<'_, '_> {
         }
     }
 
+    #[must_use]
     pub fn response(&self, content: Vec<u8>) -> IpPacket {
         match self {
             IpPacketRef::V4(pkt) => IpPacket::V4(Ipv4Packet {
@@ -94,6 +99,7 @@ impl IpPacketRef<'_, '_> {
 }
 
 impl IpPacket {
+    #[must_use]
     pub fn version(&self) -> IpVersion {
         if self.is_v4() {
             IpVersion::V4
@@ -102,14 +108,17 @@ impl IpPacket {
         }
     }
 
+    #[must_use]
     pub fn is_v4(&self) -> bool {
         matches!(self, Self::V4(_))
     }
 
+    #[must_use]
     pub fn is_v6(&self) -> bool {
         matches!(self, Self::V6(_))
     }
 
+    #[must_use]
     pub fn src(&self) -> IpAddr {
         match self {
             Self::V4(pkt) => pkt.src.into(),
@@ -117,6 +126,7 @@ impl IpPacket {
         }
     }
 
+    #[must_use]
     pub fn dest(&self) -> IpAddr {
         match self {
             Self::V4(pkt) => pkt.dest.into(),
@@ -124,8 +134,9 @@ impl IpPacket {
         }
     }
 
+    #[must_use]
     pub fn new(src: IpAddr, dest: IpAddr, content: Vec<u8>) -> Self {
-        use IpAddr::*;
+        use IpAddr::{V4, V6};
         match (src, dest) {
             (V4(src), V4(dest)) => IpPacket::V4(Ipv4Packet {
                 dscp: 0,
@@ -156,6 +167,7 @@ impl IpPacket {
     }
 }
 
+#[must_use]
 pub fn ipv4_matches_subnet(ip: Ipv4Addr, subnet: Ipv4Addr, mask: Ipv4Addr) -> bool {
     let ip = ip.octets();
     let subnet = subnet.octets();
@@ -167,6 +179,7 @@ pub fn ipv4_matches_subnet(ip: Ipv4Addr, subnet: Ipv4Addr, mask: Ipv4Addr) -> bo
         && mask[3] & ip[3] == mask[3] & subnet[3]
 }
 
+#[must_use]
 pub fn ipv6_matches_subnet(ip: Ipv6Addr, subnet: Ipv6Addr, mask: Ipv6Addr) -> bool {
     let ip = ip.octets();
     let subnet = subnet.octets();

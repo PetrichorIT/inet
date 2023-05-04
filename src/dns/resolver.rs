@@ -148,7 +148,7 @@ impl sealed::ToSocketAddrsPriv for (&str, u16) {
         let socket = UdpSocket::bind("127.0.0.1:0").await?;
         let mut question = DNSMessage::question_a(0x01, self.0);
         question.rd = true;
-        let buf = question.into_buffer()?;
+        let buf = question.to_buffer()?;
 
         let localhost = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 53);
         let n = socket.send_to(&buf, localhost).await?;

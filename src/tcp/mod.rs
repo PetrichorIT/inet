@@ -292,7 +292,7 @@ impl IOContext {
         // (2) No active stream socket, maybe listen socket is possible
         if self.tcp.config.rst_on_syn {
             let rst = TcpPacket::rst_for_syn(&tcp_pkt);
-            let rst = ip_packet.response(rst.into_buffer().unwrap());
+            let rst = ip_packet.response(rst.to_buffer().unwrap());
             self.send_ip_packet(SocketIfaceBinding::Bound(ifid), rst, true);
             true
         } else {
@@ -1447,7 +1447,7 @@ impl TcpController {
     }
 
     fn ip_packet_for(&self, tcp: TcpPacket) -> IpPacket {
-        let content = tcp.into_buffer().unwrap();
+        let content = tcp.to_buffer().unwrap();
         match self.local_addr {
             SocketAddr::V4(local) => IpPacket::V4(Ipv4Packet {
                 dscp: 0,

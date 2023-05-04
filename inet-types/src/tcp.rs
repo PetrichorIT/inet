@@ -25,6 +25,7 @@ pub struct TcpPacket {
 
 /// Flags of a [`TcpPacket`].
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct TcpFlags {
     pub cwr: bool,
     pub ece: bool,
@@ -47,6 +48,7 @@ pub enum TcpOption {
 
 macro_rules! fimpl {
     ($i:ident) => {
+        #[must_use]
         pub fn $i(mut self, value: bool) -> Self {
             self.$i = value;
             self
@@ -55,6 +57,7 @@ macro_rules! fimpl {
 }
 
 impl TcpPacket {
+    #[must_use]
     pub fn rst_for_syn(syn: &TcpPacket) -> TcpPacket {
         TcpPacket {
             src_port: syn.dest_port,
@@ -71,6 +74,7 @@ impl TcpPacket {
 }
 
 impl TcpFlags {
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
@@ -87,29 +91,29 @@ impl TcpFlags {
 impl Display for TcpFlags {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if self.cwr {
-            write!(f, "CWR")?
+            write!(f, "CWR")?;
         }
         if self.ece {
-            write!(f, "ECE")?
+            write!(f, "ECE")?;
         }
         if self.urg {
-            write!(f, "URG")?
+            write!(f, "URG")?;
         }
         if self.ack {
-            write!(f, "ACK")?
+            write!(f, "ACK")?;
         }
 
         if self.psh {
-            write!(f, "PSH")?
+            write!(f, "PSH")?;
         }
         if self.rst {
-            write!(f, "RST")?
+            write!(f, "RST")?;
         }
         if self.syn {
-            write!(f, "SYN")?
+            write!(f, "SYN")?;
         }
         if self.fin {
-            write!(f, "FIN")?
+            write!(f, "FIN")?;
         }
 
         Ok(())
@@ -118,7 +122,7 @@ impl Display for TcpFlags {
 
 impl IntoBytestream for TcpPacket {
     type Error = std::io::Error;
-    fn into_bytestream(&self, bytestream: &mut impl std::io::Write) -> Result<(), Self::Error> {
+    fn to_bytestream(&self, bytestream: &mut impl std::io::Write) -> Result<(), Self::Error> {
         self.src_port.write_to(bytestream, BigEndian)?;
         self.dest_port.write_to(bytestream, BigEndian)?;
 
@@ -126,8 +130,8 @@ impl IntoBytestream for TcpPacket {
         self.ack_no.write_to(bytestream, BigEndian)?;
 
         let mut options_buf = Vec::new();
-        for option in self.options.iter() {
-            option.into_bytestream(&mut options_buf)?;
+        for option in &self.options {
+            option.to_bytestream(&mut options_buf)?;
         }
         if !options_buf.is_empty() {
             if *self.options.last().unwrap() != TcpOption::EndOfOptionsList() {
@@ -138,9 +142,10 @@ impl IntoBytestream for TcpPacket {
             }
             // Add padding
             let rem = 4 - (options_buf.len() % 4);
-            for _ in 0..rem {
-                options_buf.push(0);
-            }
+            options_buf.resize(options_buf.len() + rem, 0);
+            // for _ in 0..rem {
+            //     options_buf.push(0);
+            // }
         }
 
         let hlen = 20 + options_buf.len();
@@ -148,7 +153,7 @@ impl IntoBytestream for TcpPacket {
         let hlen = (0b1111_0000 & (hlen << 4)) as u8;
 
         hlen.write_to(bytestream, BigEndian)?;
-        self.flags.into_bytestream(bytestream)?;
+        self.flags.to_bytestream(bytestream)?;
         self.window.write_to(bytestream, BigEndian)?;
 
         0u16.write_to(bytestream, BigEndian)?;
@@ -164,32 +169,32 @@ impl IntoBytestream for TcpPacket {
 
 impl IntoBytestream for TcpFlags {
     type Error = std::io::Error;
-    fn into_bytestream(&self, bytestream: &mut impl std::io::Write) -> Result<(), Self::Error> {
+    fn to_bytestream(&self, bytestream: &mut impl std::io::Write) -> Result<(), Self::Error> {
         let mut byte = 0u8;
         if self.cwr {
-            byte |= 0b1000_0000
+            byte |= 0b1000_0000;
         }
         if self.ece {
-            byte |= 0b0100_0000
+            byte |= 0b0100_0000;
         }
         if self.urg {
-            byte |= 0b0010_0000
+            byte |= 0b0010_0000;
         }
         if self.ack {
-            byte |= 0b0001_0000
+            byte |= 0b0001_0000;
         }
 
         if self.psh {
-            byte |= 0b0000_1000
+            byte |= 0b0000_1000;
         }
         if self.rst {
-            byte |= 0b0000_0100
+            byte |= 0b0000_0100;
         }
         if self.syn {
-            byte |= 0b0000_0010
+            byte |= 0b0000_0010;
         }
         if self.fin {
-            byte |= 0b0000_0001
+            byte |= 0b0000_0001;
         }
 
         byte.write_to(bytestream, BigEndian)?;
@@ -200,7 +205,7 @@ impl IntoBytestream for TcpFlags {
 
 impl IntoBytestream for TcpOption {
     type Error = std::io::Error;
-    fn into_bytestream(&self, bytestream: &mut impl std::io::Write) -> Result<(), Self::Error> {
+    fn to_bytestream(&self, bytestream: &mut impl std::io::Write) -> Result<(), Self::Error> {
         match self {
             Self::MaximumSegmentSize(mss) => {
                 2u8.write_to(bytestream, BigEndian)?;
