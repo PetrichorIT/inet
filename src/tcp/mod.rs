@@ -50,12 +50,12 @@ use super::IOContext;
 
 pub(crate) struct Tcp {
     pub config: TcpConfig,
-    pub binds: FxHashMap<Fd, TcpListenerHandle>,
-    pub streams: FxHashMap<Fd, TcpController>,
+    pub binds: FxHashMap<Fd, ListenerHandle>,
+    pub streams: FxHashMap<Fd, TransmissionControlBlock>,
 }
 
 #[derive(Debug)]
-pub(crate) struct TcpController {
+pub(crate) struct TransmissionControlBlock {
     // # General
     pub(crate) state: TcpState,
     local_addr: SocketAddr,
@@ -109,6 +109,7 @@ pub(crate) struct TcpController {
     sender_send_bytes: usize,
     sender_ack_bytes: usize,
 
+    debug: bool,
     debug_cong_window: OutVec,
     debug_ssthresh: OutVec,
     debug_rto: OutVec,
@@ -144,7 +145,7 @@ impl Tcp {
     }
 }
 
-impl TcpController {
+impl TransmissionControlBlock {
     pub fn new(fd: Fd, addr: SocketAddr, config: TcpSocketConfig) -> Self {
         let peer = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0));
         log::trace!(
@@ -205,6 +206,7 @@ impl TcpController {
             sender_send_bytes: 0,
             sender_ack_bytes: 0,
 
+            debug: config.debug,
             debug_cong_window: OutVec::new(
                 format!("congestion_window_{fd:x}"),
                 Some(module_path()),
@@ -300,7 +302,7 @@ impl IOContext {
         }
     }
 
-    pub(crate) fn tcp_send_packet(&mut self, ctrl: &mut TcpController, ip: IpPacket) {
+    pub(crate) fn tcp_send_packet(&mut self, ctrl: &mut TransmissionControlBlock, ip: IpPacket) {
         if ctrl.tx_queue.len() > 32 {
             ctrl.tx_queue.clear();
         }
@@ -449,18 +451,20 @@ impl IOContext {
         self.return_ctrl(fd, ctrl)
     }
 
-    fn return_ctrl(&mut self, fd: Fd, mut ctrl: TcpController) {
+    fn return_ctrl(&mut self, fd: Fd, mut ctrl: TransmissionControlBlock) {
         if ctrl.state == TcpState::Closed && ctrl.dropped {
             log::trace!(target: "inet/tcp", "tcp::drop '0x{:x} {:?}({:?}) dropping socket", fd, ctrl.local_addr.port(),
             ctrl.peer_addr.port(),);
 
-            ctrl.debug_cong_window.finish();
+            if ctrl.debug {
+                ctrl.debug_cong_window.finish();
 
-            ctrl.debug_ssthresh.collect(ctrl.ssthresh as f64);
-            ctrl.debug_ssthresh.finish();
+                ctrl.debug_ssthresh.collect(ctrl.ssthresh as f64);
+                ctrl.debug_ssthresh.finish();
 
-            ctrl.debug_rto.collect(ctrl.rto as f64);
-            ctrl.debug_rto.finish();
+                ctrl.debug_rto.collect(ctrl.rto as f64);
+                ctrl.debug_rto.finish();
+            }
             self.close_socket(fd);
         } else {
             self.tcp.streams.insert(fd, ctrl);
@@ -469,7 +473,7 @@ impl IOContext {
 
     //
 
-    fn process_state_closed(&mut self, ctrl: &mut TcpController, event: TcpEvent) {
+    fn process_state_closed(&mut self, ctrl: &mut TransmissionControlBlock, event: TcpEvent) {
         match event {
             TcpEvent::SysListen() => {
                 ctrl.state = TcpState::Listen;
@@ -510,7 +514,7 @@ impl IOContext {
         }
     }
 
-    fn process_state_listen(&mut self, ctrl: &mut TcpController, event: TcpEvent) {
+    fn process_state_listen(&mut self, ctrl: &mut TransmissionControlBlock, event: TcpEvent) {
         match event {
             TcpEvent::Syn((src, dest, syn)) => {
                 assert!(syn.flags.syn);
@@ -563,7 +567,7 @@ impl IOContext {
         }
     }
 
-    fn process_state_syn_sent(&mut self, ctrl: &mut TcpController, event: TcpEvent) {
+    fn process_state_syn_sent(&mut self, ctrl: &mut TransmissionControlBlock, event: TcpEvent) {
         match event {
             TcpEvent::Syn((src, dest, pkt)) => {
                 ctrl.rx_last_recv_seq_no = pkt.seq_no;
@@ -665,7 +669,7 @@ impl IOContext {
         }
     }
 
-    fn process_state_syn_rcvd(&mut self, ctrl: &mut TcpController, event: TcpEvent) {
+    fn process_state_syn_rcvd(&mut self, ctrl: &mut TransmissionControlBlock, event: TcpEvent) {
         match event {
             TcpEvent::Syn(_) => (),
             TcpEvent::Fin(_) => (),
@@ -749,7 +753,7 @@ impl IOContext {
         }
     }
 
-    fn process_state_established(&mut self, ctrl: &mut TcpController, event: TcpEvent) {
+    fn process_state_established(&mut self, ctrl: &mut TransmissionControlBlock, event: TcpEvent) {
         match event {
             TcpEvent::SysClose() => {
                 // Handle dropped
@@ -819,7 +823,7 @@ impl IOContext {
         }
     }
 
-    fn process_state_fin_wait1(&mut self, ctrl: &mut TcpController, event: TcpEvent) {
+    fn process_state_fin_wait1(&mut self, ctrl: &mut TransmissionControlBlock, event: TcpEvent) {
         // Consider self client
         match event {
             TcpEvent::Fin((src, dest, pkt)) => {
@@ -876,7 +880,7 @@ impl IOContext {
         }
     }
 
-    fn process_state_fin_wait2(&mut self, ctrl: &mut TcpController, event: TcpEvent) {
+    fn process_state_fin_wait2(&mut self, ctrl: &mut TransmissionControlBlock, event: TcpEvent) {
         // consider self client
         // consider non-simultaneous close
         match event {
@@ -908,7 +912,7 @@ impl IOContext {
         }
     }
 
-    fn process_state_closing(&mut self, ctrl: &mut TcpController, event: TcpEvent) {
+    fn process_state_closing(&mut self, ctrl: &mut TransmissionControlBlock, event: TcpEvent) {
         // consider self client or server (both client believe)
         // both parties send FIN, expect ACK
         match event {
@@ -936,7 +940,7 @@ impl IOContext {
         }
     }
 
-    fn process_state_time_wait(&mut self, ctrl: &mut TcpController, event: TcpEvent) {
+    fn process_state_time_wait(&mut self, ctrl: &mut TransmissionControlBlock, event: TcpEvent) {
         // consider self client or at least client believe
         // assume either LAST ACK or LAST FIN was allready send
         match event {
@@ -953,7 +957,7 @@ impl IOContext {
         }
     }
 
-    fn process_state_close_wait(&mut self, ctrl: &mut TcpController, event: TcpEvent) {
+    fn process_state_close_wait(&mut self, ctrl: &mut TransmissionControlBlock, event: TcpEvent) {
         // consider self server
         // client will no longer receive data, but may still send
         match event {
@@ -979,7 +983,7 @@ impl IOContext {
         }
     }
 
-    fn process_state_last_ack(&mut self, ctrl: &mut TcpController, event: TcpEvent) {
+    fn process_state_last_ack(&mut self, ctrl: &mut TransmissionControlBlock, event: TcpEvent) {
         // consider self server
         match event {
             TcpEvent::Ack(_) => {
@@ -993,7 +997,13 @@ impl IOContext {
         }
     }
 
-    fn handle_data(&mut self, ctrl: &mut TcpController, src: IpAddr, dest: IpAddr, pkt: TcpPacket) {
+    fn handle_data(
+        &mut self,
+        ctrl: &mut TransmissionControlBlock,
+        src: IpAddr,
+        dest: IpAddr,
+        pkt: TcpPacket,
+    ) {
         log::trace!(
             target: "inet/tcp",
             "tcp::data '0x{:x} {:?}({:?}) Data {{ ack: {}, max: {}, seq: {}, buf: {} }} with Packet {{ seq_no: {}, ack_no: {}, data: {} }}",
@@ -1172,7 +1182,7 @@ impl IOContext {
         }
     }
 
-    fn do_sending(&mut self, ctrl: &mut TcpController) {
+    fn do_sending(&mut self, ctrl: &mut TransmissionControlBlock) {
         // // FIN may be send without window
         // if ctrl.sender_max_send_seq_no == ctrl.sender_next_send_seq_no.saturating_sub(2) && true {
         //     ctrl.sender_max_send_seq_no += 1;
@@ -1254,7 +1264,7 @@ impl IOContext {
         }
     }
 
-    fn send_client_fin(&mut self, ctrl: &mut TcpController) {
+    fn send_client_fin(&mut self, ctrl: &mut TransmissionControlBlock) {
         log::trace!(target: "inet/tcp", "tcp::estab '0x{:x} {:?}({:?}) Initialing shutdown with FIN", ctrl.fd, ctrl.local_addr.port(),
         ctrl.peer_addr.port(),);
         let pkt = ctrl.create_packet(
@@ -1363,7 +1373,7 @@ impl IOContext {
         Ok(n)
     }
 
-    fn handle_data_timeout(&mut self, ctrl: &mut TcpController) {
+    fn handle_data_timeout(&mut self, ctrl: &mut TransmissionControlBlock) {
         log::trace!(target: "inet/tcp", "tcp::data '0x{:x} {:?}({:?}) TIMEOUT :: missing ack for {}..{}",
             ctrl.fd,
             ctrl.local_addr.port(),
@@ -1404,7 +1414,7 @@ impl IOContext {
         self.do_sending(ctrl);
     }
 
-    fn send_ack(&mut self, ctrl: &mut TcpController, next_expected: u32, win: u16) {
+    fn send_ack(&mut self, ctrl: &mut TransmissionControlBlock, next_expected: u32, win: u16) {
         assert!(next_expected > 0);
         let mut ack = ctrl.create_packet(TcpPacketId::Ack, ctrl.tx_next_send_seq_no, next_expected);
         if win > 0 {
@@ -1415,7 +1425,7 @@ impl IOContext {
     }
 }
 
-impl TcpController {
+impl TransmissionControlBlock {
     fn no_more_data_closed(&self) -> bool {
         matches!(
             self.state,

@@ -1,6 +1,6 @@
 use bytestream::ByteOrder::LittleEndian;
-use bytestream::StreamWriter;
-use std::io::{Result, Write};
+use bytestream::{StreamReader, StreamWriter};
+use std::io::{Cursor, Result, Write};
 
 pub(super) struct SHB {
     // block_len: u32,
@@ -162,8 +162,7 @@ impl IDBOption {
 
 pub(super) struct EPB {
     pub(super) interface_id: u32,
-    pub(super) ts_upper: u32,
-    pub(super) ts_lower: u32,
+    pub(super) ts: u64,
     pub(super) cap_len: u32,
     pub(super) org_len: u32,
     pub(super) data: Vec<u8>,
@@ -181,8 +180,13 @@ impl EPB {
         block_len.write_to(w, LittleEndian)?;
 
         self.interface_id.write_to(w, LittleEndian)?;
-        self.ts_upper.write_to(w, LittleEndian)?;
-        self.ts_lower.write_to(w, LittleEndian)?;
+
+        let mut bytes = Cursor::new(self.ts.to_be_bytes());
+        let upper = u32::read_from(&mut bytes, LittleEndian)?;
+        let lower = u32::read_from(&mut bytes, LittleEndian)?;
+        w.write_all(&upper.to_be_bytes())?;
+        w.write_all(&lower.to_be_bytes())?;
+
         self.cap_len.write_to(w, LittleEndian)?;
         self.org_len.write_to(w, LittleEndian)?;
 

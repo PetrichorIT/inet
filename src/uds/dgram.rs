@@ -17,7 +17,7 @@ use crate::{
 ///
 /// A socket can be either named (associated with a filesystem path) or unnamed.
 ///
-/// **Note** that in contrast to [tokio::net::UnixDatagram](des::tokio::net::UnixDatagram)
+/// **Note** that in contrast to [tokio::net::UnixDatagram](https://docs.rs/tokio/latest/tokio/net/struct.UnixDatagram.html)
 /// named sockets of this implementaion do free the associated file, so are not persistent.
 ///
 /// ## Examples

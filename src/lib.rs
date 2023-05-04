@@ -12,6 +12,8 @@ pub mod socket;
 pub mod uds;
 pub mod utils;
 
+pub use inet_types as types;
+
 mod udp;
 use des::net::plugin::PluginPanicPolicy;
 pub use udp::*;

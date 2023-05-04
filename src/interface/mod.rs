@@ -257,9 +257,14 @@ impl IOContext {
 
         // Capture all packets that can be addressed to a interface, event not targeted
         let ifid = *ifid;
-        if let Err(e) = self.pcap.borrow_mut().capture(&msg, ifid, iface) {
-            log::error!(target: "inet/pcap", "failed to capture: {e}")
-        };
+        {
+            let mut pcap = self.pcap.borrow_mut();
+            if pcap.cfg.capture.capture_incoming() {
+                if let Err(e) = pcap.capture(&msg, ifid, iface) {
+                    log::error!(target: "inet/pcap", "failed to capture: {e}")
+                };
+            }
+        }
 
         // Check that packet is addressed correctly.
         if iface.device.addr != dest && !dest.is_broadcast() {

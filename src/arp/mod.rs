@@ -82,7 +82,12 @@ impl IOContext {
                         .content(response)
                         .build();
 
-                    self.pcap.borrow_mut().capture(&msg, ifid, iface).unwrap();
+                    {
+                        let mut pcap = self.pcap.borrow_mut();
+                        if pcap.cfg.capture.capture_outgoing() {
+                            pcap.capture(&msg, ifid, iface).expect("Pcap failed")
+                        }
+                    }
                     iface.send_buffered(msg).unwrap();
                 }
 
@@ -225,8 +230,12 @@ impl IOContext {
                     .dest(mac.into())
                     .content(pkt)
                     .build();
-
-                self.pcap.borrow_mut().capture(&msg, ifid, iface).unwrap();
+                {
+                    let mut pcap = self.pcap.borrow_mut();
+                    if pcap.cfg.capture.capture_outgoing() {
+                        pcap.capture(&msg, ifid, iface).expect("Pcap failed")
+                    }
+                }
                 if buffered {
                     iface.send_buffered(msg)
                 } else {
@@ -244,7 +253,12 @@ impl IOContext {
                     .content(pkt)
                     .build();
 
-                self.pcap.borrow_mut().capture(&msg, ifid, iface).unwrap();
+                {
+                    let mut pcap = self.pcap.borrow_mut();
+                    if pcap.cfg.capture.capture_outgoing() {
+                        pcap.capture(&msg, ifid, iface).expect("Pcap failed")
+                    }
+                }
                 if buffered {
                     iface.send_buffered(msg)
                 } else {
@@ -366,10 +380,13 @@ impl IOContext {
             .content(request)
             .build();
 
-        self.pcap
-            .borrow_mut()
-            .capture(&msg, iface.name.id, iface)
-            .unwrap();
+        {
+            let mut pcap = self.pcap.borrow_mut();
+            if pcap.cfg.capture.capture_outgoing() {
+                pcap.capture(&msg, iface.name.id, iface)
+                    .expect("Pcap failed")
+            }
+        }
         iface.send_buffered(msg)
     }
 }

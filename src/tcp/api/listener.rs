@@ -7,7 +7,7 @@ use std::task::{Context, Poll};
 use crate::socket::*;
 use crate::tcp::interest::{TcpInterest, TcpInterestGuard};
 use crate::tcp::types::{TcpEvent, TcpSyscall};
-use crate::tcp::{TcpController, TcpPacket, TcpSocketConfig};
+use crate::tcp::{TcpPacket, TcpSocketConfig, TransmissionControlBlock};
 use crate::{
     dns::{lookup_host, ToSocketAddrs},
     IOContext,
@@ -33,7 +33,7 @@ pub struct TcpListener {
 }
 
 #[derive(Debug)]
-pub(crate) struct TcpListenerHandle {
+pub(crate) struct ListenerHandle {
     pub(crate) local_addr: SocketAddr,
 
     pub(crate) incoming: VecDeque<TcpListenerPendingConnection>,
@@ -49,7 +49,7 @@ pub(crate) struct TcpListenerPendingConnection {
     pub(crate) packet: (IpAddr, IpAddr, TcpPacket),
 }
 
-impl TcpListenerHandle {
+impl ListenerHandle {
     pub(crate) fn push_incoming(&mut self, src: SocketAddr, packet: IpPacketRef, tcp: TcpPacket) {
         if self.incoming.len() < self.config.listen_backlog as usize {
             self.incoming.push_back(TcpListenerPendingConnection {
@@ -221,7 +221,7 @@ impl IOContext {
             fd
         };
 
-        let buf = TcpListenerHandle {
+        let buf = ListenerHandle {
             local_addr: addr,
             incoming: VecDeque::new(),
             interests: Vec::new(),
@@ -251,8 +251,11 @@ impl IOContext {
         let stream_socket = self.dup_socket(fd)?;
         self.bind_peer(stream_socket, con.peer_addr)?;
 
-        let mut ctrl =
-            TcpController::new(stream_socket, self.get_socket_addr(stream_socket)?, config);
+        let mut ctrl = TransmissionControlBlock::new(
+            stream_socket,
+            self.get_socket_addr(stream_socket)?,
+            config,
+        );
 
         self.syscall(stream_socket, TcpSyscall::Listen());
 

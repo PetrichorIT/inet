@@ -5,7 +5,7 @@ use des::stats::{ActivityTimeline, OutVec, SlottedActivityTimeline};
 ///
 /// A Tcp slice_buffer
 ///
-/// ...<allready read>...#############...<to be written>...
+/// ...allready read...#############...to be written...
 ///                      ^read_head  ^write_head
 ///                        
 #[derive(Debug)]

@@ -17,6 +17,7 @@ use des::{
 };
 use inet::{
     interface::{add_interface, Interface, NetworkDevice},
+    pcap::{PcapCapture, PcapConfig},
     tcp::{set_tcp_cfg, TcpConfig, TcpDebugPlugin},
     TcpListener, TcpStream,
 };
@@ -112,9 +113,10 @@ impl AsyncModule for Client {
         .unwrap();
 
         let mut cfg = TcpConfig::default();
-        cfg.debug = true;
+        // cfg.debug = true;
         cfg.cong_ctrl = true;
         set_tcp_cfg(cfg).unwrap();
+
         for k in 0..2 {
             self.handles.push(spawn(async move {
                 let mut sock = TcpStream::connect("69.0.0.69:1000").await.unwrap();
@@ -156,10 +158,17 @@ impl AsyncModule for Server {
         ))
         .unwrap();
 
-        // pcap(true, File::create("results/server-output.pcap").unwrap()).unwrap();
+        inet::pcap::pcap(
+            PcapConfig {
+                enable: true,
+                capture: PcapCapture::Both,
+            },
+            std::fs::File::create("results/server-output.pcap").unwrap(),
+        )
+        .unwrap();
 
         let mut cfg = TcpConfig::default();
-        cfg.debug = true;
+        // cfg.debug = true;
         cfg.cong_ctrl = true;
         set_tcp_cfg(cfg).unwrap();
 

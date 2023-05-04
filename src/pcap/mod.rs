@@ -22,7 +22,7 @@ mod blocks;
 pub use self::api::*;
 
 pub(crate) struct Pcap {
-    active: bool,
+    pub cfg: PcapConfig,
     ifaces: Vec<IfId>,
     output: Option<BufWriter<File>>,
 }
@@ -30,14 +30,14 @@ pub(crate) struct Pcap {
 impl Pcap {
     pub(super) fn new() -> Pcap {
         Pcap {
-            active: false,
+            cfg: PcapConfig::default(),
             ifaces: Vec::new(),
             output: None,
         }
     }
 
     pub(super) fn capture(&mut self, msg: &Message, ifid: IfId, iface: &Interface) -> Result<()> {
-        if !self.active {
+        if !self.cfg.enable {
             return Ok(());
         }
 
@@ -86,7 +86,7 @@ impl Pcap {
                     "{} ({}) @ {:?}",
                     iface.name, iface.name.id, iface.device
                 )),
-                IDBOption::TimeResoloutionNanos(),
+                // IDBOption::TimeResoloutionNanos(),
             ],
         };
 
@@ -146,10 +146,11 @@ impl Pcap {
         buffer.write_all(&[0x00, 0x00, 0x00, 0x00])?;
         let ts = SimTime::now();
 
+        let micros = ts.as_micros() as u64;
+
         let epb = EPB {
             interface_id: ifidx as u32,
-            ts_upper: ts.as_secs() as u32,
-            ts_lower: ts.as_nanos() as u32,
+            ts: micros,
             cap_len: buffer.len() as u32,
             org_len: buffer.len() as u32,
             data: buffer,

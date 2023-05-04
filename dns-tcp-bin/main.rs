@@ -10,13 +10,17 @@ use des::{
 use inet::{
     dns::*,
     interface::{add_interface, Interface, NetworkDevice},
+    pcap::PcapConfig,
     routing::{add_routing_entry, set_default_gateway, RoutingInformation},
     TcpListener, TcpStream,
 };
 use inet_types::ip::IpMask;
-use std::sync::{
-    atomic::{AtomicUsize, Ordering},
-    Arc,
+use std::{
+    fs::File,
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    },
 };
 
 struct Node {
@@ -82,7 +86,7 @@ impl AsyncModule for Node {
                 let target = DOMAINS[random::<usize>() % DOMAINS.len()];
                 let mut stream = TcpStream::connect((target, 5000)).await.unwrap();
 
-                stream.write(&[42; 100]).await.unwrap();
+                stream.write_all(&[42; 100]).await.unwrap();
                 n += 100;
 
                 if SimTime::now().as_secs() > 99 {
@@ -168,6 +172,15 @@ impl Module for Router {
 
         let addr = par("addr").unwrap().parse().unwrap();
         let mask = par("mask").unwrap().parse().unwrap();
+
+        inet::pcap::pcap(
+            PcapConfig {
+                enable: true,
+                capture: inet::pcap::PcapCapture::Incoming,
+            },
+            File::create(format!("results/{}.pcap", module_path())).unwrap(),
+        )
+        .unwrap();
 
         add_interface(Interface::ethv4_named(
             "lan",
@@ -305,17 +318,6 @@ impl Module for Main {
             par("send").unwrap().parse::<usize>().unwrap(),
             par("recv").unwrap().parse::<usize>().unwrap()
         );
-
-        // println!(
-        //     "{:#?}",
-        //     par("addrs")
-        //         .unwrap()
-        //         .into_inner()
-        //         .split(",")
-        //         .map(|v| v.parse::<Ipv4Addr>())
-        //         .flatten()
-        //         .collect::<Vec<_>>()
-        // );
 
         log::info!(
             "processed {} bytes",

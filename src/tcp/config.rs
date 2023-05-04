@@ -50,6 +50,8 @@ pub(crate) struct TcpSocketConfig {
     pub ttl: u32,
     pub inital_seq_no: u32,
     pub mss: u16,
+
+    pub debug: bool,
 }
 
 impl TcpConfig {
@@ -72,6 +74,7 @@ impl TcpConfig {
             mss: self.mss,
 
             cong_ctrl: self.cong_ctrl,
+            debug: self.debug,
         }
     }
 
@@ -94,6 +97,7 @@ impl TcpConfig {
             mss: self.mss,
 
             cong_ctrl: self.cong_ctrl,
+            debug: self.debug,
         }
     }
 
@@ -116,6 +120,7 @@ impl TcpConfig {
             mss: self.mss,
 
             cong_ctrl: self.cong_ctrl,
+            debug: self.debug,
         }
     }
 
@@ -138,6 +143,7 @@ impl TcpConfig {
             mss: 1024,
 
             cong_ctrl: self.cong_ctrl,
+            debug: self.debug,
         }
     }
 
@@ -160,6 +166,7 @@ impl TcpConfig {
             mss: 1024,
 
             cong_ctrl: self.cong_ctrl,
+            debug: self.debug,
         }
     }
 }

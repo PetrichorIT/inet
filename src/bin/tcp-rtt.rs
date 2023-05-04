@@ -10,6 +10,7 @@ use des::{
 };
 use inet::{
     interface::{add_interface, Interface, NetworkDevice},
+    pcap::{pcap, PcapCapture, PcapConfig},
     tcp::{set_tcp_cfg, TcpConfig, TcpDebugPlugin},
     TcpListener, TcpStream,
 };
@@ -87,7 +88,14 @@ impl AsyncModule for Client {
             Ipv4Addr::new(69, 0, 0, 100),
         ))
         .unwrap();
-        // pcap(true, File::create("client-output.pcap").unwrap()).unwrap();
+        pcap(
+            PcapConfig {
+                enable: true,
+                capture: PcapCapture::Both,
+            },
+            std::fs::File::create("results/client-output.pcap").unwrap(),
+        )
+        .unwrap();
 
         let mut cfg = TcpConfig::default();
         cfg.debug = true;

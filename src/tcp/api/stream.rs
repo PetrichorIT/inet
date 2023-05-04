@@ -6,7 +6,7 @@ use crate::{
     tcp::{
         interest::{TcpInterest, TcpInterestGuard},
         types::{TcpEvent, TcpState, TcpSyscall},
-        TcpController, TcpSocketConfig,
+        TcpSocketConfig, TransmissionControlBlock,
     },
     IOContext,
 };
@@ -311,7 +311,7 @@ impl IOContext {
         };
 
         self.bind_peer(fd, peer);
-        let mut ctrl = TcpController::new(fd, self.get_socket_addr(fd)?, config);
+        let mut ctrl = TransmissionControlBlock::new(fd, self.get_socket_addr(fd)?, config);
         self.process_state_closed(&mut ctrl, TcpEvent::SysOpen(peer));
 
         self.tcp.streams.insert(fd, ctrl);
