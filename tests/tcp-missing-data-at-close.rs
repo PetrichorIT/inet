@@ -1,4 +1,5 @@
 use des::{net::plugin::add_plugin, registry, tokio};
+use inet_types::{ip::Ipv4Packet, FromBytestream};
 use std::{
     str::FromStr,
     sync::{
@@ -10,10 +11,9 @@ use std::{
 use des::prelude::*;
 use inet::{
     interface::*,
-    ip::Ipv4Packet,
     socket::AsRawFd,
     tcp::{TcpDebugPlugin, TcpPacket},
-    FromBytestream, TcpSocket,
+    TcpSocket,
 };
 
 struct Link {}

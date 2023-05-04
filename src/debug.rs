@@ -1,4 +1,5 @@
-use crate::{ip::IpPacket, socket::SocketIfaceBinding, IOContext};
+use crate::{socket::SocketIfaceBinding, IOContext};
+use inet_types::ip::IpPacket;
 use std::io;
 
 pub fn send_ip(pkt: IpPacket) -> io::Result<()> {

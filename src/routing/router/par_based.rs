@@ -1,6 +1,6 @@
-use crate::ip::{Ipv4Packet, Ipv6Packet, KIND_IPV4, KIND_IPV6};
 use des::prelude::{par_for, send};
 use fxhash::{FxBuildHasher, FxHashMap};
+use inet_types::ip::{Ipv4Packet, Ipv6Packet, KIND_IPV4, KIND_IPV6};
 use std::net::IpAddr;
 
 use super::{super::RoutingPort, Router, RoutingInformation};

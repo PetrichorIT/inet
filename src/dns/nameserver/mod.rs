@@ -1,10 +1,12 @@
+use crate::UdpSocket;
+
 use super::{DNSMessage, DNSOpCode, DNSQuestion, DNSResponseCode, DNSString, DNSZoneFile};
-use crate::{ip::IpMask, FromBytestream, IntoBytestream, UdpSocket};
 use des::{
     prelude::{module_path, par},
     time::SimTime,
     tokio::{select, time::sleep},
 };
+use inet_types::{ip::IpMask, FromBytestream, IntoBytestream};
 use std::{
     collections::VecDeque,
     net::{IpAddr, Ipv4Addr, SocketAddr},

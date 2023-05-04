@@ -156,6 +156,8 @@ impl AsyncModule for Server {
         ))
         .unwrap();
 
+        // pcap(true, File::create("results/server-output.pcap").unwrap()).unwrap();
+
         let mut cfg = TcpConfig::default();
         cfg.debug = true;
         cfg.cong_ctrl = true;
@@ -205,7 +207,7 @@ impl LogScopeConfigurationPolicy for Policy {
 fn main() {
     inet::init();
 
-//    Logger::new().policy(Policy).set_logger();
+    //    Logger::new().policy(Policy).set_logger();
 
     let mut app = NetworkApplication::new(
         NdlApplication::new(

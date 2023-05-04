@@ -8,7 +8,7 @@ use des::tokio::time::sleep;
 
 use crate::dns::DNSType;
 use crate::UdpSocket;
-use crate::{FromBytestream, IntoBytestream};
+use inet_types::{FromBytestream, IntoBytestream};
 
 use super::{DNSMessage, DNSResponseCode};
 

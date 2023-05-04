@@ -32,34 +32,34 @@ pub enum IpPacket {
 }
 
 #[derive(Debug)]
-pub(crate) enum IpPacketRef<'a, 'b> {
+pub enum IpPacketRef<'a, 'b> {
     V4(&'a Ipv4Packet),
     V6(&'b Ipv6Packet),
 }
 
 impl IpPacketRef<'_, '_> {
-    pub(crate) fn tos(&self) -> u8 {
+    pub fn tos(&self) -> u8 {
         match self {
             Self::V4(v4) => v4.proto,
             Self::V6(v6) => v6.next_header,
         }
     }
 
-    pub(crate) fn content(&self) -> &Vec<u8> {
+    pub fn content(&self) -> &Vec<u8> {
         match self {
             Self::V4(v4) => &v4.content,
             Self::V6(v6) => &v6.content,
         }
     }
 
-    pub(crate) fn src(&self) -> IpAddr {
+    pub fn src(&self) -> IpAddr {
         match self {
             Self::V4(v4) => IpAddr::V4(v4.src),
             Self::V6(v6) => IpAddr::V6(v6.src),
         }
     }
 
-    pub(crate) fn dest(&self) -> IpAddr {
+    pub fn dest(&self) -> IpAddr {
         match self {
             Self::V4(v4) => IpAddr::V4(v4.dest),
             Self::V6(v6) => IpAddr::V6(v6.dest),
@@ -156,7 +156,7 @@ impl IpPacket {
     }
 }
 
-pub(crate) fn ipv4_matches_subnet(ip: Ipv4Addr, subnet: Ipv4Addr, mask: Ipv4Addr) -> bool {
+pub fn ipv4_matches_subnet(ip: Ipv4Addr, subnet: Ipv4Addr, mask: Ipv4Addr) -> bool {
     let ip = ip.octets();
     let subnet = subnet.octets();
     let mask = mask.octets();
@@ -167,7 +167,7 @@ pub(crate) fn ipv4_matches_subnet(ip: Ipv4Addr, subnet: Ipv4Addr, mask: Ipv4Addr
         && mask[3] & ip[3] == mask[3] & subnet[3]
 }
 
-pub(crate) fn ipv6_matches_subnet(ip: Ipv6Addr, subnet: Ipv6Addr, mask: Ipv6Addr) -> bool {
+pub fn ipv6_matches_subnet(ip: Ipv6Addr, subnet: Ipv6Addr, mask: Ipv6Addr) -> bool {
     let ip = ip.octets();
     let subnet = subnet.octets();
     let mask = mask.octets();

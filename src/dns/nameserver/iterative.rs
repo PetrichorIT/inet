@@ -1,7 +1,5 @@
-use crate::{
-    dns::{DNSMessage, DNSNameserver, DNSQuestion, DNSResponseCode, DNSString, DNSType},
-    FromBytestream,
-};
+use crate::dns::{DNSMessage, DNSNameserver, DNSQuestion, DNSResponseCode, DNSString, DNSType};
+use inet_types::FromBytestream;
 use std::{collections::VecDeque, net::SocketAddr};
 
 impl DNSNameserver {

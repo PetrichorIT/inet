@@ -18,8 +18,10 @@ use std::{
 
 use crate::{
     interface::{IfId, KIND_IO_TIMEOUT},
-    ip::{IpPacket, IpPacketRef, IpVersion, Ipv4Flags, Ipv4Packet, Ipv6Packet},
     socket::{Fd, SocketIfaceBinding, SocketType},
+};
+use inet_types::{
+    ip::{IpPacket, IpPacketRef, IpVersion, Ipv4Flags, Ipv4Packet, Ipv6Packet},
     FromBytestream, IntoBytestream,
 };
 

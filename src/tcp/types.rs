@@ -1,6 +1,6 @@
 use std::net::{IpAddr, SocketAddr};
 
-use crate::ip::IpPacketRef;
+use inet_types::ip::IpPacketRef;
 
 use super::TcpPacket;
 

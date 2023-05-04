@@ -7,8 +7,8 @@ use inet::{
     arp::arpa,
     debug,
     interface::{add_interface, Interface, NetworkDevice},
-    ip::{IpPacket, Ipv4Packet, Ipv6Packet},
 };
+use inet_types::ip::{IpPacket, Ipv4Packet, Ipv6Packet};
 use serial_test::serial;
 
 type Switch = inet::utils::LinkLayerSwitch;

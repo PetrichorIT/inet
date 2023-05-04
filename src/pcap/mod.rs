@@ -4,12 +4,14 @@ use self::blocks::{IDBOption, SHBOption, EPB, IDB, SHB};
 use crate::{
     arp::{ArpPacket, KIND_ARP},
     interface::{IfId, Interface},
-    ip::{Ipv4Packet, Ipv6Packet, KIND_IPV4, KIND_IPV6},
-    IntoBytestream,
 };
 use des::{
     prelude::{module_path, Message},
     time::SimTime,
+};
+use inet_types::{
+    ip::{Ipv4Packet, Ipv6Packet, KIND_IPV4, KIND_IPV6},
+    IntoBytestream,
 };
 use std::{
     fs::File,

@@ -1,5 +1,5 @@
-use crate::{FromBytestream, IntoBytestream};
 use bytestream::{ByteOrder::BigEndian, StreamReader, StreamWriter};
+use inet_types::{FromBytestream, IntoBytestream};
 use std::io::{Cursor, Read, Write};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

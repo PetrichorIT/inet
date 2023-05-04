@@ -9,9 +9,9 @@ use des::{
 };
 use inet::{
     interface::{add_interface, Interface, NetworkDevice},
-    ip::Ipv4Packet,
     TcpListener, TcpStream,
 };
+use inet_types::ip::Ipv4Packet;
 
 struct Node {
     handles: Vec<JoinHandle<()>>,

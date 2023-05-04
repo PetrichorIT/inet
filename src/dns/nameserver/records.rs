@@ -1,6 +1,6 @@
 use crate::dns::DNSString;
-use crate::{FromBytestream, IntoBytestream};
 use bytestream::{ByteOrder::BigEndian, StreamReader, StreamWriter};
+use inet_types::{FromBytestream, IntoBytestream};
 use std::fmt::Display;
 use std::io::{Cursor, Write};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};

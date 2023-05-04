@@ -9,9 +9,6 @@ version = "0.1.0"
 name = "inet-bin"
 path = "inet-bin/main.rs"
 
-[[bin]]
-name = "ideal-bin"
-path = "ideal_bin/main.rs"
 
 [[bin]]
 name = "dns-tcp-bin"
@@ -22,12 +19,16 @@ async-trait = "*"
 bytestream = "0.4"
 fxhash = "0.2.1"
 # des = {git = "https://github.com/PetrichorIT/des", branch = "master", features = ["full"]}
-des = {path = "../des/des", features = ["full"]}
+des = { version = "*", features = ["full"] }
 log = {version = "*", features = ["max_level_trace"]}
 bytes = "1.4.0"
 rand = "0.8.5"
 plotters = "0.3.4"
 chrono = "0.4.24"
+inet-types = { path = "inet-types"}
 
 [dev-dependencies]
 serial_test = "1.0.0"
+
+[patch.crates-io]
+des = { path = "../des/des"}

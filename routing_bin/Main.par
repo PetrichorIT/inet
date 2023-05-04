@@ -1,5 +1,0 @@
-client[1].addr = 50.50.50.50
-client[2].addr = 100.100.100.100
-client[3].addr = 150.150.150.150
-client[4].addr = 200.200.200.200
-client[5].addr = 250.250.250.250

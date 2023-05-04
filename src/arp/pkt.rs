@@ -1,8 +1,8 @@
 use crate::interface::MacAddress;
-use crate::{FromBytestream, IntoBytestream};
 use bytestream::ByteOrder::BigEndian;
 use bytestream::{StreamReader, StreamWriter};
 use des::prelude::*;
+use inet_types::{FromBytestream, IntoBytestream};
 use std::io::Read;
 use std::{
     io::{Cursor, Write},

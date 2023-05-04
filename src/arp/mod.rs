@@ -1,12 +1,12 @@
 use std::io::{self, Error, ErrorKind};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
-use crate::ip::{IpPacket, KIND_IPV4, KIND_IPV6};
 use crate::routing::IpGateway;
 use crate::socket::SocketIfaceBinding;
 use crate::{interface::*, IOContext};
 use des::prelude::Message;
 use des::time::SimTime;
+use inet_types::ip::{IpPacket, KIND_IPV4, KIND_IPV6};
 
 mod pkt;
 pub use self::pkt::*;

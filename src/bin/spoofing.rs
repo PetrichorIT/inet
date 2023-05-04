@@ -6,9 +6,12 @@ use des::{
 use inet::{
     debug::send_ip,
     interface::{add_interface, Interface, NetworkDevice},
-    ip::{IpPacket, Ipv4Flags, Ipv4Packet},
     tcp::{TcpFlags, TcpPacket, PROTO_TCP},
-    IntoBytestream, TcpListener,
+    TcpListener,
+};
+use inet_types::{
+    ip::{IpPacket, Ipv4Flags, Ipv4Packet},
+    IntoBytestream,
 };
 
 struct Spoofer {}

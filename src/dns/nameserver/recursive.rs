@@ -1,11 +1,9 @@
-use crate::{
-    dns::{
-        DNSClass, DNSMessage, DNSNameserver, DNSQuestion, DNSResourceRecord, DNSResponseCode,
-        DNSString, DNSType,
-    },
-    IntoBytestream,
+use crate::dns::{
+    DNSClass, DNSMessage, DNSNameserver, DNSQuestion, DNSResourceRecord, DNSResponseCode,
+    DNSString, DNSType,
 };
 use des::{runtime::random, time::SimTime};
+use inet_types::{FromBytestream, IntoBytestream};
 use std::{collections::VecDeque, net::SocketAddr, time::Duration};
 
 use super::DNSTransaction;
@@ -38,7 +36,7 @@ macro_rules! domain_of_record {
     ($r:expr) => {
         match $r.typ {
             crate::dns::DNSType::NS | crate::dns::DNSType::PTR => {
-                <DNSString as crate::common::FromBytestream>::from_buffer($r.rdata.clone())
+                <DNSString as FromBytestream>::from_buffer($r.rdata.clone())
                     .expect("Failed to parse rdata into DNSString")
             }
             _ => unreachable!("Expected DNSResourceRecord with domain name."),

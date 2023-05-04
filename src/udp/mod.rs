@@ -1,6 +1,6 @@
 use super::{socket::*, IOContext};
-use crate::{
-    interface::IfId,
+use crate::interface::IfId;
+use inet_types::{
     ip::{IpPacket, IpPacketRef, Ipv4Flags, Ipv4Packet, Ipv6Packet},
     FromBytestream, IntoBytestream,
 };

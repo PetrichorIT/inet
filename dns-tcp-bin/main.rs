@@ -10,10 +10,10 @@ use des::{
 use inet::{
     dns::*,
     interface::{add_interface, Interface, NetworkDevice},
-    ip::IpMask,
     routing::{add_routing_entry, set_default_gateway, RoutingInformation},
     TcpListener, TcpStream,
 };
+use inet_types::ip::IpMask;
 use std::sync::{
     atomic::{AtomicUsize, Ordering},
     Arc,

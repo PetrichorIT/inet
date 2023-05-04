@@ -1,7 +1,7 @@
 #![allow(unused)]
 use super::{DNSClass, DNSResourceRecord, DNSString, DNSType};
-use crate::{common::split_off_front, FromBytestream, IntoBytestream};
 use bytestream::{ByteOrder::*, StreamReader, StreamWriter};
+use inet_types::{split_off_front, FromBytestream, IntoBytestream};
 use std::{
     fmt::Display,
     io::{Cursor, Write},

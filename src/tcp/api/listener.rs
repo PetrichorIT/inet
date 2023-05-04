@@ -4,7 +4,6 @@ use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use std::task::{Context, Poll};
 
-use crate::ip::IpPacketRef;
 use crate::socket::*;
 use crate::tcp::interest::{TcpInterest, TcpInterestGuard};
 use crate::tcp::types::{TcpEvent, TcpSyscall};
@@ -13,6 +12,7 @@ use crate::{
     dns::{lookup_host, ToSocketAddrs},
     IOContext,
 };
+use inet_types::ip::IpPacketRef;
 
 use super::{TcpStream, TcpStreamInner};
 

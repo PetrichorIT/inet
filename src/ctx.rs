@@ -1,7 +1,6 @@
 use crate::{
     arp::ArpTable,
     interface::{IfId, Interface, LinkLayerResult, KIND_LINK_UPDATE},
-    ip::{IpPacket, IpPacketRef, Ipv4Packet, Ipv6Packet, KIND_IPV4, KIND_IPV6},
     pcap::Pcap,
     routing::{Ipv4RoutingTable, Ipv6RoutingTable},
     uds, IOPlugin,
@@ -11,6 +10,7 @@ use des::{
     prelude::{module_path, Message},
 };
 use fxhash::{FxBuildHasher, FxHashMap};
+use inet_types::ip::{IpPacket, IpPacketRef, Ipv4Packet, Ipv6Packet, KIND_IPV4, KIND_IPV6};
 use std::{
     cell::RefCell,
     net::{IpAddr, Ipv4Addr},

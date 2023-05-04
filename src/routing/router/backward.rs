@@ -1,4 +1,4 @@
-use crate::{ip::Ipv4Packet, FromBytestream};
+use inet_types::{ip::Ipv4Packet, FromBytestream};
 
 use super::{super::RoutingPort, Router, RoutingInformation};
 use des::prelude::*;

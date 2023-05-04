@@ -1,5 +1,5 @@
 use super::*;
-use crate::IntoBytestream;
+use inet_types::IntoBytestream;
 use std::{
     fs::File,
     io::{BufRead, BufReader},

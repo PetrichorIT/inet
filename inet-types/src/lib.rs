@@ -1,6 +1,8 @@
 use std::io::{Cursor, Write};
 
-pub(crate) fn split_off_front(mut buf: Vec<u8>, pos: usize) -> Vec<u8> {
+pub mod ip;
+
+pub fn split_off_front(mut buf: Vec<u8>, pos: usize) -> Vec<u8> {
     for i in pos..buf.len() {
         buf[i - pos] = buf[i]
     }

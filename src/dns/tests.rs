@@ -1,5 +1,5 @@
 use super::*;
-use crate::{FromBytestream, IntoBytestream};
+use inet_types::{FromBytestream, IntoBytestream};
 
 #[test]
 fn dns_string_from_str() {

@@ -1,6 +1,6 @@
 use des::runtime::random;
 
-use crate::common::{FromBytestream, IntoBytestream};
+use inet_types::{FromBytestream, IntoBytestream};
 use std::{
     fmt::Display,
     io::{Cursor, Read, Write},

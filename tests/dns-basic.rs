@@ -2,9 +2,9 @@ use des::{prelude::*, registry};
 use inet::{
     dns::*,
     interface::{add_interface, Interface, NetworkDevice},
-    ip::{IpMask, Ipv4Packet},
     routing::{add_routing_entry, set_default_gateway},
 };
+use inet_types::ip::{IpMask, Ipv4Packet};
 
 /*
 Concept

@@ -3,8 +3,8 @@ use std::{
     io::{Error, ErrorKind, Read},
 };
 
-use crate::{FromBytestream, IntoBytestream};
 use bytestream::{ByteOrder::BigEndian, StreamReader, StreamWriter};
+use inet_types::{FromBytestream, IntoBytestream};
 
 /// A TCP packet assosciated with an end-to-end connection.
 #[derive(Debug, Clone, PartialEq, Eq)]

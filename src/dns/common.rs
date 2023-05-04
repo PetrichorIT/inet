@@ -1,5 +1,5 @@
-use crate::{FromBytestream, IntoBytestream};
 use bytestream::{ByteOrder::BigEndian, StreamReader};
+use inet_types::{FromBytestream, IntoBytestream};
 use std::{
     fmt::Display,
     io::{Cursor, Write},

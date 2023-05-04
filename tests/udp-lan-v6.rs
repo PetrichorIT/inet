@@ -6,9 +6,9 @@ use des::{
 use inet::{
     arp::arpa,
     interface::{add_interface, Interface, NetworkDevice},
-    ip::Ipv6Packet,
     UdpSocket,
 };
+use inet_types::ip::Ipv6Packet;
 
 struct Node {
     handles: Vec<JoinHandle<()>>,

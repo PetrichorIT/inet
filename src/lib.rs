@@ -1,8 +1,5 @@
 #![feature(int_roundings)]
 
-mod common;
-pub use common::*;
-
 #[macro_use]
 mod macros;
 
@@ -12,7 +9,6 @@ pub mod dhcp;
 pub mod dns;
 pub mod fs;
 pub mod interface;
-pub mod ip;
 pub mod pcap;
 pub mod routing;
 pub mod socket;

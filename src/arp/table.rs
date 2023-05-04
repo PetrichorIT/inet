@@ -5,8 +5,8 @@ use std::{hash::Hash, net::IpAddr, time::Duration};
 use crate::{
     interface::IfId,
     interface::{Interface, MacAddress},
-    ip::IpPacket,
 };
+use inet_types::ip::IpPacket;
 
 pub struct ArpTable {
     map: FxHashMap<IpAddr, ArpEntryInternal>,
