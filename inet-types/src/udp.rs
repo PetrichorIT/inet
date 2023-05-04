@@ -1,6 +1,8 @@
+use super::{FromBytestream, IntoBytestream};
 use bytestream::{ByteOrder::BigEndian, StreamReader, StreamWriter};
-use inet_types::{FromBytestream, IntoBytestream};
 use std::io::{Cursor, Read, Write};
+
+pub const PROTO_UDP: u8 = 0x11;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct UDPPacket {

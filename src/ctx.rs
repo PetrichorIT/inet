@@ -17,11 +17,8 @@ use std::{
     panic::UnwindSafe,
 };
 
-use super::{
-    socket::*,
-    tcp::{Tcp, PROTO_TCP},
-    udp::{UdpManager, PROTO_UDP},
-};
+use super::{socket::*, tcp::Tcp, udp::UdpManager};
+use inet_types::{tcp::PROTO_TCP, udp::PROTO_UDP};
 
 thread_local! {
     static CURRENT: RefCell<Option<IOContext>> = const { RefCell::new(None) };

@@ -5,12 +5,10 @@ use std::time::Duration;
 
 use des::tokio::select;
 use des::tokio::time::sleep;
-
-use crate::dns::DNSType;
-use crate::UdpSocket;
+use inet_types::dns::{DNSMessage, DNSResponseCode, DNSType};
 use inet_types::{FromBytestream, IntoBytestream};
 
-use super::{DNSMessage, DNSResponseCode};
+use crate::UdpSocket;
 
 pub async fn lookup_host<T>(host: T) -> Result<impl Iterator<Item = SocketAddr>>
 where

@@ -1,6 +1,6 @@
 use des::runtime::random;
 
-use inet_types::{FromBytestream, IntoBytestream};
+use super::{FromBytestream, IntoBytestream};
 use std::{
     fmt::Display,
     io::{Cursor, Read, Write},

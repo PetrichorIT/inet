@@ -22,11 +22,9 @@ use crate::{
 };
 use inet_types::{
     ip::{IpPacket, IpPacketRef, IpVersion, Ipv4Flags, Ipv4Packet, Ipv6Packet},
+    tcp::{TcpFlags, TcpOption, TcpPacket, PROTO_TCP},
     FromBytestream, IntoBytestream,
 };
-
-mod pkt;
-pub use self::pkt::*;
 
 mod buffer;
 pub use self::buffer::*;
@@ -49,8 +47,6 @@ mod debug;
 pub use debug::*;
 
 use super::IOContext;
-
-pub const PROTO_TCP: u8 = 0x06;
 
 pub(crate) struct Tcp {
     pub config: TcpConfig,

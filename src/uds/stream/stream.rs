@@ -3,6 +3,7 @@ use des::tokio::{
     pin,
     sync::{oneshot, Mutex},
 };
+use inet_types::uds::SocketAddr;
 use std::{
     future::Future,
     io::{Error, ErrorKind, Result},
@@ -12,11 +13,7 @@ use std::{
     task::{Context, Poll, Waker},
 };
 
-use super::{
-    super::{SocketAddr, SocketAddrInner},
-    buf::Buffer,
-    listener::IncomingStream,
-};
+use super::{buf::Buffer, listener::IncomingStream};
 use crate::socket::Fd;
 use crate::{
     ctx::IOContext,
@@ -150,9 +147,7 @@ impl Drop for UnixStream {
 
 impl IOContext {
     fn uds_stream_connect(&mut self, path: &Path) -> Result<oneshot::Receiver<UnixStream>> {
-        let addr = SocketAddr {
-            sockaddr: SocketAddrInner::Path(path.to_path_buf()),
-        };
+        let addr = SocketAddr::from(path.to_path_buf());
 
         let fd: Fd = self.create_socket(SocketDomain::AF_UNIX, SocketType::SOCK_STREAM, 0)?;
 
@@ -164,9 +159,7 @@ impl IOContext {
 
         let incoming = IncomingStream {
             fd,
-            addr: SocketAddr {
-                sockaddr: SocketAddrInner::Unnamed,
-            },
+            addr: SocketAddr::unnamed(),
             establish: tx,
         };
         lis.1
@@ -181,18 +174,8 @@ impl IOContext {
         let server = self.create_socket(SocketDomain::AF_UNIX, SocketType::SOCK_STREAM, 0)?;
 
         Ok(self.uds_stream_link(
-            (
-                client,
-                SocketAddr {
-                    sockaddr: SocketAddrInner::Unnamed,
-                },
-            ),
-            (
-                server,
-                SocketAddr {
-                    sockaddr: SocketAddrInner::Unnamed,
-                },
-            ),
+            (client, SocketAddr::unnamed()),
+            (server, SocketAddr::unnamed()),
         ))
     }
 

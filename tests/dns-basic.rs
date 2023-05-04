@@ -1,10 +1,13 @@
 use des::{prelude::*, registry};
 use inet::{
-    dns::*,
+    dns::{lookup_host, DNSNameserver},
     interface::{add_interface, Interface, NetworkDevice},
     routing::{add_routing_entry, set_default_gateway},
 };
-use inet_types::ip::{IpMask, Ipv4Packet};
+use inet_types::{
+    dns::{DNSClass, DNSNodeInformation, DNSSOAResourceRecord, DNSString},
+    ip::{IpMask, Ipv4Packet},
+};
 
 /*
 Concept

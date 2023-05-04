@@ -1,14 +1,12 @@
 //! Capturing packets and storing them as .pcapng files.
 
 use self::blocks::{IDBOption, SHBOption, EPB, IDB, SHB};
-use crate::{
-    arp::{ArpPacket, KIND_ARP},
-    interface::{IfId, Interface},
-};
+use crate::interface::{IfId, Interface};
 use des::{
     prelude::{module_path, Message},
     time::SimTime,
 };
+use inet_types::arp::{ArpPacket, KIND_ARP};
 use inet_types::{
     ip::{Ipv4Packet, Ipv6Packet, KIND_IPV4, KIND_IPV6},
     IntoBytestream,

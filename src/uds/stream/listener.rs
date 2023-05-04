@@ -2,15 +2,13 @@ use des::tokio::sync::{
     mpsc::{channel, Receiver, Sender},
     oneshot, Mutex,
 };
+use inet_types::uds::SocketAddr;
 use std::{
     io::{Error, ErrorKind, Result},
     path::Path,
 };
 
-use super::{
-    super::{SocketAddr, SocketAddrInner},
-    UnixStream,
-};
+use super::UnixStream;
 use crate::socket::Fd;
 use crate::{
     ctx::IOContext,
@@ -61,9 +59,7 @@ impl Drop for UnixListener {
 
 impl IOContext {
     fn uds_listener_bind(&mut self, path: &Path) -> Result<UnixListener> {
-        let addr = SocketAddr {
-            sockaddr: SocketAddrInner::Path(path.to_path_buf()),
-        };
+        let addr = SocketAddr::from(path.to_path_buf());
 
         let entry = self.uds_listeners.iter().any(|s| s.1.addr == addr);
         if entry {

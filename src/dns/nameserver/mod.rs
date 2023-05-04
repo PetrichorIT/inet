@@ -1,12 +1,19 @@
 use crate::UdpSocket;
 
-use super::{DNSMessage, DNSOpCode, DNSQuestion, DNSResponseCode, DNSString, DNSZoneFile};
+use super::DNSZoneFile;
 use des::{
     prelude::{module_path, par},
     time::SimTime,
     tokio::{select, time::sleep},
 };
-use inet_types::{ip::IpMask, FromBytestream, IntoBytestream};
+use inet_types::{
+    dns::{
+        DNSClass, DNSMessage, DNSNodeInformation, DNSOpCode, DNSQuestion, DNSResourceRecord,
+        DNSResponseCode, DNSSOAResourceRecord, DNSString, DNSType,
+    },
+    ip::IpMask,
+    FromBytestream, IntoBytestream,
+};
 use std::{
     collections::VecDeque,
     net::{IpAddr, Ipv4Addr, SocketAddr},
@@ -20,16 +27,6 @@ mod root;
 
 mod db;
 use db::DnsDb;
-
-mod records;
-pub use records::{DNSClass, DNSResourceRecord, DNSSOAResourceRecord, DNSType};
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct DNSNodeInformation {
-    pub zone: DNSString,
-    pub domain_name: DNSString,
-    pub ip: IpAddr,
-}
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct DNSNameserver {

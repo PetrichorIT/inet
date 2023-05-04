@@ -2,6 +2,7 @@ use super::{socket::*, IOContext};
 use crate::interface::IfId;
 use inet_types::{
     ip::{IpPacket, IpPacketRef, Ipv4Flags, Ipv4Packet, Ipv6Packet},
+    udp::{UDPPacket, PROTO_UDP},
     FromBytestream, IntoBytestream,
 };
 use std::{
@@ -10,16 +11,11 @@ use std::{
     net::{IpAddr, SocketAddr},
 };
 
-mod pkt;
-pub use pkt::*;
-
 mod api;
 pub use api::*;
 
 mod interest;
 use interest::*;
-
-pub(super) const PROTO_UDP: u8 = 0x11;
 
 pub(super) struct UdpManager {
     pub(super) local_addr: SocketAddr,

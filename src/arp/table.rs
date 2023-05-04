@@ -2,11 +2,8 @@ use des::time::SimTime;
 use fxhash::{FxBuildHasher, FxHashMap};
 use std::{hash::Hash, net::IpAddr, time::Duration};
 
-use crate::{
-    interface::IfId,
-    interface::{Interface, MacAddress},
-};
-use inet_types::ip::IpPacket;
+use crate::{interface::IfId, interface::Interface};
+use inet_types::{iface::MacAddress, ip::IpPacket};
 
 pub struct ArpTable {
     map: FxHashMap<IpAddr, ArpEntryInternal>,

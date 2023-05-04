@@ -1,8 +1,5 @@
 #![feature(int_roundings)]
 
-#[macro_use]
-mod macros;
-
 pub mod arp;
 pub mod debug;
 pub mod dhcp;

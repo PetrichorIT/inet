@@ -5,17 +5,23 @@ use std::{
 
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub struct SocketAddr {
-    pub(super) sockaddr: SocketAddrInner,
+    sockaddr: SocketAddrInner,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub(super) enum SocketAddrInner {
+enum SocketAddrInner {
     Unnamed,
     Path(PathBuf),
     // Abstract(Vec<u8>),
 }
 
 impl SocketAddr {
+    pub fn unnamed() -> Self {
+        Self {
+            sockaddr: SocketAddrInner::Unnamed,
+        }
+    }
+
     pub fn is_unamed(&self) -> bool {
         matches!(self.sockaddr, SocketAddrInner::Unnamed)
     }
@@ -34,6 +40,14 @@ impl Debug for SocketAddr {
             SocketAddrInner::Unnamed => write!(f, "(unamed)"),
             SocketAddrInner::Path(ref path) => write!(f, "{:?} (pathname)", path),
             // SocketAddrInner::Abstract(ref buf) => write!(f, "{}", String::from_utf8_lossy(buf)),
+        }
+    }
+}
+
+impl From<PathBuf> for SocketAddr {
+    fn from(value: PathBuf) -> Self {
+        SocketAddr {
+            sockaddr: SocketAddrInner::Path(value),
         }
     }
 }

@@ -1,26 +1,27 @@
-use crate::dns::{
-    DNSClass, DNSMessage, DNSNameserver, DNSQuestion, DNSResourceRecord, DNSResponseCode,
-    DNSString, DNSType,
-};
 use des::{runtime::random, time::SimTime};
-use inet_types::{FromBytestream, IntoBytestream};
+use inet_types::{
+    dns::{
+        DNSClass, DNSMessage, DNSQuestion, DNSResourceRecord, DNSResponseCode, DNSString, DNSType,
+    },
+    FromBytestream, IntoBytestream,
+};
 use std::{collections::VecDeque, net::SocketAddr, time::Duration};
 
-use super::DNSTransaction;
+use super::{DNSNameserver, DNSTransaction};
 
 const TIMEOUT: Duration = Duration::from_secs(5);
 
 macro_rules! addr_of_record {
     ($r:ident) => {
         match $r.typ {
-            crate::dns::DNSType::A => {
+            DNSType::A => {
                 let mut bytes = [0u8; 4];
                 for i in 0..4 {
                     bytes[i] = $r.rdata[i]
                 }
                 ::std::net::IpAddr::from(bytes)
             }
-            crate::dns::DNSType::AAAA => {
+            DNSType::AAAA => {
                 let mut bytes = [0u8; 16];
                 for i in 0..16 {
                     bytes[i] = $r.rdata[i]
@@ -35,7 +36,7 @@ macro_rules! addr_of_record {
 macro_rules! domain_of_record {
     ($r:expr) => {
         match $r.typ {
-            crate::dns::DNSType::NS | crate::dns::DNSType::PTR => {
+            DNSType::NS | DNSType::PTR => {
                 <DNSString as FromBytestream>::from_buffer($r.rdata.clone())
                     .expect("Failed to parse rdata into DNSString")
             }

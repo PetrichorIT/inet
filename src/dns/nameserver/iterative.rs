@@ -1,6 +1,8 @@
-use crate::dns::{DNSMessage, DNSNameserver, DNSQuestion, DNSResponseCode, DNSString, DNSType};
+use inet_types::dns::{DNSMessage, DNSQuestion, DNSResponseCode, DNSString, DNSType};
 use inet_types::FromBytestream;
 use std::{collections::VecDeque, net::SocketAddr};
+
+use super::DNSNameserver;
 
 impl DNSNameserver {
     pub(super) fn anwser_question_iteratively(

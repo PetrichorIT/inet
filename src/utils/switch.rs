@@ -1,9 +1,13 @@
 use std::{collections::VecDeque, iter::repeat_with};
 
-use crate::{arp::ArpPacket, interface::MacAddress, routing::RoutingInformation};
+use crate::routing::RoutingInformation;
 use des::prelude::*;
 use fxhash::{FxBuildHasher, FxHashMap};
-use inet_types::ip::{Ipv4Packet, Ipv6Packet};
+use inet_types::{
+    arp::ArpPacket,
+    iface::MacAddress,
+    ip::{Ipv4Packet, Ipv6Packet},
+};
 
 pub const KIND_SWITCH_WAKEUP: MessageKind = 0x0600;
 

@@ -3,11 +3,12 @@ use std::io;
 use std::io::Error;
 use std::io::ErrorKind;
 
-use crate::arp::ArpPacket;
-use crate::arp::KIND_ARP;
 use crate::socket::Fd;
 use crate::IOContext;
 use des::prelude::*;
+use inet_types::arp::ArpPacket;
+use inet_types::arp::KIND_ARP;
+use inet_types::iface::MacAddress;
 
 macro_rules! hash {
     ($v:expr) => {{
@@ -24,9 +25,6 @@ pub use self::api::*;
 
 mod device;
 pub use self::device::*;
-
-mod mac;
-pub use self::mac::*;
 
 mod types;
 pub use self::types::*;

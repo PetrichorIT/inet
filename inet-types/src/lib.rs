@@ -1,6 +1,15 @@
 use std::io::{Cursor, Write};
 
+#[macro_use]
+mod macros;
+
+pub mod arp;
+pub mod dns;
+pub mod iface;
 pub mod ip;
+pub mod tcp;
+pub mod udp;
+pub mod uds;
 
 pub fn split_off_front(mut buf: Vec<u8>, pos: usize) -> Vec<u8> {
     for i in pos..buf.len() {

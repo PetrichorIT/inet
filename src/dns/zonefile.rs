@@ -1,5 +1,7 @@
-use super::*;
-use inet_types::IntoBytestream;
+use inet_types::{
+    dns::{DNSClass, DNSResourceRecord, DNSSOAResourceRecord, DNSString, DNSType},
+    IntoBytestream,
+};
 use std::{
     fs::File,
     io::{BufRead, BufReader},

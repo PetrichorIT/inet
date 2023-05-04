@@ -2,15 +2,14 @@ use des::tokio::sync::{
     mpsc::{channel, Receiver, Sender},
     Mutex,
 };
+use inet_types::uds::SocketAddr;
 use std::{
     io::{Error, ErrorKind, Result},
     path::Path,
 };
 
-use super::SocketAddr;
 use crate::{
     socket::{Fd, SocketDomain, SocketType},
-    uds::SocketAddrInner,
     IOContext,
 };
 
@@ -127,9 +126,7 @@ impl UnixDatagram {
     where
         P: AsRef<Path>,
     {
-        let addr = SocketAddr {
-            sockaddr: SocketAddrInner::Path(path.as_ref().to_path_buf()),
-        };
+        let addr = SocketAddr::from(path.as_ref().to_path_buf());
 
         IOContext::with_current(|ctx| ctx.uds_dgram_connect(self.fd, addr))
     }
@@ -210,9 +207,7 @@ impl Drop for UnixDatagram {
 
 impl IOContext {
     fn uds_dgram_bind(&mut self, path: &Path) -> Result<UnixDatagram> {
-        let addr = SocketAddr {
-            sockaddr: SocketAddrInner::Path(path.to_path_buf()),
-        };
+        let addr = SocketAddr::from(path.to_path_buf());
 
         let entry = self.uds_dgrams.iter().any(|s| s.1.addr == addr);
         if entry {
@@ -237,9 +232,7 @@ impl IOContext {
     }
 
     fn uds_dgram_unbound(&mut self) -> Result<UnixDatagram> {
-        let addr = SocketAddr {
-            sockaddr: SocketAddrInner::Unnamed,
-        };
+        let addr = SocketAddr::unnamed();
 
         let fd: Fd = self.create_socket(SocketDomain::AF_UNIX, SocketType::SOCK_DGRAM, 0)?;
 
@@ -279,9 +272,7 @@ impl IOContext {
         &mut self,
         dst: &Path,
     ) -> Result<Sender<(Vec<u8>, SocketAddr)>> {
-        let dst = SocketAddr {
-            sockaddr: SocketAddrInner::Path(dst.to_path_buf()),
-        };
+        let dst = SocketAddr::from(dst.to_path_buf());
 
         if let Some((_fd, handle)) = self.uds_dgrams.iter().find(|(_, h)| h.addr == dst) {
             Ok(handle.tx.clone())

@@ -5,11 +5,9 @@ use std::{
 };
 
 use des::time::SimTime;
+use inet_types::iface::MacAddress;
 
-use crate::{
-    interface::{InterfaceName, MacAddress},
-    IOContext,
-};
+use crate::{interface::InterfaceName, IOContext};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ArpEntry {

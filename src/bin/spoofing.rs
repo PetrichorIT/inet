@@ -6,11 +6,11 @@ use des::{
 use inet::{
     debug::send_ip,
     interface::{add_interface, Interface, NetworkDevice},
-    tcp::{TcpFlags, TcpPacket, PROTO_TCP},
     TcpListener,
 };
 use inet_types::{
     ip::{IpPacket, Ipv4Flags, Ipv4Packet},
+    tcp::{TcpFlags, TcpPacket, PROTO_TCP},
     IntoBytestream,
 };
 

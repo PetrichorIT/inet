@@ -3,8 +3,10 @@ use std::{
     io::{Error, ErrorKind, Read},
 };
 
+use super::{FromBytestream, IntoBytestream};
 use bytestream::{ByteOrder::BigEndian, StreamReader, StreamWriter};
-use inet_types::{FromBytestream, IntoBytestream};
+
+pub const PROTO_TCP: u8 = 0x06;
 
 /// A TCP packet assosciated with an end-to-end connection.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -219,7 +221,6 @@ impl IntoBytestream for TcpOption {
             Self::EndOfOptionsList() => {
                 0u8.write_to(bytestream, BigEndian)?;
             }
-            _ => {}
         }
         Ok(())
     }
@@ -248,7 +249,7 @@ impl FromBytestream for TcpPacket {
 
         if options_len > 0 {
             let mut opt_buf = vec![0u8; options_len as usize];
-            bytestream.read_exact(&mut opt_buf);
+            bytestream.read_exact(&mut opt_buf)?;
 
             let mut opt_buf = std::io::Cursor::new(opt_buf);
             loop {

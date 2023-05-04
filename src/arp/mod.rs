@@ -6,10 +6,9 @@ use crate::socket::SocketIfaceBinding;
 use crate::{interface::*, IOContext};
 use des::prelude::Message;
 use des::time::SimTime;
+use inet_types::arp::{ARPOperation, ArpPacket, KIND_ARP};
+use inet_types::iface::MacAddress;
 use inet_types::ip::{IpPacket, KIND_IPV4, KIND_IPV6};
-
-mod pkt;
-pub use self::pkt::*;
 
 mod table;
 pub use self::table::*;
