@@ -1,0 +1,12 @@
+alice.addr = 200.1.0.101
+bob.addr = 170.3.0.103
+eve.addr = 80.8.129.80
+
+alice.gateway = 200.1.0.1
+bob.gateway = 170.3.0.1
+eve.gateway = 80.8.129.1
+
+alice.mask = 255.255.0.0
+bob.mask = 255.255.0.0
+eve.mask = 255.255.255.0
+

@@ -1,4 +1,7 @@
-use std::net::{IpAddr, SocketAddr};
+use std::{
+    io::Error,
+    net::{IpAddr, SocketAddr},
+};
 
 use inet_types::ip::IpPacketRef;
 
@@ -37,15 +40,15 @@ pub(super) enum TcpEvent {
     Data((IpAddr, IpAddr, TcpPacket)),
     Perm((IpAddr, IpAddr, TcpPacket)),
 
+    DestinationUnreachable(Error),
     Timeout(),
 }
 
 pub enum TcpSyscall {
     Listen(),
     Open(SocketAddr),
+    DestinationUnreachable(Error),
     Close(),
-    Send,
-    Recv,
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(super) enum TcpPacketId {

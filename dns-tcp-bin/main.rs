@@ -95,6 +95,12 @@ impl AsyncModule for Node {
             }
             n
         }));
+
+        // if module_path().as_str() == "b.node[2]" {
+        //     tokio::spawn(async move {
+        //         println!("{:?}", traceroute("100.3.0.101".parse().unwrap()).await)
+        //     });
+        // }
     }
 
     async fn at_sim_end(&mut self) {
@@ -224,7 +230,8 @@ impl Module for Router {
     }
 
     fn handle_message(&mut self, msg: Message) {
-        panic!("{msg:?}")
+        // println!("{}", msg.str());
+        panic!("[{}] {msg:?}", module_path())
     }
 }
 

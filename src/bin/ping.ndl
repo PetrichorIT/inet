@@ -1,0 +1,52 @@
+link LAN {
+    latency: 0.05,
+    bitrate: 100000,
+    jitter: 0.0,
+}
+
+module Alice {
+    gates {
+        in @input,
+        out @output
+    }
+}
+
+module Bob {
+    gates {
+        in @input,
+        out @output
+    }
+}
+
+module Eve {
+    gates {
+        in @input,
+        out @output
+    }
+}
+
+module Main {
+    gates {
+        in[3] @input,
+        out[3] @output,
+    }
+
+    submodules {
+        alice: Alice,
+        bob: Bob,
+        eve: Eve,
+    }
+
+    connections {
+        alice/out --> LAN --> in[0],
+        alice/in <-- LAN <-- out[0],
+
+        bob/out --> LAN --> in[1],
+        bob/in <-- LAN <-- out[1],
+
+        eve/out --> LAN --> in[2],
+        eve/in <-- LAN <-- out[2],
+    }
+}
+
+entry Main;

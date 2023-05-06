@@ -247,6 +247,11 @@ impl IOContext {
 
         if msg.header().kind == KIND_IO_TIMEOUT {
             // TODO: check ARP Timeout
+            if msg.header().id == KIND_ARP {
+                self.recv_arp_wakeup();
+                return Consumed();
+            }
+
             return Timeout(msg);
         }
 

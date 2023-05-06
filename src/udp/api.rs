@@ -3,7 +3,7 @@ use des::tokio::io::{Interest, Ready};
 use crate::{
     dns::{lookup_host, ToSocketAddrs},
     interface::InterfaceName,
-    socket::Fd,
+    socket::{AsRawFd, Fd},
     udp::UDPPacket,
     IOContext,
 };
@@ -125,6 +125,9 @@ impl UdpSocket {
         loop {
             self.writable().await?;
             let peer = self.peer_addr()?;
+            if let Some(e) = self.take_error()? {
+                return Err(e);
+            }
             let result = IOContext::with_current(|ctx| ctx.udp_send_to(self.fd, peer, buf));
 
             match result {
@@ -378,10 +381,20 @@ impl UdpSocket {
     pub fn device(&self) -> Result<Option<InterfaceName>> {
         IOContext::with_current(|ctx| ctx.socket_device(self.fd))
     }
+
+    pub fn take_error(&self) -> Result<Option<Error>> {
+        IOContext::with_current(|ctx: &mut IOContext| ctx.udp_take_error(self.fd))
+    }
 }
 
 impl Drop for UdpSocket {
     fn drop(&mut self) {
         IOContext::try_with_current(|ctx| ctx.udp_drop(self.fd));
+    }
+}
+
+impl AsRawFd for UdpSocket {
+    fn as_raw_fd(&self) -> Fd {
+        self.fd
     }
 }

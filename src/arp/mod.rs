@@ -4,7 +4,7 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use crate::routing::IpGateway;
 use crate::socket::SocketIfaceBinding;
 use crate::{interface::*, IOContext};
-use des::prelude::Message;
+use des::prelude::{schedule_in, Message};
 use des::time::SimTime;
 use inet_types::arp::{ARPOperation, ArpPacket, KIND_ARP};
 use inet_types::iface::MacAddress;
@@ -33,6 +33,7 @@ impl IOContext {
                 if !arp.src_ip_addr().is_unspecified() {
                     // log::trace!(target: "inet/arp", "receiving arp request for {}", arp.dest_paddr);
                     let sendable = self.arp.update(ArpEntryInternal {
+                        negated: false,
                         hostname: None,
                         ip: arp.src_ip_addr().into(),
                         mac: arp.src_mac_addr(),
@@ -97,6 +98,7 @@ impl IOContext {
                 // (0) Add response data to ARP table (not requester, was allready added)
                 if !arp.dest_ip_addr().is_unspecified() {
                     let sendable = self.arp.update(ArpEntryInternal {
+                        negated: false,
                         hostname: None,
                         ip: arp.dest_ip_addr().into(),
                         mac: arp.dest_mac_addr(),
@@ -131,6 +133,60 @@ impl IOContext {
         }
     }
 
+    pub(super) fn recv_arp_wakeup(&mut self) {
+        self.arp.active_wakeup = false;
+
+        // (0) Collect retry info
+        for addr in self.arp.requests.keys().copied().collect::<Vec<_>>() {
+            let req = self.arp.requests.get_mut(&addr).unwrap();
+            if req.deadline <= SimTime::now() {
+                // retry
+                if req.itr >= 1 {
+                    let rem = self
+                        .arp
+                        .update(ArpEntryInternal {
+                            negated: true,
+                            hostname: None,
+                            ip: addr,
+                            mac: MacAddress::NULL,
+                            iface: IfId::NULL,
+                            expires: SimTime::now() + self.arp.config.validity / 4,
+                        })
+                        .unwrap_or((addr, Vec::new()));
+
+                    for pkt in rem.1 {
+                        match pkt {
+                            IpPacket::V4(pkt) => {
+                                self.icmp_routing_failed(
+                                    Error::new(ErrorKind::NotConnected, "Host unreachable"),
+                                    &pkt,
+                                );
+                            }
+                            IpPacket::V6(_) => todo!(),
+                        }
+                    }
+
+                    log::error!(target: "inet/arp", "could not resolve for {addr} dropping packets");
+                    self.arp.requests.remove(&addr);
+                } else {
+                    req.deadline = SimTime::now() + self.arp.config.timeout;
+                    req.itr += 1;
+                    let dest = req.buffer[0].dest();
+                    let binding = SocketIfaceBinding::Bound(req.iface);
+                    self.arp_send_request(binding, dest).unwrap();
+                }
+            }
+        }
+
+        if !self.arp.requests.is_empty() {
+            schedule_in(
+                Message::new().kind(KIND_ARP).id(KIND_ARP).build(),
+                self.arp.config.timeout,
+            );
+            self.arp.active_wakeup = true;
+        }
+    }
+
     // # Ipv4 sending schedule
     //
     // (0) Input
@@ -161,7 +217,7 @@ impl IOContext {
             IpPacket::V4(pkt) => {
                 let Some((route, rifid)) = self.ipv4router.loopuk_gateway(pkt.dest) else {
                     return Err(Error::new(
-                        ErrorKind::Other,
+                        ErrorKind::ConnectionRefused,
                         "no gateway network reachable"
                     ))
                 };
@@ -170,7 +226,7 @@ impl IOContext {
             IpPacket::V6(pkt) => {
                 let Some((route, rifid)) = self.ipv6router.loopuk_gateway(pkt.dest) else {
                 return Err(Error::new(
-                    ErrorKind::Other,
+                    ErrorKind::ConnectionRefused,
                     "no gateway network reachable"
                 ))
             };
@@ -200,10 +256,14 @@ impl IOContext {
         pkt: IpPacket,
         buffered: bool,
     ) -> io::Result<()> {
-        let Some((mac, ifid)) = self.arp_lookup(dest, &ifid) else {
+        let Some((negated, mac, ifid)) = self.arp_lookup(dest, &ifid) else {
             self.arp_missing_addr_mapping(ifid, pkt, dest)?;
             return Ok(())
         };
+
+        if negated {
+            return Err(Error::new(ErrorKind::NotConnected, "Host unreachable"));
+        }
 
         let Some(iface) = self.ifaces.get_mut(&ifid) else {
             return Err(Error::new(
@@ -272,10 +332,10 @@ impl IOContext {
         &self,
         dest: IpAddr,
         preferred_iface: &SocketIfaceBinding,
-    ) -> Option<(MacAddress, IfId)> {
+    ) -> Option<(bool, MacAddress, IfId)> {
         self.arp
             .lookup(&dest)
-            .map(|e| (e.mac, e.iface))
+            .map(|e| (e.negated, e.mac, e.iface))
             .or_else(|| match preferred_iface {
                 SocketIfaceBinding::Bound(ifid) => {
                     let Some(iface) = self.ifaces.get(&ifid) else {
@@ -284,7 +344,7 @@ impl IOContext {
                     let looback = iface.flags.loopback && dest.is_loopback();
                     let self_addr = iface.addrs.iter().any(|addr| addr.matches_ip(dest));
                     if looback || self_addr {
-                        Some((iface.device.addr, iface.name.id))
+                        Some((false, iface.device.addr, iface.name.id))
                     } else {
                         None
                     }
@@ -297,7 +357,7 @@ impl IOContext {
                         let looback = iface.flags.loopback && dest.is_loopback();
                         let self_addr = iface.addrs.iter().any(|addr| addr.matches_ip(dest));
                         if looback || self_addr {
-                            return Some((iface.device.addr, iface.name.id));
+                            return Some((false, iface.device.addr, iface.name.id));
                         }
                     }
                     None
@@ -321,6 +381,10 @@ impl IOContext {
             return Ok(());
         }
 
+        self.arp_send_request(ifid, dest)
+    }
+
+    fn arp_send_request(&mut self, ifid: SocketIfaceBinding, dest: IpAddr) -> io::Result<()> {
         let iface = match ifid {
             SocketIfaceBinding::Bound(ifid) => {
                 let mut iface = self.ifaces.get_mut(&ifid).unwrap();
@@ -352,6 +416,8 @@ impl IOContext {
                 return Err(Error::new(ErrorKind::Other, "socket bound to no interface"))
             }
         };
+
+        self.arp.requests.get_mut(&dest).unwrap().iface = iface.name.id;
 
         log::trace!(target: "inet/arp", "missing address resolution for {}, initiating ARP request at {}", dest, iface.name);
 
@@ -387,6 +453,14 @@ impl IOContext {
                     .expect("Pcap failed")
             }
         }
+        if !self.arp.active_wakeup {
+            self.arp.active_wakeup = true;
+            schedule_in(
+                Message::new().kind(KIND_IO_TIMEOUT).id(KIND_ARP).build(),
+                self.arp.config.timeout,
+            );
+        }
+
         iface.send_buffered(msg)
     }
 }

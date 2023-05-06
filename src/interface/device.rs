@@ -159,3 +159,12 @@ impl NetworkDevice {
         }
     }
 }
+
+impl From<RoutingPort> for NetworkDevice {
+    fn from(port: RoutingPort) -> Self {
+        NetworkDevice {
+            addr: MacAddress::gen(),
+            inner: NetworkDeviceInner::ethernet(port.output, port.input),
+        }
+    }
+}

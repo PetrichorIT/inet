@@ -6,9 +6,10 @@ use crate::{interface::IfId, interface::Interface};
 use inet_types::{iface::MacAddress, ip::IpPacket};
 
 pub struct ArpTable {
-    map: FxHashMap<IpAddr, ArpEntryInternal>,
-    config: ArpConfig,
-    requests: FxHashMap<IpAddr, ActiveRequest>,
+    pub(super) map: FxHashMap<IpAddr, ArpEntryInternal>,
+    pub(super) config: ArpConfig,
+    pub(super) requests: FxHashMap<IpAddr, ActiveRequest>,
+    pub(super) active_wakeup: bool,
 }
 
 pub struct ArpConfig {
@@ -18,6 +19,7 @@ pub struct ArpConfig {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ArpEntryInternal {
+    pub negated: bool,
     pub hostname: Option<String>,
     pub ip: IpAddr,
     pub mac: MacAddress,
@@ -25,16 +27,18 @@ pub struct ArpEntryInternal {
     pub expires: SimTime,
 }
 
-struct ActiveRequest {
-    deadline: SimTime,
-    buffer: Vec<IpPacket>,
+pub(super) struct ActiveRequest {
+    pub iface: IfId,
+    pub deadline: SimTime,
+    pub itr: usize,
+    pub buffer: Vec<IpPacket>,
 }
 
 impl Default for ArpConfig {
     fn default() -> Self {
         Self {
             validity: Duration::from_secs(200),
-            timeout: Duration::from_secs(2),
+            timeout: Duration::from_secs(1),
         }
     }
 }
@@ -57,6 +61,7 @@ impl ArpTable {
             map: FxHashMap::with_hasher(FxBuildHasher::default()),
             config,
             requests: FxHashMap::with_hasher(FxBuildHasher::default()),
+            active_wakeup: false,
         }
     }
 
@@ -104,6 +109,8 @@ impl ArpTable {
             .or_insert(ActiveRequest {
                 deadline: SimTime::now() + self.config.timeout,
                 buffer: Vec::with_capacity(4),
+                itr: 0,
+                iface: IfId::NULL,
             })
             .buffer
             .push(ip);
@@ -117,6 +124,18 @@ impl ArpTable {
     }
 
     pub fn tick(&mut self) {
-        self.requests.retain(|_, req| req.deadline > SimTime::now());
+        // let mut swap = FxHashMap::with_hasher(FxBuildHasher::default());
+        // mem::swap(&mut swap, &mut self.requests);
+
+        // for (addr, mut req) in swap {
+        //     if req.deadline > SimTime::now() {
+        //         self.requests.insert(addr, req);
+        //     } else {
+        //         req.itr += 1;
+        //         self.retry.insert(addr, req);
+        //     }
+        // }
+
+        // // self.requests.retain(|_, req| req.deadline > SimTime::now());
     }
 }

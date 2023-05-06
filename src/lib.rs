@@ -5,6 +5,7 @@ pub mod debug;
 pub mod dhcp;
 pub mod dns;
 pub mod fs;
+pub mod icmp;
 pub mod interface;
 pub mod pcap;
 pub mod routing;

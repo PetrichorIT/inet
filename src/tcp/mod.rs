@@ -302,6 +302,10 @@ impl IOContext {
         }
     }
 
+    pub(super) fn tcp_icmp_destination_unreachable(&mut self, fd: Fd, e: Error) {
+        self.syscall(fd, TcpSyscall::DestinationUnreachable(e))
+    }
+
     pub(crate) fn tcp_send_packet(&mut self, ctrl: &mut TransmissionControlBlock, ip: IpPacket) {
         if ctrl.tx_queue.len() > 32 {
             ctrl.tx_queue.clear();
@@ -431,7 +435,11 @@ impl IOContext {
                 ctrl.dropped = true;
                 TcpEvent::SysClose()
             }
-            _ => unimplemented!(),
+
+            TcpSyscall::DestinationUnreachable(e) => {
+                ctrl.dropped = true;
+                TcpEvent::DestinationUnreachable(e)
+            }
         };
 
         match ctrl.state {
@@ -659,6 +667,21 @@ impl IOContext {
                         "port unreachable",
                     )))
                 });
+                ctrl.cancel_timer();
+                ctrl.state == TcpState::Closed;
+            }
+            TcpEvent::DestinationUnreachable(e) => {
+                // Port is not reachable
+
+                log::trace!(
+                    target: "inet/tcp",
+                    "tcp::synsent '0x{:x} {:?}({:?}) aborting due to destination unreachabele (ICMP)",
+                    ctrl.fd,
+                    ctrl.local_addr.port(),
+                    ctrl.peer_addr.port()
+                );
+
+                ctrl.established.take().map(|v| v.send(Err(e)));
                 ctrl.cancel_timer();
                 ctrl.state == TcpState::Closed;
             }

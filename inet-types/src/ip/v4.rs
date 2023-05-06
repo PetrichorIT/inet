@@ -25,6 +25,42 @@ pub struct Ipv4Packet {
     pub content: Vec<u8>,
 }
 
+impl Ipv4Packet {
+    pub const EMPTY: Ipv4Packet = Ipv4Packet {
+        dscp: 0,
+        enc: 0,
+        identification: 0,
+        flags: Ipv4Flags {
+            df: false,
+            mf: false,
+        },
+        fragment_offset: 0,
+        ttl: 64,
+        proto: 0,
+        src: Ipv4Addr::UNSPECIFIED,
+        dest: Ipv4Addr::UNSPECIFIED,
+        content: Vec::new(),
+    };
+
+    pub fn reverse(&self) -> Ipv4Packet {
+        Ipv4Packet {
+            dscp: self.dscp,
+            enc: self.enc,
+            identification: self.identification,
+            flags: Ipv4Flags {
+                df: self.flags.df,
+                mf: false,
+            },
+            fragment_offset: 0,
+            ttl: 64,
+            proto: self.proto,
+            src: self.dest,
+            dest: self.src,
+            content: Vec::new(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Ipv4Flags {
     pub df: bool,

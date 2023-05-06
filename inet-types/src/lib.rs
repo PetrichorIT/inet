@@ -12,6 +12,7 @@ mod macros;
 
 pub mod arp;
 pub mod dns;
+pub mod icmp;
 pub mod iface;
 pub mod ip;
 pub mod tcp;

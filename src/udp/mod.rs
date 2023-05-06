@@ -17,7 +17,7 @@ pub use api::*;
 mod interest;
 use interest::*;
 
-pub(super) struct UdpManager {
+pub(super) struct UdpControlBlock {
     pub(super) local_addr: SocketAddr,
     pub(super) state: UdpSocketState,
     pub(super) incoming: VecDeque<(SocketAddr, SocketAddr, UDPPacket)>,
@@ -25,6 +25,7 @@ pub(super) struct UdpManager {
     pub(super) ttl: u8,
     pub(super) broadcast: bool,
 
+    pub(super) error: Option<Error>,
     pub(super) interest: Option<UdpInterestGuard>,
 }
 
@@ -46,7 +47,7 @@ pub(super) enum UdpSocketState {
     Connected(SocketAddr),
 }
 
-impl UdpManager {
+impl UdpControlBlock {
     pub(super) fn push_incoming(&mut self, src: SocketAddr, dest: SocketAddr, udp: UDPPacket) {
         self.incoming.push_back((src, dest, udp));
         if let Some(interest) = &self.interest {
@@ -115,6 +116,7 @@ impl IOContext {
             recvd
         } else {
             let Some((fd, sock)) = iter.next() else {
+                self.icmp_port_unreachable(ifid, packet);
                 return false;
             };
             if !sock.interface.contains(&ifid) {
@@ -131,6 +133,21 @@ impl IOContext {
 
             mng.push_incoming(src, dest, udp);
             true
+        }
+    }
+
+    pub(super) fn udp_icmp_error(&mut self, fd: Fd, e: Error, ip: Ipv4Packet) {
+        let Some(mng) = self.udp_manager.get_mut(&fd) else {
+            return;
+        };
+
+        let UdpSocketState::Connected(addr) = mng.state else {
+            return;
+        };
+
+        if ip.dest == addr.ip() {
+            // TTL execeeded is correct
+            let _ = mng.error.replace(e);
         }
     }
 }
@@ -150,13 +167,14 @@ impl IOContext {
             e
         })?;
 
-        let manager = UdpManager {
+        let manager = UdpControlBlock {
             local_addr: baddr,
             state: UdpSocketState::Bound,
             incoming: VecDeque::new(),
 
             ttl: 32,
             broadcast: false,
+            error: None,
 
             interest: None,
         };
@@ -260,6 +278,14 @@ impl IOContext {
             }
             _ => unreachable!(),
         }
+    }
+
+    fn udp_take_error(&mut self, fd: Fd) -> Result<Option<Error>> {
+        let Some(mng) = self.udp_manager.get_mut(&fd) else {
+            return Err(Error::new(ErrorKind::InvalidInput, "invalid fd - socket dropped"))
+        };
+
+        Ok(mng.error.take())
     }
 
     pub(super) fn udp_drop(&mut self, fd: Fd) {

@@ -1,23 +1,24 @@
 use crate::{
     arp::ArpTable,
+    icmp::Icmp,
     interface::{IfId, Interface, LinkLayerResult, KIND_LINK_UPDATE},
     pcap::Pcap,
     routing::{Ipv4RoutingTable, Ipv6RoutingTable},
     uds, IOPlugin,
 };
-use des::{
-    net::plugin::PluginError,
-    prelude::{module_path, Message},
-};
+use des::{net::plugin::PluginError, prelude::Message};
 use fxhash::{FxBuildHasher, FxHashMap};
-use inet_types::ip::{IpPacket, IpPacketRef, Ipv4Packet, Ipv6Packet, KIND_IPV4, KIND_IPV6};
+use inet_types::{
+    icmp::PROTO_ICMP,
+    ip::{IpPacket, IpPacketRef, Ipv4Packet, Ipv6Packet, KIND_IPV4, KIND_IPV6},
+};
 use std::{
     cell::RefCell,
     net::{IpAddr, Ipv4Addr},
     panic::UnwindSafe,
 };
 
-use super::{socket::*, tcp::Tcp, udp::UdpManager};
+use super::{socket::*, tcp::Tcp, udp::UdpControlBlock};
 use inet_types::{tcp::PROTO_TCP, udp::PROTO_UDP};
 
 thread_local! {
@@ -32,9 +33,10 @@ pub struct IOContext {
     pub(super) ipv6router: Ipv6RoutingTable,
 
     pub(super) pcap: RefCell<Pcap>,
+    pub(super) icmp: Icmp,
 
     pub(super) sockets: FxHashMap<Fd, Socket>,
-    pub(super) udp_manager: FxHashMap<Fd, UdpManager>,
+    pub(super) udp_manager: FxHashMap<Fd, UdpControlBlock>,
     pub(super) tcp: Tcp,
     pub(super) uds_dgrams: FxHashMap<Fd, uds::UnixDatagramHandle>,
     pub(super) uds_listeners: FxHashMap<Fd, uds::UnixListenerHandle>,
@@ -53,6 +55,7 @@ impl IOContext {
             ipv6router: Ipv6RoutingTable::new(),
 
             pcap: RefCell::new(Pcap::new()),
+            icmp: Icmp::new(),
 
             sockets: FxHashMap::with_hasher(FxBuildHasher::default()),
             udp_manager: FxHashMap::with_hasher(FxBuildHasher::default()),
@@ -64,23 +67,6 @@ impl IOContext {
             port: 1024,
         }
     }
-
-    // pub fn loopback_only() -> Self {
-    //     let mut this = Self::empty();
-    //     this.add_interface2(Interface::loopback());
-    //     this
-    // }
-
-    // pub fn eth_default(v4: Ipv4Addr) -> Self {
-    //     Self::eth_with_addr(v4, random())
-    // }
-
-    // pub fn eth_with_addr(v4: Ipv4Addr, mac: [u8; 6]) -> Self {
-    //     let mut this = Self::empty();
-    //     this.add_interface2(Interface::loopback());
-    //     this.add_interface2(Interface::en0(mac, v4, NetworkDevice::eth_default()));
-    //     this
-    // }
 
     pub fn set(self) {
         Self::swap_in(Some(self));
@@ -156,6 +142,7 @@ impl IOContext {
 
                     if pkt.ttl == 0 {
                         log::warn!(target: "inet/route", "dropping packet due to ttl");
+                        self.icmp_ttl_expired(ifid, ip);
                         return None;
                     }
 
@@ -166,16 +153,25 @@ impl IOContext {
                         true,
                     ) {
                         Ok(()) => return None,
-                        Err(e) => panic!(
-                            "[{}] not yet impl: forwarding without route: {}",
-                            module_path(),
-                            e
-                        ),
+                        Err(e) => {
+                            log::error!(target: "inet/route", "Failed to forward packet due to internal err: {e}");
+                            self.icmp_routing_failed(e, ip);
+                            // Maybe return dropped packet ?
+                            return None;
+                        }
                     };
                 }
 
                 match ip.proto {
                     0 => return Some(msg),
+                    PROTO_ICMP => {
+                        let consumed = self.recv_icmpv4_packet(ip, ifid);
+                        if consumed {
+                            None
+                        } else {
+                            Some(msg)
+                        }
+                    }
                     PROTO_UDP => {
                         let consumed = self.recv_udp_packet(IpPacketRef::V4(ip), ifid);
                         if consumed {

@@ -40,7 +40,7 @@ impl IOContext {
         }) else {
             return Err(Error::new(
                 ErrorKind::Other,
-                "gateway cannot be on any local subnet"
+                "gateway not found on any local subnet"
             ))
         };
 

@@ -30,6 +30,7 @@ impl IOContext {
             if !iface.flags.loopback && iface.flags.broadcast {
                 if iface.ipv4_subnet().is_some() {
                     let _ = self.arp.update(ArpEntryInternal {
+                        negated: false,
                         hostname: None,
                         ip: IpAddr::V4(Ipv4Addr::BROADCAST),
                         mac: MacAddress::BROADCAST,
@@ -48,6 +49,7 @@ impl IOContext {
 
                 if iface.ipv6_subnet().is_some() {
                     let _ = self.arp.update(ArpEntryInternal {
+                        negated: false,
                         hostname: None,
                         ip: IpAddr::V6(Ipv6Addr::new(0xf801, 0, 0, 0, 0, 0, 0, 1)),
                         mac: MacAddress::BROADCAST,
@@ -72,6 +74,7 @@ impl IOContext {
                 match addr {
                     InterfaceAddr::Inet { addr, .. } => {
                         let _ = self.arp.update(ArpEntryInternal {
+                            negated: false,
                             hostname: Some(module_name()),
                             ip: IpAddr::V4(*addr),
                             mac: iface.device.addr,
@@ -81,6 +84,7 @@ impl IOContext {
                     }
                     InterfaceAddr::Inet6 { addr, .. } => {
                         let _ = self.arp.update(ArpEntryInternal {
+                            negated: false,
                             hostname: Some(module_name()),
                             ip: IpAddr::V6(*addr),
                             mac: iface.device.addr,
