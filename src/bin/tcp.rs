@@ -21,6 +21,7 @@ use inet::{
     tcp::{set_tcp_cfg, TcpConfig, TcpDebugPlugin},
     TcpListener, TcpStream,
 };
+use log::LevelFilter;
 
 struct Connector {
     freq: f64,  // the number of bytes in the last second
@@ -208,8 +209,12 @@ impl Module for Main {
 
 struct Policy;
 impl LogScopeConfigurationPolicy for Policy {
-    fn configure(&self, _scope: &str) -> (Box<dyn des::logger::LogOutput>, LogFormat) {
-        (Box::new((stdout(), stderr())), LogFormat::NoColor)
+    fn configure(&self, _scope: &str) -> (Box<dyn des::logger::LogOutput>, LogFormat, LevelFilter) {
+        (
+            Box::new((stdout(), stderr())),
+            LogFormat::NoColor,
+            LevelFilter::max(),
+        )
     }
 }
 

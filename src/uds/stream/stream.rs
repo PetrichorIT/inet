@@ -151,7 +151,7 @@ impl IOContext {
 
         let fd: Fd = self.create_socket(SocketDomain::AF_UNIX, SocketType::SOCK_STREAM, 0)?;
 
-        let Some(lis) = self.uds_listeners.iter().find(|s| s.1.addr == addr) else {
+        let Some(lis) = self.uds.binds.iter().find(|s| s.1.addr == addr) else {
             return Err(Error::new(ErrorKind::ConnectionRefused, "connection refused"));
         };
 

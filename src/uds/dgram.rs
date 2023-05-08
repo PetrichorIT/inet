@@ -50,7 +50,8 @@ impl UnixDatagram {
     /// Returns an error if the socket is invalid.
     pub fn local_addr(&self) -> Result<SocketAddr> {
         IOContext::with_current(|ctx| {
-            ctx.uds_dgrams
+            ctx.uds
+                .dgrams
                 .get(&self.fd)
                 .map(|h| h.addr.clone())
                 .ok_or(Error::new(ErrorKind::Other, "socket dropped"))
@@ -64,11 +65,12 @@ impl UnixDatagram {
     /// Returns an error if the socket is invalid or has no peer addr.
     pub fn peer_addr(&self) -> Result<SocketAddr> {
         IOContext::with_current(|ctx| {
-            ctx.uds_dgrams
+            ctx.uds
+                .dgrams
                 .get(&self.fd)
                 .map(|h| {
                     h.peer
-                        .map(|fd| dbg!(ctx.uds_dgrams.get(&fd)).map(|f| f.addr.clone()))
+                        .map(|fd| dbg!(ctx.uds.dgrams.get(&fd)).map(|f| f.addr.clone()))
                         .flatten()
                         .ok_or(Error::new(ErrorKind::Other, "no peer"))
                 })
@@ -175,7 +177,7 @@ impl UnixDatagram {
     /// no peer was connected.
     pub async fn recv(&self, buf: &mut [u8]) -> Result<usize> {
         let peered =
-            IOContext::with_current(|ctx| ctx.uds_dgrams.get(&self.fd).map(|v| v.peer.is_some()))
+            IOContext::with_current(|ctx| ctx.uds.dgrams.get(&self.fd).map(|v| v.peer.is_some()))
                 .unwrap_or(false);
         if !peered {
             return Err(Error::new(ErrorKind::Other, "no peer"));
@@ -209,7 +211,7 @@ impl IOContext {
     fn uds_dgram_bind(&mut self, path: &Path) -> Result<UnixDatagram> {
         let addr = SocketAddr::from(path.to_path_buf());
 
-        let entry = self.uds_dgrams.iter().any(|s| s.1.addr == addr);
+        let entry = self.uds.dgrams.iter().any(|s| s.1.addr == addr);
         if entry {
             return Err(Error::new(ErrorKind::AddrInUse, "address already in use"));
         }
@@ -227,7 +229,7 @@ impl IOContext {
             rx: Mutex::new(rx),
         };
 
-        self.uds_dgrams.insert(fd, handle);
+        self.uds.dgrams.insert(fd, handle);
         Ok(socket)
     }
 
@@ -247,12 +249,12 @@ impl IOContext {
             rx: Mutex::new(rx),
         };
 
-        self.uds_dgrams.insert(fd, handle);
+        self.uds.dgrams.insert(fd, handle);
         Ok(socket)
     }
 
     fn uds_dgram_connect(&mut self, fd: Fd, addr: SocketAddr) -> Result<()> {
-        let Some((peer, _)) = self.uds_dgrams.iter().find(|h| h.1.addr == addr) else {
+        let Some((peer, _)) = self.uds.dgrams.iter().find(|h| h.1.addr == addr) else {
             return Err(Error::new(ErrorKind::ConnectionRefused, "connection refused"))
         };
 
@@ -260,7 +262,7 @@ impl IOContext {
     }
 
     fn uds_dgram_connect_fd(&mut self, fd: Fd, peer: Fd) -> Result<()> {
-        let Some(handle) = self.uds_dgrams.get_mut(&fd) else {
+        let Some(handle) = self.uds.dgrams.get_mut(&fd) else {
             return Err(Error::new(ErrorKind::InvalidInput, "no such uds socket exists"))
         };
 
@@ -274,7 +276,7 @@ impl IOContext {
     ) -> Result<Sender<(Vec<u8>, SocketAddr)>> {
         let dst = SocketAddr::from(dst.to_path_buf());
 
-        if let Some((_fd, handle)) = self.uds_dgrams.iter().find(|(_, h)| h.addr == dst) {
+        if let Some((_fd, handle)) = self.uds.dgrams.iter().find(|(_, h)| h.addr == dst) {
             Ok(handle.tx.clone())
         } else {
             Err(Error::new(
@@ -285,7 +287,7 @@ impl IOContext {
     }
 
     fn uds_dgram_get_handle_for_peer(&mut self, fd: Fd) -> Result<Sender<(Vec<u8>, SocketAddr)>> {
-        let Some(handle) = self.uds_dgrams.get(&fd) else {
+        let Some(handle) = self.uds.dgrams.get(&fd) else {
             return Err(Error::new(ErrorKind::Other, "socket unbound"))
         };
 
@@ -293,7 +295,7 @@ impl IOContext {
             return Err(Error::new(ErrorKind::Other, "no peer"))
         };
 
-        let Some(peer) = self.uds_dgrams.get(&peer_fd) else {
+        let Some(peer) = self.uds.dgrams.get(&peer_fd) else {
             return Err(Error::new(ErrorKind::Other, "peer dropped"))
         };
 
@@ -301,7 +303,7 @@ impl IOContext {
     }
 
     fn uds_dgram_drop(&mut self, fd: Fd) {
-        self.uds_dgrams.remove(&fd);
+        self.uds.dgrams.remove(&fd);
         let _ = self.close_socket(fd);
     }
 }

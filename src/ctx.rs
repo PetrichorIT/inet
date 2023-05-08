@@ -4,7 +4,8 @@ use crate::{
     interface::{IfId, Interface, LinkLayerResult, KIND_LINK_UPDATE},
     pcap::Pcap,
     routing::{Ipv4RoutingTable, Ipv6RoutingTable},
-    uds, IOPlugin,
+    uds::Uds,
+    IOPlugin,
 };
 use des::{net::plugin::PluginError, prelude::Message};
 use fxhash::{FxBuildHasher, FxHashMap};
@@ -38,8 +39,7 @@ pub struct IOContext {
     pub(super) sockets: FxHashMap<Fd, Socket>,
     pub(super) udp_manager: FxHashMap<Fd, UdpControlBlock>,
     pub(super) tcp: Tcp,
-    pub(super) uds_dgrams: FxHashMap<Fd, uds::UnixDatagramHandle>,
-    pub(super) uds_listeners: FxHashMap<Fd, uds::UnixListenerHandle>,
+    pub(super) uds: Uds,
 
     pub(super) fd: Fd,
     pub(super) port: u16,
@@ -60,8 +60,7 @@ impl IOContext {
             sockets: FxHashMap::with_hasher(FxBuildHasher::default()),
             udp_manager: FxHashMap::with_hasher(FxBuildHasher::default()),
             tcp: Tcp::new(),
-            uds_dgrams: FxHashMap::with_hasher(FxBuildHasher::default()),
-            uds_listeners: FxHashMap::with_hasher(FxBuildHasher::default()),
+            uds: Uds::new(),
 
             fd: 100,
             port: 1024,

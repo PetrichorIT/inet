@@ -61,7 +61,7 @@ impl IOContext {
     fn uds_listener_bind(&mut self, path: &Path) -> Result<UnixListener> {
         let addr = SocketAddr::from(path.to_path_buf());
 
-        let entry = self.uds_listeners.iter().any(|s| s.1.addr == addr);
+        let entry = self.uds.binds.iter().any(|s| s.1.addr == addr);
         if entry {
             return Err(Error::new(ErrorKind::AddrInUse, "address already in use"));
         }
@@ -75,7 +75,7 @@ impl IOContext {
             rx: Mutex::new(rx),
         };
 
-        self.uds_listeners.insert(fd, handle);
+        self.uds.binds.insert(fd, handle);
         Ok(socket)
     }
 
@@ -84,7 +84,7 @@ impl IOContext {
         lis_fd: Fd,
         incoming: IncomingStream,
     ) -> Result<(UnixStream, SocketAddr)> {
-        let Some(listener) = self.uds_listeners.get(&lis_fd) else {
+        let Some(listener) = self.uds.binds.get(&lis_fd) else {
             return Err(Error::new(ErrorKind::Other, "dropped"));
         };
         let l_addr = listener.addr.clone();
@@ -103,7 +103,7 @@ impl IOContext {
     }
 
     fn uds_listener_drop(&mut self, fd: Fd) -> Result<()> {
-        self.uds_listeners.remove(&fd);
+        self.uds.binds.remove(&fd);
         self.close_socket(fd)
     }
 }

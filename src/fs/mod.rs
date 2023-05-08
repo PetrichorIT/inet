@@ -47,7 +47,7 @@ impl IOContext {
                     .map(char::from)
                     .collect::<String>();
 
-            for uds in self.uds_dgrams.values() {
+            for uds in self.uds.dgrams.values() {
                 let Some(path) = uds.addr.as_pathname() else { continue;};
                 if path.starts_with(&name) {
                     continue 'outer;

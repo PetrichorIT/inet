@@ -1,0 +1,108 @@
+module NodeLike {
+    gates {
+        in @input,
+        out @output,
+    }
+}
+
+module Dns: NodeLike {}
+module Node: NodeLike {}
+
+module Switch {
+    gates {
+        in[5],
+        out[5],
+
+        gwin @input,
+        gwout @output,
+    }
+}
+
+module Router {
+    gates {
+        lan_in @input,
+        lan_out @output,
+
+        in[5] @input,
+        out[5] @output,
+    }
+}
+
+link LANLink {
+    bitrate: 1000000,
+    jitter: 0.0,
+    latency: 0.01,
+}
+
+module LAN {
+    gates {
+        in[5],
+        out[5],
+    }
+
+    submodules {
+        node[5]: dyn NodeLike,
+        switch: Switch,
+        router: Router,
+    }
+
+    connections {
+        router/out --> out,
+        router/in <-- in,
+
+        node/out --> LANLink --> switch/in,
+        node/in <-- LANLink <-- switch/out,
+
+        router/lan_out --> LANLink --> switch/gwin,
+        router/lan_in <-- LANLink <-- switch/gwout,
+    }
+}
+
+link WANLink {
+    bitrate: 1000000,
+    jitter: 0.0,
+    latency: 0.05,
+}
+
+module Main {
+    submodules {
+        a1: LAN { node = Node },
+        a2: LAN { node = Node },
+        a3: LAN { node = Node },
+        
+        b1: LAN { node = Dns },
+
+        c1: LAN { node = Dns },
+
+        d1: LAN { node = Dns },
+        d2: LAN { node = Dns },
+    }
+
+    connections {
+        a1/out[0] --> WANLink --> a2/in[0],
+        a1/in[0] <-- WANLink <-- a2/out[0],
+
+        a1/out[1] --> WANLink --> a3/in[0],
+        a1/in[1] <-- WANLink <-- a1/out[0],
+
+        a2/out[1] --> WANLink --> a2/in[1],
+        a2/in[1] <-- WANLink <-- a2/out[1],
+
+        a1/out[2] --> WANLink --> b1/in[0],
+        a1/in[2] <-- WANLink <-- b1/out[0],
+
+        a3/out[2] --> WANLink --> c1/in[0],
+        a3/in[2] <-- WANLink <-- c1/out[0],
+
+        b1/out[1] --> WANLink --> d1/in[1],
+        b1/in[1] <-- WANLink <-- d1/out[1],
+
+        c1/out[1] --> WANLink --> d1/in[2],
+        c1/in[1] <-- WANLink <-- d1/out[2],
+
+        d1/out[0] --> WANLink --> d2/in[0],
+        d1/in[0] <-- WANLink <-- d2/out[0],
+    }
+}
+
+entry Main;
