@@ -245,7 +245,73 @@ impl IOContext {
                 self.send_lan_local_ip_packet(SocketIfaceBinding::Bound(rifid), gw, pkt, buffered)
             }
             // TODO: move logic to extra, non-arp fn
-            IpGateway::Broadcast => self.send_lan_local_ip_packet(ifid, pkt.dest(), pkt, buffered),
+            IpGateway::Broadcast => self.broadcast_ip_packet(ifid, pkt, buffered),
+        }
+    }
+
+    pub fn broadcast_ip_packet(
+        &mut self,
+        ifid: SocketIfaceBinding,
+        pkt: IpPacket,
+        buffered: bool,
+    ) -> io::Result<()> {
+        // Since we are broadcasting, use ff
+        match ifid {
+            SocketIfaceBinding::Bound(_) => {
+                self.send_lan_local_ip_packet(ifid, pkt.dest(), pkt, buffered)
+            }
+            _ => {
+                for (ifid, iface) in &mut self.ifaces {
+                    match pkt.clone() {
+                        IpPacket::V4(mut pkt) => {
+                            if pkt.src.is_unspecified() {
+                                pkt.src = iface.ipv4_subnet().unwrap().0;
+                            }
+                            let msg = Message::new()
+                                .kind(KIND_IPV4)
+                                .src(iface.device.addr.into())
+                                .dest(MacAddress::BROADCAST.into())
+                                .content(pkt)
+                                .build();
+                            {
+                                let mut pcap = self.pcap.borrow_mut();
+                                if pcap.cfg.capture.capture_outgoing() {
+                                    pcap.capture(&msg, *ifid, iface).expect("Pcap failed")
+                                }
+                            }
+                            if buffered {
+                                iface.send_buffered(msg)?;
+                            } else {
+                                iface.send(msg)?;
+                            }
+                        }
+                        IpPacket::V6(mut pkt) => {
+                            if pkt.src.is_unspecified() {
+                                pkt.src = iface.ipv6_subnet().unwrap().0;
+                            }
+                            let msg = Message::new()
+                                .kind(KIND_IPV6)
+                                .src(iface.device.addr.into())
+                                .dest(MacAddress::BROADCAST.into())
+                                .content(pkt)
+                                .build();
+
+                            {
+                                let mut pcap = self.pcap.borrow_mut();
+                                if pcap.cfg.capture.capture_outgoing() {
+                                    pcap.capture(&msg, *ifid, iface).expect("Pcap failed")
+                                }
+                            }
+                            if buffered {
+                                iface.send_buffered(msg)?;
+                            } else {
+                                iface.send(msg)?;
+                            }
+                        }
+                    }
+                }
+                Ok(())
+            }
         }
     }
 

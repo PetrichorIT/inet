@@ -11,49 +11,44 @@ use std::net::IpAddr;
 use std::net::Ipv4Addr;
 use std::time::Duration;
 
+use crate::IOContext;
 use crate::{
     interface::{add_interface, Interface},
     routing::add_routing_entry,
     UdpSocket,
 };
 
+use super::RoutingInformation;
 use super::{update_routing_entry, RoutingPort};
 
-const UPDATE_DELAY: Duration = Duration::from_secs(30);
-const LIFETIME: Duration = Duration::from_secs(60);
+const UPDATE_DELAY: Duration = Duration::from_secs(60);
+const LIFETIME: Duration = Duration::from_secs(200);
 
 #[derive(Debug, Clone)]
 pub struct RoutingDeamon {
     addr: Ipv4Addr,
     mask: Ipv4Addr,
-    lan_port: RoutingPort,
 
     neighbors: FxHashMap<Ipv4Addr, NeighborEntry>,
     vectors: FxHashMap<Ipv4Addr, DistanceVectorEntry>,
-    iface_counter: usize,
     next_timeout: SimTime,
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct NeighborEntry {
     router: Ipv4Addr,
     mask: Ipv4Addr,
-    port: RoutingPort,
     iface: String,
 }
 
 impl NeighborEntry {
-    pub fn new(router: Ipv4Addr, mask: Ipv4Addr, port: RoutingPort) -> Self {
+    pub fn new(router: Ipv4Addr, mask: Ipv4Addr, iface: String) -> Self {
         Self {
             router,
             mask,
-            port,
-            iface: String::new(),
+            iface,
         }
-    }
-
-    fn subnet(&self) -> Ipv4Addr {
-        Ipv4Addr::from(u32::from(self.router) & u32::from(self.mask))
     }
 }
 
@@ -69,31 +64,46 @@ struct DistanceVectorEntry {
 
 impl RoutingDeamon {
     pub fn new(raddr: Ipv4Addr, mask: Ipv4Addr, port: RoutingPort) -> Self {
+        add_interface(Interface::ethv4_named(
+            "lan",
+            port.clone().into(),
+            raddr,
+            mask,
+        ))
+        .unwrap();
+
+        let ports = RoutingInformation::collect();
+        let mut c = 0;
+        for new_port in ports.ports {
+            if port != new_port {
+                // test if gate chain has channel else invalid
+                let mut chan = new_port.output.channel().is_some();
+                let mut cur = new_port.output.clone();
+                while let Some(next) = cur.next_gate() {
+                    cur = next;
+                    chan |= cur.channel().is_some();
+                }
+
+                if chan {
+                    let iface = Interface::ethv4_named(
+                        format!("en{c}"),
+                        new_port.into(),
+                        raddr,
+                        Ipv4Addr::UNSPECIFIED,
+                    );
+                    add_interface(iface).unwrap();
+                    c += 1;
+                }
+            }
+        }
+
         Self {
             addr: raddr,
             mask,
-            lan_port: port,
             neighbors: FxHashMap::with_hasher(FxBuildHasher::default()),
             vectors: FxHashMap::with_hasher(FxBuildHasher::default()),
-            iface_counter: 0,
             next_timeout: SimTime::MAX,
         }
-    }
-
-    pub fn declare_neighbor(&mut self, mut n: NeighborEntry) {
-        if n.iface.is_empty() {
-            add_interface(Interface::ethv4_named(
-                format!("en{}", self.iface_counter),
-                n.port.clone().into(),
-                self.addr,
-                Ipv4Addr::UNSPECIFIED,
-            ))
-            .unwrap();
-            n.iface = format!("en{}", self.iface_counter);
-            self.iface_counter += 1;
-        }
-
-        self.neighbors.insert(n.router, n);
     }
 
     fn full_dvs_for(&self, neighbor: Ipv4Addr) -> RipPacket {
@@ -114,53 +124,93 @@ impl RoutingDeamon {
         }
     }
 
-    async fn pub_changes(&self, sock: &mut UdpSocket) {
-        for n in self.neighbors.keys() {
-            let dv = self.full_dvs_for(*n);
-            sock.send_to(&dv.to_buffer().unwrap(), (*n, 520))
-                .await
-                .unwrap();
+    fn add_neighbor(
+        &mut self,
+        router: Ipv4Addr,
+        mask: Ipv4Addr,
+        iface: String,
+        changes: &mut Vec<RipEntry>,
+    ) {
+        // log::info!(target: "inet/rip", "discovered new neighbor {router:?} ({mask:?}) on port {iface}");
+
+        let subnet = Ipv4Addr::from(u32::from(router) & u32::from(mask));
+
+        add_routing_entry(subnet, mask, router, &iface).unwrap();
+        self.neighbors.insert(
+            router,
+            NeighborEntry {
+                router,
+                mask,
+                iface,
+            },
+        );
+
+        let v = DistanceVectorEntry {
+            subnet,
+            mask,
+            gateway: router,
+            cost: 1,
+            deadline: SimTime::now() + LIFETIME,
+            update_time: SimTime::now() + UPDATE_DELAY,
+        };
+        if let Some(dv) = self.vectors.get_mut(&subnet) {
+            *dv = v;
+        } else {
+            // log::trace!(target: "inet/rip", "new destination {:?}", subnet);
+            self.vectors.insert(subnet, v);
         }
+
+        changes.push(RipEntry {
+            addr_fam: AF_INET,
+            target: subnet,
+            mask,
+            next_hop: router,
+            metric: 1,
+        });
     }
 
     pub async fn deploy(mut self) {
-        add_interface(Interface::ethv4_named(
-            "lan",
-            self.lan_port.clone().into(),
-            self.addr,
-            self.mask,
-        ))
-        .unwrap();
+        // (0) Initalize the DVs with just self as a target
+        let local_subnet = Ipv4Addr::from(u32::from(self.addr) & u32::from(self.mask));
+        self.vectors.insert(
+            local_subnet,
+            DistanceVectorEntry {
+                subnet: local_subnet,
+                mask: self.mask,
+                gateway: Ipv4Addr::UNSPECIFIED,
+                cost: 0,
+                deadline: SimTime::MAX,
+                update_time: SimTime::MAX,
+            },
+        );
 
-        // self.vectors.insert(k, v)
+        // (1) Open a socket and publish the self as a contensant
+        let sock = UdpSocket::bind("0.0.0.0:520").await.unwrap();
+        sock.set_broadcast(true).unwrap();
 
-        for neighbor in self.neighbors.values() {
-            add_routing_entry(
-                neighbor.subnet(),
-                neighbor.mask,
-                neighbor.router,
-                &neighbor.iface,
-            )
+        // (2) Request updates from all ajacent routers.
+        let req = RipPacket {
+            command: RipCommand::Request,
+            entries: vec![RipEntry {
+                addr_fam: 0,
+                target: Ipv4Addr::from(u32::from(self.addr) & u32::from(self.mask)),
+                mask: self.mask,
+                next_hop: self.addr,
+                metric: 16,
+            }],
+        };
+        sock.send_to(&req.to_buffer().unwrap(), (Ipv4Addr::BROADCAST, 520))
+            .await
             .unwrap();
-            self.vectors.insert(
-                neighbor.subnet(),
-                DistanceVectorEntry {
-                    subnet: neighbor.subnet(),
-                    mask: neighbor.mask,
-                    gateway: neighbor.router,
-                    cost: 1,
-                    deadline: SimTime::MAX,
-                    update_time: SimTime::MAX,
-                },
-            );
-        }
 
-        let mut sock = UdpSocket::bind("0.0.0.0:520").await.unwrap();
-        self.pub_changes(&mut sock).await;
-
+        // (3) Loop routing
         loop {
             let mut buf = [0; 1024];
-            let sleep_dur = (self.next_timeout - SimTime::now()).min(UPDATE_DELAY);
+            let sleep_dur = (self
+                .next_timeout
+                .checked_duration_since(SimTime::now())
+                .unwrap_or(Duration::ZERO))
+            .min(UPDATE_DELAY);
 
             let (n, from) = des::tokio::select! {
                 result = sock.recv_from(&mut buf) => match result {
@@ -174,11 +224,11 @@ impl RoutingDeamon {
                     let mut updates = FxHashMap::with_hasher(FxBuildHasher::default());
                     for addr in self.vectors.keys().cloned().collect::<Vec<_>>() {
                         let entry = self.vectors.get_mut(&addr).unwrap();
-                        let rem = entry.deadline - SimTime::now();
-                        if rem == Duration::ZERO {
+
+                        if SimTime::now() >= entry.deadline {
                             // Timeout
                             log::info!("Timeout for DV");
-                        } else {
+                        } else if SimTime::now() >= entry.update_time {
                             // request update
                             updates.entry(entry.gateway).or_insert(Vec::new()).push(RipEntry {
                                 addr_fam: AF_INET,
@@ -198,7 +248,6 @@ impl RoutingDeamon {
                         }
                     }
 
-
                     let min = self
                         .vectors
                         .values()
@@ -210,8 +259,15 @@ impl RoutingDeamon {
                 },
             };
 
-            let (raddr, rport) = if let IpAddr::V4(v4) = from.ip() {
-                (v4, self.neighbors.get(&v4).unwrap().iface.clone())
+            let (raddr, rport, new_neighbor) = if let IpAddr::V4(v4) = from.ip() {
+                let (incoming, new_neighbor) = match self.neighbors.get(&v4) {
+                    Some(v) => (v.iface.clone(), false),
+                    None => IOContext::with_current(|ctx| {
+                        let iface = ctx.ifaces.get(&ctx.current.ifid).unwrap();
+                        (iface.name.name.clone(), true)
+                    }),
+                };
+                (v4, incoming, new_neighbor)
             } else {
                 unreachable!()
             };
@@ -221,31 +277,47 @@ impl RoutingDeamon {
 
             match rip.command {
                 RipCommand::Request => {
-                    // TODO: special case
                     let mut rip = rip;
                     rip.command = RipCommand::Response;
 
-                    for entry in &mut rip.entries {
-                        // (0) Check local DVs
-                        let Some(dv) = self.vectors.get(&entry.target) else {
+                    if new_neighbor {
+                        self.add_neighbor(raddr, rip.entries[0].mask, rport, &mut changes)
+                    }
+
+                    if rip.entries.len() == 1
+                        && rip.entries[0].addr_fam == 0
+                        && rip.entries[0].metric == 16
+                    {
+                        // request entire routing table
+                        let dvs = self.full_dvs_for(raddr);
+                        sock.send_to(&dvs.to_buffer().unwrap(), from).await.unwrap();
+                    } else {
+                        for entry in &mut rip.entries {
+                            // (0) Check local DVs
+                            let Some(dv) = self.vectors.get(&entry.target) else {
                             entry.metric = 16;
                             entry.next_hop = Ipv4Addr::UNSPECIFIED;
                             continue;
                         };
-
-                        *entry = RipEntry {
-                            addr_fam: AF_INET,
-                            target: dv.subnet,
-                            mask: dv.mask,
-                            next_hop: dv.gateway,
-                            metric: dv.cost,
-                        };
+                            *entry = RipEntry {
+                                addr_fam: AF_INET,
+                                target: dv.subnet,
+                                mask: dv.mask,
+                                next_hop: dv.gateway,
+                                metric: dv.cost,
+                            };
+                        }
+                        sock.send_to(&rip.to_buffer().unwrap(), from).await.unwrap();
                     }
-
-                    sock.send_to(&rip.to_buffer().unwrap(), from).await.unwrap();
                 }
                 RipCommand::Response => {
                     for dv in rip.entries {
+                        if new_neighbor
+                            && Ipv4Addr::from(u32::from(raddr) & u32::from(dv.mask)) == dv.target
+                        {
+                            self.add_neighbor(raddr, dv.mask, rport.clone(), &mut changes);
+                        }
+
                         if let Some(route) = self.vectors.get_mut(&dv.target) {
                             if route.cost > dv.metric + 1 {
                                 *route = DistanceVectorEntry {
@@ -270,6 +342,11 @@ impl RoutingDeamon {
                                 route.update_time = SimTime::now() + UPDATE_DELAY;
                             }
                         } else {
+                            if dv.target == local_subnet {
+                                continue;
+                            }
+                            // log::trace!(target: "inet/rip", "new destination {:?} (info from {raddr})", dv.target);
+
                             self.vectors.insert(
                                 dv.target,
                                 DistanceVectorEntry {
@@ -291,26 +368,39 @@ impl RoutingDeamon {
                             });
                         }
                     }
+                }
+            }
 
-                    if !changes.is_empty() {
-                        let publ = RipPacket::packets(RipCommand::Response, &changes);
-                        for pkt in publ {
-                            for n in self.neighbors.keys() {
-                                sock.send_to(&pkt.to_buffer().unwrap(), (*n, 520))
-                                    .await
-                                    .unwrap();
-                            }
+            if !changes.is_empty() {
+                // log::trace!(
+                //     "{} changes to be published to {} neighbors",
+                //     changes.len(),
+                //     self.neighbors.len()
+                // );
+                let publ = RipPacket::packets(RipCommand::Response, &changes);
+                for pkt in publ {
+                    for n in self.neighbors.keys() {
+                        if new_neighbor && *n == raddr {
+                            sock.send_to(&self.full_dvs_for(*n).to_buffer().unwrap(), (*n, 520))
+                                .await
+                                .unwrap();
+                        } else {
+                            sock.send_to(&pkt.to_buffer().unwrap(), (*n, 520))
+                                .await
+                                .unwrap();
                         }
-
-                        let min = self
-                            .vectors
-                            .values()
-                            .map(|dv| dv.update_time)
-                            .min()
-                            .unwrap_or(SimTime::MAX);
-                        self.next_timeout = min.max(SimTime::now());
                     }
                 }
+
+                let min = self
+                    .vectors
+                    .values()
+                    .map(|dv| dv.update_time)
+                    .min()
+                    .unwrap_or(SimTime::MAX);
+                self.next_timeout = min.max(SimTime::now());
+            } else {
+                // log::trace!("no changes");
             }
         }
     }

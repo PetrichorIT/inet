@@ -3,7 +3,7 @@ use std::{
     net::{IpAddr, Ipv4Addr},
 };
 
-use des::time::SimTime;
+use des::{prelude::module_path, time::SimTime};
 use fxhash::{FxBuildHasher, FxHashMap};
 use inet_types::{
     icmp::{

@@ -213,6 +213,10 @@ impl IOContext {
             }
         }
 
+        if target.ip().is_unspecified() {
+            panic!()
+        }
+
         let udp_packet = UDPPacket {
             src_port: mng.local_addr.port(),
             dest_port: target.port(),

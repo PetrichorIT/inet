@@ -43,6 +43,13 @@ pub struct IOContext {
 
     pub(super) fd: Fd,
     pub(super) port: u16,
+
+    pub(super) current: Current,
+}
+
+#[derive(Debug, Clone)]
+pub struct Current {
+    pub ifid: IfId,
 }
 
 impl IOContext {
@@ -64,6 +71,8 @@ impl IOContext {
 
             fd: 100,
             port: 1024,
+
+            current: Current { ifid: IfId::NULL },
         }
     }
 
@@ -116,6 +125,8 @@ impl IOContext {
             NetworkingPacket(msg, ifid) => (msg, ifid),
             Timeout(timeout) => return self.networking_layer_io_timeout(timeout),
         };
+
+        self.current.ifid = ifid;
 
         let kind = msg.header().kind;
         match kind {

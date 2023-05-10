@@ -6,10 +6,7 @@ use des::{
 use inet::{
     interface::{add_interface, Interface, NetworkDevice},
     pcap::{pcap, PcapConfig},
-    routing::{
-        rip::{NeighborEntry, RoutingDeamon},
-        set_default_gateway, RoutingInformation,
-    },
+    routing::{rip::RoutingDeamon, set_default_gateway, RoutingInformation},
     utils::LinkLayerSwitch,
     TcpListener, TcpStream,
 };
@@ -37,16 +34,16 @@ impl AsyncModule for Client {
                 )
                 .unwrap();
 
-                sleep(Duration::from_secs(1)).await;
-                let sock = TcpStream::connect("190.32.10.103:80").await;
+                sleep(Duration::from_secs(5)).await;
+                let sock = TcpStream::connect("190.32.100.103:80").await;
                 log::info!("{sock:?}")
             }
 
             if module_path().as_str() == "d2.node[2]" {
                 log::info!("building list");
                 let lis = TcpListener::bind("0.0.0.0:80").await.unwrap();
-                let (s, f) = lis.accept().await.unwrap();
-                log::info!("{f:?}");
+                let r = lis.accept().await;
+                log::info!("{r:?}");
             }
         });
     }
@@ -133,39 +130,18 @@ impl AsyncModule for Router {
             .cloned()
             .unwrap();
 
-        let mut router = RoutingDeamon::new(addr, mask, lan);
-        for port in ports.ports {
-            if port.output.name() == "lan_out" {
-                continue;
-            }
-
-            if port.output.path_end().unwrap().owner().path().name() != "router" {
-                continue;
-            }
-
-            let target = port.output.path_end().unwrap().owner();
-            let taddr = par_for("addr", target.path())
-                .unwrap()
-                .parse::<Ipv4Addr>()
-                .unwrap();
-            let tmask = par_for("mask", target.path())
-                .unwrap()
-                .parse::<Ipv4Addr>()
-                .unwrap();
-
-            router.declare_neighbor(NeighborEntry::new(taddr, tmask, port));
-        }
-
         pcap(
             PcapConfig {
                 enable: par("pcap").unwrap().parse().unwrap(),
-                capture: inet::pcap::PcapCapture::Incoming,
+                capture: inet::pcap::PcapCapture::Both,
             },
             std::fs::File::create(format!("results/full/{}.pcap", module_path())).unwrap(),
         )
         .unwrap();
 
         spawn(async move {
+            sleep(Duration::from_secs_f64(random::<f64>())).await;
+            let router = RoutingDeamon::new(addr, mask, lan);
             router.deploy().await;
         });
     }
