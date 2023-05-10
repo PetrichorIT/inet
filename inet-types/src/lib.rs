@@ -15,6 +15,7 @@ pub mod dns;
 pub mod icmp;
 pub mod iface;
 pub mod ip;
+pub mod routing;
 pub mod tcp;
 pub mod udp;
 pub mod uds;

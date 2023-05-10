@@ -21,6 +21,15 @@ pub struct Ipv4RoutingTableEntry {
     pub(super) prio: usize,
 }
 
+impl Ipv4RoutingTableEntry {
+    pub fn str(&self) -> String {
+        format!(
+            "{:?} ({:?}) via {:?} on {:?}",
+            self.addr, self.mask, self.gateway, self.iface
+        )
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Ipv4Gateway {
     Local,
@@ -55,6 +64,19 @@ impl Ipv4RoutingTable {
         match self.entries.binary_search_by(|a| a.prio.cmp(&entry.prio)) {
             Ok(i) | Err(i) => self.entries.insert(i, entry),
         }
+    }
+
+    pub fn update_entry(
+        &mut self,
+        addr: Ipv4Addr,
+        mask: Ipv4Addr,
+        gateway: Ipv4Gateway,
+        ifid: IfId,
+    ) {
+        let Some(entry) = self.entries.iter_mut().find(|e| e.addr == addr&&e.mask == mask)else {return;};
+        entry.gateway = gateway;
+        entry.iface = ifid;
+        entry.expire = SimTime::MAX;
     }
 
     pub fn loopuk_gateway(&self, dest: Ipv4Addr) -> Option<(&Ipv4Gateway, &IfId)> {

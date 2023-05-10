@@ -1,5 +1,6 @@
 use des::prelude::*;
 
+pub mod rip;
 pub mod router;
 
 mod tablev6;
@@ -117,6 +118,9 @@ impl RoutingPort {
         ports
     }
 }
+
+unsafe impl Send for RoutingPort {}
+unsafe impl Sync for RoutingPort {}
 
 #[derive(Debug)]
 pub(crate) enum IpGateway {

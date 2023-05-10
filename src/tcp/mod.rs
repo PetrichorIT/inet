@@ -293,6 +293,8 @@ impl IOContext {
 
         // (2) No active stream socket, maybe listen socket is possible
         if self.tcp.config.rst_on_syn {
+            log::trace!(target: "inet/tcp", "invalid incoming connection, sending RST");
+
             let rst = TcpPacket::rst_for_syn(&tcp_pkt);
             let rst = ip_packet.response(rst.to_buffer().unwrap());
             self.send_ip_packet(SocketIfaceBinding::Bound(ifid), rst, true);

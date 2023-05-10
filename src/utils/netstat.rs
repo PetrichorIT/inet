@@ -6,12 +6,12 @@ use crate::{
     IOContext,
 };
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Netstat {
     pub active_connections: Vec<NetstatConnection>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NetstatConnection {
     pub proto: NetstatConnectionProto,
     pub recv_q: usize,

@@ -110,7 +110,6 @@ impl IOContext {
         // not nessecarily addressed to any valid ip addr, but are valid for
         // the local MAC addr
         let l2 = self.recv_linklayer(msg);
-        // log::debug!("- {l2:?}");
         let (msg, ifid) = match l2 {
             PassThrough(msg) => return Some(msg),
             Consumed() => return None,

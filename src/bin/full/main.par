@@ -1,0 +1,27 @@
+a1.role = "client"
+a2.role = "client"
+a3.role = "dns"
+b1.role = "server"
+c1.role = "client"
+d1.role = "dns"
+d2.role = "server"
+
+a1.addr = 10.4.60.0
+a1.mask = 255.255.255.0
+a2.addr = 10.4.70.0
+a2.mask = 255.255.255.0
+a3.addr = 10.4.80.0
+a3.mask = 255.255.255.0
+
+b1.addr = 90.9.0.0
+b1.mask = 255.255.0.0
+
+c1.addr = 121.0.1.0
+c1.mask = 255.255.255.0
+
+d1.addr = 190.32.5.0
+d1.mask = 255.255.255.0
+d2.addr = 190.32.10.0
+d2.mask = 255.255.255.0
+
+*.router.pcap = true

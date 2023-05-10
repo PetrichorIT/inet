@@ -6,12 +6,13 @@ module NodeLike {
 }
 
 module Dns: NodeLike {}
-module Node: NodeLike {}
+module Client: NodeLike {}
+module Server: NodeLike {}
 
 module Switch {
     gates {
-        in[5],
-        out[5],
+        in[5] @input,
+        out[5] @output,
 
         gwin @input,
         gwout @output,
@@ -66,16 +67,16 @@ link WANLink {
 
 module Main {
     submodules {
-        a1: LAN { node = Node },
-        a2: LAN { node = Node },
-        a3: LAN { node = Node },
+        a1: LAN { node = Client },
+        a2: LAN { node = Client },
+        a3: LAN { node = Dns },
         
-        b1: LAN { node = Dns },
+        b1: LAN { node = Server },
 
-        c1: LAN { node = Dns },
+        c1: LAN { node = Client },
 
         d1: LAN { node = Dns },
-        d2: LAN { node = Dns },
+        d2: LAN { node = Server },
     }
 
     connections {
@@ -83,10 +84,10 @@ module Main {
         a1/in[0] <-- WANLink <-- a2/out[0],
 
         a1/out[1] --> WANLink --> a3/in[0],
-        a1/in[1] <-- WANLink <-- a1/out[0],
+        a1/in[1] <-- WANLink <-- a3/out[0],
 
-        a2/out[1] --> WANLink --> a2/in[1],
-        a2/in[1] <-- WANLink <-- a2/out[1],
+        a2/out[1] --> WANLink --> a3/in[1],
+        a2/in[1] <-- WANLink <-- a3/out[1],
 
         a1/out[2] --> WANLink --> b1/in[0],
         a1/in[2] <-- WANLink <-- b1/out[0],
