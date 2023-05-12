@@ -45,7 +45,7 @@ impl AsyncModule for Node {
             return;
         }
 
-        let gateway = par("gateway").unwrap().parse().unwrap();
+        let gateway = par("gateway").unwrap().parse::<Ipv4Addr>().unwrap();
         let addr = par("addr").unwrap().parse().unwrap();
         let mask = par("mask").unwrap().parse().unwrap();
 
@@ -130,7 +130,7 @@ impl AsyncModule for Dns {
             return;
         }
 
-        let gateway = par("gateway").unwrap().parse().unwrap();
+        let gateway = par("gateway").unwrap().parse::<Ipv4Addr>().unwrap();
         let addr = par("addr").unwrap().parse().unwrap();
         let mask = par("mask").unwrap().parse().unwrap();
 
@@ -211,7 +211,10 @@ impl Module for Router {
                 .path();
 
             let taddr: Ipv4Addr = par_for("addr", &module).unwrap().parse().unwrap();
-            let tmask = par_for("mask", &module).unwrap().parse().unwrap();
+            let tmask = par_for("mask", &module)
+                .unwrap()
+                .parse::<Ipv4Addr>()
+                .unwrap();
 
             add_interface(Interface::ethv4_named(
                 format!("wan{i}"),

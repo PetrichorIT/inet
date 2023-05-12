@@ -215,13 +215,13 @@ impl IOContext {
 
         let (route, rifid): (IpGateway, IfId) = match &pkt {
             IpPacket::V4(pkt) => {
-                let Some((route, rifid)) = self.ipv4router.loopuk_gateway(pkt.dest) else {
+                let Some((route, rifid)) = self.ipv4_fwd.lookup(pkt.dest) else {
                     return Err(Error::new(
                         ErrorKind::ConnectionRefused,
                         "no gateway network reachable"
                     ))
                 };
-                (route.clone().into(), *rifid)
+                (route.clone().into(), rifid.id)
             }
             IpPacket::V6(pkt) => {
                 let Some((route, rifid)) = self.ipv6router.loopuk_gateway(pkt.dest) else {

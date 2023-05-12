@@ -1,0 +1,9 @@
+de. 7000 IN SOA ns.namservers.de admin@ns.de (7000 7000 7000 7000 7000)
+
+de. 7000 IN NS ns.nameservers.de.
+
+tu-ilmenau.de. 7000 IN NS ns.tu-ilmenau.de.
+ns.tu-ilmenau.de. 7000 IN A 190.32.5.104
+
+bund.de. 7000 IN NS ns0.bund.de.
+ns0.bund.de. 7000 IN A 190.32.5.105

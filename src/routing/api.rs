@@ -1,52 +1,54 @@
 use std::{
     io::{self, Error, ErrorKind},
-    net::{IpAddr, Ipv4Addr},
+    net::IpAddr,
 };
 
-use super::{Ipv4Gateway, Ipv4RoutingTableEntry};
+use super::{ForwardingEntryV4, Ipv4Gateway};
 use crate::IOContext;
 
-pub fn set_default_gateway(ip: Ipv4Addr) -> io::Result<()> {
-    IOContext::try_with_current(|ctx| ctx.set_default_gateway(ip))
+pub fn set_default_gateway(ip: impl Into<IpAddr>) -> io::Result<()> {
+    IOContext::try_with_current(|ctx| ctx.set_default_gateway(ip.into()))
         .ok_or(Error::new(ErrorKind::Other, "missing IO Context"))?
 }
 
 pub fn add_routing_entry(
-    addr: Ipv4Addr,
-    mask: Ipv4Addr,
-    gw: Ipv4Addr,
+    addr: impl Into<IpAddr>,
+    mask: impl Into<IpAddr>,
+    gw: impl Into<IpAddr>,
     interface: &str,
 ) -> io::Result<()> {
-    IOContext::try_with_current(|ctx| ctx.add_routing_entry(addr, mask, gw, interface))
-        .ok_or(Error::new(ErrorKind::Other, "missing IO Context"))?
+    IOContext::try_with_current(|ctx| {
+        ctx.add_routing_entry(addr.into(), mask.into(), gw.into(), interface)
+    })
+    .ok_or(Error::new(ErrorKind::Other, "missing IO Context"))?
 }
 
+#[deprecated]
 pub fn update_routing_entry(
-    addr: Ipv4Addr,
-    mask: Ipv4Addr,
-    gw: Ipv4Addr,
+    addr: impl Into<IpAddr>,
+    mask: impl Into<IpAddr>,
+    gw: impl Into<IpAddr>,
     interface: &str,
 ) -> io::Result<()> {
-    IOContext::try_with_current(|ctx| ctx.update_routing_entry(addr, mask, gw, interface))
-        .ok_or(Error::new(ErrorKind::Other, "missing IO Context"))?
+    add_routing_entry(addr, mask, gw, interface)
 }
 
-pub fn route() -> io::Result<Vec<Ipv4RoutingTableEntry>> {
+pub fn route() -> io::Result<Vec<ForwardingEntryV4>> {
     IOContext::try_with_current(|ctx| ctx.route())
         .ok_or(Error::new(ErrorKind::Other, "missing IO Context"))
 }
 
 impl IOContext {
-    pub fn route(&mut self) -> Vec<Ipv4RoutingTableEntry> {
-        self.ipv4router.entries.clone()
+    pub fn route(&mut self) -> Vec<ForwardingEntryV4> {
+        self.ipv4_fwd.entries.clone()
     }
 
-    pub fn set_default_gateway(&mut self, ip: Ipv4Addr) -> io::Result<()> {
+    pub fn set_default_gateway(&mut self, ip: IpAddr) -> io::Result<()> {
         let Some(iface) = self.ifaces.values().find(|iface| {
             iface
                 .addrs
                 .iter()
-                .any(|addr| addr.matches_ip_subnet(IpAddr::V4(ip)))
+                .any(|addr| addr.matches_ip_subnet(ip))
         }) else {
             return Err(Error::new(
                 ErrorKind::Other,
@@ -54,21 +56,21 @@ impl IOContext {
             ))
         };
 
-        self.ipv4router.add_entry(
-            Ipv4Addr::UNSPECIFIED,
-            Ipv4Addr::UNSPECIFIED,
-            Ipv4Gateway::Gateway(ip),
-            iface.name.id,
-            usize::MAX / 2,
-        );
+        match ip {
+            IpAddr::V4(ip) => self
+                .ipv4_fwd
+                .set_default_gw(Ipv4Gateway::Gateway(ip), iface.name.clone()),
+            IpAddr::V6(_) => todo!(),
+        }
+
         Ok(())
     }
 
     pub fn add_routing_entry(
         &mut self,
-        subnet: Ipv4Addr,
-        mask: Ipv4Addr,
-        gw: Ipv4Addr,
+        subnet: IpAddr,
+        mask: IpAddr,
+        gw: IpAddr,
         interface: &str,
     ) -> io::Result<()> {
         // Defines a route to a subnet via a gateway and a defined interface
@@ -83,32 +85,22 @@ impl IOContext {
             ))
         };
 
-        self.ipv4router
-            .add_entry(subnet, mask, Ipv4Gateway::Gateway(gw), iface.name.id, 1);
-        Ok(())
-    }
+        use IpAddr::{V4, V6};
+        match (subnet, mask, gw) {
+            (V4(dest), V4(mask), V4(gw)) => {
+                self.ipv4_fwd.add_entry(ForwardingEntryV4 {
+                    dest,
+                    mask,
+                    gateway: Ipv4Gateway::Gateway(gw),
+                    iface: iface.name.clone(),
+                });
+            }
+            (V6(_dest), V6(_mask), V6(_gw)) => {
+                todo!()
+            }
+            _ => unreachable!(),
+        }
 
-    pub fn update_routing_entry(
-        &mut self,
-        subnet: Ipv4Addr,
-        mask: Ipv4Addr,
-        gw: Ipv4Addr,
-        interface: &str,
-    ) -> io::Result<()> {
-        // Defines a route to a subnet via a gateway and a defined interface
-
-        let Some(iface) = self.ifaces.values().find(|iface| {
-            iface
-                .name.name == interface
-        }) else {
-            return Err(Error::new(
-                ErrorKind::Other,
-                "interface not found"
-            ))
-        };
-
-        self.ipv4router
-            .update_entry(subnet, mask, Ipv4Gateway::Gateway(gw), iface.name.id);
         Ok(())
     }
 }

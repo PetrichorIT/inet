@@ -6,11 +6,14 @@ pub mod router;
 mod tablev6;
 pub use self::tablev6::*;
 
-mod tablev4;
-pub use self::tablev4::*;
+// mod tablev4;
+// pub use self::tablev4::*;
 
 mod api;
 pub use self::api::*;
+
+mod fwdv4;
+pub use self::fwdv4::*;
 
 use crate::IOPlugin;
 

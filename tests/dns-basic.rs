@@ -37,7 +37,7 @@ impl AsyncModule for Client {
         ))
         .unwrap();
         add_interface(Interface::loopback()).unwrap();
-        set_default_gateway([ip.octets()[0], 0, 0, 1].into()).unwrap();
+        set_default_gateway([ip.octets()[0], 0, 0, 1]).unwrap();
 
         schedule_in(Message::new().kind(2334).build(), Duration::from_secs(10));
 
@@ -130,7 +130,7 @@ impl AsyncModule for DNSServer0 {
             Ipv4Addr::new(255, 0, 0, 0),
         ))
         .unwrap();
-        set_default_gateway([ip.octets()[0], 0, 0, 1].into()).unwrap();
+        set_default_gateway([ip.octets()[0], 0, 0, 1]).unwrap();
 
         schedule_in(Message::new().kind(1111).build(), Duration::ZERO);
     }
@@ -178,7 +178,7 @@ impl AsyncModule for DNSServer1 {
         ))
         .unwrap();
         schedule_in(Message::new().kind(1111).build(), Duration::ZERO);
-        set_default_gateway([ip.octets()[0], 0, 0, 1].into()).unwrap();
+        set_default_gateway([ip.octets()[0], 0, 0, 1]).unwrap();
     }
 
     async fn handle_message(&mut self, msg: Message) {
@@ -219,7 +219,7 @@ impl AsyncModule for DNSServer2 {
             Ipv4Addr::new(255, 0, 0, 0),
         ))
         .unwrap();
-        set_default_gateway([ip.octets()[0], 0, 0, 1].into()).unwrap();
+        set_default_gateway([ip.octets()[0], 0, 0, 1]).unwrap();
 
         schedule_in(Message::new().kind(7912).build(), Duration::from_secs(5));
     }

@@ -8,7 +8,7 @@ use des::{prelude::module_name, time::SimTime};
 use super::{Interface, InterfaceAddr, MacAddress};
 use crate::{
     arp::ArpEntryInternal,
-    routing::{Ipv4Gateway, Ipv6Gateway},
+    routing::{ForwardingEntryV4, Ipv4Gateway, Ipv6Gateway},
     IOContext,
 };
 
@@ -38,13 +38,8 @@ impl IOContext {
                         expires: SimTime::MAX,
                     });
 
-                    self.ipv4router.add_entry(
-                        Ipv4Addr::BROADCAST,
-                        Ipv4Addr::BROADCAST,
-                        Ipv4Gateway::Broadcast,
-                        iface.name.id,
-                        usize::MAX,
-                    );
+                    self.ipv4_fwd
+                        .add_entry(ForwardingEntryV4::broadcast(iface.name.clone()));
                 }
 
                 if iface.ipv6_subnet().is_some() {
@@ -98,13 +93,15 @@ impl IOContext {
 
             // (2) Add interface subnet to routing table.
             if let Some((addr, mask)) = iface.ipv4_subnet() {
-                self.ipv4router.add_entry(
-                    addr,
-                    mask,
-                    Ipv4Gateway::Local,
-                    iface.name.id,
-                    usize::MAX / 4,
-                )
+                // TODO: Maybe this needs to be added allways, but lets try to restrict to LANs
+                if !mask.is_unspecified() {
+                    self.ipv4_fwd.add_entry(ForwardingEntryV4 {
+                        dest: addr,
+                        mask,
+                        gateway: Ipv4Gateway::Local,
+                        iface: iface.name.clone(),
+                    });
+                }
             }
 
             // (3) Add interface subnet to routing table.

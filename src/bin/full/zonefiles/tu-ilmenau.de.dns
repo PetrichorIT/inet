@@ -1,0 +1,9 @@
+tu-ilmenau.de. 7000 IN SOA ns.tu-ilmenau.de. admin@tu-ilmenau.de (7000 7000 7000 7000 7000)
+
+tu-ilmenau.de. 7000 IN NS ns.tu-ilmenau.de.
+ns.tu-ilmenau.de. 1800 IN A 190.32.5.103
+
+www.tu-ilmenau.de 7000 IN A 121.0.1.101
+prakinf.telematik.tu-ilmenau.de 7000 IN A 121.0.1.102
+os.tu-ilmenau.de 7000 IN A 121.0.1.103
+

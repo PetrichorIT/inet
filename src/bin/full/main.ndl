@@ -73,7 +73,7 @@ module Main {
         
         b1: LAN { node = Server },
 
-        c1: LAN { node = Client },
+        c1: LAN { node = Server },
 
         d1: LAN { node = Dns },
         d2: LAN { node = Server },

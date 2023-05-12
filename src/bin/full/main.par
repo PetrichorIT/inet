@@ -1,10 +1,10 @@
 a1.role = "client"
 a2.role = "client"
 a3.role = "dns"
-b1.role = "server"
-c1.role = "client"
+b1.role = "server:test/admin.org"
+c1.role = "server:*.de"
 d1.role = "dns"
-d2.role = "server"
+d2.role = "server:example.org"
 
 a1.addr = 10.4.60.0
 a1.mask = 255.255.255.0
@@ -23,5 +23,28 @@ d1.addr = 190.32.5.0
 d1.mask = 255.255.255.0
 d2.addr = 190.32.100.0
 d2.mask = 255.255.255.0
+
+a3.node[0].zone = .
+a3.node[0].domain = a.root-server.org
+a3.node[1].zone = org
+a3.node[1].domain = ns0.nameservers.org
+a3.node[2].zone = example.org.
+a3.node[2].domain = ns.example.org
+a3.node[3].zone = test.org.
+a3.node[3].domain = ns.test.org
+a3.node[4].zone = admin.org.
+a3.node[4].domain = ns.admin.org
+
+d1.node[0].zone = .
+d1.node[0].domain = b.root-server.org
+d1.node[1].zone = org
+d1.node[1].domain = ns1.nameservers.org
+d1.node[2].zone = de
+d1.node[2].domain = ns.nameservers.de
+d1.node[3].zone = tu-ilmenau.de.
+d1.node[3].domain = ns.tu-ilmenau.de
+d1.node[4].zone = bund.de.
+d1.node[4].domain = ns0.bund-de.de
+
 
 *.router.pcap = true

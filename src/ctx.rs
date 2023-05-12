@@ -3,7 +3,7 @@ use crate::{
     icmp::Icmp,
     interface::{IfId, Interface, LinkLayerResult, KIND_LINK_UPDATE},
     pcap::Pcap,
-    routing::{Ipv4RoutingTable, Ipv6RoutingTable},
+    routing::{ForwardingTableV4, Ipv6RoutingTable},
     uds::Uds,
     IOPlugin,
 };
@@ -30,7 +30,7 @@ pub struct IOContext {
     pub(super) ifaces: FxHashMap<IfId, Interface>,
 
     pub(super) arp: ArpTable,
-    pub(super) ipv4router: Ipv4RoutingTable,
+    pub(super) ipv4_fwd: ForwardingTableV4,
     pub(super) ipv6router: Ipv6RoutingTable,
 
     pub(super) pcap: RefCell<Pcap>,
@@ -58,7 +58,7 @@ impl IOContext {
             ifaces: FxHashMap::with_hasher(FxBuildHasher::default()),
 
             arp: ArpTable::new(),
-            ipv4router: Ipv4RoutingTable::new(),
+            ipv4_fwd: ForwardingTableV4::new(),
             ipv6router: Ipv6RoutingTable::new(),
 
             pcap: RefCell::new(Pcap::new()),

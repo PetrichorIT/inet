@@ -1,0 +1,9 @@
+test.org. 7000 IN SOA ns.test.org. admin@test.org (7000 7000 7000 7000 7000)
+
+test.org. 7000 IN NS ns.test.org.
+ns.test.org. 1800 IN A 100.3.0.104
+
+www.test.org 7000 IN A 90.9.0.101
+ftp.test.org 7000 IN A 90.9.0.102
+status.test.org 7000 IN A 90.9.0.103
+

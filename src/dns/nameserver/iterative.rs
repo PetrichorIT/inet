@@ -78,6 +78,9 @@ impl DNSNameserver {
                         );
                         response.rcode = DNSResponseCode::NxDomain;
                         output.push((response, client));
+
+                        dbg!(&self.db);
+                        dbg!(qname);
                         return;
                     }
 

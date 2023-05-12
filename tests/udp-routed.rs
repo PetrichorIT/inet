@@ -28,7 +28,7 @@ impl AsyncModule for Node {
 
         let ip = par("addr").unwrap().parse().unwrap();
         add_interface(Interface::ethv4(NetworkDevice::eth(), ip)).unwrap();
-        set_default_gateway([ip.octets()[0], 0, 0, 1].into()).unwrap();
+        set_default_gateway([ip.octets()[0], 0, 0, 1]).unwrap();
 
         let target: String = par("targets").unwrap().into_inner();
         let targets = target

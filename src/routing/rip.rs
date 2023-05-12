@@ -19,7 +19,7 @@ use crate::{
 };
 
 use super::RoutingInformation;
-use super::{update_routing_entry, RoutingPort};
+use super::RoutingPort;
 
 const UPDATE_DELAY: Duration = Duration::from_secs(60);
 const LIFETIME: Duration = Duration::from_secs(200);
@@ -328,7 +328,7 @@ impl RoutingDeamon {
                                     deadline: SimTime::now() + LIFETIME,
                                     update_time: SimTime::now() + UPDATE_DELAY,
                                 };
-                                update_routing_entry(dv.target, dv.mask, raddr, &rport).unwrap();
+                                add_routing_entry(dv.target, dv.mask, raddr, &rport).unwrap();
                                 changes.push(RipEntry {
                                     addr_fam: AF_INET,
                                     target: dv.target,

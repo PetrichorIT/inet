@@ -1,15 +1,21 @@
 use des::{
     prelude::*,
     registry,
-    tokio::{spawn, time::sleep},
+    tokio::{
+        io::{AsyncReadExt, AsyncWriteExt},
+        spawn,
+        time::sleep,
+    },
 };
 use inet::{
+    dns::{lookup_host, DNSNameserver},
     interface::{add_interface, Interface, NetworkDevice},
-    pcap::{pcap, PcapConfig},
+    pcap::{pcap, PcapCapture, PcapConfig},
     routing::{rip::RoutingDeamon, set_default_gateway, RoutingInformation},
     utils::LinkLayerSwitch,
     TcpListener, TcpStream,
 };
+use inet_types::ip::IpMask;
 
 struct Client;
 #[async_trait::async_trait]
@@ -24,26 +30,93 @@ impl AsyncModule for Client {
         node_like_setup();
 
         spawn(async move {
-            if module_path().as_str() == "a1.node[0]" {
-                pcap(
-                    PcapConfig {
-                        enable: true,
-                        capture: inet::pcap::PcapCapture::Both,
-                    },
-                    std::fs::File::create("results/client.pcap").unwrap(),
-                )
-                .unwrap();
+            let mut server = DNSNameserver::client(par("addr").unwrap().parse().unwrap());
 
-                sleep(Duration::from_secs(5)).await;
-                let sock = TcpStream::connect("190.32.100.103:80").await;
-                log::info!("{sock:?}")
+            server.allow_recursive_for(IpMask::catch_all_v4());
+            server.launch().await.unwrap();
+        });
+
+        // if module_path().as_str() == "a1.node[0]" {
+        spawn(async move {
+            sleep(Duration::from_secs(1)).await;
+
+            for _ in 0..5 {
+                let domain = DOMAINS[random::<usize>() % DOMAINS.len()];
+                let mut stream = TcpStream::connect((domain, 80)).await.unwrap();
+                stream.write_all(domain.as_bytes()).await.unwrap();
+                let mut buf = [0; 64];
+                let n = stream.read(&mut buf).await.unwrap();
+                assert_eq!(n, 1);
+                assert_eq!(buf[0], 42);
             }
+        });
+        // }
+    }
 
-            if module_path().as_str() == "d2.node[2]" {
-                log::info!("building list");
-                let lis = TcpListener::bind("0.0.0.0:80").await.unwrap();
-                let r = lis.accept().await;
-                log::info!("{r:?}");
+    fn num_sim_start_stages(&self) -> usize {
+        2
+    }
+}
+
+const DOMAINS: [&str; 15] = [
+    "www.example.org",
+    "ftp.example.org",
+    "info.example.org",
+    "status.info.example.org",
+    "stats.example.org",
+    "www.tu-ilmenau.de",
+    "prakinf.telematik.tu-ilmenau.de",
+    "os.tu-ilmenau.de",
+    "www.bund.de",
+    "id.bund.de",
+    "www.admin.org",
+    "recovery.admin.org",
+    "www.test.org",
+    "ftp.test.org",
+    "status.test.org",
+];
+
+struct Server;
+#[async_trait::async_trait]
+impl AsyncModule for Server {
+    fn new() -> Self {
+        Self
+    }
+
+    async fn at_sim_start(&mut self, stage: usize) {
+        if stage == 0 {
+            return;
+        }
+        node_like_setup();
+
+        spawn(async move {
+            let mut server = DNSNameserver::client(par("addr").unwrap().parse().unwrap());
+
+            server.allow_recursive_for(IpMask::catch_all_v4());
+            server.launch().await.unwrap();
+        });
+
+        spawn(async move {
+            let addr = par("addr").unwrap().parse::<Ipv4Addr>().unwrap();
+            let list = TcpListener::bind("0.0.0.0:80").await.unwrap();
+            loop {
+                let accept = list.accept().await.unwrap();
+                spawn(async move {
+                    let (mut stream, from) = accept;
+
+                    let mut buf = [0; 512];
+                    let n = stream.read(&mut buf).await.unwrap();
+                    let s = String::from_utf8_lossy(&buf[..n]);
+                    let lookup = lookup_host((s.to_string(), 80))
+                        .await
+                        .unwrap()
+                        .next()
+                        .unwrap();
+                    assert_eq!(lookup.ip(), addr);
+                    stream.write_all(&[42]).await.unwrap();
+
+                    log::trace!("responded to new stream from {from:?} known as {s}");
+                });
             }
         });
     }
@@ -53,48 +126,43 @@ impl AsyncModule for Client {
     }
 }
 
-type Server = Client;
-type Dns = Client;
+struct Dns;
+#[async_trait::async_trait]
+impl AsyncModule for Dns {
+    fn new() -> Self {
+        Self
+    }
 
-// struct Server;
-// impl Module for Server {
-//     fn new() -> Self {
-//         Self
-//     }
-//     fn at_sim_start(&mut self, stage: usize) {
-//         if stage == 0 {
-//             return;
-//         }
-//         node_like_setup()
-//     }
+    async fn at_sim_start(&mut self, stage: usize) {
+        if stage == 0 {
+            return;
+        }
+        node_like_setup();
 
-//     fn num_sim_start_stages(&self) -> usize {
-//         2
-//     }
-// }
+        let zone = par("zone").unwrap().into_inner();
+        let domain_name = par("domain").unwrap().into_inner();
 
-// struct Dns;
-// impl Module for Dns {
-//     fn new() -> Self {
-//         Self
-//     }
+        tokio::spawn(async move {
+            let mut dns =
+                DNSNameserver::from_zonefile(&zone, "src/bin/full/zonefiles", domain_name).unwrap();
+            if zone == "." {
+                dns.declare_root_ns();
+            }
+            dns.launch().await.unwrap();
+        });
+    }
 
-//     fn at_sim_start(&mut self, stage: usize) {
-//         if stage == 0 {
-//             return;
-//         }
-//         node_like_setup()
-//     }
-
-//     fn num_sim_start_stages(&self) -> usize {
-//         2
-//     }
-// }
+    fn num_sim_start_stages(&self) -> usize {
+        2
+    }
+}
 
 fn node_like_setup() {
     let addr = par("addr").unwrap().parse::<Ipv4Addr>().unwrap();
     let mask = par("mask").unwrap().parse::<Ipv4Addr>().unwrap();
     let gateway = par("gateway").unwrap().parse::<Ipv4Addr>().unwrap();
+
+    add_interface(Interface::loopback()).unwrap();
 
     add_interface(Interface::ethv4_named(
         "en0",
@@ -103,8 +171,16 @@ fn node_like_setup() {
         mask,
     ))
     .unwrap();
-
     set_default_gateway(gateway).unwrap();
+
+    pcap(
+        PcapConfig {
+            enable: true,
+            capture: PcapCapture::Both,
+        },
+        std::fs::File::create(format!("results/full/{}.pcap", module_path())).unwrap(),
+    )
+    .unwrap();
 }
 
 struct Router;
@@ -152,7 +228,7 @@ impl AsyncModule for Router {
 
     // async fn at_sim_end(&mut self) {
     //     for line in inet::routing::route().unwrap() {
-    //         log::info!("{}", line.str());
+    //         log::info!("{}", line);
     //     }
     // }
 }

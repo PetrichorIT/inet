@@ -1,0 +1,7 @@
+bund.de. 7000 IN SOA ns0.bund.de. admin@bund.de (7000 7000 7000 7000 7000)
+
+bund.de. 7000 IN NS ns0.bund.de.
+ns0.bund.de. 1800 IN A 190.32.5.104
+
+id.bund.de 7000 IN A 121.0.1.104
+www.bund.de 7000 IN A 121.0.1.105

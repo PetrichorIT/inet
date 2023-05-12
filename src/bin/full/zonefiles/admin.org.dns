@@ -1,0 +1,7 @@
+admin.org. 7000 IN SOA ns.admin.org. admin@admin.org (7000 7000 7000 7000 7000)
+
+admin.org. 7000 IN NS ns.admin.org.
+ns.admin.org. 1800 IN A 10.4.80.104
+
+www.admin.org 7000 IN A 90.9.0.104
+recovery.admin.org 7000 IN A 90.9.0.105
