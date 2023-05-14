@@ -1,6 +1,7 @@
 [workspace]
 members = [
-    "inet-types"
+    "inet-types",
+    "examples/*",
 ]
 
 [package]

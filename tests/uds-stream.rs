@@ -1,9 +1,9 @@
 use std::iter::repeat_with;
 
+use des::time::sleep;
 use des::tokio::io::{AsyncReadExt, AsyncWriteExt};
 use des::tokio::spawn;
 use des::tokio::task::JoinHandle;
-use des::tokio::time::sleep;
 use des::{prelude::*, registry};
 use inet::uds::{UnixListener, UnixStream};
 use serial_test::serial;

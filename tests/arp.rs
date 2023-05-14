@@ -1,8 +1,4 @@
-use des::{
-    prelude::*,
-    registry,
-    tokio::{spawn, time::sleep},
-};
+use des::{prelude::*, registry, time::sleep, tokio::spawn};
 use inet::{
     arp::arpa,
     debug,

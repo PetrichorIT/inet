@@ -23,7 +23,7 @@ impl AsyncModule for EdgeNode {
         if format!("{ip}") == "100.100.1.102" || format!("{ip}") == "100.100.3.101" {
             des::tokio::spawn(async move {
                 let d = random::<f64>() / 2.0;
-                des::tokio::time::sleep(Duration::from_secs_f64(d)).await;
+                des::time::sleep(Duration::from_secs_f64(d)).await;
 
                 log::info!("Opening socket");
                 let mut stream = TcpStream::connect("200.200.2.201:80").await.unwrap();

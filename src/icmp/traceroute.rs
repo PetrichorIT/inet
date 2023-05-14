@@ -2,7 +2,10 @@ use crate::{
     socket::{AsRawFd, Fd},
     IOContext, UdpSocket,
 };
-use des::{runtime::random, time::SimTime, tokio::time::sleep};
+use des::{
+    runtime::random,
+    time::{sleep, SimTime},
+};
 use std::{
     io::{Error, ErrorKind},
     net::Ipv4Addr,

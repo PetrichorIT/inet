@@ -1,3 +1,5 @@
+use des::runtime::random;
+
 use crate::IOContext;
 use std::io::{Error, ErrorKind, Result};
 use std::net::SocketAddr;
@@ -70,7 +72,7 @@ impl TcpConfig {
             nodelay: self.nodelay,
 
             ttl: self.ttl,
-            inital_seq_no: 0,
+            inital_seq_no: random(),
             mss: self.mss,
 
             cong_ctrl: self.cong_ctrl,
@@ -93,7 +95,7 @@ impl TcpConfig {
             nodelay: self.nodelay,
 
             ttl: self.ttl,
-            inital_seq_no: 0,
+            inital_seq_no: random(),
             mss: self.mss,
 
             cong_ctrl: self.cong_ctrl,
@@ -116,7 +118,7 @@ impl TcpConfig {
             nodelay: self.nodelay,
 
             ttl: self.ttl,
-            inital_seq_no: 0,
+            inital_seq_no: random(),
             mss: self.mss,
 
             cong_ctrl: self.cong_ctrl,
@@ -139,7 +141,7 @@ impl TcpConfig {
             nodelay: true,
 
             ttl: 64,
-            inital_seq_no: 0,
+            inital_seq_no: random(),
             mss: 1024,
 
             cong_ctrl: self.cong_ctrl,
@@ -162,7 +164,7 @@ impl TcpConfig {
             nodelay: true,
 
             ttl: 64,
-            inital_seq_no: 0,
+            inital_seq_no: random(),
             mss: 1024,
 
             cong_ctrl: self.cong_ctrl,

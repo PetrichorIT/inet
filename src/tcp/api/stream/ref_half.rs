@@ -4,8 +4,8 @@ use crate::IOContext;
 use super::super::TcpStreamInner;
 use super::TcpStream;
 
-use des::tokio::io::{AsyncRead, AsyncWrite, Interest, ReadBuf, Ready};
-
+use crate::io::{Interest, Ready};
+use des::tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 use std::io::{Error, ErrorKind, IoSlice, IoSliceMut, Result};
 use std::net::SocketAddr;
 use std::pin::Pin;

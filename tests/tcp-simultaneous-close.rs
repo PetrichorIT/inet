@@ -95,7 +95,7 @@ impl AsyncModule for TcpServer {
             let t = SimTime::now();
             let d = SimTime::from_duration(Duration::from_secs(1)) - t;
             log::info!("Waiting for {d:?}");
-            tokio::time::sleep(d).await;
+            des::time::sleep(d).await;
 
             log::info!("Server done");
             done.store(true, SeqCst);
@@ -156,7 +156,7 @@ impl AsyncModule for TcpClient {
             let t = SimTime::now();
             let d = SimTime::from_duration(Duration::from_secs(1)) - t;
             log::info!("Waiting for {d:?}");
-            tokio::time::sleep(d).await;
+            des::time::sleep(d).await;
 
             log::info!("Client done");
             done.store(true, SeqCst);

@@ -1,10 +1,10 @@
 use des::{
     prelude::*,
     registry,
+    time::sleep,
     tokio::{
         io::{AsyncReadExt, AsyncWriteExt},
         task::JoinHandle,
-        time::sleep,
     },
 };
 use inet::{

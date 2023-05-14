@@ -3,8 +3,9 @@ use crate::UdpSocket;
 use super::DNSZoneFile;
 use des::{
     prelude::{module_path, par},
+    time::sleep,
     time::SimTime,
-    tokio::{select, time::sleep},
+    tokio::select,
 };
 use inet_types::{
     dns::{

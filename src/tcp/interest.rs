@@ -4,11 +4,9 @@ use std::{
     task::{Poll, Waker},
 };
 
-use des::tokio::io::{Interest, Ready};
-
-use crate::{socket::Fd, IOContext};
-
 use super::types::TcpState;
+use crate::io::{Interest, Ready};
+use crate::{socket::Fd, IOContext};
 
 #[derive(Debug, Clone)]
 pub(crate) enum TcpInterest {

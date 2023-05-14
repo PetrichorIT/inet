@@ -1,5 +1,4 @@
-use des::tokio::io::{Interest, Ready};
-
+use crate::io::{Interest, Ready};
 use crate::{
     dns::{lookup_host, ToSocketAddrs},
     interface::InterfaceName,

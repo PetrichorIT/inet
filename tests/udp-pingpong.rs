@@ -3,7 +3,8 @@ use std::sync::Arc;
 use des::{
     prelude::*,
     registry,
-    tokio::{spawn, sync::Mutex, task::JoinHandle, time::sleep},
+    time::sleep,
+    tokio::{spawn, sync::Mutex, task::JoinHandle},
 };
 use inet::{
     interface::{add_interface, Interface, NetworkDevice},
@@ -29,8 +30,8 @@ impl AsyncModule for Ping {
         add_interface(Interface::ethv4_named(
             "en0",
             NetworkDevice::eth(),
-            Ipv4Addr::new(1, 1, 1, 1),
-            Ipv4Addr::UNSPECIFIED,
+            Ipv4Addr::new(192, 168, 0, 1),
+            Ipv4Addr::new(255, 255, 255, 0),
         ))
         .unwrap();
 
@@ -40,7 +41,7 @@ impl AsyncModule for Ping {
             sleep(Duration::from_secs(1)).await;
 
             let socket = UdpSocket::bind("0.0.0.0:100").await.unwrap();
-            socket.connect("2.2.2.2:200").await.unwrap();
+            socket.connect("192.168.0.2:200").await.unwrap();
 
             let mut cursor = 0;
             let mut c = 0;
@@ -105,8 +106,8 @@ impl AsyncModule for Pong {
         add_interface(Interface::ethv4_named(
             "en0",
             NetworkDevice::eth(),
-            Ipv4Addr::new(2, 2, 2, 2),
-            Ipv4Addr::UNSPECIFIED,
+            Ipv4Addr::new(192, 168, 0, 2),
+            Ipv4Addr::new(255, 255, 255, 0),
         ))
         .unwrap();
 

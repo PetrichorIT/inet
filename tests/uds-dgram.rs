@@ -1,7 +1,8 @@
 use des::{
     prelude::*,
     registry,
-    tokio::{spawn, task::JoinHandle, time::sleep},
+    time::sleep,
+    tokio::{spawn, task::JoinHandle},
 };
 use inet::{fs, uds::UnixDatagram};
 use serial_test::serial;

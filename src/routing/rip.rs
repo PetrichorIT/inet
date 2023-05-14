@@ -1,5 +1,5 @@
+use des::time::sleep;
 use des::time::SimTime;
-use des::tokio::time::sleep;
 use fxhash::{FxBuildHasher, FxHashMap};
 use inet_types::routing::rip::RipCommand;
 use inet_types::routing::rip::RipEntry;
@@ -21,11 +21,24 @@ use crate::{
 use super::RoutingInformation;
 use super::RoutingPort;
 
-const UPDATE_DELAY: Duration = Duration::from_secs(60);
-const LIFETIME: Duration = Duration::from_secs(200);
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct RipConfig {
+    pub entry_lfietime: Duration,
+    pub entry_update_interval: Duration,
+}
+
+impl Default for RipConfig {
+    fn default() -> Self {
+        Self {
+            entry_lfietime: Duration::from_secs(200),
+            entry_update_interval: Duration::from_secs(60),
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
-pub struct RoutingDeamon {
+pub struct RipRoutingDeamon {
+    cfg: RipConfig,
     addr: Ipv4Addr,
     mask: Ipv4Addr,
 
@@ -36,20 +49,10 @@ pub struct RoutingDeamon {
 
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
-pub struct NeighborEntry {
+struct NeighborEntry {
     router: Ipv4Addr,
     mask: Ipv4Addr,
     iface: String,
-}
-
-impl NeighborEntry {
-    pub fn new(router: Ipv4Addr, mask: Ipv4Addr, iface: String) -> Self {
-        Self {
-            router,
-            mask,
-            iface,
-        }
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -62,8 +65,13 @@ struct DistanceVectorEntry {
     update_time: SimTime,
 }
 
-impl RoutingDeamon {
-    pub fn new(raddr: Ipv4Addr, mask: Ipv4Addr, port: RoutingPort) -> Self {
+impl RipRoutingDeamon {
+    pub fn lan_attached(
+        raddr: Ipv4Addr,
+        mask: Ipv4Addr,
+        port: RoutingPort,
+        cfg: RipConfig,
+    ) -> Self {
         add_interface(Interface::ethv4_named(
             "lan",
             port.clone().into(),
@@ -98,6 +106,7 @@ impl RoutingDeamon {
         }
 
         Self {
+            cfg,
             addr: raddr,
             mask,
             neighbors: FxHashMap::with_hasher(FxBuildHasher::default()),
@@ -150,8 +159,8 @@ impl RoutingDeamon {
             mask,
             gateway: router,
             cost: 1,
-            deadline: SimTime::now() + LIFETIME,
-            update_time: SimTime::now() + UPDATE_DELAY,
+            deadline: SimTime::now() + self.cfg.entry_lfietime,
+            update_time: SimTime::now() + self.cfg.entry_update_interval,
         };
         if let Some(dv) = self.vectors.get_mut(&subnet) {
             *dv = v;
@@ -210,7 +219,7 @@ impl RoutingDeamon {
                 .next_timeout
                 .checked_duration_since(SimTime::now())
                 .unwrap_or(Duration::ZERO))
-            .min(UPDATE_DELAY);
+            .min(self.cfg.entry_update_interval);
 
             let (n, from) = des::tokio::select! {
                 result = sock.recv_from(&mut buf) => match result {
@@ -237,7 +246,7 @@ impl RoutingDeamon {
                                 next_hop: entry.gateway,
                                 metric: entry.cost,
                             });
-                            entry.update_time = SimTime::now() + UPDATE_DELAY;
+                            entry.update_time = SimTime::now() + self.cfg.entry_update_interval;
                         }
                     }
 
@@ -325,8 +334,8 @@ impl RoutingDeamon {
                                     mask: dv.mask,
                                     gateway: raddr,
                                     cost: dv.metric + 1,
-                                    deadline: SimTime::now() + LIFETIME,
-                                    update_time: SimTime::now() + UPDATE_DELAY,
+                                    deadline: SimTime::now() + self.cfg.entry_lfietime,
+                                    update_time: SimTime::now() + self.cfg.entry_update_interval,
                                 };
                                 add_routing_entry(dv.target, dv.mask, raddr, &rport).unwrap();
                                 changes.push(RipEntry {
@@ -338,8 +347,8 @@ impl RoutingDeamon {
                                 });
                             } else if route.cost == dv.metric + 1 && route.gateway == dv.next_hop {
                                 // Update
-                                route.deadline = SimTime::now() + LIFETIME;
-                                route.update_time = SimTime::now() + UPDATE_DELAY;
+                                route.deadline = SimTime::now() + self.cfg.entry_lfietime;
+                                route.update_time = SimTime::now() + self.cfg.entry_update_interval;
                             }
                         } else {
                             if dv.target == local_subnet {
@@ -354,8 +363,8 @@ impl RoutingDeamon {
                                     mask: dv.mask,
                                     gateway: raddr,
                                     cost: dv.metric + 1,
-                                    deadline: SimTime::now() + LIFETIME,
-                                    update_time: SimTime::now() + UPDATE_DELAY,
+                                    deadline: SimTime::now() + self.cfg.entry_lfietime,
+                                    update_time: SimTime::now() + self.cfg.entry_update_interval,
                                 },
                             );
                             add_routing_entry(dv.target, dv.mask, raddr, &rport).unwrap();

@@ -102,8 +102,8 @@ impl AsyncModule for UdpEcho4200 {
         add_interface(Interface::ethv4_named(
             "en0",
             NetworkDevice::eth(),
-            Ipv4Addr::new(42, 42, 42, 42),
-            Ipv4Addr::UNSPECIFIED,
+            Ipv4Addr::new(1, 1, 1, 42),
+            Ipv4Addr::new(255, 255, 255, 0),
         ))
         .unwrap();
 
@@ -145,13 +145,13 @@ impl AsyncModule for UdpSingleEchoSender {
             "en0",
             NetworkDevice::eth(),
             Ipv4Addr::new(1, 1, 1, 1),
-            Ipv4Addr::UNSPECIFIED,
+            Ipv4Addr::new(255, 255, 255, 0),
         ))
         .unwrap();
 
         self.handle = Some(tokio::spawn(async move {
             let sock = UdpSocket::bind("0.0.0.0:0").await.unwrap();
-            sock.connect("42.42.42.42:42").await.unwrap();
+            sock.connect("1.1.1.42:42").await.unwrap();
 
             for _ in 0..100 {
                 let size = random::<usize>() % 800 + 200;
@@ -178,6 +178,8 @@ impl AsyncModule for UdpSingleEchoSender {
 #[serial]
 fn udp_echo_single_client() {
     inet::init();
+
+    // Logger::new().set_logger();
 
     let mut app = NetworkApplication::new(());
 
@@ -231,13 +233,13 @@ impl AsyncModule for UdpSingleClusteredSender {
             "en0",
             NetworkDevice::eth(),
             Ipv4Addr::new(1, 1, 1, 1),
-            Ipv4Addr::UNSPECIFIED,
+            Ipv4Addr::new(255, 255, 255, 0),
         ))
         .unwrap();
 
         self.handle = Some(tokio::spawn(async move {
             let sock = UdpSocket::bind("0.0.0.0:0").await.unwrap();
-            sock.connect("42.42.42.42:42").await.unwrap();
+            sock.connect("1.1.1.42:42").await.unwrap();
 
             let mut msgs = VecDeque::new();
 
@@ -327,14 +329,14 @@ impl AsyncModule for UdpConcurrentClients {
             "en0",
             NetworkDevice::eth(),
             Ipv4Addr::new(1, 1, 1, 1),
-            Ipv4Addr::UNSPECIFIED,
+            Ipv4Addr::new(255, 255, 255, 0),
         ))
         .unwrap();
 
         self.handle = Some(tokio::spawn(async move {
             let h1 = tokio::spawn(async move {
                 let sock = UdpSocket::bind("0.0.0.0:0").await.unwrap();
-                sock.connect("42.42.42.42:42").await.unwrap();
+                sock.connect("1.1.1.42:42").await.unwrap();
 
                 for _ in 0..100 {
                     let size = random::<usize>() % 800 + 200;
@@ -352,7 +354,7 @@ impl AsyncModule for UdpConcurrentClients {
             });
             let h2 = tokio::spawn(async move {
                 let sock = UdpSocket::bind("0.0.0.0:0").await.unwrap();
-                sock.connect("42.42.42.42:42").await.unwrap();
+                sock.connect("1.1.1.42:42").await.unwrap();
 
                 for _ in 0..100 {
                     let size = random::<usize>() % 800 + 200;
@@ -376,12 +378,12 @@ impl AsyncModule for UdpConcurrentClients {
                     let msg = std::iter::from_fn(|| Some(random::<u8>()))
                         .take(size)
                         .collect::<Vec<_>>();
-                    let n = sock.send_to(&msg, "42.42.42.42:42").await.unwrap();
+                    let n = sock.send_to(&msg, "1.1.1.42:42").await.unwrap();
                     assert_eq!(n, size);
 
                     let mut buf = [0u8; 1024];
                     let (n, from) = sock.recv_from(&mut buf).await.unwrap();
-                    assert_eq!(from, SocketAddr::from_str("42.42.42.42:42").unwrap());
+                    assert_eq!(from, SocketAddr::from_str("1.1.1.42:42").unwrap());
                     assert_eq!(n, size);
                     assert_eq!(&buf[..n], &msg[..]);
                 }

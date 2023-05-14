@@ -1,8 +1,4 @@
-use des::{
-    prelude::*,
-    registry,
-    tokio::{spawn, time::sleep},
-};
+use des::{prelude::*, registry, time::sleep, tokio::spawn};
 use inet::{
     debug::send_ip,
     interface::{add_interface, Interface, NetworkDevice},

@@ -46,6 +46,8 @@ impl DNSNameserver {
                     })
                     .collect::<VecDeque<_>>();
 
+
+
                 // Check whether we return a record or a referral
                 if addrs.is_empty() {
                     let next_param = qname.suffix(qname.labels() - k - 1);

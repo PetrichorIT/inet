@@ -1,3 +1,4 @@
+use crate::io::{Interest, Ready};
 use crate::{
     dns::{lookup_host, ToSocketAddrs},
     interface::IfId,
@@ -11,7 +12,7 @@ use crate::{
     IOContext,
 };
 use des::tokio::{
-    io::{AsyncRead, AsyncWrite, Interest, ReadBuf, Ready},
+    io::{AsyncRead, AsyncWrite, ReadBuf},
     stream,
     sync::oneshot,
 };

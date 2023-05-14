@@ -3,7 +3,8 @@ use std::iter::repeat_with;
 use des::{
     prelude::*,
     registry,
-    tokio::{spawn, task::JoinHandle, time::sleep},
+    time::sleep,
+    tokio::{spawn, task::JoinHandle},
 };
 use inet::{
     arp::arpa,
@@ -29,8 +30,8 @@ impl AsyncModule for Ping {
         add_interface(Interface::ethv4_named(
             "en0",
             NetworkDevice::eth(),
-            [1, 1, 1, 1].into(),
-            Ipv4Addr::UNSPECIFIED,
+            [192, 168, 0, 1].into(),
+            Ipv4Addr::new(255, 255, 255, 0),
         ))
         .unwrap();
 
@@ -38,7 +39,7 @@ impl AsyncModule for Ping {
             let mut c = 0;
 
             let sock = UdpSocket::bind("0.0.0.0:0").await.unwrap();
-            sock.connect("2.2.2.2:1024").await.unwrap();
+            sock.connect("192.168.0.2:1024").await.unwrap();
 
             let mut bytes = TOTAL_BYTES;
             while bytes > 0 {
@@ -88,8 +89,8 @@ impl AsyncModule for Pong {
         add_interface(Interface::ethv4_named(
             "en0",
             NetworkDevice::eth(),
-            [2, 2, 2, 2].into(),
-            Ipv4Addr::UNSPECIFIED,
+            [192, 168, 0, 2].into(),
+            Ipv4Addr::new(255, 255, 255, 0),
         ))
         .unwrap();
 

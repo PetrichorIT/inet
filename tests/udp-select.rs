@@ -1,7 +1,8 @@
 use des::{
     prelude::*,
     registry,
-    tokio::{spawn, task::JoinHandle, time::sleep},
+    time::sleep,
+    tokio::{spawn, task::JoinHandle},
 };
 use inet::{
     interface::{add_interface, Interface, NetworkDevice},
@@ -35,8 +36,8 @@ impl AsyncModule for A {
         add_interface(Interface::ethv4_named(
             "en0",
             NetworkDevice::eth(),
-            Ipv4Addr::new(c, c, c, c),
-            Ipv4Addr::UNSPECIFIED,
+            Ipv4Addr::new(192, 168, 0, c),
+            Ipv4Addr::new(255, 255, 255, 0),
         ))
         .unwrap();
 
@@ -46,7 +47,7 @@ impl AsyncModule for A {
             let mut i = 0;
 
             let sock = UdpSocket::bind(("0.0.0.0", c as u16)).await.unwrap();
-            sock.connect(("3.3.3.3", c as u16)).await.unwrap();
+            sock.connect(("192.168.0.3", c as u16)).await.unwrap();
 
             while i < sched.len() {
                 let rem = sched[i] - SimTime::now().as_secs_f64();
@@ -80,8 +81,8 @@ impl AsyncModule for C {
         add_interface(Interface::ethv4_named(
             "en0",
             NetworkDevice::eth(),
-            Ipv4Addr::new(3, 3, 3, 3),
-            Ipv4Addr::UNSPECIFIED,
+            Ipv4Addr::new(192, 168, 0, 3),
+            Ipv4Addr::new(255, 255, 255, 0),
         ))
         .unwrap();
 

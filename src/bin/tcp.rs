@@ -8,11 +8,11 @@ use des::{
     net::plugin::add_plugin,
     prelude::*,
     registry,
+    time::sleep,
     tokio::{
         io::{AsyncReadExt, AsyncWriteExt},
         spawn,
         task::JoinHandle,
-        time::sleep,
     },
 };
 use inet::{

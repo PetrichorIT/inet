@@ -1,21 +1,21 @@
 use des::{
     prelude::*,
     registry,
+    time::sleep,
     tokio::{
         io::{AsyncReadExt, AsyncWriteExt},
         spawn,
-        time::sleep,
     },
 };
+use inet::types::ip::IpMask;
 use inet::{
     dns::{lookup_host, DNSNameserver},
     interface::{add_interface, Interface, NetworkDevice},
     pcap::{pcap, PcapCapture, PcapConfig},
-    routing::{rip::RoutingDeamon, set_default_gateway, RoutingInformation},
+    routing::{rip::RipRoutingDeamon, set_default_gateway, RoutingInformation},
     utils::LinkLayerSwitch,
     TcpListener, TcpStream,
 };
-use inet_types::ip::IpMask;
 
 struct Client;
 #[async_trait::async_trait]
@@ -143,8 +143,7 @@ impl AsyncModule for Dns {
         let domain_name = par("domain").unwrap().into_inner();
 
         tokio::spawn(async move {
-            let mut dns =
-                DNSNameserver::from_zonefile(&zone, "src/bin/full/zonefiles", domain_name).unwrap();
+            let mut dns = DNSNameserver::from_zonefile(&zone, "zonefiles", domain_name).unwrap();
             if zone == "." {
                 dns.declare_root_ns();
             }
@@ -178,7 +177,7 @@ fn node_like_setup() {
             enable: true,
             capture: PcapCapture::Both,
         },
-        std::fs::File::create(format!("results/full/{}.pcap", module_path())).unwrap(),
+        std::fs::File::create(format!("results/{}.pcap", module_path())).unwrap(),
     )
     .unwrap();
 }
@@ -211,13 +210,13 @@ impl AsyncModule for Router {
                 enable: par("pcap").unwrap().parse().unwrap(),
                 capture: inet::pcap::PcapCapture::Both,
             },
-            std::fs::File::create(format!("results/full/{}.pcap", module_path())).unwrap(),
+            std::fs::File::create(format!("results/{}.pcap", module_path())).unwrap(),
         )
         .unwrap();
 
         spawn(async move {
             sleep(Duration::from_secs_f64(random::<f64>())).await;
-            let router = RoutingDeamon::new(addr, mask, lan);
+            let router = RipRoutingDeamon::lan_attached(addr, mask, lan, Default::default());
             router.deploy().await;
         });
     }
@@ -279,13 +278,13 @@ fn main() {
     type Switch = LinkLayerSwitch;
 
     let app = NdlApplication::new(
-        "src/bin/full/main.ndl",
+        "main.ndl",
         registry![Dns, Client, Server, Router, Switch, LAN, Main],
     )
     .map_err(|e| println!("{e}"))
     .unwrap();
     let mut app = NetworkApplication::new(app);
-    app.include_par_file("src/bin/full/main.par");
+    app.include_par_file("main.par");
     let rt = Runtime::new_with(app, RuntimeOptions::seeded(123).max_time(50.0.into()));
     let app = rt.run().into_app();
     app.globals()

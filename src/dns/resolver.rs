@@ -3,8 +3,8 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV
 use std::str::FromStr;
 use std::time::Duration;
 
+use des::time::sleep;
 use des::tokio::select;
-use des::tokio::time::sleep;
 use inet_types::dns::{DNSMessage, DNSResponseCode, DNSType};
 use inet_types::{FromBytestream, IntoBytestream};
 

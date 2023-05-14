@@ -7,6 +7,7 @@ pub mod dns;
 pub mod fs;
 pub mod icmp;
 pub mod interface;
+pub mod io;
 pub mod pcap;
 pub mod routing;
 pub mod socket;
@@ -36,10 +37,5 @@ pub fn init() {
 }
 
 fn inet_init(this: &des::net::module::ModuleContext) {
-    this.add_plugin(IOPlugin::new(), 50, PluginPanicPolicy::Abort);
-    this.add_plugin(
-        des::net::plugin::TokioTimePlugin::new("inet::imported_time_module".to_string()),
-        1,
-        PluginPanicPolicy::Abort,
-    );
+    this.add_plugin(IOPlugin::new(), 1, PluginPanicPolicy::Abort);
 }

@@ -1,8 +1,4 @@
-use des::{
-    prelude::*,
-    registry,
-    tokio::{task::JoinHandle, time::sleep},
-};
+use des::{prelude::*, registry, time::sleep, tokio::task::JoinHandle};
 use fxhash::{FxBuildHasher, FxHashMap};
 use inet::{
     interface::{add_interface, Interface, NetworkDevice},

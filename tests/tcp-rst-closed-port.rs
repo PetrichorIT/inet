@@ -2,7 +2,8 @@ use des::{
     net::plugin::add_plugin,
     prelude::*,
     registry,
-    tokio::{spawn, task::JoinHandle, time::sleep},
+    time::sleep,
+    tokio::{spawn, task::JoinHandle},
 };
 use inet::{
     interface::{add_interface, Interface, NetworkDevice},

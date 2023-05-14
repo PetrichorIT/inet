@@ -256,7 +256,7 @@ impl Module for Router {
             "wan0",
             NetworkDevice::eth_select(|p| p.input.name() == "wan_in"),
             ip,
-            Ipv4Addr::UNSPECIFIED,
+            Ipv4Addr::new(255, 0, 0, 0),
         ))
         .unwrap();
 

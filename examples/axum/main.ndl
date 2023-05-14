@@ -1,0 +1,33 @@
+module Client {
+    gates {
+        in @input,
+        out @output
+    }
+}
+
+module Server {
+    gates {
+        in @input,
+        out @output
+    }
+}
+
+link LAN {
+    jitter: 0.0,
+    bitrate: 1000000,
+    latency: 0.05
+}
+
+module Main {
+    submodules {
+        client: Client,
+        server: Server
+    }
+
+    connections {
+        client/out --> LAN --> server/in,
+        client/in <-- LAN <-- server/out
+    }
+}
+
+entry Main;
