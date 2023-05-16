@@ -15,10 +15,6 @@ version = "0.1.0"
 name = "inet-bin"
 path = "inet-bin/main.rs"
 
-[[bin]]
-name = "dns-tcp-bin"
-path = "dns-tcp-bin/main.rs"
-
 [dependencies]
 async-trait = "*"
 bytestream = "0.4"

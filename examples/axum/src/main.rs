@@ -9,6 +9,7 @@ use hyper::{
 };
 use inet::{
     interface::{add_interface, Interface, NetworkDevice},
+    pcap::{pcap, PcapCapture, PcapConfig},
     TcpListener,
 };
 use std::convert::Infallible;
@@ -25,6 +26,15 @@ impl AsyncModule for Client {
             NetworkDevice::eth(),
             Ipv4Addr::new(192, 168, 2, 101).into(),
         ))
+        .unwrap();
+
+        pcap(
+            PcapConfig {
+                enable: true,
+                capture: PcapCapture::Both,
+            },
+            std::fs::File::create("results/client.pcap").unwrap(),
+        )
         .unwrap();
 
         spawn(async move {

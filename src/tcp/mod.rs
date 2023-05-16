@@ -12,6 +12,7 @@ use std::{
     collections::VecDeque,
     io::{Error, ErrorKind, Result},
     net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4},
+    sync::{atomic::Ordering, Arc},
     task::Waker,
     time::Duration,
 };
@@ -282,13 +283,8 @@ impl IOContext {
                 return false;
             }
 
-            let Some(tcp_lis) = self.tcp.binds.get_mut(fd) else {
-                    log::error!(target: "inet/tcp", "found tcp socket, but missing tcp listener");
-                    return false;
-                };
-
-            tcp_lis.push_incoming(src, ip_packet, tcp_pkt);
-            return true;
+            let fd = **fd;
+            return self.tcp_handle_incoming_connection(src, dest, fd, ip_packet, tcp_pkt);
         }
 
         // (2) No active stream socket, maybe listen socket is possible
@@ -348,6 +344,98 @@ impl IOContext {
                 interface.add_write_interest(ctrl.fd);
             }
         }
+    }
+}
+
+impl IOContext {
+    fn tcp_handle_incoming_connection(
+        &mut self,
+        src: SocketAddr,
+        dest: SocketAddr,
+        fd: Fd,
+        ip_packet: IpPacketRef,
+        tcp_pkt: TcpPacket,
+    ) -> bool {
+        let Some(handle) = self.tcp.binds.get_mut(&fd) else {
+            log::error!(target: "inet/tcp", "found tcp socket, but missing tcp listener");
+            return false;
+        };
+        let config = handle.config.clone();
+        if handle.backlog.load(Ordering::SeqCst) >= config.listen_backlog {
+            return true;
+        }
+        handle.backlog.fetch_add(1, Ordering::SeqCst);
+
+        let r = self.tcp_handle_incoming_connection_inner(
+            src,
+            dest,
+            fd,
+            config,
+            (ip_packet.src(), ip_packet.dest(), tcp_pkt),
+        );
+
+        let stream = match r {
+            Ok(val) => val,
+            Err(e) => {
+                let handle = self.tcp.binds.get_mut(&fd).unwrap();
+                handle.tx.try_send(Err(e));
+                return true;
+            }
+        };
+
+        let rx = match self.tcp_await_established(stream.0.inner.fd) {
+            Ok(val) => val,
+            Err(e) => {
+                let handle = self.tcp.binds.get_mut(&fd).unwrap();
+                handle.tx.try_send(Err(e));
+                return true;
+            }
+        };
+
+        let handle = self.tcp.binds.get_mut(&fd).unwrap();
+        handle.tx.try_send(Ok((stream.0, rx)));
+
+        true
+    }
+
+    fn tcp_handle_incoming_connection_inner(
+        &mut self,
+        src: SocketAddr,
+        dest: SocketAddr,
+        fd: Fd,
+        config: TcpSocketConfig,
+        pkt: (IpAddr, IpAddr, TcpPacket),
+    ) -> Result<(TcpStream, SocketAddr)> {
+        let stream_socket = self.dup_socket(fd)?;
+        self.bind_peer(stream_socket, src)?;
+
+        let mut ctrl = TransmissionControlBlock::new(
+            stream_socket,
+            self.get_socket_addr(stream_socket)?,
+            config,
+        );
+
+        self.syscall(stream_socket, TcpSyscall::Listen());
+
+        self.process_state_closed(&mut ctrl, TcpEvent::SysListen());
+        self.process_state_listen(&mut ctrl, TcpEvent::Syn(pkt));
+
+        self.tcp.streams.insert(stream_socket, ctrl);
+
+        log::trace!(
+            target: "inet/tcp",
+            "tcp::accept '0x{:x} {} bound to local {}",
+            stream_socket,
+            src,
+            dest,
+        );
+
+        Ok((
+            TcpStream {
+                inner: Arc::new(TcpStreamInner { fd: stream_socket }),
+            },
+            src,
+        ))
     }
 }
 
@@ -774,6 +862,24 @@ impl IOContext {
 
                 ctrl.set_timer(ctrl.timeout);
             }
+            TcpEvent::Rst((_, _, pkt)) => {
+                // Unknown RST
+                assert_eq!(pkt.ack_no + 1, ctrl.tx_next_send_seq_no);
+                log::trace!(target: "inet/tcp", "tcp::synsent '0x{:x} {:?}({:?}) aborting due to unknown reason (RST)", ctrl.fd, ctrl.local_addr.port(),
+                ctrl.peer_addr.port(),);
+
+                ctrl.established.take().map(|v| {
+                    v.send(Err(Error::new(
+                        ErrorKind::ConnectionRefused,
+                        "port unreachable",
+                    )))
+                });
+                ctrl.cancel_timer();
+                ctrl.state == TcpState::Closed;
+            }
+            TcpEvent::SysClose() => {
+                ctrl.state = TcpState::Closed;
+            }
             _ => unimplemented!("{:?}", event),
         }
     }
@@ -997,7 +1103,11 @@ impl IOContext {
                 ctrl.peer_addr.port(),);
 
                 // (0) Send own FIN
-                let pkt = ctrl.create_packet(TcpPacketId::Fin, ctrl.tx_next_send_seq_no, 0);
+                let pkt = ctrl.create_packet(
+                    TcpPacketId::Fin,
+                    ctrl.tx_next_send_seq_no,
+                    ctrl.rx_last_recv_seq_no,
+                );
                 self.tcp_send_packet(ctrl, ctrl.ip_packet_for(pkt));
 
                 // (2) Wait for ACK

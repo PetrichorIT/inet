@@ -1,0 +1,33 @@
+link Link {
+    bitrate: 10000000,
+    jitter: 0.0,
+    latency: 0.25,
+}
+
+module Client {
+    gates {
+        in @input,
+        out @output,
+    } 
+}
+
+module Server {
+    gates {
+        in @input,
+        out @output,
+    } 
+}
+
+module Main {
+    submodules {
+        client: Client,
+        server: Server
+    }
+
+    connections {
+        client/out --> Link --> server/in,
+        server/out --> Link --> client/in,
+    }
+}
+
+entry Main;

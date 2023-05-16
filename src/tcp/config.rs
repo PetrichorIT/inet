@@ -5,8 +5,6 @@ use std::io::{Error, ErrorKind, Result};
 use std::net::SocketAddr;
 use std::time::Duration;
 
-use super::api::TcpListenerPendingConnection;
-
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct TcpConfig {
     pub rst_on_syn: bool,
@@ -132,29 +130,6 @@ impl TcpConfig {
             linger: None,
 
             listen_backlog: 1,
-            rx_buffer_size: 2048,
-            tx_buffer_size: 2048,
-            reuseaddr: false,
-            reuseport: false,
-
-            connect_timeout: Duration::from_secs(2),
-            nodelay: true,
-
-            ttl: 64,
-            inital_seq_no: random(),
-            mss: 1024,
-
-            cong_ctrl: self.cong_ctrl,
-            debug: self.debug,
-        }
-    }
-
-    pub(crate) fn accept(&self, con: TcpListenerPendingConnection) -> TcpSocketConfig {
-        TcpSocketConfig {
-            addr: con.local_addr,
-            linger: None,
-
-            listen_backlog: 0,
             rx_buffer_size: 2048,
             tx_buffer_size: 2048,
             reuseaddr: false,

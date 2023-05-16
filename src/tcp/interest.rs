@@ -10,7 +10,7 @@ use crate::{socket::Fd, IOContext};
 
 #[derive(Debug, Clone)]
 pub(crate) enum TcpInterest {
-    TcpAccept(Fd),
+    // TcpAccept(Fd),
     // TcpConnect(Fd),
     TcpRead(Fd),
     TcpWrite(Fd),
@@ -50,24 +50,24 @@ impl Future for TcpInterest {
     ) -> std::task::Poll<Self::Output> {
         match *self {
             // == TCP ==
-            TcpInterest::TcpAccept(fd) => IOContext::with_current(|ctx| {
-                if let Some(handle) = ctx.tcp.binds.get_mut(&fd) {
-                    if handle.incoming.is_empty() {
-                        handle.interests.push(TcpInterestGuard {
-                            interest: self.clone(),
-                            waker: cx.waker().clone(),
-                        });
-                        Poll::Pending
-                    } else {
-                        Poll::Ready(Ok(Ready::ALL))
-                    }
-                } else {
-                    Poll::Ready(Err(Error::new(
-                        ErrorKind::Other,
-                        "Simulation context has dropped TcpListener",
-                    )))
-                }
-            }),
+            // TcpInterest::TcpAccept(fd) => IOContext::with_current(|ctx| {
+            //     if let Some(handle) = ctx.tcp.binds.get_mut(&fd) {
+            //         if handle.incoming.is_empty() {
+            //             handle.interests.push(TcpInterestGuard {
+            //                 interest: self.clone(),
+            //                 waker: cx.waker().clone(),
+            //             });
+            //             Poll::Pending
+            //         } else {
+            //             Poll::Ready(Ok(Ready::ALL))
+            //         }
+            //     } else {
+            //         Poll::Ready(Err(Error::new(
+            //             ErrorKind::Other,
+            //             "Simulation context has dropped TcpListener",
+            //         )))
+            //     }
+            // }),
 
             // TcpInterest::TcpEstablished(fd) => IOContext::with_current(|ctx| {
             //     let Some(handle) = ctx.tcp.streams.get_mut(&fd) else {

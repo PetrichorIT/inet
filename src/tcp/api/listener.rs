@@ -1,6 +1,7 @@
 use std::collections::VecDeque;
 use std::io::{Error, ErrorKind, Result};
 use std::net::{IpAddr, SocketAddr};
+use std::sync::atomic::{AtomicU32, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::task::{Context, Poll};
 
@@ -11,6 +12,11 @@ use crate::tcp::{TcpPacket, TcpSocketConfig, TransmissionControlBlock};
 use crate::{
     dns::{lookup_host, ToSocketAddrs},
     IOContext,
+};
+use des::tokio::sync::Mutex;
+use des::tokio::sync::{
+    mpsc::{self, Receiver, Sender},
+    oneshot,
 };
 use inet_types::ip::IpPacketRef;
 
@@ -30,47 +36,20 @@ use super::{TcpStream, TcpStreamInner};
 #[derive(Debug)]
 pub struct TcpListener {
     pub(crate) fd: Fd,
+    pub(crate) rx: Mutex<Receiver<IncomingConnection>>,
+    pub(crate) backlog: Arc<AtomicU32>,
 }
 
 #[derive(Debug)]
 pub(crate) struct ListenerHandle {
     pub(crate) local_addr: SocketAddr,
-
-    pub(crate) incoming: VecDeque<TcpListenerPendingConnection>,
+    pub(crate) tx: Sender<IncomingConnection>,
+    pub(crate) backlog: Arc<AtomicU32>,
     pub(crate) config: TcpSocketConfig,
     pub(crate) interests: Vec<TcpInterestGuard>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct TcpListenerPendingConnection {
-    pub(crate) local_addr: SocketAddr,
-    pub(crate) peer_addr: SocketAddr,
-
-    pub(crate) packet: (IpAddr, IpAddr, TcpPacket),
-}
-
-impl ListenerHandle {
-    pub(crate) fn push_incoming(&mut self, src: SocketAddr, packet: IpPacketRef, tcp: TcpPacket) {
-        if self.incoming.len() < self.config.listen_backlog as usize {
-            self.incoming.push_back(TcpListenerPendingConnection {
-                local_addr: self.local_addr,
-                peer_addr: src,
-                packet: (packet.src(), packet.dest(), tcp),
-            });
-
-            // Wake up
-            let mut i = 0;
-            while i < self.interests.len() {
-                if matches!(self.interests[i].interest, TcpInterest::TcpAccept(_)) {
-                    let w = self.interests.swap_remove(i);
-                    w.waker.wake();
-                } else {
-                    i += 1;
-                }
-            }
-        }
-    }
-}
+type IncomingConnection = Result<(TcpStream, oneshot::Receiver<Result<()>>)>;
 
 impl TcpListener {
     /// Creates a new TcpListener, which will be bound to the specified address.
@@ -113,37 +92,19 @@ impl TcpListener {
     /// When established, the corresponding `TcpStream` and the remote peer’s address will be returned
     pub async fn accept(&self) -> Result<(TcpStream, SocketAddr)> {
         loop {
-            let interest = TcpInterest::TcpAccept(self.fd);
-            interest.await?;
-
-            let con = IOContext::with_current(|ctx| ctx.tcp_accept(self.fd));
-
-            let (con, peer) = match con {
-                Ok(con) => con,
-                Err(e) => {
-                    if e.kind() == ErrorKind::WouldBlock {
-                        continue;
-                    }
-                    return Err(e);
-                }
+            let mut rx = self.rx.lock().await;
+            let Some(con) = rx.recv().await else {
+                return Err(Error::new(ErrorKind::BrokenPipe, "listener closed"))
             };
 
-            let interest = IOContext::with_current(|ctx| ctx.tcp_await_established(con.inner.fd))?;
-            interest.await.expect("Did not expect recv error")?;
+            self.backlog.fetch_sub(1, Ordering::SeqCst);
 
-            return Ok((con, peer));
+            let (stream, ready) = con?;
+            ready.await.expect("Did not expect recv error")?;
+
+            let peer = stream.peer_addr()?;
+            return Ok((stream, peer));
         }
-    }
-
-    /// DIRTY IMPL
-    pub fn poll_accept(&self, _cx: &mut Context<'_>) -> Poll<Result<(TcpStream, SocketAddr)>> {
-        IOContext::with_current(|ctx| {
-            if let Ok(con) = ctx.tcp_accept(self.fd) {
-                Poll::Ready(Ok(con))
-            } else {
-                Poll::Pending
-            }
-        })
     }
 
     /// DEPRECATED
@@ -221,63 +182,25 @@ impl IOContext {
             fd
         };
 
+        let (tx, rx) =
+            mpsc::channel(config.as_ref().map(|c| c.listen_backlog).unwrap_or(32) as usize);
+
+        let backlog = Arc::new(AtomicU32::new(0));
         let buf = ListenerHandle {
             local_addr: addr,
-            incoming: VecDeque::new(),
+            backlog: backlog.clone(),
+            tx,
             interests: Vec::new(),
 
             config: config.unwrap_or(self.tcp.config.listener(addr)),
         };
         self.tcp.binds.insert(fd, buf);
 
-        return Ok(TcpListener { fd });
-    }
-
-    pub(super) fn tcp_accept(&mut self, fd: Fd) -> Result<(TcpStream, SocketAddr)> {
-        let Some(handle) = self.tcp.binds.get_mut(&fd) else {
-            return Err(Error::new(
-                ErrorKind::Other,
-                "Simulation context has dropped TcpListener",
-            ))
-        };
-
-        let config = handle.config.clone();
-
-        let con = match handle.incoming.pop_front() {
-            Some(con) => con,
-            None => return Err(Error::new(ErrorKind::WouldBlock, "WouldBlock")),
-        };
-
-        let stream_socket = self.dup_socket(fd)?;
-        self.bind_peer(stream_socket, con.peer_addr)?;
-
-        let mut ctrl = TransmissionControlBlock::new(
-            stream_socket,
-            self.get_socket_addr(stream_socket)?,
-            config,
-        );
-
-        self.syscall(stream_socket, TcpSyscall::Listen());
-
-        self.process_state_closed(&mut ctrl, TcpEvent::SysListen());
-        self.process_state_listen(&mut ctrl, TcpEvent::Syn(con.packet));
-
-        self.tcp.streams.insert(stream_socket, ctrl);
-
-        log::trace!(
-            target: "inet/tcp",
-            "tcp::accept '0x{:x} {} bound to local {}",
-            stream_socket,
-            con.peer_addr,
-            con.local_addr
-        );
-
-        Ok((
-            TcpStream {
-                inner: Arc::new(TcpStreamInner { fd: stream_socket }),
-            },
-            con.peer_addr,
-        ))
+        return Ok(TcpListener {
+            fd,
+            rx: Mutex::new(rx),
+            backlog,
+        });
     }
 
     pub(super) fn tcp_drop_listener(&mut self, fd: Fd) {
