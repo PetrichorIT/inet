@@ -85,7 +85,7 @@ impl IOContext {
 
                     {
                         let mut pcap = self.pcap.borrow_mut();
-                        if pcap.cfg.capture.capture_outgoing() {
+                        if pcap.capture.capture_l2_outgoing() {
                             pcap.capture(&msg, ifid, iface).expect("Pcap failed")
                         }
                     }
@@ -275,7 +275,7 @@ impl IOContext {
                                 .build();
                             {
                                 let mut pcap = self.pcap.borrow_mut();
-                                if pcap.cfg.capture.capture_outgoing() {
+                                if pcap.capture.capture_l2_outgoing() {
                                     pcap.capture(&msg, *ifid, iface).expect("Pcap failed")
                                 }
                             }
@@ -298,7 +298,7 @@ impl IOContext {
 
                             {
                                 let mut pcap = self.pcap.borrow_mut();
-                                if pcap.cfg.capture.capture_outgoing() {
+                                if pcap.capture.capture_l2_outgoing() {
                                     pcap.capture(&msg, *ifid, iface).expect("Pcap failed")
                                 }
                             }
@@ -358,7 +358,7 @@ impl IOContext {
                     .build();
                 {
                     let mut pcap = self.pcap.borrow_mut();
-                    if pcap.cfg.capture.capture_outgoing() {
+                    if pcap.capture.capture_l2_outgoing() {
                         pcap.capture(&msg, ifid, iface).expect("Pcap failed")
                     }
                 }
@@ -381,7 +381,7 @@ impl IOContext {
 
                 {
                     let mut pcap = self.pcap.borrow_mut();
-                    if pcap.cfg.capture.capture_outgoing() {
+                    if pcap.capture.capture_l2_outgoing() {
                         pcap.capture(&msg, ifid, iface).expect("Pcap failed")
                     }
                 }
@@ -514,7 +514,7 @@ impl IOContext {
 
         {
             let mut pcap = self.pcap.borrow_mut();
-            if pcap.cfg.capture.capture_outgoing() {
+            if pcap.capture.capture_l2_outgoing() {
                 pcap.capture(&msg, iface.name.id, iface)
                     .expect("Pcap failed")
             }

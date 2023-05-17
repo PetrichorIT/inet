@@ -9,10 +9,10 @@ use hyper::{
 };
 use inet::{
     interface::{add_interface, Interface, NetworkDevice},
-    pcap::{pcap, PcapCapture, PcapConfig},
+    pcap::{pcap, PcapCapturePoints, PcapConfig, PcapFilters},
     TcpListener,
 };
-use std::convert::Infallible;
+use std::{convert::Infallible, fs::File};
 
 struct Client;
 #[async_trait::async_trait]
@@ -28,13 +28,11 @@ impl AsyncModule for Client {
         ))
         .unwrap();
 
-        pcap(
-            PcapConfig {
-                enable: true,
-                capture: PcapCapture::Both,
-            },
-            std::fs::File::create("results/client.pcap").unwrap(),
-        )
+        pcap(PcapConfig {
+            filters: PcapFilters::default(),
+            capture: PcapCapturePoints::CLIENT_DEFAULT,
+            output: File::create("results/client.pcap").unwrap(),
+        })
         .unwrap();
 
         spawn(async move {

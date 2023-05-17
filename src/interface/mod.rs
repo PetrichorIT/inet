@@ -264,7 +264,7 @@ impl IOContext {
         let ifid = *ifid;
         {
             let mut pcap = self.pcap.borrow_mut();
-            if pcap.cfg.capture.capture_incoming() {
+            if pcap.capture.capture_l2_incoming() {
                 if let Err(e) = pcap.capture(&msg, ifid, iface) {
                     log::error!(target: "inet/pcap", "failed to capture: {e}")
                 };

@@ -9,8 +9,8 @@ edition = "2021"
 inet = { path = "../../"} 
 des = "*"
 async-trait = "*"
-log = "*"
-hyper = { version = "0.14", features = ["full"] }
+log = { version = "*", features = ["max_level_info"]}
+hyper = { version = "0.14", features = ["full", "http1", "http2", "server", "backports"] }
 async-stream = "0.3"
 axum = "0.6"
 tower = "0.4.13"

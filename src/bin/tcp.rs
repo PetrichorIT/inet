@@ -1,4 +1,5 @@
 use std::{
+    fs::File,
     io::{stderr, stdout},
     sync::{atomic::AtomicUsize, Arc},
 };
@@ -17,7 +18,7 @@ use des::{
 };
 use inet::{
     interface::{add_interface, Interface, NetworkDevice},
-    pcap::{PcapCapture, PcapConfig},
+    pcap::{pcap, PcapCapturePoints, PcapConfig, PcapFilters},
     tcp::{set_tcp_cfg, TcpConfig, TcpDebugPlugin},
     TcpListener, TcpStream,
 };
@@ -159,13 +160,11 @@ impl AsyncModule for Server {
         ))
         .unwrap();
 
-        inet::pcap::pcap(
-            PcapConfig {
-                enable: true,
-                capture: PcapCapture::Both,
-            },
-            std::fs::File::create("results/server-output.pcap").unwrap(),
-        )
+        pcap(PcapConfig {
+            filters: PcapFilters::default(),
+            capture: PcapCapturePoints::CLIENT_DEFAULT,
+            output: File::create("results/server-output.pcap").unwrap(),
+        })
         .unwrap();
 
         let mut cfg = TcpConfig::default();

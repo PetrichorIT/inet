@@ -1,3 +1,5 @@
+use std::fs::File;
+
 use des::{
     prelude::*,
     registry,
@@ -7,15 +9,15 @@ use des::{
         spawn,
     },
 };
-use inet::types::ip::IpMask;
 use inet::{
     dns::{lookup_host, DNSNameserver},
     interface::{add_interface, Interface, NetworkDevice},
-    pcap::{pcap, PcapCapture, PcapConfig},
+    pcap::{pcap, PcapConfig, PcapFilters},
     routing::{rip::RipRoutingDeamon, set_default_gateway, RoutingInformation},
     utils::LinkLayerSwitch,
     TcpListener, TcpStream,
 };
+use inet::{pcap::PcapCapturePoints, types::ip::IpMask};
 
 struct Client;
 #[async_trait::async_trait]
@@ -172,13 +174,11 @@ fn node_like_setup() {
     .unwrap();
     set_default_gateway(gateway).unwrap();
 
-    pcap(
-        PcapConfig {
-            enable: true,
-            capture: PcapCapture::Both,
-        },
-        std::fs::File::create(format!("results/{}.pcap", module_path())).unwrap(),
-    )
+    pcap(PcapConfig {
+        capture: PcapCapturePoints::CLIENT_DEFAULT,
+        filters: PcapFilters::default(),
+        output: std::fs::File::create(format!("results/{}.pcap", module_path())).unwrap(),
+    })
     .unwrap();
 }
 
@@ -205,14 +205,14 @@ impl AsyncModule for Router {
             .cloned()
             .unwrap();
 
-        pcap(
-            PcapConfig {
-                enable: par("pcap").unwrap().parse().unwrap(),
-                capture: inet::pcap::PcapCapture::Both,
-            },
-            std::fs::File::create(format!("results/{}.pcap", module_path())).unwrap(),
-        )
-        .unwrap();
+        if par("pcap").unwrap().parse::<bool>().unwrap() {
+            pcap(PcapConfig {
+                filters: PcapFilters::default(),
+                capture: PcapCapturePoints::CLIENT_DEFAULT,
+                output: File::create(format!("resutls/{}.pcap", module_path())).unwrap(),
+            })
+            .unwrap();
+        }
 
         spawn(async move {
             sleep(Duration::from_secs_f64(random::<f64>())).await;

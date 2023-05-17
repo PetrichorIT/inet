@@ -11,15 +11,11 @@ version = "0.1.0"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
-[[bin]]
-name = "inet-bin"
-path = "inet-bin/main.rs"
 
 [dependencies]
 async-trait = "*"
 bytestream = "0.4"
 fxhash = "0.2.1"
-# des = {git = "https://github.com/PetrichorIT/des", branch = "master", features = ["full"]}
 des = { version = "*", features = ["full"] }
 log = {version = "*", features = ["max_level_trace"]}
 bytes = "1.4.0"
@@ -29,7 +25,7 @@ chrono = "0.4.24"
 inet-types = { path = "inet-types"}
 
 [dev-dependencies]
-serial_test = "1.0.0"
+serial_test = "2.0.0"
 
 [patch.crates-io]
 des = { path = "../des/des"}

@@ -4,7 +4,7 @@ use des::{prelude::*, registry, tokio::spawn};
 use inet::{
     icmp::traceroute,
     interface::{add_interface, Interface, NetworkDevice},
-    pcap::{pcap, PcapConfig},
+    pcap::{pcap, PcapCapturePoints, PcapConfig, PcapFilters},
     routing::{set_default_gateway, RoutingInformation},
 };
 
@@ -104,13 +104,11 @@ impl AsyncModule for Main {
     }
 
     async fn at_sim_start(&mut self, _: usize) {
-        pcap(
-            PcapConfig {
-                enable: true,
-                capture: inet::pcap::PcapCapture::Both,
-            },
-            File::create("results/ping.pcap").unwrap(),
-        )
+        pcap(PcapConfig {
+            filters: PcapFilters::default(),
+            capture: PcapCapturePoints::CLIENT_DEFAULT,
+            output: File::create("results/ping.pcap").unwrap(),
+        })
         .unwrap();
 
         for port in RoutingInformation::collect().ports {
