@@ -1,5 +1,5 @@
 use std::{
-    io::{self, Error, ErrorKind},
+    io::{Error, ErrorKind, Result},
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
 };
 
@@ -12,12 +12,12 @@ use crate::{
     IOContext,
 };
 
-pub fn add_interface(iface: Interface) -> io::Result<()> {
-    IOContext::with_current(|ctx| ctx.add_interface(iface))
+pub fn add_interface(iface: Interface) -> Result<()> {
+    IOContext::failable_api(|ctx| ctx.add_interface(iface))
 }
 
 impl IOContext {
-    pub fn add_interface(&mut self, iface: Interface) -> io::Result<()> {
+    pub fn add_interface(&mut self, iface: Interface) -> Result<()> {
         if self.ifaces.get(&iface.name.id).is_some() {
             Err(Error::new(
                 ErrorKind::Other,

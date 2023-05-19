@@ -102,7 +102,7 @@ impl AsyncModule for TcpServer {
 
         let fd: Fd = self.fd.load(SeqCst);
         assert!(fd != 0);
-        assert!(inet::socket::bsd_socket_info(fd).is_none())
+        assert!(inet::socket::bsd_socket_info(fd).is_err())
     }
 }
 
@@ -171,7 +171,7 @@ impl AsyncModule for TcpClient {
 
         let fd: Fd = self.fd.load(SeqCst);
         assert!(fd != 0);
-        assert!(inet::socket::bsd_socket_info(fd).is_none())
+        assert!(inet::socket::bsd_socket_info(fd).is_err())
     }
 }
 

@@ -1,5 +1,8 @@
 use super::{Fd, IOContext, Socket, SocketDomain, SocketType};
-use std::{io::Result, net::SocketAddr};
+use std::{
+    io::{Error, ErrorKind, Result},
+    net::SocketAddr,
+};
 
 /// socket - create an endpoint for communication.
 ///
@@ -24,7 +27,7 @@ use std::{io::Result, net::SocketAddr};
 /// to use is specific to the “communication domain” in which
 /// communication is to take place.
 pub fn socket(domain: SocketDomain, typ: SocketType, protocol: i32) -> Result<Fd> {
-    IOContext::with_current(|ctx| ctx.create_socket(domain, typ, protocol))
+    IOContext::failable_api(|ctx| ctx.create_socket(domain, typ, protocol))
 }
 
 /// bind - bind name to a socket.
@@ -39,7 +42,7 @@ pub fn socket(domain: SocketDomain, typ: SocketType, protocol: i32) -> Result<Fd
 /// It is normally necessary to assign a local address using bind()
 /// before a SOCK_STREAM socket may receive connections.
 pub fn bind(sockfd: Fd, addr: SocketAddr) -> Result<()> {
-    IOContext::with_current(|ctx| ctx.bind_socket(sockfd, addr))?;
+    IOContext::failable_api(|ctx| ctx.bind_socket(sockfd, addr))?;
     Ok(())
 }
 
@@ -51,10 +54,15 @@ pub fn bind(sockfd: Fd, addr: SocketAddr) -> Result<()> {
 /// removed (regardless of the file descriptor that was used to
 /// obtain the lock).
 pub fn close(fd: Fd) -> Result<()> {
-    IOContext::with_current(|ctx| ctx.close_socket(fd))
+    IOContext::failable_api(|ctx| ctx.close_socket(fd))
 }
 
 #[doc(hidden)]
-pub fn bsd_socket_info(fd: Fd) -> Option<Socket> {
-    IOContext::with_current(|ctx| ctx.sockets.get(&fd).cloned())
+pub fn bsd_socket_info(fd: Fd) -> Result<Socket> {
+    IOContext::failable_api(|ctx| {
+        ctx.sockets
+            .get(&fd)
+            .cloned()
+            .ok_or(Error::new(ErrorKind::NotFound, "no socket for fd"))
+    })
 }

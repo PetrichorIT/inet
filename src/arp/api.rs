@@ -1,8 +1,4 @@
-use std::{
-    fmt::Display,
-    io::{self, Error, ErrorKind},
-    net::IpAddr,
-};
+use std::{fmt::Display, io::Result, net::IpAddr};
 
 use des::time::SimTime;
 use inet_types::iface::MacAddress;
@@ -32,9 +28,8 @@ impl Display for ArpEntry {
     }
 }
 
-pub fn arpa() -> io::Result<Vec<ArpEntry>> {
-    IOContext::try_with_current(|ctx| ctx.arpa())
-        .ok_or(Error::new(ErrorKind::Other, "Missing IO plugin"))
+pub fn arpa() -> Result<Vec<ArpEntry>> {
+    IOContext::failable_api(|ctx| Ok(ctx.arpa()))
 }
 
 impl IOContext {

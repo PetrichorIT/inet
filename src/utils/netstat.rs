@@ -1,4 +1,4 @@
-use std::{io, net::SocketAddr};
+use std::{io::Result, net::SocketAddr};
 
 use crate::{
     socket::{SocketDomain, SocketType},
@@ -42,9 +42,8 @@ impl NetstatConnectionProto {
     }
 }
 
-pub fn netstat() -> io::Result<Netstat> {
-    IOContext::try_with_current(|ctx| ctx.netstat())
-        .ok_or(io::Error::new(io::ErrorKind::Other, "Missing IO plugin"))
+pub fn netstat() -> Result<Netstat> {
+    IOContext::failable_api(|ctx| Ok(ctx.netstat()))
 }
 
 impl IOContext {

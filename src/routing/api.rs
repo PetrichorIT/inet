@@ -7,8 +7,7 @@ use super::{ForwardingEntryV4, Ipv4Gateway};
 use crate::IOContext;
 
 pub fn set_default_gateway(ip: impl Into<IpAddr>) -> io::Result<()> {
-    IOContext::try_with_current(|ctx| ctx.set_default_gateway(ip.into()))
-        .ok_or(Error::new(ErrorKind::Other, "missing IO Context"))?
+    IOContext::failable_api(|ctx| ctx.set_default_gateway(ip.into()))
 }
 
 pub fn add_routing_entry(
@@ -17,10 +16,9 @@ pub fn add_routing_entry(
     gw: impl Into<IpAddr>,
     interface: &str,
 ) -> io::Result<()> {
-    IOContext::try_with_current(|ctx| {
+    IOContext::failable_api(|ctx| {
         ctx.add_routing_entry(addr.into(), mask.into(), gw.into(), interface)
     })
-    .ok_or(Error::new(ErrorKind::Other, "missing IO Context"))?
 }
 
 #[deprecated]
@@ -34,8 +32,7 @@ pub fn update_routing_entry(
 }
 
 pub fn route() -> io::Result<Vec<ForwardingEntryV4>> {
-    IOContext::try_with_current(|ctx| ctx.route())
-        .ok_or(Error::new(ErrorKind::Other, "missing IO Context"))
+    IOContext::failable_api(|ctx| Ok(ctx.route()))
 }
 
 impl IOContext {

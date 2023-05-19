@@ -15,6 +15,7 @@ use inet_types::{
 };
 use std::{
     cell::RefCell,
+    io::{Error, ErrorKind, Result},
     net::{IpAddr, Ipv4Addr},
     panic::UnwindSafe,
 };
@@ -95,6 +96,17 @@ impl IOContext {
                 let error = PluginError::expected::<IOPlugin>();
                 panic!("Missing IOContext: {error}")
             }))
+        })
+    }
+
+    pub(super) fn failable_api<T>(f: impl FnOnce(&mut IOContext) -> Result<T>) -> Result<T> {
+        CURRENT.with(|cell| {
+            let mut ctx = cell.borrow_mut();
+            let Some(ctx) = ctx.as_mut() else {
+                let error = PluginError::expected::<IOPlugin>();
+                return Err(Error::new(ErrorKind::Other, error))
+            };
+            f(ctx)
         })
     }
 

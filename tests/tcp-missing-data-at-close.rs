@@ -129,7 +129,7 @@ impl AsyncModule for TcpServer {
         use inet::socket::bsd_socket_info;
 
         assert!(self.done.load(SeqCst));
-        assert!(bsd_socket_info(self.fd.load(SeqCst)).is_none());
+        assert!(bsd_socket_info(self.fd.load(SeqCst)).is_err());
     }
 }
 
@@ -191,7 +191,7 @@ impl AsyncModule for TcpClient {
         use inet::socket::bsd_socket_info;
 
         assert!(self.done.load(SeqCst));
-        assert!(bsd_socket_info(self.fd.load(SeqCst)).is_none());
+        assert!(bsd_socket_info(self.fd.load(SeqCst)).is_err());
     }
 }
 

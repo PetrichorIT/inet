@@ -1,6 +1,9 @@
 //! Capturing packets and storing them as .pcapng files.
 
-use self::blocks::{IDBOption, SHBOption, EPB, IDB, SHB};
+use self::{
+    blocks::{IDBOption, SHBOption, EPB, IDB, SHB},
+    config::FilterResult,
+};
 use crate::interface::{IfId, Interface};
 use des::{
     prelude::{module_path, Message},
@@ -18,8 +21,10 @@ use std::io::{BufWriter, Error, ErrorKind, Result, Write};
 
 mod api;
 mod blocks;
+mod config;
 
-pub use self::api::*;
+pub use self::api::pcap;
+pub use self::config::{PcapCapturePoints, PcapConfig, PcapFilter, PcapFilters};
 
 pub(crate) struct Pcap {
     output: BufWriter<Box<dyn Write>>,
