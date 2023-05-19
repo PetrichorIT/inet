@@ -3,7 +3,8 @@ use std::io::{BufWriter, Result, Write};
 use super::config::PcapConfig;
 use crate::IOContext;
 
-// Opens a pcap debugger
+/// Applies a new configuration to PCAP, starting a new
+/// capturing epoch.
 pub fn pcap<W>(cfg: PcapConfig<W>) -> Result<()>
 where
     W: Write + 'static,

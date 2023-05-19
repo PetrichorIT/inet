@@ -42,7 +42,7 @@ impl Future for UdpInterest {
     ) -> Poll<Self::Output> {
         if self.io_interest.is_readable() {
             return IOContext::with_current(|ctx| {
-                let Some(socket) = ctx.udp_manager.get_mut(&self.fd) else {
+                let Some(socket) = ctx.udp.binds.get_mut(&self.fd) else {
                     self.resolved = true;
                     return Poll::Ready(Err(Error::new(ErrorKind::InvalidInput, "invalid fd - socket dropped")))
                 };
@@ -68,7 +68,7 @@ impl Future for UdpInterest {
                     return Poll::Ready(Err(Error::new(ErrorKind::InvalidInput, "invalid fd - socket dropped")))
                 };
 
-                let Some(udp) = ctx.udp_manager.get_mut(&self.fd) else {
+                let Some(udp) = ctx.udp.binds.get_mut(&self.fd) else {
                     self.resolved = true;
                     return Poll::Ready(Err(Error::new(ErrorKind::InvalidInput, "invalid fd - socket dropped")))
                 };
@@ -105,7 +105,7 @@ impl Drop for UdpInterest {
         if !self.resolved {
             if self.io_interest.is_readable() || self.io_interest.is_writable() {
                 IOContext::try_with_current(|ctx| {
-                    if let Some(udp) = ctx.udp_manager.get_mut(&self.fd) {
+                    if let Some(udp) = ctx.udp.binds.get_mut(&self.fd) {
                         let _ = udp.interest.take();
                     }
                 });

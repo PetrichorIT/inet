@@ -1,3 +1,5 @@
+//! Unix Domain Sockets (UDS)
+
 use crate::socket::Fd;
 use fxhash::FxBuildHasher;
 use fxhash::FxHashMap;

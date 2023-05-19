@@ -12,12 +12,13 @@ use crate::{
     IOContext,
 };
 
+/// Declares and activiates an new network interface on the current module
 pub fn add_interface(iface: Interface) -> Result<()> {
     IOContext::failable_api(|ctx| ctx.add_interface(iface))
 }
 
 impl IOContext {
-    pub fn add_interface(&mut self, iface: Interface) -> Result<()> {
+    pub(crate) fn add_interface(&mut self, iface: Interface) -> Result<()> {
         if self.ifaces.get(&iface.name.id).is_some() {
             Err(Error::new(
                 ErrorKind::Other,

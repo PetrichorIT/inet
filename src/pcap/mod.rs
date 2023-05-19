@@ -1,4 +1,4 @@
-//! Capturing packets and storing them as .pcapng files.
+//! Capturing packets from various processing stages using PCAP.
 
 use self::{
     blocks::{IDBOption, SHBOption, EPB, IDB, SHB},
@@ -115,7 +115,7 @@ impl Pcap {
 
         // (0) Check filters first
         let mut state = FilterResult::Continue;
-        for filter in &self.filters {
+        for filter in self.filters.iter() {
             state = filter.evaluate_l2(state, msg);
         }
 
@@ -127,7 +127,7 @@ impl Pcap {
                     "Packet of kind {KIND_ARP} did not contain Arp Packet",
                 ))?;
 
-                for filter in &self.filters {
+                for filter in self.filters.iter() {
                     state = filter.evaluate_fin(state);
                 }
                 if state == FilterResult::Allow {
@@ -144,7 +144,7 @@ impl Pcap {
                     "Packet of kind {KIND_IPV4} did not contain Ipv4 Packet",
                 ))?;
 
-                for filter in &self.filters {
+                for filter in self.filters.iter() {
                     state = filter.evaluate_l3(state, &IpPacketRef::V4(pkt));
                     state = filter.evaluate_fin(state);
                 }
@@ -162,7 +162,7 @@ impl Pcap {
                     "Packet of kind {KIND_IPV6} did not contain Ipv6 Packet",
                 ))?;
 
-                for filter in &self.filters {
+                for filter in self.filters.iter() {
                     state = filter.evaluate_l3(state, &IpPacketRef::V6(pkt));
                     state = filter.evaluate_fin(state);
                 }

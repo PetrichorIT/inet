@@ -1,7 +1,7 @@
 use des::{prelude::*, registry, time::sleep, tokio::spawn};
 use inet::{
-    debug::send_ip,
     interface::{add_interface, Interface, NetworkDevice},
+    socket::RawIpSocket,
     TcpListener,
 };
 use inet_types::{
@@ -24,6 +24,7 @@ impl AsyncModule for Spoofer {
         ))
         .unwrap();
         spawn(async move {
+            let sock = RawIpSocket::new_v4().unwrap();
             for i in 0..3 {
                 let pkt = IpPacket::V4(Ipv4Packet {
                     enc: 0,
@@ -52,7 +53,7 @@ impl AsyncModule for Spoofer {
                     .to_buffer()
                     .unwrap(),
                 });
-                send_ip(pkt).unwrap();
+                sock.try_send(pkt).unwrap();
                 log::info!("send syn packet");
                 sleep(Duration::from_millis(100)).await;
             }

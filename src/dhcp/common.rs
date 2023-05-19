@@ -2,10 +2,11 @@ use std::{io::Cursor, net::Ipv4Addr};
 
 use bytestream::{ByteOrder::BigEndian, StreamReader, StreamWriter};
 use des::{prelude::MessageBody, runtime::random};
+use inet_types::{iface::MacAddress, FromBytestream, IntoBytestream};
 
 use crate::utils::get_mac_address;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, MessageBody)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct DHCPMessage {
     pub op: DHCPOp, // op code
     pub htype: u8,  // hardware type (e.g. ethernet) - ARP
@@ -17,11 +18,11 @@ pub struct DHCPMessage {
     pub secs: u16,  // secs since address aquisition started (client set)
     pub flags: u16, // flags
 
-    pub ciaddr: Ipv4Addr, // client ip addr, only at BOUND, RENEW, REBIND
-    pub yiaddr: Ipv4Addr, // ip addr for client
-    pub siaddr: Ipv4Addr, // ip addr of next server in bootstrap
-    pub giaddr: Ipv4Addr, // relay ip addr
-    pub chaddr: [u8; 8],  // client hardware address
+    pub ciaddr: Ipv4Addr,   // client ip addr, only at BOUND, RENEW, REBIND
+    pub yiaddr: Ipv4Addr,   // ip addr for client
+    pub siaddr: Ipv4Addr,   // ip addr of next server in bootstrap
+    pub giaddr: Ipv4Addr,   // relay ip addr
+    pub chaddr: MacAddress, // client hardware address
     // pub sname: [u8; 64],  // server host name
     // pub file: [u8; 128],  // boot file name
     pub ops: DHCPOps,
@@ -86,7 +87,7 @@ impl DHCPMessage {
             siaddr: Ipv4Addr::UNSPECIFIED,
             giaddr: Ipv4Addr::UNSPECIFIED,
 
-            chaddr: [0; 8],
+            chaddr: MacAddress::NULL,
             ops: DHCPOps {
                 typ: DHCPOpsTyp::Discover,
                 pars: Vec::new(),
@@ -125,7 +126,7 @@ impl DHCPMessage {
             yiaddr: Ipv4Addr::UNSPECIFIED,
             siaddr: Ipv4Addr::UNSPECIFIED,
             giaddr: Ipv4Addr::UNSPECIFIED,
-            chaddr: [0, 0, mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]],
+            chaddr: mac,
             // sname: [0; 64],
             // file: [0; 128],
             ops: DHCPOps {
@@ -235,9 +236,9 @@ impl DHCPMessage {
         u32::from_be_bytes(self.siaddr.octets()).write_to(&mut res, BigEndian)?;
         u32::from_be_bytes(self.giaddr.octets()).write_to(&mut res, BigEndian)?;
 
-        for byte in self.chaddr {
-            byte.write_to(&mut res, BigEndian)?;
-        }
+        // 2 byte padding
+        res.extend([0u8, 0u8]);
+        self.chaddr.to_bytestream(&mut res)?;
 
         // op
         (self.ops.typ as u8).write_to(&mut res, BigEndian)?;
@@ -287,6 +288,12 @@ impl DHCPParameter {
     }
 }
 
+impl MessageBody for DHCPMessage {
+    fn byte_len(&self) -> usize {
+        40
+    }
+}
+
 impl TryFrom<&[u8]> for DHCPMessage {
     type Error = std::io::Error;
     fn try_from(ptr: &[u8]) -> Result<Self, Self::Error> {
@@ -314,13 +321,8 @@ impl TryFrom<&[u8]> for DHCPMessage {
         let siaddr = Ipv4Addr::from(u32::read_from(&mut ptr, BigEndian)?);
         let giaddr = Ipv4Addr::from(u32::read_from(&mut ptr, BigEndian)?);
 
-        let chaddr_vec = std::iter::repeat_with(|| u8::read_from(&mut ptr, BigEndian))
-            .take(8)
-            .collect::<Vec<_>>();
-        let mut chaddr = [0; 8];
-        for (i, v) in chaddr_vec.into_iter().enumerate() {
-            chaddr[i] = v?;
-        }
+        assert_eq!(u16::read_from(&mut ptr, BigEndian)?, 0);
+        let chaddr = MacAddress::from_bytestream(&mut ptr)?;
 
         let pos = ptr.position() as usize;
         let stream = ptr.into_inner();

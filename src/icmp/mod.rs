@@ -1,10 +1,20 @@
+//! The Internet Control Message Protocol (ICMP)
+//!
+//! ICMP provides out-of-band debugging tools for IP
+//! based networks. By default all Inet-Modules
+//! allow and anwser as specificied in ICMP, but be
+//! aware that this helpful complicance does not
+//! represent realtity.
+//!
+//! This module provides some ICMP associated
+//! utility function for network debugging.
+use fxhash::{FxBuildHasher, FxHashMap};
 use std::{
     io::{Error, ErrorKind},
     net::{IpAddr, Ipv4Addr},
 };
 
 use des::time::SimTime;
-use fxhash::{FxBuildHasher, FxHashMap};
 use inet_types::{
     icmp::{
         IcmpDestinationUnreachableCode, IcmpPacket, IcmpTimeExceededCode, IcmpType, PROTO_ICMP,
@@ -13,9 +23,8 @@ use inet_types::{
     FromBytestream, IntoBytestream,
 };
 
-use crate::{interface::IfId, socket::SocketIfaceBinding, IOContext};
-
 use self::ping::PingCB;
+use crate::{interface::IfId, socket::SocketIfaceBinding, IOContext};
 
 mod ping;
 pub use self::ping::*;

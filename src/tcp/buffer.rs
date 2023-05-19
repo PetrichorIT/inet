@@ -9,7 +9,7 @@ use des::stats::{ActivityTimeline, OutVec, SlottedActivityTimeline};
 ///                      ^read_head  ^write_head
 ///                        
 #[derive(Debug)]
-pub struct TcpBuffer {
+pub(crate) struct TcpBuffer {
     bytes: Box<[u8]>,
     read_head: u32,
     write_head: u32,

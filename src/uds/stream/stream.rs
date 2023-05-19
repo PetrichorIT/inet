@@ -20,6 +20,7 @@ use crate::{
     socket::{SocketDomain, SocketType},
 };
 
+/// A stream-oriented unix domain socket.
 #[derive(Debug)]
 pub struct UnixStream {
     pub(super) fd: Fd,

@@ -2,23 +2,28 @@ use des::time::SimTime;
 use fxhash::{FxBuildHasher, FxHashMap};
 use std::{hash::Hash, net::IpAddr, time::Duration};
 
-use crate::{interface::IfId, interface::Interface};
+use crate::interface::IfId;
 use inet_types::{iface::MacAddress, ip::IpPacket};
 
-pub struct ArpTable {
+pub(crate) struct ArpTable {
     pub(super) map: FxHashMap<IpAddr, ArpEntryInternal>,
     pub(super) config: ArpConfig,
     pub(super) requests: FxHashMap<IpAddr, ActiveRequest>,
     pub(super) active_wakeup: bool,
 }
 
+/// Configuration options for the Address Resolution Protocol (ARP)
 pub struct ArpConfig {
+    /// The duration in which a entry is considered valid, without
+    /// an explicit ARP handshake.
     pub validity: Duration,
+    /// The timeout duration for reponses to an ARP
+    /// request.
     pub timeout: Duration,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct ArpEntryInternal {
+pub(crate) struct ArpEntryInternal {
     pub negated: bool,
     pub hostname: Option<String>,
     pub ip: IpAddr,
@@ -65,17 +70,17 @@ impl ArpTable {
         }
     }
 
-    pub fn lookup_for_iface(&self, ip: &IpAddr, iface: &Interface) -> Option<(MacAddress, IfId)> {
-        self.lookup(ip).map(|e| (e.mac, e.iface)).or_else(|| {
-            let looback = iface.flags.loopback && ip.is_loopback();
-            let self_addr = iface.addrs.iter().any(|addr| addr.matches_ip(*ip));
-            if looback || self_addr {
-                Some((iface.device.addr, iface.name.id))
-            } else {
-                None
-            }
-        })
-    }
+    // pub fn lookup_for_iface(&self, ip: &IpAddr, iface: &Interface) -> Option<(MacAddress, IfId)> {
+    //     self.lookup(ip).map(|e| (e.mac, e.iface)).or_else(|| {
+    //         let looback = iface.flags.loopback && ip.is_loopback();
+    //         let self_addr = iface.addrs.iter().any(|addr| addr.matches_ip(*ip));
+    //         if looback || self_addr {
+    //             Some((iface.device.addr, iface.name.id))
+    //         } else {
+    //             None
+    //         }
+    //     })
+    // }
 
     pub fn lookup(&self, ip: &IpAddr) -> Option<&ArpEntryInternal> {
         let Some(value) = self.map.get(ip) else {

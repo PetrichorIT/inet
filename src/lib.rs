@@ -1,7 +1,6 @@
 #![feature(int_roundings)]
 
 pub mod arp;
-pub mod debug;
 pub mod dhcp;
 pub mod dns;
 pub mod fs;
@@ -27,7 +26,7 @@ mod plugin;
 pub use plugin::*;
 
 mod ctx;
-pub use ctx::*;
+use ctx::*;
 
 /// Initaliztion function for inet-plugins.
 ///

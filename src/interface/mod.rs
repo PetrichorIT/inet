@@ -1,7 +1,11 @@
-use std::collections::VecDeque;
-use std::io;
-use std::io::Error;
-use std::io::ErrorKind;
+//! Network interfaces and Network devices.
+//!
+//!
+
+use std::{
+    collections::VecDeque,
+    io::{Error, ErrorKind, Result},
+};
 
 use crate::socket::Fd;
 use crate::IOContext;
@@ -35,25 +39,28 @@ pub use flags::*;
 mod addrs;
 pub use self::addrs::*;
 
+/// A network interface, mapping a physical network device
+/// to internal abstractions
 #[derive(Debug)]
 pub struct Interface {
     /// The name of the interface
     pub name: InterfaceName,
-    /// The device
+    /// The physical network device, representing a NIC in most cases
     pub device: NetworkDevice,
-    /// The flags.
+    /// Flags indicating the state and capabilities of the associated device
     pub flags: InterfaceFlags,
-    /// The associated addrs.
+    /// A list of addresses bound to this interface
     pub addrs: Vec<InterfaceAddr>,
-    /// The status
+    /// The internal state of the interface
     pub status: InterfaceStatus,
-    /// State
+    /// A flag indicating whether the interface is currently busy sending
     pub state: InterfaceBusyState,
 
     pub(crate) prio: usize,
     pub(crate) buffer: VecDeque<Message>,
 }
 
+/// A result forwarded after linklayer processing
 #[derive(Debug)]
 pub enum LinkLayerResult {
     /// The packet does not attach to any link layer interface, so its custom made.
@@ -70,6 +77,8 @@ pub enum LinkLayerResult {
 }
 
 impl Interface {
+    /// Creates a new ethernet interface using the given device
+    /// and an IP address for binding to a LAN.
     pub fn eth(device: NetworkDevice, ip: IpAddr) -> Interface {
         match ip {
             IpAddr::V4(v4) => Self::ethv4(device, v4),
@@ -77,14 +86,39 @@ impl Interface {
         }
     }
 
+    /// Creates a new ethernet interface bound to an Ipv4/24 network.
     pub fn ethv4(device: NetworkDevice, v4: Ipv4Addr) -> Interface {
         Self::ethv4_named("en0", device, v4, Ipv4Addr::new(255, 255, 255, 0))
     }
 
+    /// Creates a new ethernet interface bound to an Ipv6/64 network.
     pub fn ethv6(device: NetworkDevice, v6: Ipv6Addr) -> Interface {
         Self::ethv6_named("en1", device, v6)
     }
 
+    /// Creates a new ethernet interface using the provided parameters.
+    pub fn ethv4_named(
+        name: impl AsRef<str>,
+        device: NetworkDevice,
+        subnet: Ipv4Addr,
+        mask: Ipv4Addr,
+    ) -> Interface {
+        Interface {
+            name: InterfaceName::new(name),
+            device,
+            flags: InterfaceFlags::en0(),
+            addrs: vec![InterfaceAddr::Inet {
+                addr: subnet,
+                netmask: mask,
+            }],
+            status: InterfaceStatus::Active,
+            state: InterfaceBusyState::Idle,
+            prio: 100,
+            buffer: VecDeque::new(),
+        }
+    }
+
+    /// Creates a new ethernet interface using the provided parameters.
     pub fn ethv6_named(
         name: impl AsRef<str>,
         device: NetworkDevice,
@@ -106,20 +140,28 @@ impl Interface {
         }
     }
 
-    pub fn ethv4_named(
+    /// Creates a new ethernet interface using the provided parameters.
+    pub fn eth_mixed(
         name: impl AsRef<str>,
         device: NetworkDevice,
-        subnet: Ipv4Addr,
-        mask: Ipv4Addr,
+        v4: (Ipv4Addr, Ipv4Addr),
+        v6: (Ipv6Addr, usize),
     ) -> Interface {
         Interface {
             name: InterfaceName::new(name),
             device,
             flags: InterfaceFlags::en0(),
-            addrs: vec![InterfaceAddr::Inet {
-                addr: subnet,
-                netmask: mask,
-            }],
+            addrs: vec![
+                InterfaceAddr::Inet {
+                    addr: v4.0,
+                    netmask: v4.1,
+                },
+                InterfaceAddr::Inet6 {
+                    addr: v6.0,
+                    prefixlen: v6.1,
+                    scope_id: None,
+                },
+            ],
             status: InterfaceStatus::Active,
             state: InterfaceBusyState::Idle,
             prio: 100,
@@ -171,7 +213,7 @@ impl Interface {
         })
     }
 
-    pub fn send_buffered(&mut self, msg: Message) -> io::Result<()> {
+    pub(crate) fn send_buffered(&mut self, msg: Message) -> Result<()> {
         if self.is_busy() {
             // if self.buffer.len() >= 16 {
             //     return Err(Error::new(ErrorKind::Other, "interface busy, buffer fullö"));
@@ -184,7 +226,7 @@ impl Interface {
         }
     }
 
-    pub fn send(&mut self, msg: Message) -> io::Result<()> {
+    pub(crate) fn send(&mut self, msg: Message) -> Result<()> {
         if self.state != InterfaceBusyState::Idle {
             return Err(Error::new(
                 ErrorKind::WouldBlock,
@@ -198,13 +240,13 @@ impl Interface {
         Ok(())
     }
 
-    pub fn schedule_link_update(&self) {
+    pub(crate) fn schedule_link_update(&self) {
         if let InterfaceBusyState::Busy { until, .. } = &self.state {
             schedule_at(Message::from(LinkUpdate(self.name.id)), *until);
         }
     }
 
-    pub fn recv_link_update(&mut self) -> Vec<Fd> {
+    pub(crate) fn recv_link_update(&mut self) -> Vec<Fd> {
         assert!(!self.device.is_busy(), "Link notif send invalid message");
         if let Some(msg) = self.buffer.pop_front() {
             // still busy with link layer events.

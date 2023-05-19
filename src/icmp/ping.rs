@@ -21,21 +21,34 @@ pub(super) struct PingCB {
     pub publish: Option<oneshot::Sender<Result<Ping>>>,
 }
 
+/// The result of a call to `ping`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Ping {
+    /// The received time-to-live (TTL) of
+    /// returing ICMP Echo Replys
     pub ttl: u32,
+    /// The fastest measured round-trip-time (RTT).
     pub time_min: Duration,
+    /// The slowes measured round-trip-time (RTT).
     pub time_max: Duration,
+    /// The average round-trip-time (RTT).
     pub time_avg: Duration,
 }
 
+/// Tries to determine reachability and round-trip time
+/// to a specified target
 pub async fn ping(addr: impl Into<Ipv4Addr>) -> Result<Ping> {
     ping_with(addr, 3).await
 }
 
+/// Tries to determine reachability and round-trip time
+/// to a specified target
+///
+/// This function takes the number of samples as an extra paramter.
+/// The default value used by `ping` is 3.
 pub async fn ping_with(addr: impl Into<Ipv4Addr>, c: usize) -> Result<Ping> {
     let addr = addr.into();
-    let rx = IOContext::with_current(|ctx| ctx.icmp_initiate_ping(addr, c))?;
+    let rx = IOContext::failable_api(|ctx| ctx.icmp_initiate_ping(addr, c))?;
     rx.await
         .map_err(|_| Error::new(ErrorKind::Other, "broke pipe"))?
 }

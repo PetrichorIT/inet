@@ -1,4 +1,8 @@
-//! BSD sockets.
+//! Networking sockets - endpoint for communication.
+
+use des::tokio::sync::mpsc::Sender;
+use fxhash::{FxBuildHasher, FxHashMap};
+use inet_types::ip::IpPacket;
 
 use crate::interface::{IfId, InterfaceAddr};
 
@@ -6,10 +10,13 @@ use super::{
     interface::{InterfaceName, InterfaceStatus},
     IOContext,
 };
-use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::{
     fmt::Display,
     io::{Error, ErrorKind, Result},
+};
+use std::{
+    net::{Ipv4Addr, SocketAddr, SocketAddrV4},
+    ops::{Deref, DerefMut},
 };
 
 mod api;
@@ -21,29 +28,74 @@ pub use self::types::*;
 mod fd;
 pub use self::fd::*;
 
+mod raw;
+pub use self::raw::*;
+
+pub(super) struct Sockets {
+    sockets: FxHashMap<Fd, Socket>,
+    pub(super) handlers: FxHashMap<(u8, SocketDomain), (Fd, Sender<IpPacket>)>,
+}
+
+impl Sockets {
+    pub(super) fn new() -> Sockets {
+        Sockets {
+            sockets: FxHashMap::with_hasher(FxBuildHasher::default()),
+            handlers: FxHashMap::with_hasher(FxBuildHasher::default()),
+        }
+    }
+}
+
+impl Deref for Sockets {
+    type Target = FxHashMap<Fd, Socket>;
+    fn deref(&self) -> &Self::Target {
+        &self.sockets
+    }
+}
+
+impl DerefMut for Sockets {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.sockets
+    }
+}
+
 #[doc(hidden)]
 /// A communications socket.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Socket {
+    /// The local (unique) address of the socket.
     pub addr: SocketAddr,
+    /// The address of the peer, if can be determined.
     pub peer: SocketAddr,
 
+    /// The domain the socket operates in.
     pub domain: SocketDomain,
+    /// The service type provided by the socket.
     pub typ: SocketType,
+    /// An indicator which protocol is used, if domain/typ was
+    /// not conclusive.
     pub protocol: i32,
+    /// The filedescriptor of the socket
     pub fd: Fd,
 
+    /// The binding of the socket
     pub interface: SocketIfaceBinding,
+    /// The ttl of IP like packets
     pub ttl: u8,
 
+    /// The total number of bytes received by this socket.
     pub recv_q: usize,
+    /// The total number of bytes sent by this socket.
     pub send_q: usize,
 }
 
+/// The kind of binding that connects a socket to the NIC.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum SocketIfaceBinding {
+    /// A socket bound to a specific address of an interface.
     Bound(IfId),
+    /// A socket bound to a zero address able to interact with all interfaces.
     Any(Vec<IfId>),
+    /// A socket not yet bound
     NotBound,
 }
 
@@ -367,7 +419,7 @@ impl IOContext {
 
         match (socket.domain, socket.typ) {
             (AF_INET, SOCK_DGRAM) | (AF_INET6, SOCK_DGRAM) => {
-                let Some(udp) = self.udp_manager.get_mut(&fd) else {
+                let Some(udp) = self.udp.binds.get_mut(&fd) else {
                     return
                 };
 

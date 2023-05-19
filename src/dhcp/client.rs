@@ -4,6 +4,7 @@ use std::{
 };
 
 use des::prelude::*;
+use inet_types::iface::MacAddress;
 
 use super::common::{DHCPMessage, DHCPOpsTyp};
 use crate::{
@@ -12,7 +13,7 @@ use crate::{
 };
 
 pub struct DHCPClient {
-    mac: [u8; 8],
+    mac: MacAddress,
     addr: Ipv4Addr,
     subnet: Ipv4Addr,
     dns: Ipv4Addr,
@@ -30,7 +31,7 @@ pub struct DHCPClient {
 impl DHCPClient {
     pub fn new() -> Self {
         Self {
-            mac: [0; 8],
+            mac: MacAddress::NULL,
             addr: Ipv4Addr::UNSPECIFIED,
             subnet: Ipv4Addr::UNSPECIFIED,
             dns: Ipv4Addr::UNSPECIFIED,
@@ -51,10 +52,10 @@ impl DHCPClient {
     }
 
     pub fn start(&mut self, req_addr: Option<Ipv4Addr>) {
-        let mac = get_mac_address()
+        let mac: inet_types::iface::MacAddress = get_mac_address()
             .expect("Failed to fetch MAC address for DHCP")
             .expect("No MAC address found for DHCP");
-        self.mac = [0, 0, mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]];
+        self.mac = mac;
         self.start = SimTime::now();
         self.done = false;
 
@@ -143,7 +144,7 @@ impl DHCPClient {
                 );
                 // Commit values to tokio
                 let mac = get_mac_address().unwrap();
-                let _mac = mac.unwrap_or(random());
+                let _mac = mac.unwrap_or(MacAddress::gen());
                 // IOContext::eth_with_addr(self.addr, mac).set();
                 // FIXME
                 self.done = true;

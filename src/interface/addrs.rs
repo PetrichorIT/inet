@@ -3,13 +3,15 @@ use std::{
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
 };
 
+use inet_types::iface::MacAddress;
+
 /// A interface addr.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum InterfaceAddr {
     /// A hardware ethernet address.
     Ether {
         /// The MAC addr.
-        addr: [u8; 6],
+        addr: MacAddress,
     },
     /// An Ipv4 declaration
     Inet {
@@ -51,7 +53,7 @@ impl InterfaceAddr {
     }
 
     /// Returns the addrs for a loopback interface.
-    pub fn en0(ether: [u8; 6], v4: Ipv4Addr) -> [Self; 3] {
+    pub fn en0(ether: MacAddress, v4: Ipv4Addr) -> [Self; 3] {
         let v6 = v4.to_ipv6_compatible();
         [
             InterfaceAddr::Ether { addr: ether },
@@ -67,6 +69,8 @@ impl InterfaceAddr {
         ]
     }
 
+    /// Returns whether an IP address matches a bound
+    /// interface address.
     pub fn matches_ip(&self, ip: IpAddr) -> bool {
         match self {
             // # Default cases
@@ -155,11 +159,7 @@ impl InterfaceAddr {
 impl fmt::Display for InterfaceAddr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
         match self {
-            Self::Ether { addr } => write!(
-                f,
-                "ether {}:{}:{}:{}:{}:{}",
-                addr[0], addr[1], addr[2], addr[3], addr[4], addr[5]
-            ),
+            Self::Ether { addr } => write!(f, "ether {}", addr),
             Self::Inet { addr, netmask } => write!(f, "inet {} netmask {}", addr, netmask),
             Self::Inet6 {
                 addr,

@@ -1,8 +1,10 @@
 use std::{io::Result, net::IpAddr};
 
+use inet_types::iface::MacAddress;
+
 use crate::{interface::InterfaceAddr, IOContext};
 
-pub fn get_mac_address() -> Result<Option<[u8; 6]>> {
+pub fn get_mac_address() -> Result<Option<MacAddress>> {
     IOContext::failable_api(|ctx| ctx.get_mac_address())
 }
 
@@ -12,7 +14,7 @@ pub fn get_ip() -> Option<IpAddr> {
 
 impl IOContext {
     /// Returns ethernet mac address for a given IOContext
-    pub fn get_mac_address(&self) -> Result<Option<[u8; 6]>> {
+    pub fn get_mac_address(&self) -> Result<Option<MacAddress>> {
         for (_, interface) in &self.ifaces {
             for addr in &interface.addrs {
                 if let InterfaceAddr::Ether { addr } = addr {

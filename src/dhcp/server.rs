@@ -7,6 +7,7 @@ use std::{
 
 use des::prelude::*;
 use fxhash::{FxBuildHasher, FxHashMap};
+use inet_types::iface::MacAddress;
 
 use crate::{dhcp::MESSAGE_KIND_DHCP, utils::get_ip};
 
@@ -21,7 +22,7 @@ pub struct DHCPServer {
     gate: Option<GateRef>,
 
     // state
-    reserved: FxHashMap<Ipv4Addr, [u8; 8]>,
+    reserved: FxHashMap<Ipv4Addr, MacAddress>,
 
     // config
     config: DHCPServerConfig,
@@ -43,7 +44,7 @@ struct TransactionState {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DHCPServerConfig {
-    static_ow: FxHashMap<[u8; 8], Ipv4Addr>,
+    static_ow: FxHashMap<MacAddress, Ipv4Addr>,
 
     subnet_mask: Ipv4Addr,
     subnet_range_start: Ipv4Addr,
@@ -57,12 +58,12 @@ pub struct DHCPServerConfig {
 }
 
 impl DHCPServerConfig {
-    pub fn add_static_entry(&mut self, mac: [u8; 8], addr: Ipv4Addr) -> &mut Self {
+    pub fn add_static_entry(&mut self, mac: MacAddress, addr: Ipv4Addr) -> &mut Self {
         self.static_ow.insert(mac, addr);
         self
     }
 
-    pub fn remove_static_entry(&mut self, mac: [u8; 8]) -> &mut Self {
+    pub fn remove_static_entry(&mut self, mac: MacAddress) -> &mut Self {
         self.static_ow.remove(&mac);
         self
     }
@@ -120,14 +121,12 @@ impl DHCPServer {
             Ipv4Addr::UNSPECIFIED
         };
         let mut reserved = FxHashMap::with_hasher(FxBuildHasher::default());
-        reserved.insert(addr, [0; 8]);
+        reserved.insert(addr, MacAddress::NULL);
         DHCPServer {
             transactions: FxHashMap::with_hasher(FxBuildHasher::default()),
             addr,
-
             reserved,
             gate: gate("out", 0),
-
             config: DHCPServerConfig::default(),
         }
     }

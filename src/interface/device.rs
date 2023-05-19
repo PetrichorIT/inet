@@ -13,6 +13,7 @@ use super::{InterfaceBusyState, MacAddress};
 /// sending and receiving of MTUs.
 #[derive(Debug, Clone)]
 pub struct NetworkDevice {
+    /// The physical address of the associated device
     pub addr: MacAddress,
     inner: NetworkDeviceInner,
 }
@@ -60,6 +61,7 @@ impl NetworkDeviceInner {
 }
 
 impl NetworkDevice {
+    /// Creates a local, loopback device.
     pub fn loopback() -> Self {
         Self {
             addr: MacAddress::NULL,
@@ -67,6 +69,8 @@ impl NetworkDevice {
         }
     }
 
+    /// Creates the default ethernet device using the gates
+    /// "in" and "out" as a duplex connection point.
     pub fn eth() -> Self {
         let mut rinfo = RoutingInformation::collect();
         match rinfo.ports.len() {
@@ -96,6 +100,8 @@ impl NetworkDevice {
         }
     }
 
+    /// Creates a new device, by using the first routing port that
+    /// statifies `f`.
     pub fn eth_select(f: impl Fn(&RoutingPort) -> bool) -> Self {
         let rinfo = RoutingInformation::collect();
         for r in rinfo.ports {

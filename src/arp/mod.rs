@@ -1,3 +1,17 @@
+//! The Address Resoloution Protocol (ARP)
+//!
+//! ARP is used to resolve IP addresses to corresponding MAC
+//! addresses of hosts. Note that for simplicities sake
+//! Ipv6-over-ARP is temporarily allowed.
+//!
+//! The user may interact with the ARP deamon by either
+//! requesting the all `ArpEntry` using `arpa`.
+//! The functions `set_arp_entry` defines a
+//! non-expiring ARP entry to prevent jitter through
+//! ARP lookups. The function `set_arp_config` can be
+//! used to configure the ARP table.
+//!
+
 use std::io::{self, Error, ErrorKind};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
@@ -225,11 +239,11 @@ impl IOContext {
             }
             IpPacket::V6(pkt) => {
                 let Some((route, rifid)) = self.ipv6router.loopuk_gateway(pkt.dest) else {
-                return Err(Error::new(
-                    ErrorKind::ConnectionRefused,
-                    "no gateway network reachable"
-                ))
-            };
+                    return Err(Error::new(
+                        ErrorKind::ConnectionRefused,
+                        "no gateway network reachable"
+                    ))
+                };
                 (route.clone().into(), *rifid)
             }
         };

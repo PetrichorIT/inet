@@ -1,3 +1,5 @@
+//! Network utilities
+
 mod netstat;
 pub use self::netstat::*;
 

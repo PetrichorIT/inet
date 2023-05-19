@@ -1,15 +1,12 @@
-use des::time::sleep;
-use des::time::SimTime;
+//! The Routing Information Protocol (RIP)
+
+use des::time::{sleep, Duration, SimTime};
 use fxhash::{FxBuildHasher, FxHashMap};
-use inet_types::routing::rip::RipCommand;
-use inet_types::routing::rip::RipEntry;
-use inet_types::routing::rip::RipPacket;
-use inet_types::routing::rip::AF_INET;
-use inet_types::FromBytestream;
-use inet_types::IntoBytestream;
-use std::net::IpAddr;
-use std::net::Ipv4Addr;
-use std::time::Duration;
+use inet_types::{
+    routing::rip::{RipCommand, RipEntry, RipPacket, AF_INET},
+    FromBytestream, IntoBytestream,
+};
+use std::net::{IpAddr, Ipv4Addr};
 
 use crate::IOContext;
 use crate::{
@@ -21,6 +18,7 @@ use crate::{
 use super::RoutingInformation;
 use super::RoutingPort;
 
+/// Configuration for RIP routers.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct RipConfig {
     pub entry_lfietime: Duration,
@@ -36,6 +34,10 @@ impl Default for RipConfig {
     }
 }
 
+/// A routing deamon implementing RIP in a LAN.
+///
+/// Note that this deamon expects that now network interfaces
+/// are defined yet.
 #[derive(Debug, Clone)]
 pub struct RipRoutingDeamon {
     cfg: RipConfig,
@@ -66,6 +68,8 @@ struct DistanceVectorEntry {
 }
 
 impl RipRoutingDeamon {
+    /// Creates a new routing deamin, that acts as the border router
+    /// to a LAn in the given routing port.
     pub fn lan_attached(
         raddr: Ipv4Addr,
         mask: Ipv4Addr,
@@ -178,6 +182,9 @@ impl RipRoutingDeamon {
         });
     }
 
+    /// Activates the deamon.
+    ///
+    /// This function will block forever, or until a critical error has occured.
     pub async fn deploy(mut self) {
         // (0) Initalize the DVs with just self as a target
         let local_subnet = Ipv4Addr::from(u32::from(self.addr) & u32::from(self.mask));

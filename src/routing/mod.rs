@@ -1,13 +1,11 @@
+//! Routing utility and networking layer processing.
+use crate::IOPlugin;
 use des::prelude::*;
 
 pub mod rip;
-pub mod router;
 
 mod tablev6;
-pub use self::tablev6::*;
-
-// mod tablev4;
-// pub use self::tablev4::*;
+pub(crate) use self::tablev6::*;
 
 mod api;
 pub use self::api::*;
@@ -15,22 +13,26 @@ pub use self::api::*;
 mod fwdv4;
 pub use self::fwdv4::*;
 
-use crate::IOPlugin;
-
+/// A collection of information readable
+/// from the topology alone.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RoutingInformation {
+    /// A set of ports that can be used as duplex connections.
     pub ports: Vec<RoutingPort>,
+    /// The IP address of the current node.
     pub node_ip: IpAddr,
 }
 
 impl RoutingInformation {
-    pub fn emtpy() -> Self {
+    /// A const default for no routing info.
+    pub const fn emtpy() -> Self {
         Self {
             ports: Vec::new(),
             node_ip: IpAddr::V4(Ipv4Addr::UNSPECIFIED),
         }
     }
 
+    /// The routing information for the current module, collected from the env.
     pub fn collect() -> Self {
         Self {
             ports: RoutingPort::collect(),
@@ -38,10 +40,12 @@ impl RoutingInformation {
         }
     }
 
+    /// Maps a given gate to the associated routing port, if existent.
     pub fn port_for(&self, gate: &GateRef) -> Option<RoutingPort> {
         self.ports.iter().find(|p| p.input == *gate).cloned()
     }
 
+    /// Maps a given gate to the associated routing port index, if existent.
     pub fn port_index_for(&self, gate: &GateRef) -> Option<usize> {
         self.ports
             .iter()
@@ -50,25 +54,34 @@ impl RoutingInformation {
             .map(|(i, _)| i)
     }
 
+    /// Maps the port names to a routing port, if existent.
     pub fn port_by_name(&self, s: &str) -> Option<RoutingPort> {
         self.ports.iter().find(|p| p.name == s).cloned()
     }
 }
 
+/// A physical send, receive pair, that can be used as a duplex connections.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RoutingPort {
+    /// The name of the port, if derived, the common prefix of both input and output.s
     pub name: String,
+    /// The receiving gate.
     pub input: GateRef,
+    /// The sending gate.
     pub output: GateRef,
+    /// Peering information that can be aquired from the topology.
     pub peer: Option<RoutingPeer>,
 }
 
+/// Information about the peer of a connection.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RoutingPeer {
+    /// The peers IP address.
     pub addr: IpAddr,
 }
 
 impl RoutingPort {
+    /// Creates a new routing port manually.
     pub fn new(input: GateRef, output: GateRef, peer: Option<RoutingPeer>) -> Self {
         let iname = input.name();
         let oname = output.name();
@@ -81,6 +94,7 @@ impl RoutingPort {
         }
     }
 
+    /// Reads all possible routing ports from the env.
     pub fn collect() -> Vec<RoutingPort> {
         let gates = gates();
         let mut ports = Vec::new();

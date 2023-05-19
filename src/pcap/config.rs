@@ -1,17 +1,32 @@
-use std::{fmt::Debug, io::Write, ops::Add, slice};
+use std::{
+    fmt::Debug,
+    io::Write,
+    ops::{Add, Deref},
+};
 
 use des::prelude::{Message, MessageKind};
 use inet_types::ip::IpPacketRef;
 
 use super::Null;
 
+/// A set of configurations who to probe packet from the underlying
+/// mechanisms.
 pub struct PcapConfig<W> {
+    /// Filters are per-packet clousures that deny/allow packets
+    /// to be captured.
     pub filters: PcapFilters,
+    /// Capture points indicate the stage at which packets may be
+    /// captured. E.g. `CLIENT_DEFAULT` captures all incoming
+    /// and outgoing packet on the linklayer.
     pub capture: PcapCapturePoints,
+    /// The output to which the captures are written in the
+    /// PCAPNG file format.
     pub output: W,
 }
 
 impl<W> PcapConfig<W> {
+    /// The default configuration, that represent a decaticvated instance
+    /// of PCAP.
     pub const DISABLED: PcapConfig<&'static dyn Write> = PcapConfig {
         filters: PcapFilters {
             filters: Vec::new(),
@@ -29,6 +44,8 @@ impl<W> Debug for PcapConfig<W> {
     }
 }
 
+/// A set of filters, used for per-packet marking
+/// whether to capture or ignore packets.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PcapFilters {
     filters: Vec<PcapFilter>,
@@ -42,6 +59,12 @@ impl Default for PcapFilters {
     }
 }
 
+impl From<Vec<PcapFilter>> for PcapFilters {
+    fn from(filters: Vec<PcapFilter>) -> Self {
+        PcapFilters { filters }
+    }
+}
+
 impl FromIterator<PcapFilter> for PcapFilters {
     fn from_iter<T: IntoIterator<Item = PcapFilter>>(iter: T) -> Self {
         PcapFilters {
@@ -50,22 +73,35 @@ impl FromIterator<PcapFilter> for PcapFilters {
     }
 }
 
-impl<'a> IntoIterator for &'a PcapFilters {
-    type Item = &'a PcapFilter;
-    type IntoIter = slice::Iter<'a, PcapFilter>;
-    fn into_iter(self) -> Self::IntoIter {
-        self.filters.iter()
+impl Deref for PcapFilters {
+    type Target = [PcapFilter];
+    fn deref(&self) -> &Self::Target {
+        &self.filters
     }
 }
 
+/// A filtering condition whether to capture
+/// or ignore a in-stream packet.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PcapFilter {
+    /// This option will deny all ethernet packets containing
+    /// the provided ethertype in its header.
     DenyEthertype(MessageKind),
+    /// This option will deny all ip packets with
+    /// a certain proto/next_header.
     DenyIpProto(u8),
+    /// This option will deny all packet that have not
+    /// been explicitly allowed.
     DenyAll,
 
+    /// This option will allow and mark all ethernet packets containing
+    /// the provided ethertype in its header.
     AllowEthertype(MessageKind),
+    /// This option will allow and mark all ip packets with
+    /// a certain proto/next_header.
     AllowIpProto(u8),
+    /// This option will allow all packet that have not
+    /// been explicitly denied.
     AllowAll,
 }
 
@@ -137,6 +173,8 @@ impl PcapFilter {
         }
     }
 }
+
+/// A capture configuration, where to capture in-stream packets.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct PcapCapturePoints {
     byte: u8,
@@ -149,30 +187,43 @@ const CAPTURE_L3_OUTGOING: u8 = 0b1000;
 const CAPTURE_L3_TRANSIT: u8 = 0b10000;
 
 impl PcapCapturePoints {
+    /// This configuration will capture no packets at all.
     pub const NULL: PcapCapturePoints = PcapCapturePoints { byte: 0 };
+
+    /// This configuration will capture all incoming and outgoing
+    /// traffic on the linklayer. Usefull for clients, but routers
+    /// may capture routed traffic twice.
     pub const CLIENT_DEFAULT: PcapCapturePoints = PcapCapturePoints {
         byte: CAPTURE_L2_INCOMING | CAPTURE_L2_OUTGOING,
     };
+
+    /// This configuration will only capture networking layer
+    /// transit traffic.
     pub const TRANSIT: PcapCapturePoints = PcapCapturePoints {
         byte: CAPTURE_L3_TRANSIT,
     };
 
+    /// Whether to capture incoming linklayer packets.
     pub fn capture_l2_incoming(&self) -> bool {
         (self.byte & CAPTURE_L2_INCOMING) != 0
     }
 
+    /// Whether to capture outgoing linklayer packets.
     pub fn capture_l2_outgoing(&self) -> bool {
         (self.byte & CAPTURE_L2_OUTGOING) != 0
     }
 
+    /// Whether to capture incoming networking layer packets.
     pub fn capture_l3_incoming(&self) -> bool {
         (self.byte & CAPTURE_L3_INCOMING) != 0
     }
 
+    /// Whether to capture outgoing networking layer packets.
     pub fn capture_l3_outgoing(&self) -> bool {
         (self.byte & CAPTURE_L3_OUTGOING) != 0
     }
 
+    /// Whether to capture  networking layer transit traffic.
     pub fn capture_l3_transit(&self) -> bool {
         (self.byte & CAPTURE_L3_TRANSIT) != 0
     }

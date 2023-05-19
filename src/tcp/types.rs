@@ -8,7 +8,7 @@ use inet_types::ip::IpPacketRef;
 use super::TcpPacket;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
-pub enum TcpState {
+pub(crate) enum TcpState {
     #[default]
     Closed = 0,
     Listen = 1,

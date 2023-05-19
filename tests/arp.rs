@@ -1,8 +1,8 @@
 use des::{prelude::*, registry, time::sleep, tokio::spawn};
 use inet::{
     arp::arpa,
-    debug,
     interface::{add_interface, Interface, NetworkDevice},
+    socket::RawIpSocket,
 };
 use inet_types::ip::{IpPacket, Ipv4Packet, Ipv6Packet};
 use serial_test::serial;
@@ -36,6 +36,11 @@ impl AsyncModule for Node {
         }
 
         spawn(async move {
+            let sock = if ip.is_ipv4() {
+                RawIpSocket::new_v4().unwrap()
+            } else {
+                RawIpSocket::new_v6().unwrap()
+            };
             loop {
                 sleep(Duration::from_secs_f64(random())).await;
 
@@ -45,7 +50,8 @@ impl AsyncModule for Node {
                 }
 
                 log::info!("sending packet to {}", target);
-                debug::send_ip(IpPacket::new(ip, target, vec![42, 42])).unwrap();
+                sock.try_send(IpPacket::new(ip, target, vec![42, 42]))
+                    .unwrap();
             }
         });
     }

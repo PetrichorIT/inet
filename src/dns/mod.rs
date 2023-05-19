@@ -1,4 +1,4 @@
-//! Domain-Name-Server Protocol.
+//! The Domain-Name-Server Protocol (DNS)
 
 mod nameserver;
 pub use nameserver::*;

@@ -1,3 +1,5 @@
+//! Minimal filesystem abstractions.
+
 use crate::IOContext;
 use des::runtime::rng;
 use rand::{distributions::Alphanumeric, Rng};
@@ -33,6 +35,7 @@ impl TempDir {
     }
 }
 
+/// Create a new temporary directory for usage in unix domain sockets
 pub fn tempdir() -> Result<TempDir> {
     TempDir::new()
 }

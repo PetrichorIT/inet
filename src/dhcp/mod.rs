@@ -1,4 +1,4 @@
-//! Dynamic-Host-Configuration Protocol
+//! The Dynamic-Host-Configuration Protocol (DHCP)
 use des::net::message::MessageKind;
 
 mod client;

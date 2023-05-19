@@ -7,7 +7,7 @@ pub(crate) const KIND_LINK_UPDATE: MessageKind = 0x0500;
 pub(crate) const KIND_IO_TIMEOUT: MessageKind = 0x0128;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, MessageBody)]
-pub struct LinkUpdate(pub IfId);
+pub(crate) struct LinkUpdate(pub IfId);
 
 impl From<LinkUpdate> for Message {
     fn from(value: LinkUpdate) -> Self {
@@ -15,13 +15,15 @@ impl From<LinkUpdate> for Message {
     }
 }
 
-/// Interface identifier.
+/// A numeric identifier derived from a interface name.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, MessageBody)]
 #[repr(transparent)]
 pub struct IfId(u64);
 
 impl IfId {
+    /// The invalid interface address, representing Option::\<IfId\>::None
     pub const NULL: IfId = IfId(0);
+    /// The broadcast interface address, an alias for all active interfaces
     pub const BROADCAST: IfId = IfId(u64::MAX);
 }
 
@@ -36,6 +38,7 @@ impl fmt::Display for IfId {
     }
 }
 
+/// A name for a network interface
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct InterfaceName {
     pub(crate) name: String,
@@ -44,6 +47,7 @@ pub struct InterfaceName {
 }
 
 impl InterfaceName {
+    /// Creates a new interface name from a string
     pub fn new(s: impl AsRef<str>) -> Self {
         let name = s.as_ref().to_string();
         let hash = hash!(name);
@@ -73,7 +77,7 @@ impl<T: AsRef<str>> From<T> for InterfaceName {
 
 // # Interface Status
 
-/// The status of a network interface
+/// The activity status of a network interface
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum InterfaceStatus {
     /// The interface is active and can be used.
@@ -94,15 +98,19 @@ impl fmt::Display for InterfaceStatus {
 
 // # Busy state
 
-/// The state of the interface
+/// The state of the interfaces sending half.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum InterfaceBusyState {
+    /// The sender has no current work, thus sending will not be delayed
     Idle,
+    /// The sender is currently sending a packet, and will be finished
+    /// at the timepoint specified in `until`. All sockets with an interest
+    /// in the upcoming statechange may register themself in `interests`.
     Busy { until: SimTime, interests: Vec<Fd> },
 }
 
 impl InterfaceBusyState {
-    pub fn merge_new(&mut self, new: InterfaceBusyState) {
+    pub(super) fn merge_new(&mut self, new: InterfaceBusyState) {
         if let InterfaceBusyState::Busy { until, interests } = self {
             if let InterfaceBusyState::Busy {
                 until: new_deadline,

@@ -47,7 +47,7 @@ impl IpPacketRef<'_, '_> {
     }
 
     #[must_use]
-    pub fn content(&self) -> &Vec<u8> {
+    pub fn content(&self) -> &[u8] {
         match self {
             Self::V4(v4) => &v4.content,
             Self::V6(v6) => &v6.content,
@@ -131,6 +131,13 @@ impl IpPacket {
         match self {
             Self::V4(pkt) => pkt.dest.into(),
             Self::V6(pkt) => pkt.dest.into(),
+        }
+    }
+
+    pub fn content(&self) -> &[u8] {
+        match self {
+            Self::V4(v4) => &v4.content,
+            Self::V6(v6) => &v6.content,
         }
     }
 

@@ -1,5 +1,7 @@
+//! The User Datagram Protocol (UDP)
 use super::{socket::*, IOContext};
 use crate::interface::IfId;
+use fxhash::{FxBuildHasher, FxHashMap};
 use inet_types::{
     ip::{IpPacket, IpPacketRef, Ipv4Flags, Ipv4Packet, Ipv6Packet},
     udp::{UDPPacket, PROTO_UDP},
@@ -16,6 +18,18 @@ pub use api::*;
 
 mod interest;
 use interest::*;
+
+pub(super) struct Udp {
+    pub(super) binds: FxHashMap<Fd, UdpControlBlock>,
+}
+
+impl Udp {
+    pub(super) fn new() -> Udp {
+        Udp {
+            binds: FxHashMap::with_hasher(FxBuildHasher::default()),
+        }
+    }
+}
 
 pub(super) struct UdpControlBlock {
     pub(super) local_addr: SocketAddr,
@@ -105,7 +119,7 @@ impl IOContext {
             for (fd, sock) in iter {
                 sock.recv_q += udp.content.len();
 
-                let Some(mng) = self.udp_manager.get_mut(fd) else {
+                let Some(mng) = self.udp.binds.get_mut(fd) else {
                     log::error!(target: "inet/udp", "found udp socket, but missing udp manager");
                     return false;
                 };
@@ -126,7 +140,7 @@ impl IOContext {
 
             sock.recv_q += udp.content.len();
 
-            let Some(mng) = self.udp_manager.get_mut(fd) else {
+            let Some(mng) = self.udp.binds.get_mut(fd) else {
                 log::error!(target: "inet/udp", "found udp socket, but missing udp manager");
                 return false;
             };
@@ -137,7 +151,7 @@ impl IOContext {
     }
 
     pub(super) fn udp_icmp_error(&mut self, fd: Fd, e: Error, ip: Ipv4Packet) {
-        let Some(mng) = self.udp_manager.get_mut(&fd) else {
+        let Some(mng) = self.udp.binds.get_mut(&fd) else {
             return;
         };
 
@@ -178,13 +192,13 @@ impl IOContext {
 
             interest: None,
         };
-        self.udp_manager.insert(socket, manager);
+        self.udp.binds.insert(socket, manager);
 
         Ok(UdpSocket { fd: socket })
     }
 
     pub(super) fn udp_connect(&mut self, fd: Fd, peer: SocketAddr) -> Result<()> {
-        let Some(socket) = self.udp_manager.get_mut(&fd) else {
+        let Some(socket) = self.udp.binds.get_mut(&fd) else {
             return Err(Error::new(ErrorKind::InvalidInput, "invalid fd - socket dropped"))
         };
 
@@ -194,7 +208,7 @@ impl IOContext {
     }
 
     pub(super) fn udp_send_to(&mut self, fd: Fd, target: SocketAddr, buf: &[u8]) -> Result<usize> {
-        let Some(mng) = self.udp_manager.get_mut(&fd) else {
+        let Some(mng) = self.udp.binds.get_mut(&fd) else {
             return Err(Error::new(ErrorKind::InvalidInput, "invalid fd - socket dropped"))
         };
 
@@ -285,7 +299,7 @@ impl IOContext {
     }
 
     fn udp_take_error(&mut self, fd: Fd) -> Result<Option<Error>> {
-        let Some(mng) = self.udp_manager.get_mut(&fd) else {
+        let Some(mng) = self.udp.binds.get_mut(&fd) else {
             return Err(Error::new(ErrorKind::InvalidInput, "invalid fd - socket dropped"))
         };
 
@@ -293,7 +307,7 @@ impl IOContext {
     }
 
     pub(super) fn udp_drop(&mut self, fd: Fd) {
-        self.udp_manager.remove(&fd);
+        self.udp.binds.remove(&fd);
         let _ = self.close_socket(fd);
     }
 }

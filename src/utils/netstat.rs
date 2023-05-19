@@ -2,7 +2,6 @@ use std::{io::Result, net::SocketAddr};
 
 use crate::{
     socket::{SocketDomain, SocketType},
-    tcp::TcpState,
     IOContext,
 };
 
@@ -18,7 +17,7 @@ pub struct NetstatConnection {
     pub send_q: usize,
     pub local_addr: SocketAddr,
     pub foreign_addr: SocketAddr,
-    pub state: Option<TcpState>,
+    pub state: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -49,7 +48,7 @@ pub fn netstat() -> Result<Netstat> {
 impl IOContext {
     pub fn netstat(&mut self) -> Netstat {
         let mut active_connections = Vec::new();
-        for (fd, socket) in &self.sockets {
+        for (fd, socket) in self.sockets.iter() {
             use crate::socket::{SocketDomain::*, SocketType::*};
 
             let proto = NetstatConnectionProto::new(socket.domain, socket.typ);
@@ -72,7 +71,7 @@ impl IOContext {
                         send_q: socket.send_q,
                         local_addr: socket.addr,
                         foreign_addr: socket.peer,
-                        state: Some(mng.state),
+                        state: Some(format!("{:?}", mng.state)),
                     })
                 }
                 _ => unreachable!(),

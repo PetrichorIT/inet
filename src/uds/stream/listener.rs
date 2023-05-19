@@ -15,6 +15,7 @@ use crate::{
     socket::{SocketDomain, SocketType},
 };
 
+/// A listener for stream-oriented unix domain socket connections.
 #[derive(Debug)]
 pub struct UnixListener {
     pub(super) fd: Fd,

@@ -6,10 +6,12 @@ use std::{
 use super::{ForwardingEntryV4, Ipv4Gateway};
 use crate::IOContext;
 
+/// Sets the default routing gateway for the entire node.
 pub fn set_default_gateway(ip: impl Into<IpAddr>) -> io::Result<()> {
     IOContext::failable_api(|ctx| ctx.set_default_gateway(ip.into()))
 }
 
+/// Adds a routing entry to the routing tables.
 pub fn add_routing_entry(
     addr: impl Into<IpAddr>,
     mask: impl Into<IpAddr>,
@@ -31,16 +33,17 @@ pub fn update_routing_entry(
     add_routing_entry(addr, mask, gw, interface)
 }
 
+/// Returns the contents of the routing table
 pub fn route() -> io::Result<Vec<ForwardingEntryV4>> {
     IOContext::failable_api(|ctx| Ok(ctx.route()))
 }
 
 impl IOContext {
-    pub fn route(&mut self) -> Vec<ForwardingEntryV4> {
+    fn route(&mut self) -> Vec<ForwardingEntryV4> {
         self.ipv4_fwd.entries.clone()
     }
 
-    pub fn set_default_gateway(&mut self, ip: IpAddr) -> io::Result<()> {
+    fn set_default_gateway(&mut self, ip: IpAddr) -> io::Result<()> {
         let Some(iface) = self.ifaces.values().find(|iface| {
             iface
                 .addrs
@@ -63,7 +66,7 @@ impl IOContext {
         Ok(())
     }
 
-    pub fn add_routing_entry(
+    fn add_routing_entry(
         &mut self,
         subnet: IpAddr,
         mask: IpAddr,

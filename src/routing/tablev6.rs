@@ -4,14 +4,14 @@ use inet_types::ip::ipv6_matches_subnet;
 use std::net::Ipv6Addr;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Ipv6RoutingTable {
+pub(crate) struct Ipv6RoutingTable {
     pub(super) entries: Vec<Entry>,
 }
 
 type Entry = Ipv6RoutingTableEntry;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Ipv6RoutingTableEntry {
+pub(crate) struct Ipv6RoutingTableEntry {
     pub(super) addr: Ipv6Addr,
     pub(super) mask: Ipv6Addr,
 
@@ -21,10 +21,15 @@ pub struct Ipv6RoutingTableEntry {
     pub(super) prio: usize,
 }
 
+/// A type that describes differnt types of packet forwarding in inet.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum Ipv6Gateway {
+#[allow(dead_code)]
+pub(crate) enum Ipv6Gateway {
+    /// This option indicates that packets should be forwarded to a bound LAN.
     Local,
+    /// This option is used for the representation of broadcasts.
     Broadcast,
+    /// This option instructs inet to forward packets to the next gateway.
     Gateway(Ipv6Addr),
 }
 

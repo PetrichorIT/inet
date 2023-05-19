@@ -1,15 +1,24 @@
-/// The flags of an interface.
+/// Flags indicating the state and capabilities of a network interface
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 #[allow(missing_docs)]
 pub struct InterfaceFlags {
+    /// Whether the interface is connected
     pub up: bool,
+    /// Whether the interface should be used as the loopback interface
     pub loopback: bool,
+    /// Whether active protocol components  of L2 protocols are allowed
     pub running: bool,
+    /// Whether the interface supports multicast
     pub multicast: bool,
+    /// Wether the interface exclusivly allows point-to-point traffic
     pub p2p: bool,
+    /// Wether the interface supports link layer broadcasting
     pub broadcast: bool,
+    /// *Not currently in use*
     pub smart: bool,
+    /// *Not currently in use*
     pub simplex: bool,
+    /// *Not currently in use*
     pub promisc: bool,
 }
 

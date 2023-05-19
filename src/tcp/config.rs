@@ -5,6 +5,7 @@ use std::io::{Error, ErrorKind, Result};
 use std::net::SocketAddr;
 use std::time::Duration;
 
+/// The default configuration of a TCP capable system.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct TcpConfig {
     pub rst_on_syn: bool,
@@ -176,6 +177,10 @@ impl Default for TcpConfig {
     }
 }
 
+/// Sets the default TCP configuration of the node.
+///
+/// This action will only apply to newer connection
+/// and will not retroactivly modify existing streams.
 pub fn set_tcp_cfg(cfg: TcpConfig) -> Result<()> {
     IOContext::try_with_current(|ctx| {
         ctx.tcp.config = cfg;

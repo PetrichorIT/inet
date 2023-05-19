@@ -1,7 +1,7 @@
 use crate::interface::InterfaceName;
 use std::{fmt::Display, net::Ipv4Addr};
 
-pub struct ForwardingTableV4 {
+pub(crate) struct ForwardingTableV4 {
     // A list of all fwd entrys with the smallest prefixes first
     pub(super) entries: Vec<ForwardingEntryV4>,
 }
@@ -9,27 +9,35 @@ pub struct ForwardingTableV4 {
 /// A forwarding entry. Will not expire since FWD should be managed manually by routing deamons
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ForwardingEntryV4 {
+    /// The subnet this entry points to.
     pub dest: Ipv4Addr,
+    /// The netmask of the targeted subnet.
     pub mask: Ipv4Addr,
+    /// The next gateway on the route to the target.
     pub gateway: Ipv4Gateway,
+    /// The interface to be used to forward to the gateway.
     pub iface: InterfaceName,
 }
 
+/// A type that describes differnt types of packet forwarding in inet.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Ipv4Gateway {
+    /// This option indicates that packets should be forwarded to a bound LAN.
     Local,
+    /// This option is used for the representation of broadcasts.
     Broadcast,
+    /// This option instructs inet to forward packets to the next gateway.
     Gateway(Ipv4Addr),
 }
 
 impl ForwardingTableV4 {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             entries: Vec::new(),
         }
     }
 
-    pub fn set_default_gw(&mut self, gateway: Ipv4Gateway, iface: InterfaceName) {
+    pub(crate) fn set_default_gw(&mut self, gateway: Ipv4Gateway, iface: InterfaceName) {
         if let Some(f) = self.entries.first_mut() {
             if f.is_default_gw() {
                 f.gateway = gateway;
@@ -44,7 +52,7 @@ impl ForwardingTableV4 {
         }
     }
 
-    pub fn add_entry(&mut self, entry: ForwardingEntryV4) {
+    pub(crate) fn add_entry(&mut self, entry: ForwardingEntryV4) {
         if let Some(in_place) = self.entries.iter_mut().find(|e| e.matches(&entry)) {
             *in_place = entry;
         } else {
@@ -54,7 +62,7 @@ impl ForwardingTableV4 {
         }
     }
 
-    pub fn lookup(&self, addr: Ipv4Addr) -> Option<(&Ipv4Gateway, &InterfaceName)> {
+    pub(crate) fn lookup(&self, addr: Ipv4Addr) -> Option<(&Ipv4Gateway, &InterfaceName)> {
         let addr = u32::from(addr);
         for entry in self.entries.iter().rev() {
             let mask = u32::from(entry.mask);

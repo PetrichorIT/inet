@@ -5,7 +5,7 @@ use crate::{
     pcap::Pcap,
     routing::{ForwardingTableV4, Ipv6RoutingTable},
     uds::Uds,
-    IOPlugin,
+    IOPlugin, Udp,
 };
 use des::{net::plugin::PluginError, prelude::Message};
 use fxhash::{FxBuildHasher, FxHashMap};
@@ -20,14 +20,14 @@ use std::{
     panic::UnwindSafe,
 };
 
-use super::{socket::*, tcp::Tcp, udp::UdpControlBlock};
+use super::{socket::*, tcp::Tcp};
 use inet_types::{tcp::PROTO_TCP, udp::PROTO_UDP};
 
 thread_local! {
     static CURRENT: RefCell<Option<IOContext>> = const { RefCell::new(None) };
 }
 
-pub struct IOContext {
+pub(crate) struct IOContext {
     pub(super) ifaces: FxHashMap<IfId, Interface>,
 
     pub(super) arp: ArpTable,
@@ -37,8 +37,8 @@ pub struct IOContext {
     pub(super) pcap: RefCell<Pcap>,
     pub(super) icmp: Icmp,
 
-    pub(super) sockets: FxHashMap<Fd, Socket>,
-    pub(super) udp_manager: FxHashMap<Fd, UdpControlBlock>,
+    pub(super) sockets: Sockets,
+    pub(super) udp: Udp,
     pub(super) tcp: Tcp,
     pub(super) uds: Uds,
 
@@ -49,7 +49,7 @@ pub struct IOContext {
 }
 
 #[derive(Debug, Clone)]
-pub struct Current {
+pub(crate) struct Current {
     pub ifid: IfId,
 }
 
@@ -65,8 +65,8 @@ impl IOContext {
             pcap: RefCell::new(Pcap::new()),
             icmp: Icmp::new(),
 
-            sockets: FxHashMap::with_hasher(FxBuildHasher::default()),
-            udp_manager: FxHashMap::with_hasher(FxBuildHasher::default()),
+            sockets: Sockets::new(),
+            udp: Udp::new(),
             tcp: Tcp::new(),
             uds: Uds::new(),
 
@@ -75,10 +75,6 @@ impl IOContext {
 
             current: Current { ifid: IfId::NULL },
         }
-    }
-
-    pub fn set(self) {
-        Self::swap_in(Some(self));
     }
 
     pub(super) fn swap_in(ingoing: Option<IOContext>) -> Option<IOContext> {
@@ -156,6 +152,7 @@ impl IOContext {
                         .addrs
                         .iter()
                         .any(|addr| addr.matches_ip(IpAddr::V4(ip.dest)));
+
                 if !local_dest {
                     // (0) Check TTL
                     let mut pkt = ip.clone();
@@ -209,7 +206,14 @@ impl IOContext {
                             Some(msg)
                         }
                     }
-                    k => panic!("internal error: unreachable code :: proto = {k}"),
+                    k => {
+                        if let Some(handle) = self.sockets.handlers.get(&(k, SocketDomain::AF_INET))
+                        {
+                            let _ = handle.1.try_send(IpPacket::V4(ip.clone()));
+                            return None;
+                        }
+                        panic!("internal error: unreachable code :: proto = {k}");
+                    }
                 }
             }
             KIND_IPV6 => {
@@ -265,7 +269,15 @@ impl IOContext {
                             Some(msg)
                         }
                     }
-                    k => panic!("internal error: unreachable code :: proto = {k}"),
+                    k => {
+                        if let Some(handle) =
+                            self.sockets.handlers.get(&(k, SocketDomain::AF_INET6))
+                        {
+                            let _ = handle.1.try_send(IpPacket::V6(ip.clone()));
+                            return None;
+                        }
+                        panic!("internal error: unreachable code :: proto = {k}");
+                    }
                 }
             }
             KIND_LINK_UPDATE => panic!("HUH"),

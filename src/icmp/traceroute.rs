@@ -7,7 +7,7 @@ use des::{
     time::{sleep, SimTime},
 };
 use std::{
-    io::{Error, ErrorKind},
+    io::{Error, ErrorKind, Result},
     net::Ipv4Addr,
     time::Duration,
 };
@@ -20,32 +20,49 @@ pub(crate) struct TracerouteCB {
     pub recent_err: Option<(Ipv4Addr, Duration)>,
 }
 
+/// The result of a call to `traceroute`.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Traceroute {
+    /// The target of the traced route.
+    pub target: Ipv4Addr,
+    /// A set of nodes identified allong the route to the
+    /// target
     pub nodes: Vec<Trace>,
 }
 
+/// A node on a route.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Trace {
+    /// A node that responded to ICMP Echo Request,
+    /// allowing for the computation of a RTT.
     Found { addr: Ipv4Addr, rtt: Duration },
+    /// A non-responding node on the route.
     NotFound,
 }
 
-pub async fn traceroute(addr: Ipv4Addr) -> std::io::Result<Traceroute> {
+/// Traces all nodes allong a route to the target.
+///
+/// This functions tries to determine all memebers of the routing
+/// path to the provided target. Nodes must respond to
+/// ICMP Echo Requests to be identified.
+pub async fn traceroute(addr: Ipv4Addr) -> Result<Traceroute> {
     let socket = UdpSocket::bind("0.0.0.0:0").await?;
-    IOContext::with_current(|ctx| ctx.traceroute_create(socket.as_raw_fd(), addr));
+    IOContext::failable_api(|ctx| Ok(ctx.traceroute_create(socket.as_raw_fd(), addr)))?;
 
     let mut port = random::<u16>();
     let mut distance = 1;
     let mut last_rtt = Duration::from_millis(200);
-    let mut traceroute = Traceroute { nodes: Vec::new() };
+    let mut traceroute = Traceroute {
+        target: addr,
+        nodes: Vec::new(),
+    };
 
     'outer: loop {
         socket.set_ttl(distance)?;
         socket.connect((addr, port)).await?;
         socket.send(&[0; 8]).await?;
 
-        IOContext::with_current(|ctx| ctx.traceroute_register_send(addr));
+        IOContext::failable_api(|ctx| Ok(ctx.traceroute_register_send(addr)))?;
         sleep(last_rtt * 2).await;
 
         // let last_err = None;
@@ -59,7 +76,9 @@ pub async fn traceroute(addr: Ipv4Addr) -> std::io::Result<Traceroute> {
                     }
                 }
 
-                if let Some(trace) = IOContext::with_current(|ctx| ctx.traceroute_get_error(addr)) {
+                if let Some(trace) =
+                    IOContext::failable_api(|ctx| Ok(ctx.traceroute_get_error(addr)))?
+                {
                     traceroute.nodes.push(Trace::Found {
                         addr: trace.0,
                         rtt: trace.1,

@@ -196,7 +196,7 @@ impl UdpSocket {
             self.readable().await?;
 
             let r = IOContext::with_current(|ctx| {
-                if let Some(handle) = ctx.udp_manager.get_mut(&self.fd) {
+                if let Some(handle) = ctx.udp.binds.get_mut(&self.fd) {
                     handle.incoming.pop_front()
                 } else {
                     panic!("SimContext lost socket")
@@ -230,7 +230,7 @@ impl UdpSocket {
         loop {
             let peer = self.peer_addr()?;
             let (peer, r) = IOContext::with_current(|ctx| {
-                if let Some(handle) = ctx.udp_manager.get_mut(&self.fd) {
+                if let Some(handle) = ctx.udp.binds.get_mut(&self.fd) {
                     Ok::<(SocketAddr, Option<(SocketAddr, SocketAddr, UDPPacket)>), std::io::Error>(
                         (peer, handle.incoming.pop_front()),
                     )
@@ -267,7 +267,7 @@ impl UdpSocket {
             self.readable().await?;
 
             let r = IOContext::with_current(|ctx| {
-                if let Some(handle) = ctx.udp_manager.get_mut(&self.fd) {
+                if let Some(handle) = ctx.udp.binds.get_mut(&self.fd) {
                     handle.incoming.pop_front()
                 } else {
                     panic!("SimContext lost socket")
@@ -297,7 +297,7 @@ impl UdpSocket {
     pub fn try_recv_from(&self, buf: &mut [u8]) -> Result<(usize, SocketAddr)> {
         loop {
             let r = IOContext::with_current(|ctx| {
-                if let Some(handle) = ctx.udp_manager.get_mut(&self.fd) {
+                if let Some(handle) = ctx.udp.binds.get_mut(&self.fd) {
                     handle.incoming.pop_front()
                 } else {
                     panic!("SimContext lost socket")
@@ -322,7 +322,7 @@ impl UdpSocket {
     ///
     /// For more information about this option, see [set_broadcast](UdpSocket::set_broadcast)
     pub fn broadcast(&self) -> Result<bool> {
-        IOContext::with_current(|ctx| match ctx.udp_manager.get(&self.fd) {
+        IOContext::with_current(|ctx| match ctx.udp.binds.get(&self.fd) {
             Some(ref sock) => Ok(sock.broadcast),
             None => Err(Error::new(
                 ErrorKind::Other,
@@ -335,7 +335,7 @@ impl UdpSocket {
     ///
     /// When enabled, this socket is allowed to send packets to a broadcast address.
     pub fn set_broadcast(&self, on: bool) -> Result<()> {
-        IOContext::with_current(|ctx| match ctx.udp_manager.get_mut(&self.fd) {
+        IOContext::with_current(|ctx| match ctx.udp.binds.get_mut(&self.fd) {
             Some(sock) => {
                 sock.broadcast = on;
                 Ok(())
@@ -352,7 +352,7 @@ impl UdpSocket {
     /// For more information about this option, see [set_ttl](UdpSocket::set_ttl).
     ///
     pub fn ttl(&self) -> Result<u8> {
-        IOContext::with_current(|ctx| match ctx.udp_manager.get(&self.fd) {
+        IOContext::with_current(|ctx| match ctx.udp.binds.get(&self.fd) {
             Some(ref sock) => Ok(sock.ttl),
             None => Err(Error::new(
                 ErrorKind::Other,
@@ -365,7 +365,7 @@ impl UdpSocket {
     ///
     /// This value sets the time-to-live field that is used in every packet sent from this socket.
     pub fn set_ttl(&self, ttl: u8) -> Result<()> {
-        IOContext::with_current(|ctx| match ctx.udp_manager.get_mut(&self.fd) {
+        IOContext::with_current(|ctx| match ctx.udp.binds.get_mut(&self.fd) {
             Some(sock) => {
                 sock.ttl = ttl;
                 Ok(())

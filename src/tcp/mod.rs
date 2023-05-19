@@ -1,4 +1,4 @@
-//! TCP utility types.
+//! The Transmission Control Protocol (TCP)
 #![allow(unused)]
 
 use des::{
@@ -34,7 +34,7 @@ mod config;
 pub use self::config::*;
 
 mod types;
-pub use types::TcpState;
+pub(crate) use types::TcpState;
 use types::*;
 
 pub(super) mod api;
