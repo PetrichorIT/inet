@@ -76,7 +76,9 @@ impl AsyncModule for Reader {
         .unwrap();
 
         spawn(async move {
-            let lis = TcpListener::bind("0.0.0.0:1000").await.unwrap();
+            let lis = TcpListener::bind((Ipv4Addr::UNSPECIFIED, 1000))
+                .await
+                .unwrap();
             loop {
                 let (stream, from) = match lis.accept().await {
                     Ok(vv) => vv,

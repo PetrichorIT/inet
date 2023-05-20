@@ -1,3 +1,5 @@
+#![cfg(feature = "uds")]
+
 use std::iter::repeat_with;
 
 use des::time::sleep;

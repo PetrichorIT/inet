@@ -2,9 +2,7 @@ use crate::{
     arp::ArpTable,
     icmp::Icmp,
     interface::{IfId, Interface, LinkLayerResult, KIND_LINK_UPDATE},
-    pcap::Pcap,
     routing::{ForwardingTableV4, Ipv6RoutingTable},
-    uds::Uds,
     IOPlugin, Udp,
 };
 use des::{net::plugin::PluginError, prelude::Message};
@@ -20,6 +18,12 @@ use std::{
     panic::UnwindSafe,
 };
 
+#[cfg(feature = "pcap")]
+use crate::pcap::Pcap;
+
+#[cfg(feature = "uds")]
+use crate::uds::Uds;
+
 use super::{socket::*, tcp::Tcp};
 use inet_types::{tcp::PROTO_TCP, udp::PROTO_UDP};
 
@@ -34,12 +38,15 @@ pub(crate) struct IOContext {
     pub(super) ipv4_fwd: ForwardingTableV4,
     pub(super) ipv6router: Ipv6RoutingTable,
 
+    #[cfg(feature = "pcap")]
     pub(super) pcap: RefCell<Pcap>,
     pub(super) icmp: Icmp,
 
     pub(super) sockets: Sockets,
     pub(super) udp: Udp,
     pub(super) tcp: Tcp,
+
+    #[cfg(feature = "uds")]
     pub(super) uds: Uds,
 
     pub(super) fd: Fd,
@@ -62,12 +69,15 @@ impl IOContext {
             ipv4_fwd: ForwardingTableV4::new(),
             ipv6router: Ipv6RoutingTable::new(),
 
+            #[cfg(feature = "pcap")]
             pcap: RefCell::new(Pcap::new()),
             icmp: Icmp::new(),
 
             sockets: Sockets::new(),
             udp: Udp::new(),
             tcp: Tcp::new(),
+
+            #[cfg(feature = "uds")]
             uds: Uds::new(),
 
             fd: 100,

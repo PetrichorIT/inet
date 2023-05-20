@@ -1,3 +1,5 @@
+#![cfg(feature = "uds")]
+
 use des::{
     prelude::*,
     registry,

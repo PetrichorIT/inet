@@ -1,3 +1,4 @@
+#![cfg(feature = "dns")]
 use des::{prelude::*, registry};
 use inet::{
     dns::{lookup_host, DNSNameserver},

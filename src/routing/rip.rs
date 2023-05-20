@@ -201,7 +201,7 @@ impl RipRoutingDeamon {
         );
 
         // (1) Open a socket and publish the self as a contensant
-        let sock = UdpSocket::bind("0.0.0.0:520").await.unwrap();
+        let sock = UdpSocket::bind((Ipv4Addr::UNSPECIFIED, 520)).await.unwrap();
         sock.set_broadcast(true).unwrap();
 
         // (2) Request updates from all ajacent routers.

@@ -97,6 +97,7 @@ impl IOContext {
                         .content(response)
                         .build();
 
+                    #[cfg(feature = "pcap")]
                     {
                         let mut pcap = self.pcap.borrow_mut();
                         if pcap.capture.capture_l2_outgoing() {
@@ -275,7 +276,7 @@ impl IOContext {
                 self.send_lan_local_ip_packet(ifid, pkt.dest(), pkt, buffered)
             }
             _ => {
-                for (ifid, iface) in &mut self.ifaces {
+                for (_ifid, iface) in &mut self.ifaces {
                     match pkt.clone() {
                         IpPacket::V4(mut pkt) => {
                             if pkt.src.is_unspecified() {
@@ -287,10 +288,11 @@ impl IOContext {
                                 .dest(MacAddress::BROADCAST.into())
                                 .content(pkt)
                                 .build();
+                            #[cfg(feature = "pcap")]
                             {
                                 let mut pcap = self.pcap.borrow_mut();
                                 if pcap.capture.capture_l2_outgoing() {
-                                    pcap.capture(&msg, *ifid, iface).expect("Pcap failed")
+                                    pcap.capture(&msg, *_ifid, iface).expect("Pcap failed")
                                 }
                             }
                             if buffered {
@@ -310,10 +312,11 @@ impl IOContext {
                                 .content(pkt)
                                 .build();
 
+                            #[cfg(feature = "pcap")]
                             {
                                 let mut pcap = self.pcap.borrow_mut();
                                 if pcap.capture.capture_l2_outgoing() {
-                                    pcap.capture(&msg, *ifid, iface).expect("Pcap failed")
+                                    pcap.capture(&msg, *_ifid, iface).expect("Pcap failed")
                                 }
                             }
                             if buffered {
@@ -370,6 +373,7 @@ impl IOContext {
                     .dest(mac.into())
                     .content(pkt)
                     .build();
+                #[cfg(feature = "pcap")]
                 {
                     let mut pcap = self.pcap.borrow_mut();
                     if pcap.capture.capture_l2_outgoing() {
@@ -393,6 +397,7 @@ impl IOContext {
                     .content(pkt)
                     .build();
 
+                #[cfg(feature = "pcap")]
                 {
                     let mut pcap = self.pcap.borrow_mut();
                     if pcap.capture.capture_l2_outgoing() {
@@ -526,6 +531,7 @@ impl IOContext {
             .content(request)
             .build();
 
+        #[cfg(feature = "pcap")]
         {
             let mut pcap = self.pcap.borrow_mut();
             if pcap.capture.capture_l2_outgoing() {

@@ -1,5 +1,3 @@
-use std::fs::File;
-
 use des::{
     net::plugin::add_plugin,
     prelude::*,
@@ -12,7 +10,6 @@ use des::{
 };
 use inet::{
     interface::{add_interface, Interface, NetworkDevice},
-    pcap::{pcap, PcapCapturePoints, PcapConfig, PcapFilters},
     tcp::{set_tcp_cfg, TcpConfig, TcpDebugPlugin},
     TcpListener, TcpStream,
 };
@@ -91,20 +88,15 @@ impl AsyncModule for Client {
         ))
         .unwrap();
 
-        pcap(PcapConfig {
-            filters: PcapFilters::default(),
-            capture: PcapCapturePoints::CLIENT_DEFAULT,
-            output: File::create("results/client-output.pcap").unwrap(),
-        })
-        .unwrap();
-
         let mut cfg = TcpConfig::default();
         cfg.debug = true;
         cfg.cong_ctrl = true;
         set_tcp_cfg(cfg).unwrap();
         for k in 0..1 {
             self.handles.push(spawn(async move {
-                let mut sock = TcpStream::connect("69.0.0.69:1000").await.unwrap();
+                let mut sock = TcpStream::connect((Ipv4Addr::new(69, 0, 0, 69), 1000))
+                    .await
+                    .unwrap();
                 log::info!("[{k}] opening stream");
                 let mut acc = 0;
                 for i in 0..1 {
@@ -149,7 +141,9 @@ impl AsyncModule for Server {
         set_tcp_cfg(cfg).unwrap();
 
         spawn(async move {
-            let list = TcpListener::bind("0.0.0.0:1000").await.unwrap();
+            let list = TcpListener::bind((Ipv4Addr::UNSPECIFIED, 1000))
+                .await
+                .unwrap();
             loop {
                 let (mut stream, from) = list.accept().await.unwrap();
                 spawn(async move {

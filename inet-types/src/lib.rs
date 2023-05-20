@@ -11,14 +11,18 @@ use std::io::{Cursor, Write};
 mod macros;
 
 pub mod arp;
-pub mod dns;
 pub mod icmp;
 pub mod iface;
 pub mod ip;
 pub mod routing;
 pub mod tcp;
 pub mod udp;
+
+#[cfg(feature = "uds")]
 pub mod uds;
+
+#[cfg(feature = "dns")]
+pub mod dns;
 
 #[must_use]
 pub fn split_off_front(mut buf: Vec<u8>, pos: usize) -> Vec<u8> {

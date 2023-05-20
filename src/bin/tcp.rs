@@ -1,5 +1,4 @@
 use std::{
-    fs::File,
     io::{stderr, stdout},
     sync::{atomic::AtomicUsize, Arc},
 };
@@ -18,7 +17,6 @@ use des::{
 };
 use inet::{
     interface::{add_interface, Interface, NetworkDevice},
-    pcap::{pcap, PcapCapturePoints, PcapConfig, PcapFilters},
     tcp::{set_tcp_cfg, TcpConfig, TcpDebugPlugin},
     TcpListener, TcpStream,
 };
@@ -160,20 +158,15 @@ impl AsyncModule for Server {
         ))
         .unwrap();
 
-        pcap(PcapConfig {
-            filters: PcapFilters::default(),
-            capture: PcapCapturePoints::CLIENT_DEFAULT,
-            output: File::create("results/server-output.pcap").unwrap(),
-        })
-        .unwrap();
-
         let mut cfg = TcpConfig::default();
         // cfg.debug = true;
         cfg.cong_ctrl = true;
         set_tcp_cfg(cfg).unwrap();
 
         spawn(async move {
-            let list = TcpListener::bind("0.0.0.0:1000").await.unwrap();
+            let list = TcpListener::bind((Ipv4Addr::UNSPECIFIED, 1000))
+                .await
+                .unwrap();
             loop {
                 let (mut stream, from) = list.accept().await.unwrap();
                 spawn(async move {

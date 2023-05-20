@@ -46,7 +46,7 @@ pub enum Trace {
 /// path to the provided target. Nodes must respond to
 /// ICMP Echo Requests to be identified.
 pub async fn traceroute(addr: Ipv4Addr) -> Result<Traceroute> {
-    let socket = UdpSocket::bind("0.0.0.0:0").await?;
+    let socket = UdpSocket::bind((Ipv4Addr::UNSPECIFIED, 0)).await?;
     IOContext::failable_api(|ctx| Ok(ctx.traceroute_create(socket.as_raw_fd(), addr)))?;
 
     let mut port = random::<u16>();

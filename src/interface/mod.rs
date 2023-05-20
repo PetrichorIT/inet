@@ -304,6 +304,8 @@ impl IOContext {
 
         // Capture all packets that can be addressed to a interface, event not targeted
         let ifid = *ifid;
+
+        #[cfg(feature = "pcap")]
         {
             let mut pcap = self.pcap.borrow_mut();
             if pcap.capture.capture_l2_incoming() {

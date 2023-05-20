@@ -2,6 +2,7 @@
 use crate::IOPlugin;
 use des::prelude::*;
 
+#[cfg(feature = "rip")]
 pub mod rip;
 
 mod tablev6;

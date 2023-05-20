@@ -209,7 +209,7 @@ impl AsyncModule for Router {
             pcap(PcapConfig {
                 filters: PcapFilters::default(),
                 capture: PcapCapturePoints::CLIENT_DEFAULT,
-                output: File::create(format!("resutls/{}.pcap", module_path())).unwrap(),
+                output: File::create(format!("results/{}.pcap", module_path())).unwrap(),
             })
             .unwrap();
         }

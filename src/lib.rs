@@ -1,17 +1,29 @@
 #![feature(int_roundings)]
 
+#[macro_use]
+mod macros;
+
 pub mod arp;
-pub mod dhcp;
 pub mod dns;
-pub mod fs;
 pub mod icmp;
 pub mod interface;
 pub mod io;
-pub mod pcap;
 pub mod routing;
 pub mod socket;
-pub mod uds;
 pub mod utils;
+
+cfg_pcap! {
+    pub mod pcap;
+}
+
+cfg_dhcp! {
+    pub mod dhcp;
+}
+
+cfg_uds! {
+    pub mod uds;
+    pub mod fs;
+}
 
 pub use inet_types as types;
 

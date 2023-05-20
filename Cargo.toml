@@ -9,8 +9,15 @@ edition = "2021"
 name = "inet"
 version = "0.1.0"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[features]
+default = []
+full = ["dns", "uds", "dhcp", "pcap"]
 
+dns = ["inet-types/dns"]
+uds = ["inet-types/uds"]
+dhcp = []
+pcap = []
+rip = ["inet-types/rip"]
 
 [dependencies]
 async-trait = "*"
@@ -20,8 +27,6 @@ des = { version = "*", features = ["full"] }
 log = {version = "*", features = ["max_level_trace"]}
 bytes = "1.4.0"
 rand = "0.8.5"
-plotters = "0.3.4"
-chrono = "0.4.24"
 inet-types = { path = "inet-types"}
 
 [dev-dependencies]

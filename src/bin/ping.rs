@@ -1,10 +1,7 @@
-use std::fs::File;
-
 use des::{prelude::*, registry, tokio::spawn};
 use inet::{
     icmp::traceroute,
     interface::{add_interface, Interface, NetworkDevice},
-    pcap::{pcap, PcapCapturePoints, PcapConfig, PcapFilters},
     routing::{set_default_gateway, RoutingInformation},
 };
 
@@ -104,13 +101,6 @@ impl AsyncModule for Main {
     }
 
     async fn at_sim_start(&mut self, _: usize) {
-        pcap(PcapConfig {
-            filters: PcapFilters::default(),
-            capture: PcapCapturePoints::CLIENT_DEFAULT,
-            output: File::create("results/ping.pcap").unwrap(),
-        })
-        .unwrap();
-
         for port in RoutingInformation::collect().ports {
             let peer = port.output.path_end().unwrap().owner().path();
             let gw = par_for("gateway", &peer)
