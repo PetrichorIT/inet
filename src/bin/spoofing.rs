@@ -1,4 +1,4 @@
-use des::{prelude::*, registry, time::sleep, tokio::spawn};
+use des::{prelude::*, registry, time::sleep, tokio::spawn, tracing::Subscriber};
 use inet::{
     interface::{add_interface, Interface, NetworkDevice},
     socket::RawIpSocket,
@@ -54,7 +54,7 @@ impl AsyncModule for Spoofer {
                     .unwrap(),
                 });
                 sock.try_send(pkt).unwrap();
-                log::info!("send syn packet");
+                tracing::info!("send syn packet");
                 sleep(Duration::from_millis(100)).await;
             }
         });
@@ -104,7 +104,7 @@ impl Module for Main {
 fn main() {
     inet::init();
 
-    Logger::new().set_logger();
+    Subscriber::default().init().unwrap();
 
     let app = NetworkApplication::new(
         NdlApplication::new("src/bin/spoofing.ndl", registry![Spoofer, Reader, Main])

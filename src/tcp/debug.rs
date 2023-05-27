@@ -13,7 +13,7 @@ pub struct TcpDebugPlugin;
 
 impl TcpDebugPlugin {
     fn log(&self, prefix: &str, src: IpAddr, dest: IpAddr, tcp: TcpPacket) {
-        log::warn!(
+        tracing::warn!(
             target: "inet/debug",
             "{prefix} {} --> {} [ {} seq: {} ack: {} win: {} content: {} bytes]",
             SocketAddr::new(src, tcp.src_port),

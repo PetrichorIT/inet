@@ -60,7 +60,7 @@ impl AsyncModule for Emitter {
                         dest: Ipv4Addr::new(192, 168, 0, 1),
                         content: iter::repeat_with(|| random::<u8>()).take(16).collect(),
                     };
-                    log::info!("v4::sending {:?}", pkt.content);
+                    tracing::info!("v4::sending {:?}", pkt.content);
 
                     sockv4.try_send(IpPacket::V4(pkt)).unwrap();
                     V4.fetch_add(1, Ordering::SeqCst);
@@ -75,7 +75,7 @@ impl AsyncModule for Emitter {
                         content: iter::repeat_with(|| random::<u8>()).take(16).collect(),
                     };
 
-                    log::info!("v6::sending {:?}", pkt.content);
+                    tracing::info!("v6::sending {:?}", pkt.content);
                     sockv6.try_send(IpPacket::V6(pkt)).unwrap();
                     V6.fetch_add(1, Ordering::SeqCst);
                 }
@@ -112,7 +112,7 @@ impl AsyncModule for Receiver {
             let mut sock = RawIpSocket::new_v4().unwrap();
             sock.bind_proto(PROTO).unwrap();
             while let Ok(pkt) = sock.recv().await {
-                log::info!("v4::received {:?}", pkt.content());
+                tracing::info!("v4::received {:?}", pkt.content());
                 V4.fetch_sub(1, Ordering::SeqCst);
             }
         });
@@ -121,7 +121,7 @@ impl AsyncModule for Receiver {
             let mut sock = RawIpSocket::new_v6().unwrap();
             sock.bind_proto(PROTO).unwrap();
             while let Ok(pkt) = sock.recv().await {
-                log::info!("v6::received {:?}", pkt.content());
+                tracing::info!("v6::received {:?}", pkt.content());
                 V6.fetch_sub(1, Ordering::SeqCst);
             }
         });
@@ -140,7 +140,7 @@ fn raw_ip_socket() {
     inet::init();
 
     // Logger::new()
-    // .interal_max_log_level(log::LevelFilter::Trace)
+    // .interal_max_log_level(tracing::LevelFilter::Trace)
     // .set_logger();
 
     let rt = NetworkApplication::new(

@@ -31,7 +31,7 @@ impl AsyncModule for Client {
             for _ in 0..10 {
                 spawn(async {
                     let sock = TcpStream::connect("192.168.0.2:80").await;
-                    log::info!("{sock:?}");
+                    tracing::info!("{sock:?}");
                 });
             }
         }));
@@ -64,7 +64,7 @@ impl AsyncModule for Server {
             let lis = sock.listen(5).unwrap();
             let mut c = 0;
             while let Ok(stream) = lis.accept().await {
-                log::info!("receiving tcp stream {stream:?}");
+                tracing::info!("receiving tcp stream {stream:?}");
                 c += 1;
                 if c == 10 {
                     break;

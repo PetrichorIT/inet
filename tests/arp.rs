@@ -49,7 +49,7 @@ impl AsyncModule for Node {
                     continue;
                 }
 
-                log::info!("sending packet to {}", target);
+                tracing::info!("sending packet to {}", target);
                 sock.try_send(IpPacket::new(ip, target, vec![42, 42]))
                     .unwrap();
             }
@@ -60,13 +60,13 @@ impl AsyncModule for Node {
         if msg.can_cast::<Ipv4Packet>() {
             let msg = msg.content::<Ipv4Packet>();
             assert_eq!(msg.dest, self.ip);
-            log::info!("received message from {}", msg.src);
+            tracing::info!("received message from {}", msg.src);
         }
 
         if msg.can_cast::<Ipv6Packet>() {
             let msg = msg.content::<Ipv6Packet>();
             assert_eq!(msg.dest, self.ip);
-            log::info!("received message from {}", msg.src);
+            tracing::info!("received message from {}", msg.src);
         }
     }
 

@@ -130,13 +130,15 @@ impl Pcap {
                 for filter in self.filters.iter() {
                     state = filter.evaluate_fin(state);
                 }
-                if state == FilterResult::Allow {
-                    // Ethernet header part 1
-                    buffer.write_all(&msg.header().dest)?;
-                    buffer.write_all(&msg.header().src)?;
-                    buffer.write_all(&msg.header().kind.to_be_bytes())?;
-                    pkt.to_bytestream(&mut buffer)?;
+
+                if state != FilterResult::Allow {
+                    return Ok(());
                 }
+                // Ethernet header part 1
+                buffer.write_all(&msg.header().dest)?;
+                buffer.write_all(&msg.header().src)?;
+                buffer.write_all(&msg.header().kind.to_be_bytes())?;
+                pkt.to_bytestream(&mut buffer)?;
             }
             KIND_IPV4 => {
                 let pkt = msg.try_content::<Ipv4Packet>().ok_or(Error::new(
@@ -148,13 +150,14 @@ impl Pcap {
                     state = filter.evaluate_l3(state, &IpPacketRef::V4(pkt));
                     state = filter.evaluate_fin(state);
                 }
-                if state == FilterResult::Allow {
-                    // Ethernet header part 1
-                    buffer.write_all(&msg.header().dest)?;
-                    buffer.write_all(&msg.header().src)?;
-                    buffer.write_all(&msg.header().kind.to_be_bytes())?;
-                    pkt.to_bytestream(&mut buffer)?;
+                if state != FilterResult::Allow {
+                    return Ok(());
                 }
+                // Ethernet header part 1
+                buffer.write_all(&msg.header().dest)?;
+                buffer.write_all(&msg.header().src)?;
+                buffer.write_all(&msg.header().kind.to_be_bytes())?;
+                pkt.to_bytestream(&mut buffer)?;
             }
             KIND_IPV6 => {
                 let pkt = msg.try_content::<Ipv6Packet>().ok_or(Error::new(
@@ -166,16 +169,19 @@ impl Pcap {
                     state = filter.evaluate_l3(state, &IpPacketRef::V6(pkt));
                     state = filter.evaluate_fin(state);
                 }
-                if state == FilterResult::Allow {
-                    // Ethernet header part 1
-                    buffer.write_all(&msg.header().dest)?;
-                    buffer.write_all(&msg.header().src)?;
-                    buffer.write_all(&msg.header().kind.to_be_bytes())?;
+                if state != FilterResult::Allow {
+                    return Ok(());
                 }
+
+                // Ethernet header part 1
+                buffer.write_all(&msg.header().dest)?;
+                buffer.write_all(&msg.header().src)?;
+                buffer.write_all(&msg.header().kind.to_be_bytes())?;
+
                 pkt.to_bytestream(&mut buffer)?;
             }
             _ => {
-                log::error!("unknown packet");
+                tracing::error!("unknown packet");
             }
         }
 

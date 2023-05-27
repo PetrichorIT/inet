@@ -43,7 +43,7 @@ impl AsyncModule for Node {
             for target in targets {
                 sleep(Duration::from_secs_f64(random())).await;
                 let buf = vec![42; target];
-                log::info!("broadcasting {target} bytes");
+                tracing::info!("broadcasting {target} bytes");
                 sock.send_to(&buf, "255.255.255.255:100").await.unwrap();
             }
         }));
@@ -58,7 +58,7 @@ impl AsyncModule for Node {
             while acc < expected {
                 let mut buf = [0u8; 1024];
                 let (n, from) = sock.recv_from(&mut buf).await.unwrap();
-                log::info!("recieved {n} bytes from {}", from.ip());
+                tracing::info!("recieved {n} bytes from {}", from.ip());
                 acc += n;
             }
         }));
@@ -112,7 +112,7 @@ impl Module for Main {
             }
         }
 
-        log::info!("expecting: {:?}", targets);
+        tracing::info!("expecting: {:?}", targets);
 
         for i in 0..5 {
             let c = targets[i];
@@ -126,7 +126,7 @@ impl Module for Main {
 fn udp_broadcast() {
     inet::init();
     // Logger::new()
-    // .interal_max_log_level(log::LevelFilter::Trace)
+    // .interal_max_log_level(tracing::LevelFilter::Trace)
     // .set_logger();
 
     let app = NdlApplication::new(

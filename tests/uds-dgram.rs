@@ -85,7 +85,7 @@ impl AsyncModule for PathedDgrams {
 fn uds_pathed_dgrams() {
     inet::init();
     // Logger::new()
-    // .interal_max_log_level(log::LevelFilter::Trace)
+    // .interal_max_log_level(tracing::LevelFilter::Trace)
     // .set_logger();
 
     type Main = PathedDgrams;
@@ -148,7 +148,7 @@ impl AsyncModule for UnnamedPair {
 fn uds_pair() {
     inet::init();
     // Logger::new()
-    // .interal_max_log_level(log::LevelFilter::Trace)
+    // .interal_max_log_level(tracing::LevelFilter::Trace)
     // .set_logger();
 
     type Main = UnnamedPair;
@@ -191,7 +191,7 @@ impl AsyncModule for FailAtDoubleBinding {
 fn double_bind() {
     inet::init();
     // Logger::new()
-    // .interal_max_log_level(log::LevelFilter::Trace)
+    // .interal_max_log_level(tracing::LevelFilter::Trace)
     // .set_logger();
 
     type Main = FailAtDoubleBinding;
@@ -228,7 +228,7 @@ impl AsyncModule for NamedTempdir {
         let rx_path = tmp.path().join("rx");
         let rx = UnixDatagram::bind(&rx_path).unwrap();
 
-        log::info!("tx: {tx_path:?} rx: {rx_path:?}");
+        tracing::info!("tx: {tx_path:?} rx: {rx_path:?}");
 
         let bytes = b"hello world";
         tx.send_to(bytes, &rx_path).await.unwrap();
@@ -253,7 +253,7 @@ impl AsyncModule for NamedTempdir {
 fn uds_named_tempdir() {
     inet::init();
     // Logger::new()
-    // .interal_max_log_level(log::LevelFilter::Trace)
+    // .interal_max_log_level(tracing::LevelFilter::Trace)
     // .set_logger();
 
     type Main = NamedTempdir;

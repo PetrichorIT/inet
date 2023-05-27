@@ -150,7 +150,7 @@ impl IOContext {
         match kind {
             KIND_IPV4 => {
                 let Some(ip) = msg.try_content::<Ipv4Packet>() else {
-                    log::error!(target: "inet", "received eth-packet with kind=0x0800 (ip) but content was no ipv4-packet");
+                    tracing::error!(target: "inet", "received eth-packet with kind=0x0800 (ip) but content was no ipv4-packet");
                     return Some(msg)
                 };
 
@@ -169,7 +169,7 @@ impl IOContext {
                     pkt.ttl = pkt.ttl.saturating_sub(1);
 
                     if pkt.ttl == 0 {
-                        log::warn!(target: "inet/route", "dropping packet due to ttl");
+                        tracing::warn!(target: "inet/route", "dropping packet due to ttl");
                         self.icmp_ttl_expired(ifid, ip);
                         return None;
                     }
@@ -182,7 +182,7 @@ impl IOContext {
                     ) {
                         Ok(()) => return None,
                         Err(e) => {
-                            log::error!(target: "inet/route", "Failed to forward packet due to internal err: {e}");
+                            tracing::error!(target: "inet/route", "Failed to forward packet due to internal err: {e}");
                             self.icmp_routing_failed(e, ip);
                             // Maybe return dropped packet ?
                             return None;
@@ -228,7 +228,7 @@ impl IOContext {
             }
             KIND_IPV6 => {
                 let Some(ip) = msg.try_content::<Ipv6Packet>() else {
-                    log::error!(target: "inet", "received eth-packet with kind=0x0800 (ip) but content was no ipv4-packet");
+                    tracing::error!(target: "inet", "received eth-packet with kind=0x0800 (ip) but content was no ipv4-packet");
                     return Some(msg)
                 };
 
@@ -246,7 +246,7 @@ impl IOContext {
                     pkt.hop_limit = pkt.hop_limit.saturating_sub(1);
 
                     if pkt.hop_limit == 0 {
-                        log::warn!(target: "inet/route", "dropping packet due to ttl");
+                        tracing::warn!(target: "inet/route", "dropping packet due to ttl");
                         return None;
                     }
 

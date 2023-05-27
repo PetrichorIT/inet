@@ -177,7 +177,7 @@ impl IOContext {
             recv_q: 0,
             send_q: 0,
         };
-        log::trace!(
+        tracing::trace!(
             target: "inet",
             "socket::create '0x{:x} {:?}/{:?}/{}",
             fd,
@@ -197,7 +197,7 @@ impl IOContext {
         let mut new = socket.clone();
         let new_fd = self.fd_generate();
         new.fd = new_fd;
-        log::trace!(
+        tracing::trace!(
             target: "inet",
             "socket::create '0x{:x} {:?}/{:?}/{} from '0x{:x}",
             new_fd,
@@ -213,7 +213,7 @@ impl IOContext {
     }
 
     pub(super) fn close_socket(&mut self, fd: Fd) -> Result<()> {
-        log::trace!( target: "inet", "socket::close '0x{:x}", fd);
+        tracing::trace!( target: "inet", "socket::close '0x{:x}", fd);
         let socket = self.sockets.remove(&fd);
         if socket.is_some() {
             Ok(())
@@ -304,7 +304,7 @@ impl IOContext {
             socket.addr = SocketAddr::new(addr.ip(), port);
             socket.interface = SocketIfaceBinding::Any(valid_ifaces);
 
-            log::trace!(
+            tracing::trace!(
                 target: "inet",
                 "socket::bind '0x{:x} to {} at {} (zero-bind)",
                 fd,
@@ -365,7 +365,7 @@ impl IOContext {
                 socket.addr = SocketAddr::new(next, port);
                 socket.interface = SocketIfaceBinding::Bound(*ifid);
 
-                log::trace!(
+                tracing::trace!(
                     target: "inet",
                     "socket::bind '0x{:x} to {} at {} (directed-bind)",
                     fd,

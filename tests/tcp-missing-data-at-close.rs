@@ -23,7 +23,7 @@ impl Module for Link {
             let ippacket = msg.content::<Ipv4Packet>();
             let tcp = TcpPacket::from_buffer(&ippacket.content).unwrap();
 
-            log::error!(
+            tracing::error!(
                 "DROP {} --> {} :: Tcp {{ {} seq_no = {} ack_no = {} win = {} data = {} bytes }}",
                 ippacket.src,
                 ippacket.dest,
@@ -81,10 +81,10 @@ impl AsyncModule for TcpServer {
             let sock = sock.listen(1024).unwrap();
 
             // let sock = TcpListener::bind("0.0.0.0:2000").await.unwrap();
-            log::info!("Server bound");
+            tracing::info!("Server bound");
 
             let (mut stream, _) = sock.accept().await.unwrap();
-            log::info!("Established stream");
+            tracing::info!("Established stream");
 
             fd.store(stream.as_raw_fd(), SeqCst);
 
@@ -97,7 +97,7 @@ impl AsyncModule for TcpServer {
             let mut acc = 0;
             loop {
                 let Ok(n) = stream.read(&mut buf).await else { break };
-                log::info!("received {} bytes", n);
+                tracing::info!("received {} bytes", n);
 
                 if n == 0 {
                     // Socket closed
@@ -113,7 +113,7 @@ impl AsyncModule for TcpServer {
             let n = stream.read(&mut buf).await.unwrap();
             assert_eq!(n, 0);
 
-            log::info!("Server done");
+            tracing::info!("Server done");
             drop(stream);
             drop(sock);
 
@@ -122,7 +122,7 @@ impl AsyncModule for TcpServer {
     }
 
     async fn handle_message(&mut self, _: Message) {
-        log::error!("HM?");
+        tracing::error!("HM?");
     }
 
     async fn at_sim_end(&mut self) {
@@ -171,12 +171,12 @@ impl AsyncModule for TcpClient {
 
             fd.store(stream.as_raw_fd(), SeqCst);
 
-            log::info!("Established stream");
+            tracing::info!("Established stream");
 
             let buf = vec![42; 2000];
             stream.write_all(&buf).await.unwrap();
 
-            log::info!("Client done");
+            tracing::info!("Client done");
             drop(stream);
 
             done.store(true, SeqCst);

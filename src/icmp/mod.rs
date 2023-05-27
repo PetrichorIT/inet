@@ -51,7 +51,7 @@ impl IOContext {
         assert_eq!(ip_icmp.proto, PROTO_ICMP);
 
         let Ok(mut pkt) = IcmpPacket::from_buffer(&ip_icmp.content) else {
-            log::error!(target: "inet/icmp", "received ip-packet with proto=0x1 (icmp) but content was no icmp-packet");
+            tracing::error!(target: "inet/icmp", "received ip-packet with proto=0x1 (icmp) but content was no icmp-packet");
             return false;
         };
 
@@ -91,7 +91,7 @@ impl IOContext {
                 sequence,
             } => {
                 let Some(ping) = self.icmp.pings.get_mut(&identifier) else {
-                    log::warn!(target: "inet/icmp", "missguided icmp echo reply");
+                    tracing::warn!(target: "inet/icmp", "missguided icmp echo reply");
                     return false;
                 };
 

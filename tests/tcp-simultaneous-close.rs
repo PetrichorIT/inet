@@ -60,14 +60,14 @@ impl AsyncModule for TcpServer {
 
         tokio::spawn(async move {
             let sock = TcpListener::bind("0.0.0.0:2000").await.unwrap();
-            log::info!("Server bound");
+            tracing::info!("Server bound");
             assert_eq!(
                 sock.local_addr().unwrap(),
                 SocketAddr::from_str("0.0.0.0:2000").unwrap()
             );
 
             let (mut stream, addr) = sock.accept().await.unwrap();
-            log::info!("Established stream");
+            tracing::info!("Established stream");
             fd.store(stream.as_raw_fd(), SeqCst);
             assert_eq!(addr, SocketAddr::from_str("69.0.0.200:1024").unwrap());
 
@@ -80,7 +80,7 @@ impl AsyncModule for TcpServer {
             let mut acc = 0;
             loop {
                 let Ok(n) = stream.read(&mut buf).await else { break };
-                log::info!("received {} bytes", n);
+                tracing::info!("received {} bytes", n);
 
                 if n == 0 {
                     panic!("Unexpected closing event - should be prevented by simultaneous close")
@@ -94,10 +94,10 @@ impl AsyncModule for TcpServer {
 
             let t = SimTime::now();
             let d = SimTime::from_duration(Duration::from_secs(1)) - t;
-            log::info!("Waiting for {d:?}");
+            tracing::info!("Waiting for {d:?}");
             des::time::sleep(d).await;
 
-            log::info!("Server done");
+            tracing::info!("Server done");
             done.store(true, SeqCst);
             drop(stream);
             drop(sock);
@@ -105,7 +105,7 @@ impl AsyncModule for TcpServer {
     }
 
     async fn handle_message(&mut self, _: Message) {
-        log::error!("All packet should have been caught by the plugins");
+        tracing::error!("All packet should have been caught by the plugins");
     }
 
     async fn at_sim_end(&mut self) {
@@ -147,7 +147,7 @@ impl AsyncModule for TcpClient {
             use tokio::io::AsyncWriteExt;
             let mut stream = TcpStream::connect("69.0.0.100:2000").await.unwrap();
 
-            log::info!("Established stream");
+            tracing::info!("Established stream");
             fd.store(stream.as_raw_fd(), SeqCst);
 
             let buf = vec![42; 2000];
@@ -155,10 +155,10 @@ impl AsyncModule for TcpClient {
 
             let t = SimTime::now();
             let d = SimTime::from_duration(Duration::from_secs(1)) - t;
-            log::info!("Waiting for {d:?}");
+            tracing::info!("Waiting for {d:?}");
             des::time::sleep(d).await;
 
-            log::info!("Client done");
+            tracing::info!("Client done");
             done.store(true, SeqCst);
             drop(stream);
         });

@@ -7,6 +7,7 @@ use des::{
         spawn,
         task::JoinHandle,
     },
+    tracing::Subscriber,
 };
 use inet::{
     interface::{add_interface, Interface, NetworkDevice},
@@ -97,17 +98,17 @@ impl AsyncModule for Client {
                 let mut sock = TcpStream::connect((Ipv4Addr::new(69, 0, 0, 69), 1000))
                     .await
                     .unwrap();
-                log::info!("[{k}] opening stream");
+                tracing::info!("[{k}] opening stream");
                 let mut acc = 0;
                 for i in 0..1 {
                     let n = (random::<usize>() % 2000) + 1000;
                     let x = ((i ^ n) & 0xff) as u8;
                     acc += n;
-                    log::info!("[{k}] sending new byte stack [{x:x}; {n}]");
+                    tracing::info!("[{k}] sending new byte stack [{x:x}; {n}]");
                     sock.write_all(&vec![x; n]).await.unwrap();
                     // sleep(Duration::from_secs_f64(0.025 * random::<f64>())).await;
                 }
-                log::info!("[{k}] closing client after {acc} bytes");
+                tracing::info!("[{k}] closing client after {acc} bytes");
                 drop(sock);
             }));
         }
@@ -147,18 +148,18 @@ impl AsyncModule for Server {
             loop {
                 let (mut stream, from) = list.accept().await.unwrap();
                 spawn(async move {
-                    log::info!("got incoming connection from {from:?}");
+                    tracing::info!("got incoming connection from {from:?}");
                     let mut acc = 0;
                     loop {
                         let mut buf = [0; 1024];
                         let n = stream.read(&mut buf).await.unwrap();
                         acc += n;
-                        log::info!("recevied {n} additional bytes for a total of {acc}");
+                        tracing::info!("recevied {n} additional bytes for a total of {acc}");
                         if n == 0 {
                             break;
                         }
                     }
-                    log::info!("dropping server side stream from {from:?}");
+                    tracing::info!("dropping server side stream from {from:?}");
                     println!(
                         "dropping server side stream from {from:?} after {} bytes",
                         acc
@@ -179,7 +180,7 @@ impl Module for Main {
 fn main() {
     inet::init();
 
-    Logger::new().set_logger();
+    Subscriber::default().init().unwrap();
 
     let mut app = NetworkApplication::new(
         NdlApplication::new(

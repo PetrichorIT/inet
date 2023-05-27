@@ -66,14 +66,14 @@ impl AsyncModule for TcpServer {
             sock.set_recv_buffer_size(1024).unwrap();
 
             let sock = sock.listen(1024).unwrap();
-            log::info!("Server bound");
+            tracing::info!("Server bound");
             assert_eq!(
                 sock.local_addr().unwrap(),
                 SocketAddr::from_str("0.0.0.0:2000").unwrap()
             );
 
             let (mut stream, addr) = sock.accept().await.unwrap();
-            log::info!("Established stream");
+            tracing::info!("Established stream");
             fd.store(stream.as_raw_fd(), SeqCst);
             assert_eq!(addr, SocketAddr::from_str("69.0.0.200:1024").unwrap());
 
@@ -85,14 +85,14 @@ impl AsyncModule for TcpServer {
 
             let mut buf = [0u8; 800];
             let n = stream.read(&mut buf).await.unwrap();
-            log::info!("recv {n} bytes");
+            tracing::info!("recv {n} bytes");
             assert_eq!(n, 800); // Freed 800 bytes (ACK send)
 
             let t0 = SimTime::now();
 
             let mut buf = [0u8; 1200];
             let n = stream.read_exact(&mut buf).await.unwrap();
-            log::info!("recv {n} bytes");
+            tracing::info!("recv {n} bytes");
             assert_eq!(n, 1200);
 
             let t1 = SimTime::now();
@@ -110,7 +110,7 @@ impl AsyncModule for TcpServer {
                 assert_eq!(n, 0);
             }
 
-            log::info!("Server done");
+            tracing::info!("Server done");
             done.store(true, SeqCst);
             drop(stream);
             drop(sock);
@@ -118,7 +118,7 @@ impl AsyncModule for TcpServer {
     }
 
     async fn handle_message(&mut self, _: Message) {
-        log::error!("All packet should have been caught by the plugins");
+        tracing::error!("All packet should have been caught by the plugins");
     }
 
     async fn at_sim_end(&mut self) {
@@ -171,12 +171,12 @@ impl AsyncModule for TcpClient {
             // let mut stream = TcpStream::connect("100.100.100.100:2000").await.unwrap();
             fd.store(stream.as_raw_fd(), SeqCst);
 
-            log::info!("Established stream");
+            tracing::info!("Established stream");
 
             let buf = vec![42; 2000];
             stream.write_all(&buf).await.unwrap();
 
-            log::info!("Client done");
+            tracing::info!("Client done");
             done.store(true, SeqCst);
             drop(stream);
         });
@@ -208,7 +208,7 @@ fn tcp_partial_mtu_at_default_close() {
     inet::init();
 
     // ScopedLogger::new()
-    //     .interal_max_log_level(log::LevelFilter::Warn)
+    //     .interal_max_log_level(tracing::LevelFilter::Warn)
     //     .finish()
     //     .unwrap();
 
@@ -234,7 +234,7 @@ fn tcp_partial_mtu_at_simultaneous_close() {
     inet::init();
 
     // ScopedLogger::new()
-    //     .interal_max_log_level(log::LevelFilter::Warn)
+    //     .interal_max_log_level(tracing::LevelFilter::Warn)
     //     .finish()
     //     .unwrap();
 

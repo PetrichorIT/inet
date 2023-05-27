@@ -9,4 +9,4 @@ edition = "2021"
 inet = { path = "../../", features = ["dns", "pcap", "rip"]} 
 des = "*"
 async-trait = "*"
-log = { version = "*", features = ["max_level_info"]}
+tracing = { version = "*", features = ["max_level_info"]}

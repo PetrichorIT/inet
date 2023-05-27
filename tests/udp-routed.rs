@@ -43,7 +43,7 @@ impl AsyncModule for Node {
             for target in targets {
                 sleep(Duration::from_secs_f64(random())).await;
                 let buf = [42; 42];
-                log::info!("sending 42 bytes to {target}");
+                tracing::info!("sending 42 bytes to {target}");
 
                 sock.send_to(&buf, SocketAddrV4::new(target, 100))
                     .await
@@ -60,7 +60,7 @@ impl AsyncModule for Node {
             for _ in 0..expected {
                 let mut buf = [0u8; 1024];
                 let (n, from) = sock.recv_from(&mut buf).await.unwrap();
-                log::info!("recieved {n} bytes from {}", from.ip());
+                tracing::info!("recieved {n} bytes from {}", from.ip());
             }
         }));
     }
@@ -110,7 +110,7 @@ impl Module for Router {
     }
 
     fn handle_message(&mut self, msg: Message) {
-        log::debug!("{}", msg.str());
+        tracing::debug!("{}", msg.str());
     }
 }
 
@@ -142,7 +142,7 @@ impl Module for Main {
             }
         }
 
-        log::info!("expecting {targets:?}");
+        tracing::info!("expecting {targets:?}");
 
         for (side, prefix) in [("left", 100), ("right", 200)] {
             for i in 0..5 {
@@ -159,7 +159,7 @@ impl Module for Main {
 fn udp_routed() {
     inet::init();
     // Logger::new()
-    // .interal_max_log_level(log::LevelFilter::Trace)
+    // .interal_max_log_level(tracing::LevelFilter::Trace)
     // .set_logger();
 
     let app = NdlApplication::new(

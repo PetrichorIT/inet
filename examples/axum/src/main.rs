@@ -1,6 +1,6 @@
 use axum::{extract::Path, response::Response, routing::get, Router};
 use connector::InetTcpStream;
-use des::{prelude::*, registry, tokio::spawn};
+use des::{prelude::*, registry, tokio::spawn, tracing::Subscriber};
 use hyper::{
     client,
     server::{self, accept::from_stream},
@@ -46,7 +46,7 @@ impl AsyncModule for Client {
             let body = hyper::body::to_bytes(body).await.unwrap();
             let res = Response::from_parts(parts, body);
 
-            log::info!("got response {:?}", res);
+            tracing::info!("got response {:?}", res);
         });
     }
 }
@@ -163,9 +163,10 @@ mod connector {
 fn main() {
     inet::init();
 
-    Logger::new()
-        // .interal_max_log_level(log::LevelFilter::Trace)
-        .set_logger();
+    Subscriber::default()
+        // .interal_max_log_level(tracing::LevelFilter::Trace)
+        .init()
+        .unwrap();
 
     let app = NdlApplication::new("main.ndl", registry![Client, Server, Main])
         .map_err(|e| println!("{e}"))

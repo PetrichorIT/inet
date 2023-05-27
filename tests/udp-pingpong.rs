@@ -54,12 +54,12 @@ impl AsyncModule for Ping {
                 cursor += size;
 
                 let d = Duration::from_secs_f64(random::<f64>());
-                // log::info!("sleep({d:?})");
+                // tracing::info!("sleep({d:?})");
                 sleep(d).await;
                 c += 1;
             }
 
-            log::info!("send all {c} packets");
+            tracing::info!("send all {c} packets");
 
             loop {
                 // still work to do ?
@@ -138,7 +138,7 @@ impl Module for Main {
 fn udp_pingpong() {
     inet::init();
     // Logger::new()
-    // .interal_max_log_level(log::LevelFilter::Trace)
+    // .interal_max_log_level(tracing::LevelFilter::Trace)
     // .set_logger();
 
     let app = NetworkApplication::new(

@@ -44,7 +44,7 @@ impl AsyncModule for Ping {
             let mut bytes = TOTAL_BYTES;
             while bytes > 0 {
                 let d = Duration::from_micros(random::<u64>() % 100_000);
-                log::info!("sleeping for {:?}", d);
+                tracing::info!("sleeping for {:?}", d);
                 sleep(d).await;
 
                 let n = ((random::<usize>() % 800) + 224).min(bytes);
@@ -61,7 +61,7 @@ impl AsyncModule for Ping {
                 }
             }
 
-            log::info!("{c} collisions");
+            tracing::info!("{c} collisions");
             assert_eq!(c, 1);
         }));
     }
@@ -69,7 +69,7 @@ impl AsyncModule for Ping {
     async fn at_sim_end(&mut self) {
         let r = arpa().unwrap();
         for l in r {
-            log::debug!("{l}")
+            tracing::debug!("{l}")
         }
 
         self.handle.take().unwrap().await.unwrap();
@@ -108,7 +108,7 @@ impl AsyncModule for Pong {
     async fn at_sim_end(&mut self) {
         let r = arpa().unwrap();
         for l in r {
-            log::debug!("{l}")
+            tracing::debug!("{l}")
         }
 
         self.handle.take().unwrap().await.unwrap();

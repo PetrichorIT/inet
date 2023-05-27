@@ -55,7 +55,7 @@ impl AsyncModule for A {
                 i += 1;
 
                 let text = format!("Hello from client {}", module_name());
-                log::info!("sending from {}", get_ip().unwrap());
+                tracing::info!("sending from {}", get_ip().unwrap());
                 sock.send(text.as_bytes()).await.unwrap();
             }
         }));
@@ -98,19 +98,19 @@ impl AsyncModule for C {
                 let mut buf_b = [0u8; 1024];
                 des::tokio::select!(
                     r = sock_a.recv_from(&mut buf_a) => {
-                        log::info!("received from a");
+                        tracing::info!("received from a");
                         let _ = r.unwrap();
                         assert!(EXPECTED[i] == 1);
                         i += 1;
 
                     },
                     r = sock_b.recv_from(&mut buf_b) => {
-                        log::info!("received from b");
+                        tracing::info!("received from b");
                         let _ = r.unwrap();
                         assert!(EXPECTED[i] == 2);
                         i += 1;
                     },
-                    else => log::error!("what happened"),
+                    else => tracing::error!("what happened"),
                 );
             }
 
@@ -129,7 +129,7 @@ type Main = inet::utils::LinkLayerSwitch;
 fn udp_select() {
     inet::init();
     // Logger::new()
-    // .interal_max_log_level(log::LevelFilter::Info)
+    // .interal_max_log_level(tracing::LevelFilter::Info)
     // .set_logger();
 
     let app = NetworkApplication::new(

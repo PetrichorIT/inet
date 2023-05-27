@@ -19,7 +19,7 @@ impl DNSNameserver {
         let k = zone_uri.labels();
 
         if DNSString::suffix_match_len(&zone_uri, &question.qname) < k {
-            log::warn!(
+            tracing::warn!(
                 target: "inet/dns",
                 "[0x{:x}] Illdirected request for {} {} in zone {}",
                 req.transaction,
@@ -46,12 +46,10 @@ impl DNSNameserver {
                     })
                     .collect::<VecDeque<_>>();
 
-
-
                 // Check whether we return a record or a referral
                 if addrs.is_empty() {
                     let next_param = qname.suffix(qname.labels() - k - 1);
-                    log::trace!(
+                    tracing::trace!(
                         target: "inet/dns",
                         "[0x{:x}] Referral of request {} {} to next zone {}",
                         req.transaction,
@@ -71,7 +69,7 @@ impl DNSNameserver {
                         .collect::<Vec<_>>();
 
                     if ns.is_empty() {
-                        log::error!(
+                        tracing::error!(
                             target: "inet/dns",
                             "[0x{:x}] Cannot refer request {} {} to any further point",
                             req.transaction,
@@ -99,7 +97,7 @@ impl DNSNameserver {
                     }
                 } else {
                     let anwser = addrs.pop_front().unwrap().clone();
-                    log::trace!(
+                    tracing::trace!(
                         target: "inet/dns",
                         "[0x{:x}] Responding to request {} {} with {} and {} additionaly records",
                         req.transaction,
@@ -147,7 +145,7 @@ impl DNSNameserver {
                 // Check whether we return a record or a referral
                 if addrs.is_empty() {
                     let next_param = qname.suffix(qname.labels() - k - 1);
-                    log::trace!(
+                    tracing::trace!(
                         target: "inet/dns",
                         "[0x{:x}] Referral of request {} {} to next zone {}",
                         req.transaction,
@@ -167,7 +165,7 @@ impl DNSNameserver {
                         .collect::<Vec<_>>();
 
                     if ns.is_empty() {
-                        log::error!(
+                        tracing::error!(
                             target: "inet/dns",
                             "[0x{:x}] Cannot refer request {} {} to any further point",
                             req.transaction,
@@ -192,7 +190,7 @@ impl DNSNameserver {
                     }
                 } else {
                     let anwser = addrs.pop_front().unwrap().clone();
-                    log::trace!(
+                    tracing::trace!(
                         target: "inet/dns",
                         "[0x{:x}] Responding to request {} {} with {} and {} additionaly records",
                         req.transaction,

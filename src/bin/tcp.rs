@@ -1,10 +1,6 @@
-use std::{
-    io::{stderr, stdout},
-    sync::{atomic::AtomicUsize, Arc},
-};
+use std::sync::{atomic::AtomicUsize, Arc};
 
 use des::{
-    logger::{LogFormat, LogScopeConfigurationPolicy},
     net::plugin::add_plugin,
     prelude::*,
     registry,
@@ -20,7 +16,6 @@ use inet::{
     tcp::{set_tcp_cfg, TcpConfig, TcpDebugPlugin},
     TcpListener, TcpStream,
 };
-use log::LevelFilter;
 
 struct Connector {
     freq: f64,  // the number of bytes in the last second
@@ -75,7 +70,7 @@ impl AsyncModule for Connector {
         self.debug_p.collect(prob);
         let distr = rand::distributions::Bernoulli::new(prob).unwrap();
         if sample(distr) {
-            log::error!("### droping packet {}", msg.str());
+            tracing::error!("### droping packet {}", msg.str());
             self.drops.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             return;
         }
@@ -120,17 +115,17 @@ impl AsyncModule for Client {
         for k in 0..2 {
             self.handles.push(spawn(async move {
                 let mut sock = TcpStream::connect("69.0.0.69:1000").await.unwrap();
-                log::info!("[{k}] opening stream");
+                tracing::info!("[{k}] opening stream");
                 let mut acc = 0;
                 for i in 0..1000 {
                     let n = (random::<usize>() % 2000) + 1000;
                     let x = ((i ^ n) & 0xff) as u8;
                     acc += n;
-                    log::info!("[{k}] sending new byte stack [{x:x}; {n}]");
+                    tracing::info!("[{k}] sending new byte stack [{x:x}; {n}]");
                     sock.write_all(&vec![x; n]).await.unwrap();
                     // sleep(Duration::from_secs_f64(0.025 * random::<f64>())).await;
                 }
-                log::info!("[{k}] closing client after {acc} bytes");
+                tracing::info!("[{k}] closing client after {acc} bytes");
                 drop(sock);
             }));
         }
@@ -170,18 +165,18 @@ impl AsyncModule for Server {
             loop {
                 let (mut stream, from) = list.accept().await.unwrap();
                 spawn(async move {
-                    log::info!("got incoming connection from {from:?}");
+                    tracing::info!("got incoming connection from {from:?}");
                     let mut acc = 0;
                     loop {
                         let mut buf = [0; 1024];
                         let n = stream.read(&mut buf).await.unwrap();
                         acc += n;
-                        log::info!("recevied {n} additional bytes for a total of {acc}");
+                        tracing::info!("recevied {n} additional bytes for a total of {acc}");
                         if n == 0 {
                             break;
                         }
                     }
-                    log::info!("dropping server side stream from {from:?}");
+                    tracing::info!("dropping server side stream from {from:?}");
                     println!(
                         "dropping server side stream from {from:?} after {} bytes",
                         acc
@@ -199,20 +194,9 @@ impl Module for Main {
     }
 }
 
-struct Policy;
-impl LogScopeConfigurationPolicy for Policy {
-    fn configure(&self, _scope: &str) -> (Box<dyn des::logger::LogOutput>, LogFormat, LevelFilter) {
-        (
-            Box::new((stdout(), stderr())),
-            LogFormat::NoColor,
-            LevelFilter::max(),
-        )
-    }
-}
-
 fn main() {
     inet::init();
-
+    // Subscriber::default().init().unwrap();
     //    Logger::new().policy(Policy).set_logger();
 
     let mut app = NetworkApplication::new(

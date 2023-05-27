@@ -112,14 +112,14 @@ impl AsyncModule for UdpEcho4200 {
             let mut buf = [0u8; 1024];
             loop {
                 let Ok((n, src)) = socket.recv_from(&mut buf).await else {
-                    log::error!("echo server got recv error");
+                    tracing::error!("echo server got recv error");
                     continue
                 };
 
-                log::info!("Echoing {} bytes to {}", n, src);
+                tracing::info!("Echoing {} bytes to {}", n, src);
 
                 if let Err(_) = socket.send_to(&buf[..n], src).await {
-                    log::error!("echo server got sen error");
+                    tracing::error!("echo server got sen error");
                 }
             }
         });

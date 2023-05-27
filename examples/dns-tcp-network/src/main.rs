@@ -8,6 +8,7 @@ use des::{
         io::{AsyncReadExt, AsyncWriteExt},
         spawn,
     },
+    tracing::Subscriber,
 };
 use inet::{
     dns::{lookup_host, DNSNameserver},
@@ -18,6 +19,7 @@ use inet::{
     TcpListener, TcpStream,
 };
 use inet::{pcap::PcapCapturePoints, types::ip::IpMask};
+use tracing::level_filters::LevelFilter;
 
 struct Client;
 #[async_trait::async_trait]
@@ -117,7 +119,7 @@ impl AsyncModule for Server {
                     assert_eq!(lookup.ip(), addr);
                     stream.write_all(&[42]).await.unwrap();
 
-                    log::trace!("responded to new stream from {from:?} known as {s}");
+                    tracing::trace!("responded to new stream from {from:?} known as {s}");
                 });
             }
         });
@@ -227,7 +229,7 @@ impl AsyncModule for Router {
 
     // async fn at_sim_end(&mut self) {
     //     for line in inet::routing::route().unwrap() {
-    //         log::info!("{}", line);
+    //         tracing::info!("{}", line);
     //     }
     // }
 }
@@ -240,7 +242,7 @@ impl Module for LAN {
 
     fn at_sim_start(&mut self, _: usize) {
         let role = par("role").unwrap().into_inner();
-        log::info!("Acting as {} network", role);
+        tracing::info!("Acting as {} network", role);
 
         let addr = par("addr").unwrap().parse::<Ipv4Addr>().unwrap();
         let mask = par("mask").unwrap().parse::<Ipv4Addr>().unwrap();
@@ -271,9 +273,10 @@ impl Module for Main {
 fn main() {
     inet::init();
 
-    Logger::new()
-        // .interal_max_log_level(log::LevelFilter::Trace)
-        .set_logger();
+    Subscriber::default()
+        .with_max_level(LevelFilter::TRACE)
+        .init()
+        .unwrap();
 
     type Switch = LinkLayerSwitch;
 

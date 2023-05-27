@@ -45,20 +45,20 @@ impl AsyncModule for Node {
                 let buf = vec![i as u8; 42];
 
                 if target == ip {
-                    log::info!("sending 42 bytes to 127.0.0.1:100");
+                    tracing::info!("sending 42 bytes to 127.0.0.1:100");
                     loopback
                         .send_to(&buf, SocketAddrV4::new(Ipv4Addr::LOCALHOST, 100))
                         .await
                         .unwrap();
                 } else {
-                    log::info!("sending 42 bytes to {target}");
+                    tracing::info!("sending 42 bytes to {target}");
                     sock.send_to(&buf, SocketAddrV4::new(target, 100))
                         .await
                         .unwrap();
                 }
             }
 
-            // log::debug!("<fin> sending");
+            // tracing::debug!("<fin> sending");
         }));
 
         self.handles.push(tokio::spawn(async move {
@@ -69,10 +69,10 @@ impl AsyncModule for Node {
             for _ in 0..expected {
                 let mut buf = [0u8; 1024];
                 let (n, from) = sock.recv_from(&mut buf).await.unwrap();
-                log::info!("recieved {n}({}) bytes from {}", buf[0], from.ip());
+                tracing::info!("recieved {n}({}) bytes from {}", buf[0], from.ip());
             }
 
-            // log::debug!("<fin> receiving");
+            // tracing::debug!("<fin> receiving");
         }));
     }
 
@@ -113,7 +113,7 @@ impl Module for Main {
             )
         }
 
-        log::info!("expecting {targets:?}");
+        tracing::info!("expecting {targets:?}");
 
         for i in 0..5 {
             let c = targets.iter().filter(|e| **e == i).count();
@@ -127,7 +127,7 @@ impl Module for Main {
 fn udp_zerobind() {
     inet::init();
     // Logger::new()
-    // .interal_max_log_level(log::LevelFilter::Trace)
+    // .interal_max_log_level(tracing::LevelFilter::Trace)
     // .set_logger();
 
     let app = NdlApplication::new("tests/udp-zerobind/main.ndl", registry![Node, Switch, Main])

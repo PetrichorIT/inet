@@ -279,7 +279,7 @@ impl IOContext {
         // Precheck for link layer updates
         if msg.header().kind == KIND_LINK_UPDATE {
             let Some(&update) = msg.try_content::<LinkUpdate>() else {
-                log::error!(target: "inet/link", "found message with kind KIND_LINK_UPDATE, did not contain link updates");
+                tracing::error!(target: "inet/link", "found message with kind KIND_LINK_UPDATE, did not contain link updates");
                 return PassThrough(msg)
             };
             self.recv_linklayer_update(update);
@@ -310,7 +310,7 @@ impl IOContext {
             let mut pcap = self.pcap.borrow_mut();
             if pcap.capture.capture_l2_incoming() {
                 if let Err(e) = pcap.capture(&msg, ifid, iface) {
-                    log::error!(target: "inet/pcap", "failed to capture: {e}")
+                    tracing::error!(target: "inet/pcap", "failed to capture: {e}")
                 };
             }
         }
@@ -322,7 +322,7 @@ impl IOContext {
 
         if msg.header().kind == KIND_ARP {
             let Some(arp) = msg.try_content::<ArpPacket>() else {
-                log::error!(target: "inet/arp", "found message with kind 0x0806 (arp), but did not contain ARP packet");
+                tracing::error!(target: "inet/arp", "found message with kind 0x0806 (arp), but did not contain ARP packet");
                 return PassThrough(msg);
             };
 

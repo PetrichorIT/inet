@@ -72,13 +72,13 @@ impl AsyncModule for Client {
         let kind = msg.header().kind;
         match kind {
             2334 => {
-                log::info!("[lookup]");
+                tracing::info!("[lookup]");
                 let lookup = lookup_host("www.example.org:80").await;
                 match lookup {
                     Ok(iter) => {
-                        log::info!("[result]");
+                        tracing::info!("[result]");
                         for addr in iter {
-                            log::info!(">>> {}", addr)
+                            tracing::info!(">>> {}", addr)
                         }
                         self.suc = true
                     }
@@ -86,12 +86,12 @@ impl AsyncModule for Client {
                 }
             }
             _ => {
-                log::error!("{:?}", msg.content::<Ipv4Packet>());
+                tracing::error!("{:?}", msg.content::<Ipv4Packet>());
                 // let content = msg.cast::<Vec<u8>>().0;
                 // let msg = DNSMessage::from_buffer(content).unwrap();
-                // // log::info!("{:?}", msg)
+                // // tracing::info!("{:?}", msg)
                 // for record in msg.response() {
-                //     log::info!("> {}", record);
+                //     tracing::info!("> {}", record);
                 // }
             }
         }
@@ -267,7 +267,7 @@ impl Module for Router {
     }
 
     fn handle_message(&mut self, msg: Message) {
-        log::debug!("{}", msg.str());
+        tracing::debug!("{}", msg.str());
     }
 }
 
@@ -283,7 +283,7 @@ fn dns_basic() {
     inet::init();
 
     // Logger::new()
-    //     .interal_max_log_level(log::LevelFilter::Warn)
+    //     .interal_max_log_level(tracing::LevelFilter::Warn)
     //     .try_set_logger()
     //     .unwrap();
 

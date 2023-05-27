@@ -47,7 +47,7 @@ impl AsyncModule for Node {
             for target in targets {
                 sleep(Duration::from_secs_f64(random())).await;
                 let buf = [42; 42];
-                log::info!("sending 42 bytes to {target}");
+                tracing::info!("sending 42 bytes to {target}");
                 TcpStream::connect(SocketAddrV4::new(target, 100))
                     .await
                     .unwrap()
@@ -67,7 +67,7 @@ impl AsyncModule for Node {
                 let (mut stream, from) = lis.accept().await.unwrap();
                 let mut buf = [0u8; 1024];
                 let n = stream.read(&mut buf).await.unwrap();
-                log::info!("recieved {n} bytes from {}", from.ip());
+                tracing::info!("recieved {n} bytes from {}", from.ip());
             }
         }));
     }
@@ -78,7 +78,7 @@ impl AsyncModule for Node {
 
     async fn at_sim_end(&mut self) {
         // for entry in arpa().unwrap() {
-        //     log::debug!("{entry}")
+        //     tracing::debug!("{entry}")
         // }
         for h in self.handles.drain(..) {
             h.await.unwrap();
@@ -130,7 +130,7 @@ impl Module for Main {
 fn tcp_lan_v4() {
     inet::init();
     // Logger::new()
-    // .interal_max_log_level(log::LevelFilter::Trace)
+    // .interal_max_log_level(tracing::LevelFilter::Trace)
     // .set_logger();
 
     let app = NdlApplication::new("tests/tcp-lan/main.ndl", registry![Node, Switch, Main])

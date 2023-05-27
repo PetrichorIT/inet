@@ -82,7 +82,7 @@ impl Module for Main {
 fn routing_info() {
     inet::init();
     // Logger::new()
-    //     .interal_max_log_level(log::LevelFilter::Info)
+    //     .interal_max_log_level(tracing::LevelFilter::Info)
     //     .set_logger();
 
     let app = NetworkApplication::new(

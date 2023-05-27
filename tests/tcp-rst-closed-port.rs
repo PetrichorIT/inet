@@ -32,7 +32,7 @@ impl AsyncModule for OneAttemptClient {
 
         self.handles.push(spawn(async move {
             let sock = TcpStream::connect("69.0.0.69:8000").await;
-            log::info!("{:?}", sock);
+            tracing::info!("{:?}", sock);
             assert!(sock.is_err());
         }));
     }
@@ -70,7 +70,7 @@ impl<const EXPECT: bool> AsyncModule for MultipleAttemptClient<EXPECT> {
                 "69.0.0.69:10000".parse().unwrap(),
             ];
             let sock = TcpStream::connect(&addrs[..]).await;
-            log::info!("{:?}", sock);
+            tracing::info!("{:?}", sock);
             assert_eq!(sock.is_ok(), EXPECT);
         }));
     }

@@ -137,7 +137,7 @@ impl DHCPServer {
                 let (timestamp, _) = self.transactions.get(&key).unwrap();
                 if SimTime::now().duration_since(*timestamp) >= self.config.timeout {
                     let (_, transaction) = self.transactions.remove(&key).unwrap();
-                    log::trace!(target: "inet/dhcp", "<DHCPServer> Canceled handshake {:x} due to timeout", key);
+                    tracing::trace!(target: "inet/dhcp", "<DHCPServer> Canceled handshake {:x} due to timeout", key);
                     // remove reserved entry
                     self.reserved.remove(&transaction.offered.addr).unwrap();
                 }
@@ -155,7 +155,7 @@ impl DHCPServer {
                 let ops = self.ops_from_config_for_offer(&msg, &config);
                 let offer = DHCPMessage::offer(msg, self.addr, config.addr, ops);
 
-                log::trace!(
+                tracing::trace!(
                     target: "inet/dhcp",
                     "<DHCPServer> Initiated handshake {:x} with offer {:?}",
                     offer.xid,
@@ -191,7 +191,7 @@ impl DHCPServer {
                 };
 
                 if msg.siaddr != self.addr {
-                    log::trace!(
+                    tracing::trace!(
                         target: "inet/dhcp",
                         "<DHCPServer> Canceled handshake {:x}. Handled by other instance {:?}",
                         msg.xid,
@@ -206,7 +206,7 @@ impl DHCPServer {
                 let ops = self.ops_from_config_for_offer(&msg, &config.offered);
                 let ack = DHCPMessage::ack(msg, ops);
 
-                log::trace!(
+                tracing::trace!(
                     target: "inet/dhcp",
                     "<DHCPServer> Finished handshake {:x} with binding {:?}",
                     ack.xid,

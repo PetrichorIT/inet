@@ -1,4 +1,4 @@
-use des::{prelude::*, registry, tokio::spawn};
+use des::{prelude::*, registry, tokio::spawn, tracing::Subscriber};
 use inet::{
     icmp::traceroute,
     interface::{add_interface, Interface, NetworkDevice},
@@ -74,21 +74,21 @@ impl AsyncModule for Eve {
         // Ready to go
         spawn(async move {
             // let p = inet::TcpStream::connect("200.1.0.101:80").await;
-            // log::info!("{p:?}");
+            // tracing::info!("{p:?}");
 
-            log::info!("{:?}", traceroute(Ipv4Addr::new(200, 1, 0, 1)).await);
+            tracing::info!("{:?}", traceroute(Ipv4Addr::new(200, 1, 0, 1)).await);
 
             // let p = ping("200.1.0.81".parse::<Ipv4Addr>().unwrap()).await;
-            // log::info!("{p:?}");
+            // tracing::info!("{p:?}");
 
             // let p = inet::TcpStream::connect("200.1.0.81:80").await;
-            // log::info!("{p:?}");
+            // tracing::info!("{p:?}");
 
             // // let arp entry time out
             // sleep(Duration::from_secs(60)).await;
 
             // let p = ping("200.1.0.81".parse::<Ipv4Addr>().unwrap()).await;
-            // log::info!("{p:?}");
+            // tracing::info!("{p:?}");
         });
     }
 }
@@ -123,9 +123,10 @@ impl AsyncModule for Main {
 fn main() {
     inet::init();
 
-    Logger::new()
-        // .interal_max_log_level(log::LevelFilter::Trace)
-        .set_logger();
+    Subscriber::default()
+        // .interal_max_log_level(tracing::LevelFilter::Trace)
+        .init()
+        .unwrap();
 
     let app = NdlApplication::new("src/bin/ping.ndl", registry![Alice, Bob, Eve, Main])
         .map_err(|e| println!("{e}"))

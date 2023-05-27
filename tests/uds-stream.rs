@@ -26,7 +26,7 @@ impl AsyncModule for Simplex {
         self.handles.push(spawn(async move {
             let server = UnixListener::bind("/tmp/listener").unwrap();
             while let Ok((mut stream, from)) = server.accept().await {
-                log::info!("stream established from {from:?}");
+                tracing::info!("stream established from {from:?}");
                 sleep(Duration::from_secs(1)).await;
 
                 let mut buf = [0; 512];
@@ -34,10 +34,10 @@ impl AsyncModule for Simplex {
                     let n = stream.read(&mut buf).await.unwrap();
 
                     if n == 0 {
-                        log::info!("stream closed");
+                        tracing::info!("stream closed");
                         break;
                     }
-                    log::info!("received {n} bytes");
+                    tracing::info!("received {n} bytes");
                 }
                 break;
             }
@@ -45,7 +45,7 @@ impl AsyncModule for Simplex {
 
         self.handles.push(spawn(async move {
             let mut client = UnixStream::connect("/tmp/listener").await.unwrap();
-            log::info!("connected");
+            tracing::info!("connected");
             sleep(Duration::from_secs(1)).await;
 
             client.write_all(&[42; 5000]).await.unwrap();
@@ -64,7 +64,7 @@ impl AsyncModule for Simplex {
 fn uds_simplex() {
     inet::init();
     // Logger::new()
-    // .interal_max_log_level(log::LevelFilter::Trace)
+    // .interal_max_log_level(tracing::LevelFilter::Trace)
     // .set_logger();
 
     type Main = Simplex;
@@ -96,13 +96,13 @@ impl AsyncModule for Duplex {
         self.handles.push(spawn(async move {
             let server = UnixListener::bind("/tmp/listener").unwrap();
             while let Ok((mut stream, from)) = server.accept().await {
-                log::info!("stream established from {from:?}");
+                tracing::info!("stream established from {from:?}");
                 sleep(Duration::from_secs(1)).await;
 
                 let mut buf = vec![0; 5000];
                 stream.read_exact(&mut buf).await.unwrap();
                 stream.write_all(&buf).await.unwrap();
-                log::info!("stream closed");
+                tracing::info!("stream closed");
 
                 break;
             }
@@ -110,7 +110,7 @@ impl AsyncModule for Duplex {
 
         self.handles.push(spawn(async move {
             let mut client = UnixStream::connect("/tmp/listener").await.unwrap();
-            log::info!("connected");
+            tracing::info!("connected");
             sleep(Duration::from_secs(1)).await;
 
             let wbuf = repeat_with(|| random()).take(5000).collect::<Vec<_>>();
@@ -135,7 +135,7 @@ impl AsyncModule for Duplex {
 fn uds_duplex() {
     inet::init();
     // Logger::new()
-    // .interal_max_log_level(log::LevelFilter::Trace)
+    // .interal_max_log_level(tracing::LevelFilter::Trace)
     // .set_logger();
 
     type Main = Duplex;
@@ -172,7 +172,7 @@ impl AsyncModule for UnnamedPair {
             let mut buf = vec![0; 5000];
             server.read_exact(&mut buf).await.unwrap();
             server.write_all(&buf).await.unwrap();
-            log::info!("stream closed");
+            tracing::info!("stream closed");
         }));
 
         self.handles.push(spawn(async move {
@@ -200,7 +200,7 @@ impl AsyncModule for UnnamedPair {
 fn uds_stream_unnamed_pair() {
     inet::init();
     // Logger::new()
-    // .interal_max_log_level(log::LevelFilter::Trace)
+    // .interal_max_log_level(tracing::LevelFilter::Trace)
     // .set_logger();
 
     type Main = UnnamedPair;

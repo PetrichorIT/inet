@@ -36,7 +36,7 @@ impl Plugin for IOPlugin {
 
     fn state(&self) -> Box<dyn Any> {
         let ip = self.ctx.as_ref().map(|ctx| ctx.get_ip()).flatten();
-        // log::info!("returning {:?} at ", ip);
+        // tracing::info!("returning {:?} at ", ip);
         Box::new(ip)
     }
 }

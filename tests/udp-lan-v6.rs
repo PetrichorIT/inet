@@ -59,7 +59,7 @@ impl AsyncModule for Node {
             for target in targets {
                 sleep(Duration::from_secs_f64(random())).await;
                 let buf = [42; 42];
-                log::info!("sending 42 bytes to {target}");
+                tracing::info!("sending 42 bytes to {target}");
                 sock.send_to(&buf, SocketAddrV6::new(target, 100, 0, 0))
                     .await
                     .unwrap();
@@ -71,7 +71,7 @@ impl AsyncModule for Node {
             for _ in 0..expected {
                 let mut buf = [0u8; 1024];
                 let (n, from) = sock.recv_from(&mut buf).await.unwrap();
-                log::info!("recieved {n} bytes from {}", from.ip());
+                tracing::info!("recieved {n} bytes from {}", from.ip());
             }
         }));
     }
@@ -82,7 +82,7 @@ impl AsyncModule for Node {
 
     async fn at_sim_end(&mut self) {
         for entry in arpa().unwrap() {
-            log::debug!("{entry}")
+            tracing::debug!("{entry}")
         }
         for h in self.handles.drain(..) {
             h.await.unwrap();
@@ -90,7 +90,7 @@ impl AsyncModule for Node {
     }
 
     async fn handle_message(&mut self, msg: Message) {
-        log::error!(
+        tracing::error!(
             "msg :: {} :: {} // {:?} -> {:?}",
             msg.str(),
             module_name(),
@@ -135,7 +135,7 @@ impl Module for Main {
 fn udp_lan_v6() {
     inet::init();
     // Logger::new()
-    // .interal_max_log_level(log::LevelFilter::Trace)
+    // .interal_max_log_level(tracing::LevelFilter::Trace)
     // .set_logger();
 
     let app = NdlApplication::new("tests/udp-lan/main.ndl", registry![Node, Switch, Main])

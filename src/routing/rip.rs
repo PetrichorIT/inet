@@ -144,7 +144,7 @@ impl RipRoutingDeamon {
         iface: String,
         changes: &mut Vec<RipEntry>,
     ) {
-        // log::info!(target: "inet/rip", "discovered new neighbor {router:?} ({mask:?}) on port {iface}");
+        // tracing::info!(target: "inet/rip", "discovered new neighbor {router:?} ({mask:?}) on port {iface}");
 
         let subnet = Ipv4Addr::from(u32::from(router) & u32::from(mask));
 
@@ -169,7 +169,7 @@ impl RipRoutingDeamon {
         if let Some(dv) = self.vectors.get_mut(&subnet) {
             *dv = v;
         } else {
-            // log::trace!(target: "inet/rip", "new destination {:?}", subnet);
+            // tracing::trace!(target: "inet/rip", "new destination {:?}", subnet);
             self.vectors.insert(subnet, v);
         }
 
@@ -232,7 +232,7 @@ impl RipRoutingDeamon {
                 result = sock.recv_from(&mut buf) => match result {
                     Ok(vv) => vv,
                     Err(e) => {
-                        log::error!(target: "inet/rip", "socket recv error: {e}");
+                        tracing::error!(target: "inet/rip", "socket recv error: {e}");
                         continue;
                     }
                 },
@@ -243,7 +243,7 @@ impl RipRoutingDeamon {
 
                         if SimTime::now() >= entry.deadline {
                             // Timeout
-                            log::info!("Timeout for DV");
+                            tracing::info!("Timeout for DV");
                         } else if SimTime::now() >= entry.update_time {
                             // request update
                             updates.entry(entry.gateway).or_insert(Vec::new()).push(RipEntry {
@@ -361,7 +361,7 @@ impl RipRoutingDeamon {
                             if dv.target == local_subnet {
                                 continue;
                             }
-                            // log::trace!(target: "inet/rip", "new destination {:?} (info from {raddr})", dv.target);
+                            // tracing::trace!(target: "inet/rip", "new destination {:?} (info from {raddr})", dv.target);
 
                             self.vectors.insert(
                                 dv.target,
@@ -388,7 +388,7 @@ impl RipRoutingDeamon {
             }
 
             if !changes.is_empty() {
-                // log::trace!(
+                // tracing::trace!(
                 //     "{} changes to be published to {} neighbors",
                 //     changes.len(),
                 //     self.neighbors.len()
@@ -416,7 +416,7 @@ impl RipRoutingDeamon {
                     .unwrap_or(SimTime::MAX);
                 self.next_timeout = min.max(SimTime::now());
             } else {
-                // log::trace!("no changes");
+                // tracing::trace!("no changes");
             }
         }
     }
