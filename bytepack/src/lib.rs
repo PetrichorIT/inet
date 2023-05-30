@@ -32,46 +32,6 @@ pub struct PositionMarker<T> {
     _phantom: PhantomData<T>,
 }
 
-pub trait FromBytestream: Sized {
-    type Error;
-    fn from_bytestream(stream: &mut BytestreamReader) -> Result<Self, Self::Error>;
-    fn from_buffer(buffer: impl AsRef<[u8]>) -> Result<Self, Self::Error> {
-        let buf = buffer.as_ref();
-        Self::from_bytestream(&mut BytestreamReader { buf })
-    }
-}
-
-#[derive(Debug)]
-pub struct BytestreamReader<'a> {
-    buf: &'a [u8],
-}
-
-impl BytestreamReader<'_> {
-    pub fn extract(&mut self, n: usize) -> io::Result<BytestreamReader<'_>> {
-        if self.buf.len() < n {
-            todo!()
-        }
-        let stream = BytestreamReader {
-            buf: &self.buf[..n],
-        };
-        self.buf = &self.buf[n..];
-        Ok(stream)
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.buf.is_empty()
-    }
-}
-
-impl Read for BytestreamReader<'_> {
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        let min = buf.len().min(self.buf.len());
-        buf[..min].copy_from_slice(&self.buf[..min]);
-        self.buf = &self.buf[min..];
-        Ok(min)
-    }
-}
-
 impl BytestreamWriter {
     pub fn add_marker<T: StreamWriter>(
         &mut self,
@@ -114,6 +74,46 @@ impl Write for BytestreamWriter {
     }
     fn flush(&mut self) -> std::io::Result<()> {
         self.buf.flush()
+    }
+}
+
+pub trait FromBytestream: Sized {
+    type Error;
+    fn from_bytestream(stream: &mut BytestreamReader) -> Result<Self, Self::Error>;
+    fn from_buffer(buffer: impl AsRef<[u8]>) -> Result<Self, Self::Error> {
+        let buf = buffer.as_ref();
+        Self::from_bytestream(&mut BytestreamReader { buf })
+    }
+}
+
+#[derive(Debug)]
+pub struct BytestreamReader<'a> {
+    buf: &'a [u8],
+}
+
+impl BytestreamReader<'_> {
+    pub fn extract(&mut self, n: usize) -> io::Result<BytestreamReader<'_>> {
+        if self.buf.len() < n {
+            todo!()
+        }
+        let stream = BytestreamReader {
+            buf: &self.buf[..n],
+        };
+        self.buf = &self.buf[n..];
+        Ok(stream)
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.buf.is_empty()
+    }
+}
+
+impl Read for BytestreamReader<'_> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        let min = buf.len().min(self.buf.len());
+        buf[..min].copy_from_slice(&self.buf[..min]);
+        self.buf = &self.buf[min..];
+        Ok(min)
     }
 }
 
@@ -168,6 +168,7 @@ macro_rules! raw_enum {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ::byteorder::{WriteBytesExt, BE};
     use bytestream::StreamReader;
     use std::io::Error;
 
@@ -183,7 +184,7 @@ mod tests {
             fn to_bytestream(&self, stream: &mut BytestreamWriter) -> Result<(), Self::Error> {
                 let marker = stream.add_marker(0u16, ByteOrder::BigEndian)?;
                 for val in &self.vals {
-                    val.write_to(stream, ByteOrder::BigEndian)?;
+                    stream.write_u16::<BE>(*val)?;
                 }
                 let len = stream.len_since(&marker)?;
                 stream.write_to_marker(marker, len as u16)?;

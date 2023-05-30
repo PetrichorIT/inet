@@ -273,6 +273,11 @@ impl IOContext {
             return true;
         }
 
+        // ONLY SYN
+        if !tcp_pkt.flags.syn || tcp_pkt.flags.ack {
+            return true;
+        }
+
         // (2) Check for active listeners
         if let Some((fd, sock)) = valid_sockets
             .iter()
@@ -1427,6 +1432,12 @@ impl IOContext {
         if ctrl.state as u8 > TcpState::Established as u8
             || ctrl.tx_state != TcpSenderState::Established
         {
+            println!(
+                "{} / {} / peer {}",
+                module_path(),
+                ctrl.local_addr,
+                ctrl.peer_addr
+            );
             self.tcp.streams.insert(fd, ctrl);
             return Ok(0);
         }
