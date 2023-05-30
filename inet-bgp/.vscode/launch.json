@@ -1,0 +1,837 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in library 'inet-types'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--lib",
+                    "--package=inet-types"
+                ],
+                "filter": {
+                    "name": "inet-types",
+                    "kind": "lib"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in library 'inet-bgp'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--lib",
+                    "--package=inet-bgp"
+                ],
+                "filter": {
+                    "name": "inet-bgp",
+                    "kind": "lib"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'bgp'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=bgp",
+                    "--package=inet-bgp"
+                ],
+                "filter": {
+                    "name": "bgp",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in executable 'bgp'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=bgp",
+                    "--package=inet-bgp"
+                ],
+                "filter": {
+                    "name": "bgp",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in library 'bytepack'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--lib",
+                    "--package=bytepack"
+                ],
+                "filter": {
+                    "name": "bytepack",
+                    "kind": "lib"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in library 'inet'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--lib",
+                    "--package=inet"
+                ],
+                "filter": {
+                    "name": "inet",
+                    "kind": "lib"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'spoofing'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=spoofing",
+                    "--package=inet"
+                ],
+                "filter": {
+                    "name": "spoofing",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in executable 'spoofing'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=spoofing",
+                    "--package=inet"
+                ],
+                "filter": {
+                    "name": "spoofing",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'ping'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=ping",
+                    "--package=inet"
+                ],
+                "filter": {
+                    "name": "ping",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in executable 'ping'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=ping",
+                    "--package=inet"
+                ],
+                "filter": {
+                    "name": "ping",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'tcp-rtt'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=tcp-rtt",
+                    "--package=inet"
+                ],
+                "filter": {
+                    "name": "tcp-rtt",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in executable 'tcp-rtt'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=tcp-rtt",
+                    "--package=inet"
+                ],
+                "filter": {
+                    "name": "tcp-rtt",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'tcp'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=tcp",
+                    "--package=inet"
+                ],
+                "filter": {
+                    "name": "tcp",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in executable 'tcp'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=tcp",
+                    "--package=inet"
+                ],
+                "filter": {
+                    "name": "tcp",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug integration test 'uds-dgram'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--test=uds-dgram",
+                    "--package=inet"
+                ],
+                "filter": {
+                    "name": "uds-dgram",
+                    "kind": "test"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug integration test 'tcp-simultaneous-close'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--test=tcp-simultaneous-close",
+                    "--package=inet"
+                ],
+                "filter": {
+                    "name": "tcp-simultaneous-close",
+                    "kind": "test"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug integration test 'udp-lan-v6'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--test=udp-lan-v6",
+                    "--package=inet"
+                ],
+                "filter": {
+                    "name": "udp-lan-v6",
+                    "kind": "test"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug integration test 'tcp-missing-data-at-close'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--test=tcp-missing-data-at-close",
+                    "--package=inet"
+                ],
+                "filter": {
+                    "name": "tcp-missing-data-at-close",
+                    "kind": "test"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug integration test 'tcp-lan-v4'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--test=tcp-lan-v4",
+                    "--package=inet"
+                ],
+                "filter": {
+                    "name": "tcp-lan-v4",
+                    "kind": "test"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug integration test 'tcp-listen-backlog'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--test=tcp-listen-backlog",
+                    "--package=inet"
+                ],
+                "filter": {
+                    "name": "tcp-listen-backlog",
+                    "kind": "test"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug integration test 'raw-ip-socket'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--test=raw-ip-socket",
+                    "--package=inet"
+                ],
+                "filter": {
+                    "name": "raw-ip-socket",
+                    "kind": "test"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug integration test 'interfaces'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--test=interfaces",
+                    "--package=inet"
+                ],
+                "filter": {
+                    "name": "interfaces",
+                    "kind": "test"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug integration test 'udp-broadcast'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--test=udp-broadcast",
+                    "--package=inet"
+                ],
+                "filter": {
+                    "name": "udp-broadcast",
+                    "kind": "test"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug integration test 'tcp-close-data-complete'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--test=tcp-close-data-complete",
+                    "--package=inet"
+                ],
+                "filter": {
+                    "name": "tcp-close-data-complete",
+                    "kind": "test"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug integration test 'udp-pingpong'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--test=udp-pingpong",
+                    "--package=inet"
+                ],
+                "filter": {
+                    "name": "udp-pingpong",
+                    "kind": "test"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug integration test 'uds-stream'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--test=uds-stream",
+                    "--package=inet"
+                ],
+                "filter": {
+                    "name": "uds-stream",
+                    "kind": "test"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug integration test 'tcp-partial-mtu-at-close'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--test=tcp-partial-mtu-at-close",
+                    "--package=inet"
+                ],
+                "filter": {
+                    "name": "tcp-partial-mtu-at-close",
+                    "kind": "test"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug integration test 'udp-routed'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--test=udp-routed",
+                    "--package=inet"
+                ],
+                "filter": {
+                    "name": "udp-routed",
+                    "kind": "test"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug integration test 'arp'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--test=arp",
+                    "--package=inet"
+                ],
+                "filter": {
+                    "name": "arp",
+                    "kind": "test"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug integration test 'udp-zerobind'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--test=udp-zerobind",
+                    "--package=inet"
+                ],
+                "filter": {
+                    "name": "udp-zerobind",
+                    "kind": "test"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug integration test 'tcp-echo-100k'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--test=tcp-echo-100k",
+                    "--package=inet"
+                ],
+                "filter": {
+                    "name": "tcp-echo-100k",
+                    "kind": "test"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug integration test 'routing-info'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--test=routing-info",
+                    "--package=inet"
+                ],
+                "filter": {
+                    "name": "routing-info",
+                    "kind": "test"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug integration test 'udp-select'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--test=udp-select",
+                    "--package=inet"
+                ],
+                "filter": {
+                    "name": "udp-select",
+                    "kind": "test"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug integration test 'tcp-lan-v6'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--test=tcp-lan-v6",
+                    "--package=inet"
+                ],
+                "filter": {
+                    "name": "tcp-lan-v6",
+                    "kind": "test"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug integration test 'tcp-multi-accept'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--test=tcp-multi-accept",
+                    "--package=inet"
+                ],
+                "filter": {
+                    "name": "tcp-multi-accept",
+                    "kind": "test"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug integration test 'dns-basic'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--test=dns-basic",
+                    "--package=inet"
+                ],
+                "filter": {
+                    "name": "dns-basic",
+                    "kind": "test"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug integration test 'common'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--test=common",
+                    "--package=inet"
+                ],
+                "filter": {
+                    "name": "common",
+                    "kind": "test"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug integration test 'udp-busysend'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--test=udp-busysend",
+                    "--package=inet"
+                ],
+                "filter": {
+                    "name": "udp-busysend",
+                    "kind": "test"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug integration test 'udp-lan-v4'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--test=udp-lan-v4",
+                    "--package=inet"
+                ],
+                "filter": {
+                    "name": "udp-lan-v4",
+                    "kind": "test"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug integration test 'tcp-rst-closed-port'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--test=tcp-rst-closed-port",
+                    "--package=inet"
+                ],
+                "filter": {
+                    "name": "tcp-rst-closed-port",
+                    "kind": "test"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'hyper-example'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=hyper-example",
+                    "--package=hyper-example"
+                ],
+                "filter": {
+                    "name": "hyper-example",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in executable 'hyper-example'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=hyper-example",
+                    "--package=hyper-example"
+                ],
+                "filter": {
+                    "name": "hyper-example",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'dns-tcp-network'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=dns-tcp-network",
+                    "--package=dns-tcp-network"
+                ],
+                "filter": {
+                    "name": "dns-tcp-network",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in executable 'dns-tcp-network'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=dns-tcp-network",
+                    "--package=dns-tcp-network"
+                ],
+                "filter": {
+                    "name": "dns-tcp-network",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        }
+    ]
+}

@@ -1,0 +1,32 @@
+module A {
+    gates {
+        in @input,
+        out @output,
+    }
+}
+
+module B {
+    gates {
+        in @input,
+        out @output,
+    }
+}
+
+link L {
+    latency: 0.01,
+    bitrate: 1000000,
+    jitter: 0.0
+}
+
+module Main {
+    submodules {
+        a: A,
+        b: B
+    }
+    connections {
+        a/out --> L --> b/in,
+        a/in <-- L <-- b/out,
+    }
+}
+
+entry Main;
