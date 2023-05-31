@@ -1,5 +1,5 @@
 use des::prelude::*;
-use std::fmt;
+use std::{fmt, ops::Deref};
 
 use crate::socket::Fd;
 
@@ -56,6 +56,13 @@ impl InterfaceName {
             id: IfId(hash),
             parent: None,
         }
+    }
+}
+
+impl Deref for InterfaceName {
+    type Target = str;
+    fn deref(&self) -> &Self::Target {
+        &self.name
     }
 }
 

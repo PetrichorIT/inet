@@ -38,6 +38,7 @@ mod plugin;
 pub use plugin::*;
 
 mod ctx;
+pub use ctx::Current;
 use ctx::*;
 
 /// Initaliztion function for inet-plugins.

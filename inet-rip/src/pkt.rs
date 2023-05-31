@@ -1,8 +1,8 @@
+use bytepack::raw_enum;
 use bytepack::{
     ByteOrder::BigEndian, BytestreamReader, BytestreamWriter, FromBytestream, StreamReader,
     StreamWriter, ToBytestream,
 };
-use std::io::ErrorKind;
 use std::{io::Error, net::Ipv4Addr};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -12,13 +12,13 @@ pub struct RipPacket {
     pub entries: Vec<RipEntry>,
 }
 
-primitve_enum_repr! {
+raw_enum! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
     pub enum RipCommand {
-        type Repr = u8;
+        type Repr = u8 where BigEndian;
         Request = 1,
         Response = 2,
-    };
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -49,7 +49,7 @@ impl RipPacket {
 impl ToBytestream for RipPacket {
     type Error = Error;
     fn to_bytestream(&self, bytestream: &mut BytestreamWriter) -> Result<(), Self::Error> {
-        self.command.to_raw().write_to(bytestream, BigEndian)?;
+        self.command.to_bytestream(bytestream)?;
         2u8.write_to(bytestream, BigEndian)?;
         0u16.write_to(bytestream, BigEndian)?;
         for entry in &self.entries {
@@ -62,9 +62,7 @@ impl ToBytestream for RipPacket {
 impl FromBytestream for RipPacket {
     type Error = Error;
     fn from_bytestream(bytestream: &mut BytestreamReader) -> Result<Self, Self::Error> {
-        let command = RipCommand::from_raw(u8::read_from(bytestream, BigEndian)?).ok_or(
-            Error::new(ErrorKind::InvalidData, "unknown command in rip packet"),
-        )?;
+        let command = RipCommand::from_bytestream(bytestream)?;
         let version = u8::read_from(bytestream, BigEndian)?;
         assert_eq!(version, 2);
         assert_eq!(0, u16::read_from(bytestream, BigEndian)?);

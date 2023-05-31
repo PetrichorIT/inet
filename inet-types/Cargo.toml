@@ -7,7 +7,6 @@ edition = "2021"
 default = []
 dns = []
 uds = []
-rip = []
 
 [dependencies]
 bytepack = { path = "../bytepack"}

@@ -2,6 +2,7 @@
 members = [
     "inet-types",
     "inet-bgp",
+    "inet-rip",
     "bytepack",
     "examples/*",
 ]
@@ -19,7 +20,6 @@ dns = ["inet-types/dns"]
 uds = ["inet-types/uds"]
 dhcp = []
 pcap = []
-rip = ["inet-types/rip"]
 
 [dependencies]
 async-trait = "*"

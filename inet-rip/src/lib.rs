@@ -3,18 +3,19 @@
 use bytepack::{FromBytestream, ToBytestream};
 use des::time::{sleep, Duration, SimTime};
 use fxhash::{FxBuildHasher, FxHashMap};
-use inet_types::routing::rip::{RipCommand, RipEntry, RipPacket, AF_INET};
 use std::net::{IpAddr, Ipv4Addr};
 
-use crate::IOContext;
-use crate::{
-    interface::{add_interface, Interface},
+use inet::{
+    interface::{add_interface, interface_status, Interface},
     routing::add_routing_entry,
-    UdpSocket,
+    Current, UdpSocket,
 };
 
-use super::RoutingInformation;
-use super::RoutingPort;
+use inet::routing::RoutingInformation;
+use inet::routing::RoutingPort;
+
+mod pkt;
+pub use self::pkt::*;
 
 /// Configuration for RIP routers.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -276,10 +277,12 @@ impl RipRoutingDeamon {
             let (raddr, rport, new_neighbor) = if let IpAddr::V4(v4) = from.ip() {
                 let (incoming, new_neighbor) = match self.neighbors.get(&v4) {
                     Some(v) => (v.iface.clone(), false),
-                    None => IOContext::with_current(|ctx| {
-                        let iface = ctx.ifaces.get(&ctx.current.ifid).unwrap();
-                        (iface.name.name.clone(), true)
-                    }),
+                    None => {
+                        // current
+                        let c = Current::fetch();
+                        let info = interface_status(&c.ifid).unwrap();
+                        (info.name.to_string(), true)
+                    }
                 };
                 (v4, incoming, new_neighbor)
             } else {

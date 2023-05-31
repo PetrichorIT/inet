@@ -56,8 +56,14 @@ pub(crate) struct IOContext {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct Current {
+pub struct Current {
     pub ifid: IfId,
+}
+
+impl Current {
+    pub fn fetch() -> Current {
+        IOContext::with_current(|ctx| ctx.current.clone())
+    }
 }
 
 impl IOContext {

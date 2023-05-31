@@ -5,7 +5,10 @@ use std::{
 
 use des::{prelude::module_name, time::SimTime};
 
-use super::{Interface, InterfaceAddr, MacAddress};
+use super::{
+    IfId, Interface, InterfaceAddr, InterfaceBusyState, InterfaceFlags, InterfaceName,
+    InterfaceStatus, MacAddress,
+};
 use crate::{
     arp::ArpEntryInternal,
     routing::{ForwardingEntryV4, Ipv4Gateway, Ipv6Gateway},
@@ -17,8 +20,21 @@ pub fn add_interface(iface: Interface) -> Result<()> {
     IOContext::failable_api(|ctx| ctx.add_interface(iface))
 }
 
+pub fn interface_status(ifid: &IfId) -> Result<InterfaceState> {
+    IOContext::failable_api(|ctx| ctx.interface_status(ifid))
+}
+
+pub struct InterfaceState {
+    pub name: InterfaceName,
+    pub flags: InterfaceFlags,
+    pub addrs: Vec<InterfaceAddr>,
+    pub status: InterfaceStatus,
+    pub busy: InterfaceBusyState,
+    pub queuelen: usize,
+}
+
 impl IOContext {
-    pub(crate) fn add_interface(&mut self, iface: Interface) -> Result<()> {
+    fn add_interface(&mut self, iface: Interface) -> Result<()> {
         if self.ifaces.get(&iface.name.id).is_some() {
             Err(Error::new(
                 ErrorKind::Other,
@@ -119,5 +135,22 @@ impl IOContext {
             self.ifaces.insert(iface.name.id, iface);
             Ok(())
         }
+    }
+
+    fn interface_status(&mut self, ifid: &IfId) -> Result<InterfaceState> {
+        let Some(iface) = self.ifaces.get(ifid) else {
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                "no such interface exists"
+            ))
+        };
+        Ok(InterfaceState {
+            name: iface.name.clone(),
+            flags: iface.flags,
+            addrs: iface.addrs.clone(),
+            status: iface.status,
+            busy: iface.state.clone(),
+            queuelen: iface.buffer.len(),
+        })
     }
 }
