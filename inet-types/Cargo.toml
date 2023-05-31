@@ -10,5 +10,5 @@ uds = []
 rip = []
 
 [dependencies]
-bytestream = "*"
+bytepack = { path = "../bytepack"}
 des = { version = "*", features = ["full"] }

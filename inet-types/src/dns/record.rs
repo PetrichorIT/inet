@@ -1,8 +1,7 @@
 use crate::dns::DNSString;
-use crate::{FromBytestream, IntoBytestream};
-use bytestream::{ByteOrder::BigEndian, StreamReader, StreamWriter};
+use bytepack::{ByteOrder::BigEndian, FromBytestream, StreamReader, StreamWriter, ToBytestream};
+use bytepack::{BytestreamReader, BytestreamWriter};
 use std::fmt::Display;
-use std::io::{Cursor, Write};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::str::FromStr;
 
@@ -16,9 +15,9 @@ pub struct DNSResourceRecord {
     pub rdata: Vec<u8>,
 }
 
-impl IntoBytestream for DNSResourceRecord {
+impl ToBytestream for DNSResourceRecord {
     type Error = std::io::Error;
-    fn to_bytestream(&self, bytestream: &mut impl Write) -> Result<(), Self::Error> {
+    fn to_bytestream(&self, bytestream: &mut BytestreamWriter) -> Result<(), Self::Error> {
         self.name.to_bytestream(bytestream)?;
 
         self.typ.to_raw().write_to(bytestream, BigEndian)?;
@@ -36,7 +35,7 @@ impl IntoBytestream for DNSResourceRecord {
 
 impl FromBytestream for DNSResourceRecord {
     type Error = std::io::Error;
-    fn from_bytestream(bytestream: &mut Cursor<impl AsRef<[u8]>>) -> Result<Self, Self::Error> {
+    fn from_bytestream(bytestream: &mut BytestreamReader) -> Result<Self, Self::Error> {
         let name = DNSString::from_bytestream(bytestream)?;
 
         let typ = DNSType::from_raw(u16::read_from(bytestream, BigEndian)?).unwrap();

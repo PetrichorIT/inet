@@ -1,6 +1,6 @@
 use std::net::{Ipv4Addr, Ipv6Addr};
 
-use crate::{FromBytestream, IntoBytestream};
+use bytepack::{FromBytestream, ToBytestream};
 
 use super::*;
 

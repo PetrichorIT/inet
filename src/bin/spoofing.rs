@@ -1,3 +1,4 @@
+use bytepack::ToBytestream;
 use des::{prelude::*, registry, time::sleep, tokio::spawn, tracing::Subscriber};
 use inet::{
     interface::{add_interface, Interface, NetworkDevice},
@@ -7,7 +8,6 @@ use inet::{
 use inet_types::{
     ip::{IpPacket, Ipv4Flags, Ipv4Packet},
     tcp::{TcpFlags, TcpPacket, PROTO_TCP},
-    IntoBytestream,
 };
 
 struct Spoofer {}

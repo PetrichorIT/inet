@@ -1,9 +1,9 @@
-use bytestream::ByteOrder::BigEndian;
-use bytestream::{StreamReader, StreamWriter};
+use bytepack::{
+    ByteOrder::BigEndian, BytestreamReader, BytestreamWriter, FromBytestream, StreamReader,
+    StreamWriter, ToBytestream,
+};
 use std::io::ErrorKind;
 use std::{io::Error, net::Ipv4Addr};
-
-use crate::{FromBytestream, IntoBytestream};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct RipPacket {
@@ -46,9 +46,9 @@ impl RipPacket {
     }
 }
 
-impl IntoBytestream for RipPacket {
+impl ToBytestream for RipPacket {
     type Error = Error;
-    fn to_bytestream(&self, bytestream: &mut impl std::io::Write) -> Result<(), Self::Error> {
+    fn to_bytestream(&self, bytestream: &mut BytestreamWriter) -> Result<(), Self::Error> {
         self.command.to_raw().write_to(bytestream, BigEndian)?;
         2u8.write_to(bytestream, BigEndian)?;
         0u16.write_to(bytestream, BigEndian)?;
@@ -61,9 +61,7 @@ impl IntoBytestream for RipPacket {
 
 impl FromBytestream for RipPacket {
     type Error = Error;
-    fn from_bytestream(
-        bytestream: &mut std::io::Cursor<impl AsRef<[u8]>>,
-    ) -> Result<Self, Self::Error> {
+    fn from_bytestream(bytestream: &mut BytestreamReader) -> Result<Self, Self::Error> {
         let command = RipCommand::from_raw(u8::read_from(bytestream, BigEndian)?).ok_or(
             Error::new(ErrorKind::InvalidData, "unknown command in rip packet"),
         )?;
@@ -72,28 +70,18 @@ impl FromBytestream for RipPacket {
         assert_eq!(0, u16::read_from(bytestream, BigEndian)?);
 
         let mut entries = Vec::new();
-        loop {
-            match RipEntry::from_bytestream(bytestream) {
-                Ok(entry) => entries.push(entry),
-                Err(e) => {
-                    let len = bytestream.get_mut().as_ref().len();
-                    let pos = bytestream.position() as usize;
-                    if len == pos {
-                        return Ok(Self { command, entries });
-                    } else {
-                        return Err(e);
-                    }
-                }
-            }
+        while !bytestream.is_empty() {
+            entries.push(RipEntry::from_bytestream(bytestream)?);
         }
+        Ok(RipPacket { command, entries })
     }
 }
 
 pub const AF_INET: u16 = 2;
 
-impl IntoBytestream for RipEntry {
+impl ToBytestream for RipEntry {
     type Error = Error;
-    fn to_bytestream(&self, bytestream: &mut impl std::io::Write) -> Result<(), Self::Error> {
+    fn to_bytestream(&self, bytestream: &mut BytestreamWriter) -> Result<(), Self::Error> {
         self.addr_fam.write_to(bytestream, BigEndian)?;
         0u16.write_to(bytestream, BigEndian)?;
         u32::from(self.target).write_to(bytestream, BigEndian)?;
@@ -107,9 +95,7 @@ impl IntoBytestream for RipEntry {
 
 impl FromBytestream for RipEntry {
     type Error = Error;
-    fn from_bytestream(
-        bytestream: &mut std::io::Cursor<impl AsRef<[u8]>>,
-    ) -> Result<Self, Self::Error> {
+    fn from_bytestream(bytestream: &mut BytestreamReader) -> Result<Self, Self::Error> {
         let addr_fam = u16::read_from(bytestream, BigEndian)?;
         assert_eq!(0, u16::read_from(bytestream, BigEndian)?);
         let target = Ipv4Addr::from(u32::read_from(bytestream, BigEndian)?);

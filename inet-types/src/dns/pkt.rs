@@ -1,8 +1,8 @@
-use crate::{FromBytestream, IntoBytestream};
-use bytestream::{ByteOrder::BigEndian, StreamReader, StreamWriter};
-use std::io::{Cursor, Write};
-
 use super::{DNSClass, DNSResourceRecord, DNSString, DNSType};
+use bytepack::{
+    ByteOrder::BigEndian, BytestreamReader, BytestreamWriter, FromBytestream, StreamReader,
+    StreamWriter, ToBytestream,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[allow(clippy::struct_excessive_bools)]
@@ -87,9 +87,9 @@ impl DNSMessage {
     }
 }
 
-impl IntoBytestream for DNSMessage {
+impl ToBytestream for DNSMessage {
     type Error = std::io::Error;
-    fn to_bytestream(&self, bytestream: &mut impl Write) -> Result<(), Self::Error> {
+    fn to_bytestream(&self, bytestream: &mut BytestreamWriter) -> Result<(), Self::Error> {
         self.transaction.write_to(bytestream, BigEndian)?;
 
         let mut b0 = self.opcode.to_raw() << 3;
@@ -137,7 +137,7 @@ impl IntoBytestream for DNSMessage {
 
 impl FromBytestream for DNSMessage {
     type Error = std::io::Error;
-    fn from_bytestream(bytestream: &mut Cursor<impl AsRef<[u8]>>) -> Result<Self, Self::Error> {
+    fn from_bytestream(bytestream: &mut BytestreamReader) -> Result<Self, Self::Error> {
         let transaction = u16::read_from(bytestream, BigEndian)?;
         let b0 = u8::read_from(bytestream, BigEndian)?;
         let b1 = u8::read_from(bytestream, BigEndian)?;
@@ -254,9 +254,9 @@ pub struct DNSQuestion {
     pub qclass: DNSClass,
 }
 
-impl IntoBytestream for DNSQuestion {
+impl ToBytestream for DNSQuestion {
     type Error = std::io::Error;
-    fn to_bytestream(&self, bytestream: &mut impl Write) -> Result<(), Self::Error> {
+    fn to_bytestream(&self, bytestream: &mut BytestreamWriter) -> Result<(), Self::Error> {
         self.qname.to_bytestream(bytestream)?;
         self.qtyp.to_raw().write_to(bytestream, BigEndian)?;
         self.qclass.to_raw().write_to(bytestream, BigEndian)?;
@@ -267,7 +267,7 @@ impl IntoBytestream for DNSQuestion {
 
 impl FromBytestream for DNSQuestion {
     type Error = std::io::Error;
-    fn from_bytestream(bytestream: &mut Cursor<impl AsRef<[u8]>>) -> Result<Self, Self::Error> {
+    fn from_bytestream(bytestream: &mut BytestreamReader) -> Result<Self, Self::Error> {
         let qname = DNSString::from_bytestream(bytestream)?;
 
         let qtyp = DNSType::from_raw(u16::read_from(bytestream, BigEndian)?).unwrap();

@@ -1,5 +1,4 @@
-use bytestream::ByteOrder::LittleEndian;
-use bytestream::{StreamReader, StreamWriter};
+use bytepack::{ByteOrder::LittleEndian, StreamReader, StreamWriter};
 use std::io::{Cursor, Result, Write};
 
 pub(super) struct SHB {

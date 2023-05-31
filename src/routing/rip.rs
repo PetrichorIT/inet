@@ -1,11 +1,9 @@
 //! The Routing Information Protocol (RIP)
 
+use bytepack::{FromBytestream, ToBytestream};
 use des::time::{sleep, Duration, SimTime};
 use fxhash::{FxBuildHasher, FxHashMap};
-use inet_types::{
-    routing::rip::{RipCommand, RipEntry, RipPacket, AF_INET},
-    FromBytestream, IntoBytestream,
-};
+use inet_types::routing::rip::{RipCommand, RipEntry, RipPacket, AF_INET};
 use std::net::{IpAddr, Ipv4Addr};
 
 use crate::IOContext;

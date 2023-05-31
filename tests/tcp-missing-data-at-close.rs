@@ -1,5 +1,6 @@
-use des::{net::plugin::add_plugin, registry, tokio};
-use inet_types::{ip::Ipv4Packet, tcp::TcpPacket, FromBytestream};
+use bytepack::FromBytestream;
+use des::{registry, tokio};
+use inet_types::{ip::Ipv4Packet, tcp::TcpPacket};
 use std::{
     str::FromStr,
     sync::{
@@ -9,7 +10,7 @@ use std::{
 };
 
 use des::prelude::*;
-use inet::{interface::*, socket::AsRawFd, tcp::TcpDebugPlugin, TcpSocket};
+use inet::{interface::*, socket::AsRawFd, TcpSocket};
 
 struct Link {}
 impl Module for Link {
@@ -59,8 +60,6 @@ impl AsyncModule for TcpServer {
     }
 
     async fn at_sim_start(&mut self, _: usize) {
-        add_plugin(TcpDebugPlugin, 1);
-
         add_interface(Interface::ethv4(
             NetworkDevice::eth(),
             Ipv4Addr::new(69, 0, 0, 100),
@@ -147,8 +146,6 @@ impl AsyncModule for TcpClient {
     }
 
     async fn at_sim_start(&mut self, _: usize) {
-        add_plugin(TcpDebugPlugin, 1);
-
         add_interface(Interface::ethv4(
             NetworkDevice::eth(),
             Ipv4Addr::new(69, 0, 0, 200),

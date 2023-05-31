@@ -1,8 +1,10 @@
-use crate::{FromBytestream, IntoBytestream};
-use bytestream::{ByteOrder::BigEndian, StreamReader, StreamWriter};
+use bytepack::{
+    ByteOrder::BigEndian, BytestreamReader, BytestreamWriter, FromBytestream, StreamReader,
+    StreamWriter, ToBytestream,
+};
 use des::net::message::MessageBody;
 use std::{
-    io::{Cursor, Error, ErrorKind, Write},
+    io::{Error, ErrorKind, Write},
     net::Ipv4Addr,
 };
 
@@ -74,9 +76,9 @@ impl Ipv4Flags {
     }
 }
 
-impl IntoBytestream for Ipv4Packet {
+impl ToBytestream for Ipv4Packet {
     type Error = std::io::Error;
-    fn to_bytestream(&self, bytestream: &mut impl Write) -> Result<(), Self::Error> {
+    fn to_bytestream(&self, bytestream: &mut BytestreamWriter) -> Result<(), Self::Error> {
         let byte0 = 0b0100_0101u8;
         byte0.write_to(bytestream, BigEndian)?;
 
@@ -106,7 +108,7 @@ impl IntoBytestream for Ipv4Packet {
 
 impl FromBytestream for Ipv4Packet {
     type Error = std::io::Error;
-    fn from_bytestream(bytestream: &mut Cursor<impl AsRef<[u8]>>) -> Result<Self, Self::Error> {
+    fn from_bytestream(bytestream: &mut BytestreamReader) -> Result<Self, Self::Error> {
         let byte0 = u8::read_from(bytestream, BigEndian)?;
         let version = byte0 >> 4;
         let _version = match version {
@@ -180,19 +182,5 @@ impl FromBytestream for Ipv4Packet {
 impl MessageBody for Ipv4Packet {
     fn byte_len(&self) -> usize {
         20 + self.content.len()
-    }
-}
-
-impl IntoBytestream for Ipv4Addr {
-    type Error = std::io::Error;
-    fn to_bytestream(&self, bytestream: &mut impl Write) -> Result<(), Self::Error> {
-        bytestream.write_all(&self.octets())
-    }
-}
-
-impl FromBytestream for Ipv4Addr {
-    type Error = std::io::Error;
-    fn from_bytestream(bytestream: &mut Cursor<impl AsRef<[u8]>>) -> Result<Self, Self::Error> {
-        Ok(Ipv4Addr::from(u32::read_from(bytestream, BigEndian)?))
     }
 }

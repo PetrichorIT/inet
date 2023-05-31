@@ -1,14 +1,14 @@
 use std::{
-    io::{Error, ErrorKind, Read},
+    io::{Error, Read, Write},
     net::Ipv4Addr,
 };
 
-use bytestream::{
-    ByteOrder::{BigEndian, LittleEndian},
-    StreamReader, StreamWriter,
+use bytepack::{
+    raw_enum, ByteOrder::*, BytestreamReader, BytestreamWriter, FromBytestream, StreamReader,
+    StreamWriter, ToBytestream,
 };
 
-use crate::{ip::Ipv4Packet, FromBytestream, IntoBytestream};
+use crate::ip::Ipv4Packet;
 
 /// An ICMP packet
 pub struct IcmpPacket {
@@ -32,9 +32,9 @@ impl IcmpPacket {
     }
 }
 
-impl IntoBytestream for IcmpPacket {
+impl ToBytestream for IcmpPacket {
     type Error = Error;
-    fn to_bytestream(&self, bytestream: &mut impl std::io::Write) -> Result<(), Self::Error> {
+    fn to_bytestream(&self, bytestream: &mut BytestreamWriter) -> Result<(), Self::Error> {
         self.typ.to_bytestream(bytestream)?;
         bytestream.write_all(&self.content)
     }
@@ -42,9 +42,7 @@ impl IntoBytestream for IcmpPacket {
 
 impl FromBytestream for IcmpPacket {
     type Error = Error;
-    fn from_bytestream(
-        bytestream: &mut std::io::Cursor<impl AsRef<[u8]>>,
-    ) -> Result<Self, Self::Error> {
+    fn from_bytestream(bytestream: &mut BytestreamReader) -> Result<Self, Self::Error> {
         let typ = IcmpType::from_bytestream(bytestream)?;
         let mut content = vec![0; 20 + 8];
         let n = bytestream.read(&mut content)?;
@@ -112,9 +110,9 @@ pub enum IcmpType {
     ExtendedEchoReply = 43,
 }
 
-impl IntoBytestream for IcmpType {
+impl ToBytestream for IcmpType {
     type Error = Error;
-    fn to_bytestream(&self, bytestream: &mut impl std::io::Write) -> Result<(), Self::Error> {
+    fn to_bytestream(&self, bytestream: &mut BytestreamWriter) -> Result<(), Self::Error> {
         match self {
             Self::EchoReply {
                 identifier,
@@ -195,9 +193,7 @@ impl IntoBytestream for IcmpType {
 
 impl FromBytestream for IcmpType {
     type Error = Error;
-    fn from_bytestream(
-        bytestream: &mut std::io::Cursor<impl AsRef<[u8]>>,
-    ) -> Result<Self, Self::Error> {
+    fn from_bytestream(bytestream: &mut BytestreamReader) -> Result<Self, Self::Error> {
         let typ = u8::read_from(bytestream, LittleEndian)?;
         let code = u8::read_from(bytestream, LittleEndian)?;
         let _chksum = u16::read_from(bytestream, LittleEndian)?;
@@ -225,10 +221,7 @@ impl FromBytestream for IcmpType {
                 Ok(Self::SourceQuench)
             }
             5 => {
-                let addr = Ipv4Addr::from(u32::read_from(
-                    bytestream,
-                    bytestream::ByteOrder::BigEndian,
-                )?);
+                let addr = Ipv4Addr::from(u32::read_from(bytestream, BigEndian)?);
 
                 Ok(Self::RedirectMessage {
                     addr,
@@ -273,33 +266,33 @@ impl FromBytestream for IcmpType {
 
 // # Codes
 
-primitve_enum_repr! {
+raw_enum! {
      /// A reponse code to a ICMP redirect message.
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
     pub enum IcmpRedirectCode {
-        type Repr = u8;
+        type Repr = u8 where BigEndian;
         RedirectForNetwork = 0,
         RedirectForHost = 1,
         RedirectForTypeOfServiceAndNetwork = 2,
         RedirectForTypeOfServiceAndHost = 3,
-    };
+    }
 }
 
-primitve_enum_repr! {
+raw_enum! {
      /// A reponse code to a ICMP time exceeded message.
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
     pub enum IcmpTimeExceededCode {
-        type Repr = u8;
+        type Repr = u8 where BigEndian;
         TimeToLifeInTransit = 0,
         FragmentReassemblyTimeExceeded = 1,
-    };
+    }
 }
 
-primitve_enum_repr! {
+raw_enum! {
     /// A reponse code to a ICMP desintation unreachable message.
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
     pub enum IcmpDestinationUnreachableCode {
-        type Repr = u8;
+        type Repr = u8 where BigEndian;
         NetworkUnreachable = 0,
         HostUnreachable = 1,
         ProtocolUnreachable = 2,
@@ -316,84 +309,16 @@ primitve_enum_repr! {
         CommunicationProhibited = 13,
         HostPrecedenceViolation = 14,
         PrecedenceCutoff = 15,
-    };
+    }
 }
 
-primitve_enum_repr! {
+raw_enum! {
      /// A reponse code to a ICMP desintation unreachable message.
      #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
     pub enum IcmpBadIpHeaderCode {
-        type Repr = u8;
+        type Repr = u8 where BigEndian;
         SeePointer = 0,
         MissingRequiredOption = 1,
         BadLength = 2,
-    };
-}
-
-impl IntoBytestream for IcmpRedirectCode {
-    type Error = Error;
-    fn to_bytestream(&self, bytestream: &mut impl std::io::Write) -> Result<(), Self::Error> {
-        self.to_raw().write_to(bytestream, LittleEndian)
-    }
-}
-
-impl IntoBytestream for IcmpTimeExceededCode {
-    type Error = Error;
-    fn to_bytestream(&self, bytestream: &mut impl std::io::Write) -> Result<(), Self::Error> {
-        self.to_raw().write_to(bytestream, LittleEndian)
-    }
-}
-
-impl IntoBytestream for IcmpDestinationUnreachableCode {
-    type Error = Error;
-    fn to_bytestream(&self, bytestream: &mut impl std::io::Write) -> Result<(), Self::Error> {
-        self.to_raw().write_to(bytestream, LittleEndian)
-    }
-}
-
-impl IntoBytestream for IcmpBadIpHeaderCode {
-    type Error = Error;
-    fn to_bytestream(&self, bytestream: &mut impl std::io::Write) -> Result<(), Self::Error> {
-        self.to_raw().write_to(bytestream, LittleEndian)
-    }
-}
-
-impl FromBytestream for IcmpRedirectCode {
-    type Error = Error;
-    fn from_bytestream(
-        bytestream: &mut std::io::Cursor<impl AsRef<[u8]>>,
-    ) -> Result<Self, Self::Error> {
-        let byte = u8::read_from(bytestream, LittleEndian)?;
-        Self::from_raw(byte).ok_or(Error::new(ErrorKind::Other, "invalid code"))
-    }
-}
-
-impl FromBytestream for IcmpTimeExceededCode {
-    type Error = Error;
-    fn from_bytestream(
-        bytestream: &mut std::io::Cursor<impl AsRef<[u8]>>,
-    ) -> Result<Self, Self::Error> {
-        let byte = u8::read_from(bytestream, LittleEndian)?;
-        Self::from_raw(byte).ok_or(Error::new(ErrorKind::Other, "invalid code"))
-    }
-}
-
-impl FromBytestream for IcmpDestinationUnreachableCode {
-    type Error = Error;
-    fn from_bytestream(
-        bytestream: &mut std::io::Cursor<impl AsRef<[u8]>>,
-    ) -> Result<Self, Self::Error> {
-        let byte = u8::read_from(bytestream, LittleEndian)?;
-        Self::from_raw(byte).ok_or(Error::new(ErrorKind::Other, "invalid code"))
-    }
-}
-
-impl FromBytestream for IcmpBadIpHeaderCode {
-    type Error = Error;
-    fn from_bytestream(
-        bytestream: &mut std::io::Cursor<impl AsRef<[u8]>>,
-    ) -> Result<Self, Self::Error> {
-        let byte = u8::read_from(bytestream, LittleEndian)?;
-        Self::from_raw(byte).ok_or(Error::new(ErrorKind::Other, "invalid code"))
     }
 }

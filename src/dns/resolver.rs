@@ -143,10 +143,10 @@ impl sealed::ToSocketAddrsPriv for (&str, u16) {
             // Imports
             use std::time::Duration;
 
+            use bytepack::{FromBytestream, ToBytestream};
             use des::time::sleep;
             use des::tokio::select;
             use inet_types::dns::{DNSMessage, DNSResponseCode, DNSType};
-            use inet_types::{FromBytestream, IntoBytestream};
 
             use crate::UdpSocket;
 

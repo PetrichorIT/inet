@@ -1,7 +1,6 @@
 use std::sync::{atomic::AtomicUsize, Arc};
 
 use des::{
-    net::plugin::add_plugin,
     prelude::*,
     registry,
     time::sleep,
@@ -13,7 +12,7 @@ use des::{
 };
 use inet::{
     interface::{add_interface, Interface, NetworkDevice},
-    tcp::{set_tcp_cfg, TcpConfig, TcpDebugPlugin},
+    tcp::{set_tcp_cfg, TcpConfig},
     TcpListener, TcpStream,
 };
 
@@ -41,7 +40,7 @@ impl AsyncModule for Connector {
         let drops = self.drops.clone();
         spawn(async move {
             let mut recorder = OutVec::new("drops_per_sec".to_string(), Some(module_path()));
-            for _i in 0..300 {
+            for _i in 0..50 {
                 sleep(Duration::from_secs(1)).await;
                 let v = drops.swap(0, std::sync::atomic::Ordering::SeqCst);
                 recorder.collect(v as f64);
@@ -100,7 +99,6 @@ impl AsyncModule for Client {
     }
 
     async fn at_sim_start(&mut self, _: usize) {
-        add_plugin(TcpDebugPlugin, 1);
         add_interface(Interface::ethv4(
             NetworkDevice::eth(),
             Ipv4Addr::new(69, 0, 0, 100),
@@ -126,6 +124,7 @@ impl AsyncModule for Client {
                     // sleep(Duration::from_secs_f64(0.025 * random::<f64>())).await;
                 }
                 tracing::info!("[{k}] closing client after {acc} bytes");
+                println!("closing client");
                 drop(sock);
             }));
         }
@@ -146,7 +145,6 @@ impl AsyncModule for Server {
     }
 
     async fn at_sim_start(&mut self, _: usize) {
-        add_plugin(TcpDebugPlugin, 1);
         add_interface(Interface::ethv4(
             NetworkDevice::eth(),
             Ipv4Addr::new(69, 0, 0, 69),
@@ -196,8 +194,8 @@ impl Module for Main {
 
 fn main() {
     inet::init();
-    // Subscriber::default().init().unwrap();
-    //    Logger::new().policy(Policy).set_logger();
+    // des::tracing::Subscriber::default().init().unwrap();
+    // Logger::new().policy(Policy).set_logger();
 
     let mut app = NetworkApplication::new(
         NdlApplication::new(

@@ -1,8 +1,10 @@
-use crate::{FromBytestream, IntoBytestream};
-use bytestream::{ByteOrder::BigEndian, StreamReader, StreamWriter};
+use bytepack::{
+    ByteOrder::BigEndian, BytestreamReader, BytestreamWriter, FromBytestream, StreamReader,
+    StreamWriter, ToBytestream,
+};
 use des::net::message::MessageBody;
 use std::{
-    io::{Cursor, Error, ErrorKind, Write},
+    io::{Error, ErrorKind, Write},
     net::Ipv6Addr,
 };
 
@@ -21,9 +23,9 @@ pub struct Ipv6Packet {
     pub content: Vec<u8>,
 }
 
-impl IntoBytestream for Ipv6Packet {
+impl ToBytestream for Ipv6Packet {
     type Error = std::io::Error;
-    fn to_bytestream(&self, bytestream: &mut impl Write) -> Result<(), Self::Error> {
+    fn to_bytestream(&self, bytestream: &mut BytestreamWriter) -> Result<(), Self::Error> {
         let header = (6 << 4) | (self.traffic_class >> 4);
         header.write_to(bytestream, BigEndian)?;
 
@@ -53,7 +55,7 @@ impl IntoBytestream for Ipv6Packet {
 
 impl FromBytestream for Ipv6Packet {
     type Error = std::io::Error;
-    fn from_bytestream(bytestream: &mut Cursor<impl AsRef<[u8]>>) -> Result<Self, Self::Error> {
+    fn from_bytestream(bytestream: &mut BytestreamReader) -> Result<Self, Self::Error> {
         let byte0 = u8::read_from(bytestream, BigEndian)?;
         let byte1 = u8::read_from(bytestream, BigEndian)?;
         let byte2 = u8::read_from(bytestream, BigEndian)?;

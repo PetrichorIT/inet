@@ -1,9 +1,7 @@
+use bytepack::{FromBytestream, ToBytestream};
 use des::{runtime::random, time::SimTime};
-use inet_types::{
-    dns::{
-        DNSClass, DNSMessage, DNSQuestion, DNSResourceRecord, DNSResponseCode, DNSString, DNSType,
-    },
-    FromBytestream, IntoBytestream,
+use inet_types::dns::{
+    DNSClass, DNSMessage, DNSQuestion, DNSResourceRecord, DNSResponseCode, DNSString, DNSType,
 };
 use std::{collections::VecDeque, net::SocketAddr, time::Duration};
 

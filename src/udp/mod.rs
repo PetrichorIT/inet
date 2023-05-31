@@ -1,11 +1,11 @@
 //! The User Datagram Protocol (UDP)
 use super::{socket::*, IOContext};
 use crate::interface::IfId;
+use bytepack::{FromBytestream, ToBytestream};
 use fxhash::{FxBuildHasher, FxHashMap};
 use inet_types::{
     ip::{IpPacket, IpPacketRef, Ipv4Flags, Ipv4Packet, Ipv6Packet},
-    udp::{UDPPacket, PROTO_UDP},
-    FromBytestream, IntoBytestream,
+    udp::{UdpPacket, PROTO_UDP},
 };
 use std::{
     collections::VecDeque,
@@ -34,7 +34,7 @@ impl Udp {
 pub(super) struct UdpControlBlock {
     pub(super) local_addr: SocketAddr,
     pub(super) state: UdpSocketState,
-    pub(super) incoming: VecDeque<(SocketAddr, SocketAddr, UDPPacket)>,
+    pub(super) incoming: VecDeque<(SocketAddr, SocketAddr, UdpPacket)>,
 
     pub(super) ttl: u8,
     pub(super) broadcast: bool,
@@ -62,7 +62,7 @@ pub(super) enum UdpSocketState {
 }
 
 impl UdpControlBlock {
-    pub(super) fn push_incoming(&mut self, src: SocketAddr, dest: SocketAddr, udp: UDPPacket) {
+    pub(super) fn push_incoming(&mut self, src: SocketAddr, dest: SocketAddr, udp: UdpPacket) {
         self.incoming.push_back((src, dest, udp));
         if let Some(interest) = &self.interest {
             if interest.is_readable() {
@@ -102,7 +102,7 @@ impl IOContext {
 
         let is_broadcast = is_broadcast(packet.dest());
 
-        let Ok(udp) = UDPPacket::from_buffer(packet.content()) else {
+        let Ok(udp) = UdpPacket::from_buffer(packet.content()) else {
             tracing::error!(target: "inet/udp", "received ip-packet with proto=0x11 (udp) but content was no udp-packet");
             return false;
         };
@@ -231,7 +231,7 @@ impl IOContext {
             panic!()
         }
 
-        let udp_packet = UDPPacket {
+        let udp_packet = UdpPacket {
             src_port: mng.local_addr.port(),
             dest_port: target.port(),
             checksum: 0,

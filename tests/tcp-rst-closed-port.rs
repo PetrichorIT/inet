@@ -1,5 +1,4 @@
 use des::{
-    net::plugin::add_plugin,
     prelude::*,
     registry,
     time::sleep,
@@ -7,7 +6,6 @@ use des::{
 };
 use inet::{
     interface::{add_interface, Interface, NetworkDevice},
-    tcp::TcpDebugPlugin,
     *,
 };
 
@@ -23,7 +21,6 @@ impl AsyncModule for OneAttemptClient {
     }
 
     async fn at_sim_start(&mut self, _: usize) {
-        add_plugin(TcpDebugPlugin, 1);
         add_interface(Interface::ethv4(
             NetworkDevice::eth(),
             Ipv4Addr::new(69, 0, 0, 100),
@@ -56,7 +53,6 @@ impl<const EXPECT: bool> AsyncModule for MultipleAttemptClient<EXPECT> {
     }
 
     async fn at_sim_start(&mut self, _: usize) {
-        add_plugin(TcpDebugPlugin, 1);
         add_interface(Interface::ethv4(
             NetworkDevice::eth(),
             Ipv4Addr::new(69, 0, 0, 100),
@@ -90,7 +86,6 @@ impl AsyncModule for EmptyServer {
     }
 
     async fn at_sim_start(&mut self, _: usize) {
-        add_plugin(TcpDebugPlugin, 1);
         add_interface(Interface::ethv4(
             NetworkDevice::eth(),
             Ipv4Addr::new(69, 0, 0, 69),
@@ -107,7 +102,6 @@ impl AsyncModule for BoundServer {
     }
 
     async fn at_sim_start(&mut self, _: usize) {
-        add_plugin(TcpDebugPlugin, 1);
         add_interface(Interface::ethv4(
             NetworkDevice::eth(),
             Ipv4Addr::new(69, 0, 0, 69),

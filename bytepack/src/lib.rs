@@ -1,6 +1,7 @@
 use std::{
     io::{self, Read, Write},
     marker::PhantomData,
+    net::Ipv4Addr,
 };
 
 pub use bytestream::{ByteOrder, StreamReader, StreamWriter};
@@ -15,6 +16,12 @@ pub trait ToBytestream {
     /// Appends self to a new bytestream, retuned as a bytevector in the end.
     fn to_buffer(&self) -> Result<Vec<u8>, Self::Error> {
         let mut stream = BytestreamWriter { buf: Vec::new() };
+        self.to_bytestream(&mut stream)?;
+        Ok(stream.buf)
+    }
+
+    fn to_buffer_with(&self, buf: Vec<u8>) -> Result<Vec<u8>, Self::Error> {
+        let mut stream = BytestreamWriter { buf };
         self.to_bytestream(&mut stream)?;
         Ok(stream.buf)
     }
@@ -163,6 +170,23 @@ macro_rules! raw_enum {
             }
         }
     };
+}
+
+impl ToBytestream for Ipv4Addr {
+    type Error = std::io::Error;
+    fn to_bytestream(&self, bytestream: &mut BytestreamWriter) -> Result<(), Self::Error> {
+        bytestream.write_all(&self.octets())
+    }
+}
+
+impl FromBytestream for Ipv4Addr {
+    type Error = std::io::Error;
+    fn from_bytestream(bytestream: &mut BytestreamReader) -> Result<Self, Self::Error> {
+        Ok(Ipv4Addr::from(u32::read_from(
+            bytestream,
+            ByteOrder::BigEndian,
+        )?))
+    }
 }
 
 #[cfg(test)]

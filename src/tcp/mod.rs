@@ -1,6 +1,7 @@
 //! The Transmission Control Protocol (TCP)
 #![allow(unused)]
 
+use bytepack::{FromBytestream, ToBytestream};
 use des::{
     prelude::{module_path, schedule_in, GateRef, Message},
     stats::{OutVec, Statistic},
@@ -24,7 +25,6 @@ use crate::{
 use inet_types::{
     ip::{IpPacket, IpPacketRef, IpVersion, Ipv4Flags, Ipv4Packet, Ipv6Packet},
     tcp::{TcpFlags, TcpOption, TcpPacket, PROTO_TCP},
-    FromBytestream, IntoBytestream,
 };
 
 mod buffer;
@@ -43,9 +43,6 @@ pub use api::{OwnedReadHalf, OwnedWriteHalf, ReadHalf, ReuniteError, WriteHalf};
 
 mod interest;
 use interest::*;
-
-mod debug;
-pub use debug::*;
 
 use super::IOContext;
 

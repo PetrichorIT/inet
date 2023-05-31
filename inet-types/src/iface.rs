@@ -1,9 +1,9 @@
+use bytepack::{BytestreamReader, BytestreamWriter, FromBytestream, ToBytestream};
 use des::runtime::random;
 
-use super::{FromBytestream, IntoBytestream};
 use std::{
     fmt::Display,
-    io::{Cursor, Read, Write},
+    io::{Read, Write},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -48,9 +48,9 @@ impl From<MacAddress> for [u8; 6] {
     }
 }
 
-impl IntoBytestream for MacAddress {
+impl ToBytestream for MacAddress {
     type Error = std::io::Error;
-    fn to_bytestream(&self, bytestream: &mut impl Write) -> Result<(), Self::Error> {
+    fn to_bytestream(&self, bytestream: &mut BytestreamWriter) -> Result<(), Self::Error> {
         // BigEndian since as byte array
         bytestream.write_all(&self.0)
     }
@@ -58,7 +58,7 @@ impl IntoBytestream for MacAddress {
 
 impl FromBytestream for MacAddress {
     type Error = std::io::Error;
-    fn from_bytestream(bytestream: &mut Cursor<impl AsRef<[u8]>>) -> Result<Self, Self::Error> {
+    fn from_bytestream(bytestream: &mut BytestreamReader) -> Result<Self, Self::Error> {
         let mut bytes = [0u8; 6];
         bytestream.read_exact(&mut bytes)?;
         Ok(MacAddress(bytes))

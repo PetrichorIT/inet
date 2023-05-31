@@ -1,5 +1,4 @@
 use des::{
-    net::plugin::add_plugin,
     prelude::*,
     registry,
     tokio::{
@@ -11,7 +10,7 @@ use des::{
 };
 use inet::{
     interface::{add_interface, Interface, NetworkDevice},
-    tcp::{set_tcp_cfg, TcpConfig, TcpDebugPlugin},
+    tcp::{set_tcp_cfg, TcpConfig},
     TcpListener, TcpStream,
 };
 
@@ -82,7 +81,6 @@ impl AsyncModule for Client {
     }
 
     async fn at_sim_start(&mut self, _: usize) {
-        add_plugin(TcpDebugPlugin, 1);
         add_interface(Interface::ethv4(
             NetworkDevice::eth(),
             Ipv4Addr::new(69, 0, 0, 100),
@@ -129,7 +127,6 @@ impl AsyncModule for Server {
     }
 
     async fn at_sim_start(&mut self, _: usize) {
-        add_plugin(TcpDebugPlugin, 1);
         add_interface(Interface::ethv4(
             NetworkDevice::eth(),
             Ipv4Addr::new(69, 0, 0, 69),

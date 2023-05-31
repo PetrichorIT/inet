@@ -1,5 +1,5 @@
+use bytepack::FromBytestream;
 use inet_types::dns::{DNSMessage, DNSQuestion, DNSResponseCode, DNSString, DNSType};
-use inet_types::FromBytestream;
 use std::{collections::VecDeque, net::SocketAddr};
 
 use super::DNSNameserver;

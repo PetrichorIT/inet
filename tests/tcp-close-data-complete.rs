@@ -1,4 +1,4 @@
-use des::{net::plugin::add_plugin, registry, tokio};
+use des::{registry, tokio};
 use std::{
     io::ErrorKind,
     str::FromStr,
@@ -12,7 +12,6 @@ use des::prelude::*;
 use inet::{
     interface::*,
     socket::{AsRawFd, Fd},
-    tcp::TcpDebugPlugin,
     TcpListener, TcpStream,
 };
 use serial_test::serial;
@@ -48,8 +47,6 @@ impl AsyncModule for TcpServer {
     }
 
     async fn at_sim_start(&mut self, _: usize) {
-        add_plugin(TcpDebugPlugin, 1);
-
         add_interface(Interface::ethv4(
             NetworkDevice::eth(),
             Ipv4Addr::new(69, 0, 0, 100),
@@ -125,8 +122,6 @@ impl AsyncModule for TcpClient {
     }
 
     async fn at_sim_start(&mut self, _: usize) {
-        add_plugin(TcpDebugPlugin, 1);
-
         add_interface(Interface::ethv4(
             NetworkDevice::eth(),
             Ipv4Addr::new(69, 0, 0, 200),

@@ -3,7 +3,7 @@ use crate::{
     dns::{lookup_host, ToSocketAddrs},
     interface::InterfaceName,
     socket::{AsRawFd, Fd},
-    udp::UDPPacket,
+    udp::UdpPacket,
     IOContext,
 };
 use std::{
@@ -231,7 +231,7 @@ impl UdpSocket {
             let peer = self.peer_addr()?;
             let (peer, r) = IOContext::with_current(|ctx| {
                 if let Some(handle) = ctx.udp.binds.get_mut(&self.fd) {
-                    Ok::<(SocketAddr, Option<(SocketAddr, SocketAddr, UDPPacket)>), std::io::Error>(
+                    Ok::<(SocketAddr, Option<(SocketAddr, SocketAddr, UdpPacket)>), std::io::Error>(
                         (peer, handle.incoming.pop_front()),
                     )
                 } else {

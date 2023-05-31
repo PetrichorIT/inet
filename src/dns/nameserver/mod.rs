@@ -1,6 +1,7 @@
 use crate::UdpSocket;
 
 use super::DNSZoneFile;
+use bytepack::{FromBytestream, ToBytestream};
 use des::{
     prelude::{module_path, par},
     time::sleep,
@@ -13,7 +14,6 @@ use inet_types::{
         DNSResponseCode, DNSSOAResourceRecord, DNSString, DNSType,
     },
     ip::IpMask,
-    FromBytestream, IntoBytestream,
 };
 use std::{
     collections::VecDeque,
@@ -170,8 +170,7 @@ impl DNSNameserver {
 
                 let output = self.handle(msg, from);
                 for (pkt, target) in output {
-                    let mut buf = Vec::with_capacity(512);
-                    pkt.to_bytestream(&mut buf)?;
+                    let buf = pkt.to_buffer()?;
                     socket.send_to(&buf, target).await?;
                 }
             } else {
@@ -184,8 +183,7 @@ impl DNSNameserver {
 
                         let output = self.handle(msg, from);
                         for (pkt, target) in output {
-                            let mut buf = Vec::with_capacity(512);
-                            pkt.to_bytestream(&mut buf)?;
+                            let buf = pkt.to_buffer()?;
                             socket.send_to(&buf, target).await?;
                         }
                     },
@@ -193,8 +191,7 @@ impl DNSNameserver {
                         let mut output = Vec::new();
                         self.check_timeouts(&mut output);
                         for (pkt, target) in output {
-                            let mut buf = Vec::with_capacity(512);
-                            pkt.to_bytestream(&mut buf)?;
+                            let buf = pkt.to_buffer()?;
                             socket.send_to(&buf, target).await?;
                         }
                     }

@@ -5,17 +5,14 @@ use self::{
     config::FilterResult,
 };
 use crate::interface::{IfId, Interface};
+use bytepack::ToBytestream;
 use des::{
     prelude::{module_path, Message},
     time::SimTime,
 };
 use inet_types::{
     arp::{ArpPacket, KIND_ARP},
-    ip::IpPacketRef,
-};
-use inet_types::{
-    ip::{Ipv4Packet, Ipv6Packet, KIND_IPV4, KIND_IPV6},
-    IntoBytestream,
+    ip::{IpPacketRef, Ipv4Packet, Ipv6Packet, KIND_IPV4, KIND_IPV6},
 };
 use std::io::{BufWriter, Error, ErrorKind, Result, Write};
 
@@ -138,7 +135,7 @@ impl Pcap {
                 buffer.write_all(&msg.header().dest)?;
                 buffer.write_all(&msg.header().src)?;
                 buffer.write_all(&msg.header().kind.to_be_bytes())?;
-                pkt.to_bytestream(&mut buffer)?;
+                buffer = pkt.to_buffer_with(buffer)?;
             }
             KIND_IPV4 => {
                 let pkt = msg.try_content::<Ipv4Packet>().ok_or(Error::new(
@@ -157,7 +154,7 @@ impl Pcap {
                 buffer.write_all(&msg.header().dest)?;
                 buffer.write_all(&msg.header().src)?;
                 buffer.write_all(&msg.header().kind.to_be_bytes())?;
-                pkt.to_bytestream(&mut buffer)?;
+                buffer = pkt.to_buffer_with(buffer)?;
             }
             KIND_IPV6 => {
                 let pkt = msg.try_content::<Ipv6Packet>().ok_or(Error::new(
@@ -178,7 +175,7 @@ impl Pcap {
                 buffer.write_all(&msg.header().src)?;
                 buffer.write_all(&msg.header().kind.to_be_bytes())?;
 
-                pkt.to_bytestream(&mut buffer)?;
+                buffer = pkt.to_buffer_with(buffer)?;
             }
             _ => {
                 tracing::error!("unknown packet");

@@ -1,10 +1,12 @@
 use std::{
     fmt::Display,
-    io::{Error, ErrorKind, Read},
+    io::{Error, ErrorKind, Read, Write},
 };
 
-use super::{FromBytestream, IntoBytestream};
-use bytestream::{ByteOrder::BigEndian, StreamReader, StreamWriter};
+use bytepack::{
+    ByteOrder::BigEndian, BytestreamReader, BytestreamWriter, FromBytestream, StreamReader,
+    StreamWriter, ToBytestream,
+};
 
 pub const PROTO_TCP: u8 = 0x06;
 
@@ -120,20 +122,28 @@ impl Display for TcpFlags {
     }
 }
 
-impl IntoBytestream for TcpPacket {
+impl ToBytestream for TcpPacket {
     type Error = std::io::Error;
-    fn to_bytestream(&self, bytestream: &mut impl std::io::Write) -> Result<(), Self::Error> {
+    fn to_bytestream(&self, bytestream: &mut BytestreamWriter) -> Result<(), Self::Error> {
         self.src_port.write_to(bytestream, BigEndian)?;
         self.dest_port.write_to(bytestream, BigEndian)?;
 
         self.seq_no.write_to(bytestream, BigEndian)?;
         self.ack_no.write_to(bytestream, BigEndian)?;
 
-        let mut options_buf = Vec::new();
+        let hlen_marker = bytestream.add_marker(0u8, BigEndian)?;
+        self.flags.to_bytestream(bytestream)?;
+        self.window.write_to(bytestream, BigEndian)?;
+
+        0u16.write_to(bytestream, BigEndian)?;
+        self.urgent_ptr.write_to(bytestream, BigEndian)?;
+
         for option in &self.options {
-            option.to_bytestream(&mut options_buf)?;
+            option.to_bytestream(bytestream)?;
         }
-        if !options_buf.is_empty() {
+
+        let mut options_len = bytestream.len_since(&hlen_marker)? - 7;
+        if options_len > 0 {
             if *self.options.last().unwrap() != TcpOption::EndOfOptionsList() {
                 return Err(Error::new(
                     ErrorKind::Other,
@@ -141,35 +151,27 @@ impl IntoBytestream for TcpPacket {
                 ));
             }
             // Add padding
-            let rem = 4 - (options_buf.len() % 4);
-            options_buf.resize(options_buf.len() + rem, 0);
-            // for _ in 0..rem {
-            //     options_buf.push(0);
-            // }
+            let rem = 4 - (options_len % 4);
+            for _ in 0..rem {
+                bytestream.write_all(&[0])?;
+            }
+            options_len += rem;
         }
 
-        let hlen = 20 + options_buf.len();
+        let hlen = 20 + options_len;
         let hlen = hlen / 4;
         let hlen = (0b1111_0000 & (hlen << 4)) as u8;
 
-        hlen.write_to(bytestream, BigEndian)?;
-        self.flags.to_bytestream(bytestream)?;
-        self.window.write_to(bytestream, BigEndian)?;
-
-        0u16.write_to(bytestream, BigEndian)?;
-        self.urgent_ptr.write_to(bytestream, BigEndian)?;
-
-        bytestream.write_all(&options_buf)?;
-
+        bytestream.write_to_marker(hlen_marker, hlen)?;
         bytestream.write_all(&self.content)?;
 
         Ok(())
     }
 }
 
-impl IntoBytestream for TcpFlags {
+impl ToBytestream for TcpFlags {
     type Error = std::io::Error;
-    fn to_bytestream(&self, bytestream: &mut impl std::io::Write) -> Result<(), Self::Error> {
+    fn to_bytestream(&self, bytestream: &mut BytestreamWriter) -> Result<(), Self::Error> {
         let mut byte = 0u8;
         if self.cwr {
             byte |= 0b1000_0000;
@@ -203,9 +205,9 @@ impl IntoBytestream for TcpFlags {
     }
 }
 
-impl IntoBytestream for TcpOption {
+impl ToBytestream for TcpOption {
     type Error = std::io::Error;
-    fn to_bytestream(&self, bytestream: &mut impl std::io::Write) -> Result<(), Self::Error> {
+    fn to_bytestream(&self, bytestream: &mut BytestreamWriter) -> Result<(), Self::Error> {
         match self {
             Self::MaximumSegmentSize(mss) => {
                 2u8.write_to(bytestream, BigEndian)?;
@@ -233,9 +235,7 @@ impl IntoBytestream for TcpOption {
 
 impl FromBytestream for TcpPacket {
     type Error = std::io::Error;
-    fn from_bytestream(
-        bytestream: &mut std::io::Cursor<impl AsRef<[u8]>>,
-    ) -> Result<Self, Self::Error> {
+    fn from_bytestream(bytestream: &mut BytestreamReader) -> Result<Self, Self::Error> {
         let src_port = u16::read_from(bytestream, BigEndian)?;
         let dest_port = u16::read_from(bytestream, BigEndian)?;
 
@@ -250,19 +250,13 @@ impl FromBytestream for TcpPacket {
         let urgent_ptr = u16::read_from(bytestream, BigEndian)?;
 
         let options_len = hlen * 4 - 20;
+        let mut substream = bytestream.extract(options_len as usize)?;
         let mut options = Vec::new();
-
-        if options_len > 0 {
-            let mut opt_buf = vec![0u8; options_len as usize];
-            bytestream.read_exact(&mut opt_buf)?;
-
-            let mut opt_buf = std::io::Cursor::new(opt_buf);
-            loop {
-                let option = TcpOption::from_bytestream(&mut opt_buf)?;
-                options.push(option);
-                if option == TcpOption::EndOfOptionsList() {
-                    break;
-                }
+        while !substream.is_empty() {
+            let option = TcpOption::from_bytestream(&mut substream)?;
+            options.push(option);
+            if option == TcpOption::EndOfOptionsList() {
+                break;
             }
         }
 
@@ -285,9 +279,7 @@ impl FromBytestream for TcpPacket {
 
 impl FromBytestream for TcpFlags {
     type Error = std::io::Error;
-    fn from_bytestream(
-        bytestream: &mut std::io::Cursor<impl AsRef<[u8]>>,
-    ) -> Result<Self, Self::Error> {
+    fn from_bytestream(bytestream: &mut BytestreamReader) -> Result<Self, Self::Error> {
         let byte = u8::read_from(bytestream, BigEndian)?;
 
         let cwr = byte & 0b1000_0000 != 0;
@@ -314,9 +306,7 @@ impl FromBytestream for TcpFlags {
 
 impl FromBytestream for TcpOption {
     type Error = std::io::Error;
-    fn from_bytestream(
-        bytestream: &mut std::io::Cursor<impl AsRef<[u8]>>,
-    ) -> Result<Self, Self::Error> {
+    fn from_bytestream(bytestream: &mut BytestreamReader) -> Result<Self, Self::Error> {
         let kind = u8::read_from(bytestream, BigEndian)?;
         if kind == 0 {
             return Ok(Self::EndOfOptionsList());

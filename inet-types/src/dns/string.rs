@@ -1,13 +1,10 @@
 #![allow(clippy::cast_possible_wrap)]
 
-use crate::{FromBytestream, IntoBytestream};
-use bytestream::{ByteOrder::BigEndian, StreamReader};
-use std::{
-    fmt::Display,
-    io::{Cursor, Write},
-    ops::Deref,
-    str::FromStr,
+use bytepack::{
+    ByteOrder::BigEndian, BytestreamReader, BytestreamWriter, FromBytestream, StreamReader,
+    ToBytestream,
 };
+use std::{fmt::Display, io::Write, ops::Deref, str::FromStr};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct DNSString {
@@ -129,9 +126,9 @@ impl Deref for DNSString {
     }
 }
 
-impl IntoBytestream for DNSString {
+impl ToBytestream for DNSString {
     type Error = std::io::Error;
-    fn to_bytestream(&self, bytestream: &mut impl Write) -> Result<(), Self::Error> {
+    fn to_bytestream(&self, bytestream: &mut BytestreamWriter) -> Result<(), Self::Error> {
         for i in 0..self.labels() {
             let label_str = self.label(i);
             bytestream.write_all(&[label_str.len() as u8])?;
@@ -144,7 +141,7 @@ impl IntoBytestream for DNSString {
 
 impl FromBytestream for DNSString {
     type Error = std::io::Error;
-    fn from_bytestream(bytestream: &mut Cursor<impl AsRef<[u8]>>) -> Result<Self, Self::Error> {
+    fn from_bytestream(bytestream: &mut BytestreamReader) -> Result<Self, Self::Error> {
         let mut string = String::new();
         let mut labels = Vec::new();
         loop {
@@ -184,7 +181,7 @@ impl FromStr for DNSString {
 #[cfg(test)]
 mod tests {
     use super::DNSString;
-    use crate::{FromBytestream, IntoBytestream};
+    use bytepack::{FromBytestream, ToBytestream};
 
     #[test]
     fn dns_string_from_str() {

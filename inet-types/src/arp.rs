@@ -1,15 +1,15 @@
 #![allow(clippy::similar_names)]
 
 use super::iface::MacAddress;
-use super::{FromBytestream, IntoBytestream};
-use bytestream::ByteOrder::BigEndian;
-use bytestream::{StreamReader, StreamWriter};
+use bytepack::FromBytestream;
+use bytepack::{
+    ByteOrder::BigEndian, BytestreamReader, BytestreamWriter, StreamReader, StreamWriter,
+    ToBytestream,
+};
+
 use des::prelude::*;
 use std::io::Read;
-use std::{
-    io::{Cursor, Write},
-    net::Ipv4Addr,
-};
+use std::{io::Write, net::Ipv4Addr};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ArpPacket {
@@ -198,9 +198,9 @@ impl ArpPacket {
     }
 }
 
-impl IntoBytestream for ArpPacket {
+impl ToBytestream for ArpPacket {
     type Error = std::io::Error;
-    fn to_bytestream(&self, bytestream: &mut impl Write) -> Result<(), Self::Error> {
+    fn to_bytestream(&self, bytestream: &mut BytestreamWriter) -> Result<(), Self::Error> {
         self.htype.write_to(bytestream, BigEndian)?;
         self.ptype.write_to(bytestream, BigEndian)?;
         self.haddrlen.write_to(bytestream, BigEndian)?;
@@ -214,7 +214,7 @@ impl IntoBytestream for ArpPacket {
 
 impl FromBytestream for ArpPacket {
     type Error = std::io::Error;
-    fn from_bytestream(bytestream: &mut Cursor<impl AsRef<[u8]>>) -> Result<Self, Self::Error> {
+    fn from_bytestream(bytestream: &mut BytestreamReader) -> Result<Self, Self::Error> {
         let htype = u16::read_from(bytestream, BigEndian)?;
         let ptype = u16::read_from(bytestream, BigEndian)?;
 
@@ -255,16 +255,16 @@ primitve_enum_repr! {
     };
 }
 
-impl IntoBytestream for ARPOperation {
+impl ToBytestream for ARPOperation {
     type Error = std::io::Error;
-    fn to_bytestream(&self, bytestream: &mut impl Write) -> Result<(), Self::Error> {
+    fn to_bytestream(&self, bytestream: &mut BytestreamWriter) -> Result<(), Self::Error> {
         self.to_raw().write_to(bytestream, BigEndian)
     }
 }
 
 impl FromBytestream for ARPOperation {
     type Error = std::io::Error;
-    fn from_bytestream(bytestream: &mut Cursor<impl AsRef<[u8]>>) -> Result<Self, Self::Error> {
+    fn from_bytestream(bytestream: &mut BytestreamReader) -> Result<Self, Self::Error> {
         let tag = u16::read_from(bytestream, BigEndian)?;
         Ok(Self::from_raw(tag).unwrap())
     }

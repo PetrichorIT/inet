@@ -14,13 +14,13 @@ use std::{
     net::{IpAddr, Ipv4Addr},
 };
 
+use bytepack::{FromBytestream, ToBytestream};
 use des::time::SimTime;
 use inet_types::{
     icmp::{
         IcmpDestinationUnreachableCode, IcmpPacket, IcmpTimeExceededCode, IcmpType, PROTO_ICMP,
     },
     ip::{IpPacket, IpPacketRef, Ipv4Flags, Ipv4Packet},
-    FromBytestream, IntoBytestream,
 };
 
 use self::ping::PingCB;
