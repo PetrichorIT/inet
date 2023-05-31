@@ -107,9 +107,12 @@ fn main() {
     Subscriber::default().init().unwrap();
 
     let app = NetworkApplication::new(
-        NdlApplication::new("src/bin/spoofing.ndl", registry![Spoofer, Reader, Main])
-            .map_err(|e| println!("{e}"))
-            .unwrap(),
+        NdlApplication::new(
+            "inet/src/bin/spoofing.ndl",
+            registry![Spoofer, Reader, Main],
+        )
+        .map_err(|e| println!("{e}"))
+        .unwrap(),
     );
     let rt = Runtime::new_with(app, RuntimeOptions::seeded(123).include_env());
     let _ = rt.run().unwrap();

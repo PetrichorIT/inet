@@ -199,13 +199,13 @@ fn main() {
 
     let mut app = NetworkApplication::new(
         NdlApplication::new(
-            "src/bin/tcp.ndl",
+            "inet/src/bin/tcp.ndl",
             registry![Client, Server, Main, Connector],
         )
         .map_err(|e| println!("{e}"))
         .unwrap(),
     );
-    app.include_par_file("src/bin/tcp.par");
+    app.include_par_file("inet/src/bin/tcp.par");
 
     let rt = Runtime::new_with(app, RuntimeOptions::seeded(123).include_env());
     let _ = rt.run().unwrap();

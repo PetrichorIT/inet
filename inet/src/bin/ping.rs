@@ -128,11 +128,11 @@ fn main() {
         .init()
         .unwrap();
 
-    let app = NdlApplication::new("src/bin/ping.ndl", registry![Alice, Bob, Eve, Main])
+    let app = NdlApplication::new("inet/src/bin/ping.ndl", registry![Alice, Bob, Eve, Main])
         .map_err(|e| println!("{e}"))
         .unwrap();
     let mut app = NetworkApplication::new(app);
-    app.include_par_file("src/bin/ping.par");
+    app.include_par_file("inet/src/bin/ping.par");
     let rt = Runtime::new_with(app, RuntimeOptions::seeded(123).max_itr(50));
     let _ = rt.run().unwrap();
 }

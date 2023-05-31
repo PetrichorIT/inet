@@ -10,7 +10,7 @@ name = "bgp"
 path = "bin/pkt.rs"
 
 [dependencies]
-inet = { path = "../", features = ["pcap"]}
+inet = { path = "../inet", features = ["pcap"]}
 bytepack = { path = "../bytepack"}
 des = "*"
 async-trait = "*"

@@ -6,7 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-inet = { path = "../../", features = ["pcap"]} 
+inet = { path = "../../inet", features = ["pcap"]} 
 des = "*"
 async-trait = "*"
 tracing = "*"
