@@ -1,7 +1,11 @@
-use std::{io::Result, net::Ipv4Addr};
+use std::{
+    io::{Error, Result},
+    net::{IpAddr, Ipv4Addr},
+};
 
 use des::{time::SimTime, tokio::sync::mpsc::channel};
-use inet::{TcpListener, TcpStream};
+use fxhash::{FxBuildHasher, FxHashMap};
+use inet::TcpListener;
 use peering::{BgpPeeringCfg, NeighborDeamon, NeighborHandle};
 use pkt::BgpNrli;
 
@@ -90,6 +94,7 @@ impl BgpDeamon {
         let (tx, mut rx) = channel(32);
 
         let mut neighbor_send_handles = Vec::new();
+        let mut neighbor_tcp_handles = FxHashMap::with_hasher(FxBuildHasher::default());
 
         for neighbor in &self.neighbors {
             let (etx, erx) = channel(8);
@@ -113,42 +118,42 @@ impl BgpDeamon {
                 tcp_rx: tcp_rx,
             };
 
-            let span = if !neighbor.identifier.is_empty() {
-                tracing::span!(Level::TRACE, "bgp:peering", peer = neighbor.identifier)
-            } else {
-                tracing::span!(
-                    Level::TRACE,
-                    "bgp:peering",
-                    peer = tracing::field::debug(neighbor.addr)
-                )
-            };
+            let span = tracing::span!(
+                Level::TRACE,
+                "bgp:peering",
+                peer = tracing::field::debug(neighbor.addr)
+            );
 
             let handle = NeighborHandle {
                 tx: etx,
-                tcp_tx: tcp_tx,
                 task: tokio::spawn(deamon.deploy().instrument(span)),
             };
             handle.tx.send(NeighborEgressEvent::Start).await.unwrap();
             neighbor_send_handles.push(handle);
+            neighbor_tcp_handles.insert(IpAddr::V4(neighbor.addr), tcp_tx);
         }
 
-        let listener = TcpListener::bind((Ipv4Addr::UNSPECIFIED, 179)).await?;
+        let span = tracing::span!(Level::TRACE, "bgp listener");
+        let listener_handle = tokio::spawn(
+            async move {
+                let listener = TcpListener::bind((Ipv4Addr::UNSPECIFIED, 179)).await?;
+                while let Ok((stream, from)) = listener.accept().await {
+                    if let Some(neighbor) = neighbor_tcp_handles.get(&from.ip()) {
+                        tracing::trace!("incoming connection ({:?} -> local:179)", from);
+                        neighbor.send(stream).await.unwrap();
+                    } else {
+                        tracing::warn!("incoming connection not directed at any bgp port")
+                    }
+                }
+                Ok::<_, Error>(())
+            }
+            .instrument(span),
+        );
+
+        let _ = listener_handle;
 
         loop {
             tokio::select! {
-                stream = listener.accept() => {
-                    let (stream, addr) = stream?;
-                    // Find corresponding client for
-                    // incoming connection
-                    let Some((i, _neighbor)) = self.neighbors.iter().enumerate().find(|(_, n)| n.addr == addr.ip()) else {
-                        continue;
-                    };
-                    tracing::trace!("new incoming connection from {:?}", addr);
-                    let _ = neighbor_send_handles[i]
-                        .tcp_tx
-                        .send(stream)
-                        .await.unwrap();
-                }
                 val = rx.recv() => {
                     dbg!(val);
                 }

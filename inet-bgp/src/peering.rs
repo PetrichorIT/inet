@@ -86,7 +86,6 @@ pub(crate) enum NeighborDeamonState {
 
 pub(crate) struct NeighborHandle {
     pub(crate) tx: Sender<NeighborEgressEvent>,
-    pub(crate) tcp_tx: Sender<TcpStream>,
     pub(crate) task: JoinHandle<Result<()>>,
 }
 
@@ -138,7 +137,6 @@ impl NeighborDeamon {
 
     async fn _deploy(mut self) -> Result<()> {
         sleep(Duration::from_secs_f64(random::<f64>() * 0.25)).await;
-        // tracing::info!("INIT");
 
         const BUF_SIZE: usize = 1024;
         let mut buf = [0; BUF_SIZE];

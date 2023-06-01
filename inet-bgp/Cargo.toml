@@ -7,13 +7,14 @@ edition = "2021"
 
 [[bin]]
 name = "bgp"
-path = "bin/pkt.rs"
+path = "bin/bgp.rs"
 
 [dependencies]
 inet = { path = "../inet", features = ["pcap"]}
 bytepack = { path = "../bytepack"}
-des = "*"
+des = { version = "*", features = ["full", "tracing"]}
+fxhash = "*"
 async-trait = "*"
-tracing = "0.1.37"
+tracing = { version = "*", features = ["max_level_trace", "release_max_level_trace"]}
 tokio = "*"
 futures = "*"
