@@ -67,7 +67,7 @@ impl AsyncModule for B {
         .unwrap();
 
         spawn(
-            BgpDeamon::new(1000, Ipv4Addr::new(192, 168, 0, 102))
+            BgpDeamon::new(2000, Ipv4Addr::new(192, 168, 0, 102))
                 .add_neighbor(Ipv4Addr::new(192, 168, 0, 101), 1000)
                 .deploy(),
         );
@@ -84,17 +84,17 @@ impl Module for Main {
 fn main() {
     inet::init();
 
-    struct Policy;
-    impl ScopeConfigurationPolicy for Policy {
-        fn configure(&self, scope: &str) -> ScopeConfiguration {
-            ScopeConfiguration {
-                fmt: Box::new(NoColorFormatter),
-                output: Box::new(std::io::stdout()),
-            }
-        }
-    }
+    // struct Policy;
+    // impl ScopeConfigurationPolicy for Policy {
+    //     fn configure(&self, scope: &str) -> ScopeConfiguration {
+    //         ScopeConfiguration {
+    //             fmt: Box::new(NoColorFormatter),
+    //             output: Box::new(std::io::stdout()),
+    //         }
+    //     }
+    // }
 
-    Subscriber::new(Policy)
+    Subscriber::default()
         .with_max_level(LevelFilter::TRACE)
         .init()
         .unwrap();

@@ -3,10 +3,10 @@ use std::{
     net::{IpAddr, Ipv4Addr},
 };
 
-use des::{time::SimTime, tokio::sync::mpsc::channel};
+use des::tokio::sync::mpsc::channel;
 use fxhash::{FxBuildHasher, FxHashMap};
 use inet::TcpListener;
-use peering::{BgpPeeringCfg, NeighborDeamon, NeighborHandle};
+use peering::{NeighborDeamon, NeighborHandle};
 use pkt::BgpNrli;
 
 use tracing::{Instrument, Level};
@@ -99,24 +99,17 @@ impl BgpDeamon {
         for neighbor in &self.neighbors {
             let (etx, erx) = channel(8);
             let (tcp_tx, tcp_rx) = channel(8);
-            let deamon = NeighborDeamon {
-                // state: NeighborDeamonState::Idle,
-                peer_info: neighbor.clone(),
-                host_info: BgpNodeInformation {
+            let deamon = NeighborDeamon::new(
+                BgpNodeInformation {
                     identifier: String::from("host"),
                     addr: self.router_id,
                     as_num: self.as_num,
                 },
-                cfg: BgpPeeringCfg::default(),
-
-                last_keepalive_sent: SimTime::ZERO,
-                last_keepalive_received: SimTime::ZERO,
-                connect_retry_counter: 0,
-
-                tx: tx.clone(),
-                rx: erx,
-                tcp_rx: tcp_rx,
-            };
+                neighbor.clone(),
+                tx.clone(),
+                erx,
+                tcp_rx,
+            );
 
             let span = tracing::span!(
                 Level::TRACE,
