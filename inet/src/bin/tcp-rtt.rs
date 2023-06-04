@@ -1,17 +1,13 @@
-use des::{
-    prelude::*,
-    registry,
-    tokio::{
-        io::{AsyncReadExt, AsyncWriteExt},
-        spawn,
-        task::JoinHandle,
-    },
-    tracing::Subscriber,
-};
+use des::{prelude::*, registry, tracing::Subscriber};
 use inet::{
     interface::{add_interface, Interface, NetworkDevice},
     tcp::{set_tcp_cfg, TcpConfig},
     TcpListener, TcpStream,
+};
+use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt},
+    spawn,
+    task::JoinHandle,
 };
 
 struct Connector {

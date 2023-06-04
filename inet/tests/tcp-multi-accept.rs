@@ -1,15 +1,12 @@
 //! Tests whether one active TcpListener::accept blocks
 //! any progress on any other handshakes
 
-use des::{
-    prelude::*,
-    registry,
-    tokio::{spawn, task::JoinHandle},
-};
+use des::{prelude::*, registry};
 use inet::{
     interface::{add_interface, Interface, NetworkDevice},
     TcpListener, TcpStream,
 };
+use tokio::{spawn, task::JoinHandle};
 
 struct Client {
     handle: Option<JoinHandle<()>>,

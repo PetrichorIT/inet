@@ -1,16 +1,12 @@
 use std::iter::repeat_with;
 
-use des::{
-    prelude::*,
-    registry,
-    time::sleep,
-    tokio::{spawn, task::JoinHandle},
-};
+use des::{prelude::*, registry, time::sleep};
 use inet::{
     arp::arpa,
     interface::{add_interface, Interface, NetworkDevice},
     UdpSocket,
 };
+use tokio::{spawn, task::JoinHandle};
 
 // bitrate: 10_000_000
 // latency: 50ms

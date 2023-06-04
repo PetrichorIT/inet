@@ -11,17 +11,17 @@ use crate::{
     },
     IOContext,
 };
-use des::tokio::{
-    io::{AsyncRead, AsyncWrite, ReadBuf},
-    stream,
-    sync::oneshot,
-};
 use std::{
     io::{Error, ErrorKind, Result},
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
     pin::Pin,
     sync::Arc,
     task::{Context, Poll},
+};
+use tokio::{
+    io::{AsyncRead, AsyncWrite, ReadBuf},
+    stream,
+    sync::oneshot,
 };
 
 mod owned_half;

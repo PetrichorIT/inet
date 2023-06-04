@@ -6,7 +6,6 @@ use des::{
     prelude::{module_path, schedule_in, GateRef, Message},
     stats::{OutVec, Statistic},
     time::SimTime,
-    tokio::sync::oneshot,
 };
 use fxhash::{FxBuildHasher, FxHashMap};
 use std::{
@@ -17,6 +16,7 @@ use std::{
     task::Waker,
     time::Duration,
 };
+use tokio::sync::oneshot;
 
 use crate::{
     interface::{IfId, KIND_IO_TIMEOUT},

@@ -227,7 +227,7 @@ impl RipRoutingDeamon {
                 .unwrap_or(Duration::ZERO))
             .min(self.cfg.entry_update_interval);
 
-            let (n, from) = des::tokio::select! {
+            let (n, from) = tokio::select! {
                 result = sock.recv_from(&mut buf) => match result {
                     Ok(vv) => vv,
                     Err(e) => {

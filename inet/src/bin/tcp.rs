@@ -1,19 +1,15 @@
 use std::sync::{atomic::AtomicUsize, Arc};
 
-use des::{
-    prelude::*,
-    registry,
-    time::sleep,
-    tokio::{
-        io::{AsyncReadExt, AsyncWriteExt},
-        spawn,
-        task::JoinHandle,
-    },
-};
+use des::{prelude::*, registry, time::sleep};
 use inet::{
     interface::{add_interface, Interface, NetworkDevice},
     tcp::{set_tcp_cfg, TcpConfig},
     TcpListener, TcpStream,
+};
+use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt},
+    spawn,
+    task::JoinHandle,
 };
 
 struct Connector {

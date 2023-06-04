@@ -5,12 +5,12 @@ use super::super::TcpStreamInner;
 use super::TcpStream;
 
 use crate::io::{Interest, Ready};
-use des::tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 use std::io::{Error, ErrorKind, IoSlice, IoSliceMut, Result};
 use std::net::SocketAddr;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::*;
+use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
 /// Owned read half of a [TcpStream], created by [into_split](super::TcpStream::into_split).
 ///

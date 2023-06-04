@@ -3,12 +3,13 @@ use std::{
     sync::atomic::{AtomicUsize, Ordering},
 };
 
-use des::{prelude::*, registry, time::sleep, tokio::spawn};
+use des::{prelude::*, registry, time::sleep};
 use inet::{
     interface::{add_interface, Interface, NetworkDevice},
     socket::RawIpSocket,
 };
 use inet_types::ip::{IpPacket, Ipv4Flags, Ipv4Packet, Ipv6Packet};
+use tokio::spawn;
 
 const PROTO: u8 = 83;
 

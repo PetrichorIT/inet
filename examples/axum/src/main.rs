@@ -1,6 +1,6 @@
 use axum::{extract::Path, response::Response, routing::get, Router};
 use connector::InetTcpStream;
-use des::{prelude::*, registry, tokio::spawn, tracing::Subscriber};
+use des::{prelude::*, registry, tracing::Subscriber};
 use hyper::{
     client,
     server::{self, accept::from_stream},
@@ -13,6 +13,7 @@ use inet::{
     TcpListener,
 };
 use std::{convert::Infallible, fs::File};
+use tokio::spawn;
 
 struct Client;
 #[async_trait::async_trait]
@@ -100,10 +101,10 @@ mod connector {
     use std::future::Future;
     use std::{mem::transmute, pin::Pin};
 
-    use des::tokio::io::AsyncRead;
-    use des::tokio::io::AsyncWrite;
     use hyper::client::connect::{Connected, Connection};
     use hyper::Uri;
+    use tokio::io::AsyncRead;
+    use tokio::io::AsyncWrite;
     use tower::Service;
 
     type Fut = Pin<Box<dyn Future<Output = Result<InetTcpStream, std::io::Error>> + Send>>;
@@ -124,7 +125,7 @@ mod connector {
         fn poll_read(
             mut self: std::pin::Pin<&mut Self>,
             cx: &mut std::task::Context<'_>,
-            buf: &mut des::tokio::io::ReadBuf<'_>,
+            buf: &mut tokio::io::ReadBuf<'_>,
         ) -> std::task::Poll<std::io::Result<()>> {
             Pin::new(&mut self.0).poll_read(cx, unsafe { transmute(buf) })
         }

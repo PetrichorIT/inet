@@ -1,10 +1,11 @@
-use des::{prelude::*, registry, time::sleep, tokio::task::JoinHandle};
+use des::{prelude::*, registry, time::sleep};
 use inet::{
     arp::arpa,
     interface::{add_interface, Interface, NetworkDevice},
     UdpSocket,
 };
 use inet_types::ip::Ipv6Packet;
+use tokio::task::JoinHandle;
 
 struct Node {
     handles: Vec<JoinHandle<()>>,

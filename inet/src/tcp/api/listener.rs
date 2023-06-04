@@ -13,12 +13,12 @@ use crate::{
     dns::{lookup_host, ToSocketAddrs},
     IOContext,
 };
-use des::tokio::sync::Mutex;
-use des::tokio::sync::{
-    mpsc::{self, Receiver, Sender},
-    oneshot,
-};
+
 use inet_types::ip::IpPacketRef;
+use tokio::sync::{
+    mpsc::{self, Receiver, Sender},
+    oneshot, Mutex,
+};
 
 use super::{TcpStream, TcpStreamInner};
 

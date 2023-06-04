@@ -1,5 +1,5 @@
 use bytepack::ToBytestream;
-use des::{prelude::*, registry, time::sleep, tokio::spawn, tracing::Subscriber};
+use des::{prelude::*, registry, time::sleep, tracing::Subscriber};
 use inet::{
     interface::{add_interface, Interface, NetworkDevice},
     socket::RawIpSocket,
@@ -9,6 +9,7 @@ use inet_types::{
     ip::{IpPacket, Ipv4Flags, Ipv4Packet},
     tcp::{TcpFlags, TcpPacket, PROTO_TCP},
 };
+use tokio::spawn;
 
 struct Spoofer {}
 #[async_trait::async_trait]

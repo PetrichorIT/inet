@@ -1,8 +1,9 @@
-use des::{prelude::*, registry, time::sleep, tokio::task::JoinHandle};
+use des::{prelude::*, registry, time::sleep};
 use inet::{
     interface::{add_interface, Interface, NetworkDevice},
     UdpSocket,
 };
+use tokio::task::JoinHandle;
 
 struct Node {
     handles: Vec<JoinHandle<()>>,

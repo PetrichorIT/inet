@@ -1,17 +1,13 @@
-use des::{
-    prelude::*,
-    registry,
-    time::sleep,
-    tokio::{
-        io::{AsyncReadExt, AsyncWriteExt},
-        task::JoinHandle,
-    },
-};
+use des::{prelude::*, registry, time::sleep};
 use inet::{
     interface::{add_interface, Interface, NetworkDevice},
     TcpListener, TcpStream,
 };
 use inet_types::ip::Ipv4Packet;
+use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt},
+    task::JoinHandle,
+};
 
 struct Node {
     handles: Vec<JoinHandle<()>>,

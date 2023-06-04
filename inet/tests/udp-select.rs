@@ -1,14 +1,10 @@
-use des::{
-    prelude::*,
-    registry,
-    time::sleep,
-    tokio::{spawn, task::JoinHandle},
-};
+use des::{prelude::*, registry, time::sleep};
 use inet::{
     interface::{add_interface, Interface, NetworkDevice},
     utils::{get_ip, netstat},
     *,
 };
+use tokio::{spawn, task::JoinHandle};
 
 const SCHED: [&'static [f64; 5]; 2] = [&SCHED_A, &SCHED_B];
 const SCHED_A: [f64; 5] = [1., 3., 6., 7., 10.];
@@ -96,7 +92,7 @@ impl AsyncModule for C {
             while i < EXPECTED.len() {
                 let mut buf_a = [0u8; 1024];
                 let mut buf_b = [0u8; 1024];
-                des::tokio::select!(
+                tokio::select!(
                     r = sock_a.recv_from(&mut buf_a) => {
                         tracing::info!("received from a");
                         let _ = r.unwrap();

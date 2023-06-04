@@ -1,15 +1,11 @@
 use std::sync::Arc;
 
-use des::{
-    prelude::*,
-    registry,
-    time::sleep,
-    tokio::{spawn, sync::Mutex, task::JoinHandle},
-};
+use des::{prelude::*, registry, time::sleep};
 use inet::{
     interface::{add_interface, Interface, NetworkDevice},
     *,
 };
+use tokio::{spawn, sync::Mutex, task::JoinHandle};
 
 struct Ping {
     out: Arc<Vec<u8>>,

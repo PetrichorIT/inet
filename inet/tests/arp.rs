@@ -1,4 +1,4 @@
-use des::{prelude::*, registry, time::sleep, tokio::spawn};
+use des::{prelude::*, registry, time::sleep};
 use inet::{
     arp::arpa,
     interface::{add_interface, Interface, NetworkDevice},
@@ -6,6 +6,7 @@ use inet::{
 };
 use inet_types::ip::{IpPacket, Ipv4Packet, Ipv6Packet};
 use serial_test::serial;
+use tokio::spawn;
 
 type Switch = inet::utils::LinkLayerSwitch;
 

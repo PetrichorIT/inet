@@ -16,6 +16,7 @@ pcap = []
 async-trait = "*"
 fxhash = "0.2.1"
 des = { version = "*", features = ["full"] }
+tokio = "*"
 tracing = { version = "*", features = ["max_level_trace", "release_max_level_trace"]}
 bytes = "1.4.0"
 rand = "0.8.5"

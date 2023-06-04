@@ -1,10 +1,11 @@
-use des::{prelude::*, registry, time::sleep, tokio::task::JoinHandle};
+use des::{prelude::*, registry, time::sleep};
 use fxhash::{FxBuildHasher, FxHashMap};
 use inet::{
     interface::{add_interface, Interface, NetworkDevice},
     routing::{add_routing_entry, set_default_gateway},
     UdpSocket,
 };
+use tokio::task::JoinHandle;
 
 struct Node {
     handles: Vec<JoinHandle<()>>,

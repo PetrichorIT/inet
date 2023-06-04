@@ -1,11 +1,11 @@
 use bytepack::ToBytestream;
 use des::prelude::*;
-use des::tokio::sync::oneshot;
 use inet_types::icmp::{IcmpPacket, IcmpType, PROTO_ICMP};
 use inet_types::ip::{IpPacket, Ipv4Flags, Ipv4Packet};
 use std::io::{Error, ErrorKind, Result};
 use std::net::Ipv4Addr;
 use std::time::Duration;
+use tokio::sync::oneshot;
 
 use crate::socket::SocketIfaceBinding;
 use crate::IOContext;

@@ -1,9 +1,10 @@
-use des::{prelude::*, registry, tokio::spawn, tracing::Subscriber};
+use des::{prelude::*, registry, tracing::Subscriber};
 use inet::{
     icmp::traceroute,
     interface::{add_interface, Interface, NetworkDevice},
     routing::{set_default_gateway, RoutingInformation},
 };
+use tokio::spawn;
 
 struct Alice {}
 #[async_trait::async_trait]

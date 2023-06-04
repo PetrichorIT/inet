@@ -1,15 +1,6 @@
 use std::fs::File;
 
-use des::{
-    prelude::*,
-    registry,
-    time::sleep,
-    tokio::{
-        io::{AsyncReadExt, AsyncWriteExt},
-        spawn,
-    },
-    tracing::Subscriber,
-};
+use des::{prelude::*, registry, time::sleep, tracing::Subscriber};
 use inet::{
     dns::{lookup_host, DNSNameserver},
     interface::{add_interface, Interface, NetworkDevice},
@@ -20,6 +11,10 @@ use inet::{
 };
 use inet::{pcap::PcapCapturePoints, types::ip::IpMask};
 use inet_rip::RipRoutingDeamon;
+use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt},
+    spawn,
+};
 use tracing::level_filters::LevelFilter;
 
 struct Client;

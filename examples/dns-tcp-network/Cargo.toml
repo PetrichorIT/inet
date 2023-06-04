@@ -11,3 +11,4 @@ inet-rip = { path = "../../inet-rip"}
 des = "*"
 async-trait = "*"
 tracing = { version = "*", features = ["max_level_info"]}
+tokio = "*"

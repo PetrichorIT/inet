@@ -3,11 +3,11 @@ use std::{
     net::{IpAddr, Ipv4Addr},
 };
 
-use des::tokio::sync::mpsc::channel;
 use fxhash::{FxBuildHasher, FxHashMap};
 use inet::TcpListener;
 use peering::{NeighborDeamon, NeighborHandle};
 use pkt::BgpNrli;
+use tokio::sync::mpsc::channel;
 
 use tracing::{Instrument, Level};
 use types::AsNumber;
@@ -132,7 +132,7 @@ impl BgpDeamon {
                 let listener = TcpListener::bind((Ipv4Addr::UNSPECIFIED, 179)).await?;
                 while let Ok((stream, from)) = listener.accept().await {
                     if let Some(neighbor) = neighbor_tcp_handles.get(&from.ip()) {
-                        tracing::trace!("incoming connection ({:?} -> local:179)", from);
+                        tracing::debug!("incoming connection ({:?} -> local:179)", from);
                         neighbor.send(stream).await.unwrap();
                     } else {
                         tracing::warn!("incoming connection not directed at any bgp port")
@@ -146,7 +146,7 @@ impl BgpDeamon {
         let _ = listener_handle;
 
         loop {
-            tokio::select! {
+            des::select! {
                 val = rx.recv() => {
                     dbg!(val);
                 }

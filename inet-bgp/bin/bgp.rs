@@ -1,16 +1,12 @@
 use std::fs::File;
 
-use des::{
-    prelude::*,
-    registry,
-    tokio::spawn,
-    tracing::{NoColorFormatter, ScopeConfiguration, ScopeConfigurationPolicy, Subscriber},
-};
+use des::{prelude::*, registry, tracing::Subscriber};
 use inet::{
     interface::{add_interface, Interface, NetworkDevice},
     pcap::{pcap, PcapCapturePoints, PcapConfig, PcapFilters},
 };
 use inet_bgp::BgpDeamon;
+use tokio::spawn;
 use tracing::metadata::LevelFilter;
 
 struct A;

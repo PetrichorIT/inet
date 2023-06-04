@@ -1,13 +1,9 @@
-use des::{
-    prelude::*,
-    registry,
-    time::sleep,
-    tokio::{spawn, task::JoinHandle},
-};
+use des::{prelude::*, registry, time::sleep};
 use inet::{
     interface::{add_interface, Interface, NetworkDevice},
     *,
 };
+use tokio::{spawn, task::JoinHandle};
 
 struct OneAttemptClient {
     handles: Vec<JoinHandle<()>>,

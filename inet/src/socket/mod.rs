@@ -1,8 +1,8 @@
 //! Networking sockets - endpoint for communication.
 
-use des::tokio::sync::mpsc::Sender;
 use fxhash::{FxBuildHasher, FxHashMap};
 use inet_types::ip::IpPacket;
+use tokio::sync::mpsc::Sender;
 
 use crate::interface::{IfId, InterfaceAddr};
 

@@ -11,3 +11,4 @@ bytepack = { path = "../bytepack"}
 fxhash = "*"
 des = "*"
 tracing = "*"
+tokio = "*"

@@ -1,8 +1,7 @@
-use std::time::Duration;
+use std::{fmt::Debug, time::Duration};
 
 use des::time::{sleep_until, SimTime};
 
-#[derive(Debug)]
 pub(super) struct Timers {
     pub(super) cfg: TimersCfg,
     hold_timer: SimTime,
@@ -19,7 +18,7 @@ pub(super) struct TimersCfg {
     pub(super) connection_retry_time: Duration,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum Timer {
     HoldTimer,
     KeepaliveTimer,
@@ -50,6 +49,16 @@ impl Timers {
         }
     }
 
+    pub fn disable_timer(&mut self, timer: Timer) {
+        use Timer::*;
+        match timer {
+            HoldTimer => self.hold_timer = SimTime::MAX,
+            KeepaliveTimer => self.keepalive_timer = SimTime::MAX,
+            DelayOpenTimer => self.delay_open_timer = SimTime::MAX,
+            ConnectionRetryTimer => self.connection_retry_timer = SimTime::MAX,
+        }
+    }
+
     pub async fn next(&mut self) -> Timer {
         let mut min = (SimTime::MAX, Timer::HoldTimer);
 
@@ -64,7 +73,7 @@ impl Timers {
         ] {
             if *timer <= SimTime::now() {
                 // Timer expired
-                *timer = SimTime::MAX;
+                continue;
             }
 
             if *timer < min.0 {
@@ -76,8 +85,24 @@ impl Timers {
             sleep_until(min.0).await;
             min.1
         } else {
-            todo!()
+            panic!("No timer set, but next() called, expected timer to be set")
         }
+    }
+}
+
+impl Debug for Timers {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let active = [
+            (self.hold_timer, Timer::HoldTimer),
+            (self.keepalive_timer, Timer::KeepaliveTimer),
+            (self.delay_open_timer, Timer::DelayOpenTimer),
+            (self.connection_retry_timer, Timer::ConnectionRetryTimer),
+        ]
+        .into_iter()
+        .filter(|(deadline, _)| *deadline != SimTime::MAX)
+        .collect::<Vec<_>>();
+
+        f.debug_struct("Timers").field("active", &active).finish()
     }
 }
 

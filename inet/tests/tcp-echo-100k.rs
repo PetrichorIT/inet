@@ -1,4 +1,4 @@
-use des::{registry, tokio};
+use des::registry;
 use std::{
     str::FromStr,
     sync::{

@@ -4,9 +4,9 @@ use super::DNSZoneFile;
 use bytepack::{FromBytestream, ToBytestream};
 use des::{
     prelude::{module_path, par},
+    select,
     time::sleep,
     time::SimTime,
-    tokio::select,
 };
 use inet_types::{
     dns::{

@@ -10,6 +10,7 @@ inet = { path = "../../inet", features = ["pcap"]}
 des = "*"
 async-trait = "*"
 tracing = "*"
+tokio = "*"
 hyper = { version = "0.14", features = ["full", "http1", "http2", "server", "backports"] }
 async-stream = "0.3"
 axum = "0.6"
