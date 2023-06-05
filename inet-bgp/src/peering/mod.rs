@@ -162,7 +162,7 @@ impl NeighborDeamon {
                     // RFC requires
                     // - no resource allocation
                     // - denying of all incoming connections
-                    let event = des::select! {
+                    let event = tokio::select! {
                         event = self.rx.recv() => event,
                         _ = self.tcp_rx.recv() => {
                             tracing::warn!("[idle] dropping incoming tcp connection");
@@ -211,7 +211,7 @@ impl NeighborDeamon {
                 // The provided stream at inital call is either
                 // initiated by this client, or accept as incoming
                 Connect(stream) => {
-                    let mut stream = des::select! {
+                    let mut stream = tokio::select! {
                         stream = stream => stream,
                         event = self.rx.recv() => match event.unwrap() {
                             Stop => {
@@ -300,7 +300,7 @@ impl NeighborDeamon {
                 }
 
                 Active => {
-                    des::select! {
+                    tokio::select! {
                         // ManualStop (Event 2)
                         event = self.rx.recv() => match event.unwrap() {
                             Stop => {
@@ -355,7 +355,7 @@ impl NeighborDeamon {
                 }
 
                 ActiveDelayOpen(mut stream) => {
-                    des::select! {
+                    tokio::select! {
                         n = stream.read(&mut buf) => {
                             // TODO: missing hold timer funny buisness
                             let n = n?;
@@ -416,7 +416,7 @@ impl NeighborDeamon {
                 }
 
                 OpenSent(mut stream) => {
-                    des::select! {
+                    tokio::select! {
                         // CASE 1: Stop message
                         // - drop connection, send CEASE message
                         // - return to IDLE
@@ -538,7 +538,7 @@ impl NeighborDeamon {
                 }
 
                 OpenConfirm(mut stream) => {
-                    des::select! {
+                    tokio::select! {
 
                         // CASE 1: Stop
                         event = self.rx.recv() => match event.unwrap() {
@@ -609,7 +609,7 @@ impl NeighborDeamon {
                 }
 
                 Established(mut stream) => {
-                    des::select! {
+                    tokio::select! {
                         event = self.rx.recv() => match event.unwrap() {
                             Stop => {
                                 write_stream!(stream, self.notif(BgpNotificationPacket::Cease()));

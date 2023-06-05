@@ -9,4 +9,5 @@ members = [
 ]
 
 [patch.crates-io]
+# des = { git = "https://github.com/PetrichorIT/des", branch = "beta"}
 des = { path = "../des/des"}

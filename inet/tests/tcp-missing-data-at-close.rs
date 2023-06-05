@@ -66,6 +66,13 @@ impl AsyncModule for TcpServer {
         ))
         .unwrap();
 
+        // inet::pcap::pcap(inet::pcap::PcapConfig {
+        //     filters: inet::pcap::PcapFilters::default(),
+        //     capture: inet::pcap::PcapCapturePoints::CLIENT_DEFAULT,
+        //     output: std::fs::File::create("server.pcap").unwrap(),
+        // })
+        // .unwrap();
+
         let done = self.done.clone();
         let fd = self.fd.clone();
 
@@ -152,6 +159,13 @@ impl AsyncModule for TcpClient {
         ))
         .unwrap();
 
+        // inet::pcap::pcap(inet::pcap::PcapConfig {
+        //     filters: inet::pcap::PcapFilters::default(),
+        //     capture: inet::pcap::PcapCapturePoints::CLIENT_DEFAULT,
+        //     output: std::fs::File::create("client.pcap").unwrap(),
+        // })
+        // .unwrap();
+
         let done = self.done.clone();
         let fd = self.fd.clone();
 
@@ -204,7 +218,10 @@ impl Module for Main {
 fn tcp_missing_data_at_close() {
     inet::init();
 
-    // Logger::new().set_logger();
+    // Subscriber::default()
+    //     .with_max_level(LevelFilter::TRACE)
+    //     .init()
+    //     .unwrap();
 
     let app = NetworkApplication::new(
         NdlApplication::new("tests/tcp.ndl", registry![Link, TcpServer, TcpClient, Main])

@@ -312,7 +312,7 @@ impl IOContext {
 
         if socket.typ == SocketType::SOCK_STREAM {
             // TODO: If listeners have timesouts as well we must do something
-            self.process_timeout(*fd, msg)
+            self.tcp_timeout(*fd, msg)
         }
 
         None

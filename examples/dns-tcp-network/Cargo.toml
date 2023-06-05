@@ -10,5 +10,5 @@ inet = { path = "../../inet", features = ["dns", "pcap"]}
 inet-rip = { path = "../../inet-rip"}
 des = "*"
 async-trait = "*"
-tracing = { version = "*", features = ["max_level_info"]}
+tracing = "*"
 tokio = "*"

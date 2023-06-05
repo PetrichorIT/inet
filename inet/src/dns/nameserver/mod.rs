@@ -4,7 +4,6 @@ use super::DNSZoneFile;
 use bytepack::{FromBytestream, ToBytestream};
 use des::{
     prelude::{module_path, par},
-    select,
     time::sleep,
     time::SimTime,
 };
@@ -176,7 +175,7 @@ impl DNSNameserver {
             } else {
                 // Wait with timeout only if active transactions
                 // else infinite loop, will not terminated unless sim end
-                select! {
+                tokio::select! {
                     udp = socket.recv_from(&mut buf) => {
                         let Ok((n, from)) = udp else { break };
                         let Ok(msg) = DNSMessage::from_buffer(&buf[..n]) else { continue };

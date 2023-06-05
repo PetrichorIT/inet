@@ -12,7 +12,7 @@ path = "bin/bgp.rs"
 [dependencies]
 inet = { path = "../inet", features = ["pcap"]}
 bytepack = { path = "../bytepack"}
-des = { version = "*", features = ["full", "tracing"]}
+des = { version = "*", features = ["full"]}
 fxhash = "*"
 async-trait = "*"
 tracing = { version = "*", features = ["max_level_trace", "release_max_level_trace"]}

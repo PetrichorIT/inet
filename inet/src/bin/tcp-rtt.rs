@@ -87,6 +87,14 @@ impl AsyncModule for Client {
         cfg.debug = true;
         cfg.cong_ctrl = true;
         set_tcp_cfg(cfg).unwrap();
+
+        inet::pcap::pcap(inet::pcap::PcapConfig {
+            filters: inet::pcap::PcapFilters::default(),
+            capture: inet::pcap::PcapCapturePoints::CLIENT_DEFAULT,
+            output: std::fs::File::create("tclient.pcap").unwrap(),
+        })
+        .unwrap();
+
         for k in 0..1 {
             self.handles.push(spawn(async move {
                 let mut sock = TcpStream::connect((Ipv4Addr::new(69, 0, 0, 69), 1000))
@@ -133,6 +141,13 @@ impl AsyncModule for Server {
         cfg.debug = true;
         cfg.cong_ctrl = true;
         set_tcp_cfg(cfg).unwrap();
+
+        inet::pcap::pcap(inet::pcap::PcapConfig {
+            filters: inet::pcap::PcapFilters::default(),
+            capture: inet::pcap::PcapCapturePoints::CLIENT_DEFAULT,
+            output: std::fs::File::create("tserver.pcap").unwrap(),
+        })
+        .unwrap();
 
         spawn(async move {
             let list = TcpListener::bind((Ipv4Addr::UNSPECIFIED, 1000))

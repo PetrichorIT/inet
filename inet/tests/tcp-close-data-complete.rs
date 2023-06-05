@@ -56,6 +56,13 @@ impl AsyncModule for TcpServer {
         let done = self.done.clone();
         let fd = self.fd.clone();
 
+        // inet::pcap::pcap(inet::pcap::PcapConfig {
+        //     filters: inet::pcap::PcapFilters::default(),
+        //     capture: inet::pcap::PcapCapturePoints::CLIENT_DEFAULT,
+        //     output: std::fs::File::create("server.pcap").unwrap(),
+        // })
+        // .unwrap();
+
         tokio::spawn(async move {
             let sock = TcpListener::bind("0.0.0.0:2000").await.unwrap();
             tracing::info!("Server bound");
@@ -131,6 +138,13 @@ impl AsyncModule for TcpClient {
         let done = self.done.clone();
         let fd = self.fd.clone();
 
+        // inet::pcap::pcap(inet::pcap::PcapConfig {
+        //     filters: inet::pcap::PcapFilters::default(),
+        //     capture: inet::pcap::PcapCapturePoints::CLIENT_DEFAULT,
+        //     output: std::fs::File::create("client.pcap").unwrap(),
+        // })
+        // .unwrap();
+
         tokio::spawn(async move {
             use tokio::io::AsyncWriteExt;
             let mut stream = TcpStream::connect("69.0.0.100:2000").await.unwrap();
@@ -172,7 +186,7 @@ impl Module for Main {
 fn tcp_close_data_complete() {
     inet::init();
 
-    // Logger::new().set_logger();
+    // Subscriber::default().init().unwrap();
 
     let app = NetworkApplication::new(
         NdlApplication::new("tests/tcp.ndl", registry![Link, TcpServer, TcpClient, Main])

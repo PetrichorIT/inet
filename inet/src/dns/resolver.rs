@@ -144,9 +144,9 @@ impl sealed::ToSocketAddrsPriv for (&str, u16) {
             use std::time::Duration;
 
             use bytepack::{FromBytestream, ToBytestream};
-            use des::select;
             use des::time::sleep;
             use inet_types::dns::{DNSMessage, DNSResponseCode, DNSType};
+            use tokio::select;
 
             use crate::UdpSocket;
 
