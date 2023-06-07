@@ -284,7 +284,7 @@ fn main() {
     .unwrap();
     let mut app = NetworkApplication::new(app);
     app.include_par_file("main.par");
-    let rt = Runtime::new_with(app, RuntimeOptions::seeded(123).max_time(50.0.into()));
+    let rt = Builder::seeded(123).max_time(50.0.into()).build(app);
     let app = rt.run().into_app();
     app.globals()
         .topology

@@ -134,6 +134,6 @@ fn main() {
         .unwrap();
     let mut app = NetworkApplication::new(app);
     app.include_par_file("inet/src/bin/ping.par");
-    let rt = Runtime::new_with(app, RuntimeOptions::seeded(123).max_itr(50));
+    let rt = Builder::seeded(123).max_itr(50).build(app);
     let _ = rt.run().unwrap();
 }

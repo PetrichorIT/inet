@@ -149,6 +149,6 @@ fn raw_ip_socket() {
             .map_err(|e| println!("{e}"))
             .unwrap(),
     );
-    let rt = Runtime::new_with(rt, RuntimeOptions::seeded(123));
+    let rt = Builder::seeded(123).build(rt);
     let _ = rt.run();
 }

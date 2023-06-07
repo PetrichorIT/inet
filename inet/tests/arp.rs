@@ -97,7 +97,7 @@ fn v4() {
     );
     app.include_par_file("tests/arp/v4.par");
 
-    let rt = Runtime::new_with(app, RuntimeOptions::seeded(123).max_itr(500));
+    let rt = Builder::seeded(123).max_itr(500).build(app);
     let _ = rt.run().unwrap_premature_abort();
 }
 
@@ -114,6 +114,6 @@ fn v6() {
     );
     app.include_par_file("tests/arp/v6.par");
 
-    let rt = Runtime::new_with(app, RuntimeOptions::seeded(123).max_itr(500));
+    let rt = Builder::seeded(123).max_itr(500).build(app);
     let _ = rt.run().unwrap_premature_abort();
 }

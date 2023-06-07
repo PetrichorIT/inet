@@ -153,6 +153,6 @@ fn tcp_lan_v6() {
         .unwrap();
     let mut app = NetworkApplication::new(app);
     app.include_par_file("tests/tcp-lan/v6.par");
-    let rt = Runtime::new_with(app, RuntimeOptions::seeded(123));
+    let rt = Builder::seeded(123).build(app);
     let _ = rt.run();
 }

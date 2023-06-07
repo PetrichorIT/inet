@@ -15,9 +15,9 @@ struct Connector {
     freq_g: f64, // the gradient,
     t: SimTime,  // time of the last calc
 
-    debug: OutVec,
-    debug_p: OutVec,
-    debug_g: OutVec,
+                 // debug: OutVec,
+                 // debug_p: OutVec,
+                 // debug_g: OutVec,
 }
 impl Module for Connector {
     fn new() -> Self {
@@ -25,9 +25,9 @@ impl Module for Connector {
             freq: 0.0,
             freq_g: 0.0,
             t: SimTime::ZERO,
-            debug_p: OutVec::new("drop".to_string(), Some(module_path())),
-            debug: OutVec::new("traffic".to_string(), Some(module_path())),
-            debug_g: OutVec::new("traffic_g".to_string(), Some(module_path())),
+            // debug_p: OutVec::new("drop".to_string(), Some(module_path())),
+            // debug: OutVec::new("traffic".to_string(), Some(module_path())),
+            // debug_g: OutVec::new("traffic_g".to_string(), Some(module_path())),
         }
     }
 
@@ -36,7 +36,7 @@ impl Module for Connector {
         if dur > 1.0 {
             self.freq = msg.header().length as f64;
             self.t = SimTime::now();
-            self.debug.collect(self.freq);
+            // self.debug.collect(self.freq);
         } else {
             let rem = (1.0 - dur) * self.freq + dur * self.freq_g * 0.01;
             let n_freq = rem + msg.header().length as f64;
@@ -44,12 +44,12 @@ impl Module for Connector {
             self.freq = n_freq;
             self.t = SimTime::now();
 
-            self.debug.collect(self.freq);
-            self.debug_g.collect(self.freq_g);
+            // self.debug.collect(self.freq);
+            // self.debug_g.collect(self.freq_g);
         }
 
-        let prob = (self.freq / 100_000.0).min(1.0) * msg.header().length as f64 / 2000.0;
-        self.debug_p.collect(prob);
+        let _prob = (self.freq / 100_000.0).min(1.0) * msg.header().length as f64 / 2000.0;
+        // self.debug_p.collect(prob);
 
         match msg.header().last_gate.as_ref().map(|g| g.pos()) {
             Some(0) => send(msg, ("out", 0)),
@@ -59,9 +59,9 @@ impl Module for Connector {
     }
 
     fn at_sim_end(&mut self) {
-        self.debug.finish();
-        self.debug_g.finish();
-        self.debug_p.finish();
+        // self.debug.finish();
+        // self.debug_g.finish();
+        // self.debug_p.finish();
     }
 }
 
@@ -200,6 +200,6 @@ fn main() {
     );
     app.include_par_file("inet/src/bin/tcp.par");
 
-    let rt = Runtime::new_with(app, RuntimeOptions::seeded(123).include_env());
+    let rt = Builder::seeded(123).build(app);
     let _ = rt.run().unwrap();
 }

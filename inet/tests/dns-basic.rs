@@ -296,6 +296,6 @@ fn dns_basic() {
         .unwrap(),
     );
     rt.include_par_file("tests/dns-basic/main.par");
-    let rt = Runtime::new_with(rt, RuntimeOptions::seeded(123));
+    let rt = Builder::seeded(123).build(rt);
     let _ = rt.run();
 }

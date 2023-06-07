@@ -97,11 +97,10 @@ fn main() {
 
     let app =
         NetworkApplication::new(NdlApplication::new("bin/pkt.ndl", registry![A, B, Main]).unwrap());
-    let rt = Runtime::new_with(
-        app,
-        RuntimeOptions::seeded(123)
-            .max_time(1000.0.into())
-            .max_itr(1000),
-    );
+    let rt = Builder::seeded(123)
+        .max_time(1000.0.into())
+        .max_itr(1000)
+        .build(app);
+
     let _ = rt.run();
 }

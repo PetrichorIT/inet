@@ -4,7 +4,6 @@
 use bytepack::{FromBytestream, ToBytestream};
 use des::{
     prelude::{module_path, schedule_in, GateRef, Message},
-    stats::{OutVec, Statistic},
     time::SimTime,
 };
 use fxhash::{FxBuildHasher, FxHashMap};
@@ -110,9 +109,6 @@ pub(crate) struct TransmissionControlBlock {
     sender_ack_bytes: usize,
 
     debug: bool,
-    debug_cong_window: OutVec,
-    debug_ssthresh: OutVec,
-    debug_rto: OutVec,
 
     // # Interest
     established: Option<oneshot::Sender<Result<()>>>,
@@ -199,12 +195,6 @@ impl TransmissionControlBlock {
             sender_ack_bytes: 0,
 
             debug: config.debug,
-            debug_cong_window: OutVec::new(
-                format!("congestion_window_{fd:x}"),
-                Some(module_path()),
-            ),
-            debug_ssthresh: OutVec::new(format!("ssthresh_{fd:x}"), Some(module_path())),
-            debug_rto: OutVec::new(format!("rto_{fd:x}"), Some(module_path())),
 
             established: None,
         }
@@ -583,15 +573,15 @@ impl IOContext {
         if ctrl.state == TcpState::Closed && ctrl.dropped {
             tracing::trace!("dropping socket");
 
-            if ctrl.debug {
-                ctrl.debug_cong_window.finish();
+            // if ctrl.debug {
+            //     ctrl.debug_cong_window.finish();
 
-                ctrl.debug_ssthresh.collect(ctrl.ssthresh as f64);
-                ctrl.debug_ssthresh.finish();
+            //     ctrl.debug_ssthresh.collect(ctrl.ssthresh as f64);
+            //     ctrl.debug_ssthresh.finish();
 
-                ctrl.debug_rto.collect(ctrl.rto as f64);
-                ctrl.debug_rto.finish();
-            }
+            //     ctrl.debug_rto.collect(ctrl.rto as f64);
+            //     ctrl.debug_rto.finish();
+            // }
             self.close_socket(fd);
         } else {
             self.tcp.streams.insert(fd, ctrl);
@@ -720,9 +710,9 @@ impl IOContext {
                     ctrl.tx_state = TcpSenderState::Established;
                     ctrl.rx_state = TcpReceiverState::Established;
 
-                    ctrl.debug_cong_window
-                        .collect(ctrl.congestion_window as f64);
-                    ctrl.debug_ssthresh.collect(ctrl.ssthresh as f64);
+                    // ctrl.debug_cong_window
+                    //     .collect(ctrl.congestion_window as f64);
+                    // ctrl.debug_ssthresh.collect(ctrl.ssthresh as f64);
 
                     tracing::trace!(
                         "established with Sender {{ seq_no: {}, win: {}, rtt: {:?} }} and Receiver {{ next_expected: {} }}",
@@ -817,9 +807,9 @@ impl IOContext {
                 ctrl.tx_state = TcpSenderState::Established;
                 ctrl.rx_state = TcpReceiverState::Established;
 
-                ctrl.debug_cong_window
-                    .collect(ctrl.congestion_window as f64);
-                ctrl.debug_ssthresh.collect(ctrl.ssthresh as f64);
+                // ctrl.debug_cong_window
+                //     .collect(ctrl.congestion_window as f64);
+                // ctrl.debug_ssthresh.collect(ctrl.ssthresh as f64);
 
                 tracing::trace!(
                     "established with Sender {{ seq_no: {}, win: {}, rtt: {:?} }} and Receiver {{ next_expected: {} }}",
@@ -1222,8 +1212,8 @@ impl IOContext {
                         ctrl.congestion_window += ctrl.mss as u32;
                         ctrl.congestion_avoid_counter = ctrl.congestion_window;
 
-                        ctrl.debug_cong_window
-                            .collect(ctrl.congestion_window as f64);
+                        // ctrl.debug_cong_window
+                        //     .collect(ctrl.congestion_window as f64);
                     } else {
                         // AIMD
                         ctrl.congestion_avoid_counter =
@@ -1235,8 +1225,8 @@ impl IOContext {
                             ctrl.congestion_avoid_counter = ctrl.congestion_window;
                         }
 
-                        ctrl.debug_cong_window
-                            .collect(ctrl.congestion_window as f64);
+                        // ctrl.debug_cong_window
+                        //     .collect(ctrl.congestion_window as f64);
                     }
                 }
 
@@ -1564,9 +1554,9 @@ impl IOContext {
 
         // Reset congestion control
 
-        ctrl.debug_cong_window
-            .collect(ctrl.congestion_window as f64);
-        ctrl.debug_ssthresh.collect(ctrl.ssthresh as f64);
+        // ctrl.debug_cong_window
+        //     .collect(ctrl.congestion_window as f64);
+        // ctrl.debug_ssthresh.collect(ctrl.ssthresh as f64);
 
         // // TCP THAOHE
         // ctrl.ssthresh = ctrl.congestion_window / 2;
@@ -1576,9 +1566,9 @@ impl IOContext {
         ctrl.congestion_window = (ctrl.congestion_window / 2).max(ctrl.mss as u32);
         ctrl.ssthresh = ctrl.congestion_window;
 
-        ctrl.debug_cong_window
-            .collect(ctrl.congestion_window as f64);
-        ctrl.debug_ssthresh.collect(ctrl.ssthresh as f64);
+        // ctrl.debug_cong_window
+        //     .collect(ctrl.congestion_window as f64);
+        // ctrl.debug_ssthresh.collect(ctrl.ssthresh as f64);
 
         // Edge case: FIN send but data missing
         // reset fin state so that the no send data can be consideed
@@ -1617,7 +1607,7 @@ impl TransmissionControlBlock {
         self.rttvar = r / 2.0;
         self.rto = (self.srtt + 4.0 * self.rttvar).max(0.5);
 
-        self.debug_rto.collect(self.rto);
+        // self.debug_rto.collect(self.rto);
     }
 
     fn add_rtt_sample(&mut self, r: f64) {
@@ -1628,7 +1618,7 @@ impl TransmissionControlBlock {
         self.srtt = (1.0 - ALPHA) * self.srtt + ALPHA * r;
         self.rto = (self.srtt + 4.0 * self.rttvar).max(0.5);
 
-        self.debug_rto.collect(self.rto);
+        // self.debug_rto.collect(self.rto);
     }
 
     fn ip_packet_for(&self, tcp: TcpPacket) -> IpPacket {

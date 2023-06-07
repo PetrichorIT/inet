@@ -173,6 +173,6 @@ fn main() {
         .map_err(|e| println!("{e}"))
         .unwrap();
     let app = NetworkApplication::new(app);
-    let rt = Runtime::new_with(app, RuntimeOptions::seeded(123).max_time(50.0.into()));
+    let rt = Builder::seeded(123).max_time(50.0.into()).build(app);
     let _ = rt.run();
 }

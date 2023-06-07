@@ -96,7 +96,7 @@ fn tcp_listen_backlog() {
         .map_err(|e| println!("{e}"))
         .unwrap(),
     );
-    let rt = Runtime::new_with(app, RuntimeOptions::seeded(123));
+    let rt = Builder::seeded(123).build(app);
     let (_, t, _) = rt.run().unwrap();
     assert!(t > 3.0.into());
 }

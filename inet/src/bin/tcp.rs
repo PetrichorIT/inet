@@ -1,6 +1,6 @@
 use std::sync::{atomic::AtomicUsize, Arc};
 
-use des::{prelude::*, registry, time::sleep};
+use des::{prelude::*, registry};
 use inet::{
     interface::{add_interface, Interface, NetworkDevice},
     tcp::{set_tcp_cfg, TcpConfig},
@@ -17,8 +17,6 @@ struct Connector {
     t: SimTime, // time of the last calc
 
     drops: Arc<AtomicUsize>,
-    debug: OutVec,
-    debug_p: OutVec,
 }
 #[async_trait::async_trait]
 impl AsyncModule for Connector {
@@ -27,22 +25,20 @@ impl AsyncModule for Connector {
             freq: 0.0,
             t: SimTime::ZERO,
             drops: Arc::new(AtomicUsize::new(0)),
-            debug_p: OutVec::new("drop".to_string(), Some(module_path())),
-            debug: OutVec::new("traffic".to_string(), Some(module_path())),
         }
     }
 
     async fn at_sim_start(&mut self, _: usize) {
-        let drops = self.drops.clone();
-        spawn(async move {
-            let mut recorder = OutVec::new("drops_per_sec".to_string(), Some(module_path()));
-            for _i in 0..50 {
-                sleep(Duration::from_secs(1)).await;
-                let v = drops.swap(0, std::sync::atomic::Ordering::SeqCst);
-                recorder.collect(v as f64);
-            }
-            recorder.finish();
-        });
+        // let drops = self.drops.clone();
+        // spawn(async move {
+        //     let mut recorder = OutVec::new("drops_per_sec".to_string(), Some(module_path()));
+        //     for _i in 0..50 {
+        //         sleep(Duration::from_secs(1)).await;
+        //         let v = drops.swap(0, std::sync::atomic::Ordering::SeqCst);
+        //         recorder.collect(v as f64);
+        //     }
+        //     recorder.finish();
+        // });
     }
 
     async fn handle_message(&mut self, msg: Message) {
@@ -50,19 +46,19 @@ impl AsyncModule for Connector {
         if dur > 1.0 {
             self.freq = msg.header().length as f64;
             self.t = SimTime::now();
-            self.debug.collect(self.freq);
+            // self.debug.collect(self.freq);
         } else {
             let rem = (1.0 - dur) * self.freq;
             let n_freq = rem + msg.header().length as f64;
             self.freq = n_freq;
             self.t = SimTime::now();
 
-            self.debug.collect(self.freq);
+            // self.debug.collect(self.freq);
         }
 
         let prob = (self.freq / 400_000.0).min(1.0) * msg.header().length as f64 / 2000.0;
         let prob = prob.powi(5).min(1.0);
-        self.debug_p.collect(prob);
+        // self.debug_p.collect(prob);
         let distr = rand::distributions::Bernoulli::new(prob).unwrap();
         if sample(distr) {
             tracing::error!("### droping packet {}", msg.str());
@@ -78,8 +74,8 @@ impl AsyncModule for Connector {
     }
 
     async fn at_sim_end(&mut self) {
-        self.debug.finish();
-        self.debug_p.finish();
+        // self.debug.finish();
+        // self.debug_p.finish();
     }
 }
 
@@ -203,6 +199,6 @@ fn main() {
     );
     app.include_par_file("inet/src/bin/tcp.par");
 
-    let rt = Runtime::new_with(app, RuntimeOptions::seeded(123).include_env());
+    let rt = Builder::seeded(123).build(app);
     let _ = rt.run().unwrap();
 }

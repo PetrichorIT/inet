@@ -136,7 +136,7 @@ fn tcp_rst_for_closed_port() {
         .map_err(|e| println!("{e}"))
         .unwrap();
     let app = NetworkApplication::new(app);
-    let rt = Runtime::new_with(app, RuntimeOptions::seeded(233));
+    let rt = Builder::seeded(233).build(app);
 
     let _ = rt.run().unwrap();
 }
@@ -155,7 +155,7 @@ fn tcp_rst_on_multiple_tries() {
         .map_err(|e| println!("{e}"))
         .unwrap();
     let app = NetworkApplication::new(app);
-    let rt = Runtime::new_with(app, RuntimeOptions::seeded(233));
+    let rt = Builder::seeded(233).build(app);
 
     let _ = rt.run().unwrap();
 }
@@ -174,7 +174,7 @@ fn tcp_rst_on_multiple_tries_with_success() {
         .map_err(|e| println!("{e}"))
         .unwrap();
     let app = NetworkApplication::new(app);
-    let rt = Runtime::new_with(app, RuntimeOptions::seeded(233));
+    let rt = Builder::seeded(233).build(app);
 
     let _ = rt.run().unwrap();
 }

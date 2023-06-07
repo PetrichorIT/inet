@@ -228,11 +228,8 @@ fn tcp_missing_data_at_close() {
             .map_err(|e| println!("{e}"))
             .unwrap(),
     );
-    let rt = Runtime::new_with(
-        app,
-        RuntimeOptions::seeded(1263431312323)
-            // .max_itr(100)
-            .max_time(SimTime::from_duration(Duration::from_secs(10))),
-    );
+    let rt = Builder::seeded(1263431312323)
+        .max_time(10.0.into())
+        .build(app);
     let _ = rt.run().unwrap();
 }

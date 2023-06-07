@@ -1,7 +1,5 @@
 use core::slice;
 
-use des::stats::{ActivityTimeline, OutVec, SlottedActivityTimeline};
-
 ///
 /// A Tcp slice_buffer
 ///

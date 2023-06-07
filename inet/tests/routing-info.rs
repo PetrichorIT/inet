@@ -90,7 +90,7 @@ fn routing_info() {
             .map_err(|e| println!("{e}"))
             .unwrap(),
     );
-    let rt = Runtime::new_with(app, RuntimeOptions::seeded(123).max_time(100.0.into()));
+    let rt = Builder::seeded(123).max_time(100.0.into()).build(app);
     match rt.run() {
         RuntimeResult::EmptySimulation { .. } => {}
         _ => panic!("unexpected runtime result"),

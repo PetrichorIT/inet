@@ -193,12 +193,7 @@ fn tcp_close_data_complete() {
             .map_err(|e| println!("{e}"))
             .unwrap(),
     );
-    let rt = Runtime::new_with(
-        app,
-        RuntimeOptions::seeded(123)
-            // .max_itr(100)
-            .max_time(SimTime::from_duration(Duration::from_secs(3))),
-    );
+    let rt = Builder::seeded(123).max_time(3.0.into()).build(app);
     let (_, time, profiler) = rt.run().unwrap();
     assert_eq!(time.as_secs(), 1);
     assert!(profiler.event_count < 200);

@@ -133,6 +133,6 @@ fn udp_select() {
             .map_err(|e| println!("{e}"))
             .unwrap(),
     );
-    let rt = Runtime::new_with(app, RuntimeOptions::seeded(123).max_time(100.0.into()));
+    let rt = Builder::seeded(123).max_time(100.0.into()).build(app);
     let _ = rt.run().unwrap();
 }

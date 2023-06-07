@@ -83,7 +83,7 @@ fn udp_empty_socket_bind() {
     let module = SocketBind::build_named(ObjectPath::from("root"), &mut app);
     app.register_module(module);
 
-    let rt = Runtime::new_with(app, RuntimeOptions::seeded(123));
+    let rt = Builder::seeded(123).build(app);
     let RuntimeResult::EmptySimulation { .. } = rt.run() else {
         panic!("Unexpected runtime result")
     };
@@ -208,7 +208,7 @@ fn udp_echo_single_client() {
     app.register_module(server);
     app.register_module(client);
 
-    let rt = Runtime::new_with(app, RuntimeOptions::seeded(123));
+    let rt = Builder::seeded(123).build(app);
     let RuntimeResult::Finished { time, .. } = rt.run() else {
         panic!("Unexpected runtime result")
     };
@@ -304,7 +304,7 @@ fn udp_echo_clustered_echo() {
     app.register_module(server);
     app.register_module(client);
 
-    let rt = Runtime::new_with(app, RuntimeOptions::seeded(123));
+    let rt = Builder::seeded(123).build(app);
     let RuntimeResult::Finished { time, .. } = rt.run() else {
         panic!("Unexpected runtime result")
     };
@@ -432,7 +432,7 @@ fn udp_echo_concurrent_clients() {
     app.register_module(server);
     app.register_module(client);
 
-    let rt = Runtime::new_with(app, RuntimeOptions::seeded(123));
+    let rt = Builder::seeded(123).build(app);
     let RuntimeResult::Finished { time, .. } = rt.run() else {
         panic!("Unexpected runtime result")
     };

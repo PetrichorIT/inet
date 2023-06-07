@@ -134,6 +134,6 @@ fn tcp_lan_v4() {
         .unwrap();
     let mut app = NetworkApplication::new(app);
     app.include_par_file("tests/tcp-lan/v4.par");
-    let rt = Runtime::new_with(app, RuntimeOptions::seeded(123));
+    let rt = Builder::seeded(123).build(app);
     let _ = rt.run();
 }

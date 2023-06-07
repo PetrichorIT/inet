@@ -115,6 +115,6 @@ fn main() {
         .map_err(|e| println!("{e}"))
         .unwrap(),
     );
-    let rt = Runtime::new_with(app, RuntimeOptions::seeded(123).include_env());
+    let rt = Builder::seeded(123).build(app);
     let _ = rt.run().unwrap();
 }
