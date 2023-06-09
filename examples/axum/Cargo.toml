@@ -8,7 +8,7 @@ edition = "2021"
 [dependencies]
 inet = { path = "../../inet" }
 inet-pcap = { path = "../../inet-pcap" }
-des = "*"
+des = { version = "*", features = ["unstable-tokio-enable-time"] }
 async-trait = "*"
 tracing = "*"
 tokio = "*"
