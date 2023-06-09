@@ -86,7 +86,7 @@ impl Pcap {
             Ok(i) | Err(i) => self.mapping.insert(i, (id, deamon)),
         }
 
-        let Some(pcap) = self.deamon(module_id()) else {
+        let Some(pcap) = self.deamon(id) else {
             return;
         };
         try_warn!(pcap.open());
@@ -109,8 +109,8 @@ impl Pcap {
         }
     }
 
-    fn capture(&mut self, envelope: PcapEnvelope<'_>) {
-        let Some(pcap) = self.deamon(module_id()) else {
+    fn capture(&mut self, id: ModuleId, envelope: PcapEnvelope<'_>) {
+        let Some(pcap) = self.deamon(id) else {
             return;
         };
 
@@ -127,7 +127,7 @@ pub fn set_pcap_deamon(deamon: impl PcapSubscriber + 'static) {
 }
 
 pub(crate) fn capture(envelope: PcapEnvelope<'_>) {
-    LIBPCAP.with(|pcap| pcap.borrow_mut().capture(envelope))
+    LIBPCAP.with(|pcap| pcap.borrow_mut().capture(module_id(), envelope))
 }
 
 pub(crate) fn close(id: ModuleId) {
