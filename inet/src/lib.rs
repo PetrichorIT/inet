@@ -1,5 +1,3 @@
-#![feature(int_roundings)]
-
 #[macro_use]
 mod macros;
 
@@ -28,7 +26,6 @@ cfg_uds! {
 pub use inet_types as types;
 
 mod udp;
-use des::net::plugin::PluginPanicPolicy;
 pub use udp::*;
 
 pub mod tcp;
@@ -49,5 +46,5 @@ pub fn init() {
 }
 
 fn inet_init(this: &des::net::module::ModuleContext) {
-    this.add_plugin(IOPlugin::new(), 1, PluginPanicPolicy::Abort);
+    this.add_plugin(IOPlugin::new(), 1);
 }
