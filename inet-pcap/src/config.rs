@@ -1,13 +1,11 @@
 use std::{
     fmt::Debug,
-    io::Write,
-    ops::{Add, Deref},
+    io::{Error, ErrorKind, Result, Write},
+    ops::Deref,
 };
 
 use des::prelude::{Message, MessageKind};
 use inet_types::ip::IpPacketRef;
-
-use super::Null;
 
 /// A set of configurations who to probe packet from the underlying
 /// mechanisms.
@@ -31,7 +29,7 @@ impl<W> PcapConfig<W> {
         filters: PcapFilters {
             filters: Vec::new(),
         },
-        capture: PcapCapturePoints::NULL,
+        capture: PcapCapturePoints::None,
         output: &Null,
     };
 }
@@ -77,6 +75,22 @@ impl Deref for PcapFilters {
     type Target = [PcapFilter];
     fn deref(&self) -> &Self::Target {
         &self.filters
+    }
+}
+
+pub(super) struct Null;
+impl Write for Null {
+    fn write(&mut self, _buf: &[u8]) -> Result<usize> {
+        Err(Error::new(
+            ErrorKind::BrokenPipe,
+            "did not set a output for pcap",
+        ))
+    }
+    fn flush(&mut self) -> Result<()> {
+        Err(Error::new(
+            ErrorKind::BrokenPipe,
+            "did not set a output for pcap",
+        ))
     }
 }
 
@@ -176,64 +190,10 @@ impl PcapFilter {
 
 /// A capture configuration, where to capture in-stream packets.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct PcapCapturePoints {
-    byte: u8,
-}
-
-const CAPTURE_L2_INCOMING: u8 = 0b1;
-const CAPTURE_L2_OUTGOING: u8 = 0b10;
-const CAPTURE_L3_INCOMING: u8 = 0b100;
-const CAPTURE_L3_OUTGOING: u8 = 0b1000;
-const CAPTURE_L3_TRANSIT: u8 = 0b10000;
-
-impl PcapCapturePoints {
-    /// This configuration will capture no packets at all.
-    pub const NULL: PcapCapturePoints = PcapCapturePoints { byte: 0 };
-
-    /// This configuration will capture all incoming and outgoing
-    /// traffic on the linklayer. Usefull for clients, but routers
-    /// may capture routed traffic twice.
-    pub const CLIENT_DEFAULT: PcapCapturePoints = PcapCapturePoints {
-        byte: CAPTURE_L2_INCOMING | CAPTURE_L2_OUTGOING,
-    };
-
-    /// This configuration will only capture networking layer
-    /// transit traffic.
-    pub const TRANSIT: PcapCapturePoints = PcapCapturePoints {
-        byte: CAPTURE_L3_TRANSIT,
-    };
-
-    /// Whether to capture incoming linklayer packets.
-    pub fn capture_l2_incoming(&self) -> bool {
-        (self.byte & CAPTURE_L2_INCOMING) != 0
-    }
-
-    /// Whether to capture outgoing linklayer packets.
-    pub fn capture_l2_outgoing(&self) -> bool {
-        (self.byte & CAPTURE_L2_OUTGOING) != 0
-    }
-
-    /// Whether to capture incoming networking layer packets.
-    pub fn capture_l3_incoming(&self) -> bool {
-        (self.byte & CAPTURE_L3_INCOMING) != 0
-    }
-
-    /// Whether to capture outgoing networking layer packets.
-    pub fn capture_l3_outgoing(&self) -> bool {
-        (self.byte & CAPTURE_L3_OUTGOING) != 0
-    }
-
-    /// Whether to capture  networking layer transit traffic.
-    pub fn capture_l3_transit(&self) -> bool {
-        (self.byte & CAPTURE_L3_TRANSIT) != 0
-    }
-}
-
-impl Add for PcapCapturePoints {
-    type Output = Self;
-    fn add(self, rhs: Self) -> Self::Output {
-        PcapCapturePoints {
-            byte: self.byte | rhs.byte,
-        }
-    }
+pub enum PcapCapturePoints {
+    None,
+    Ingress,
+    Egress,
+    #[default]
+    All,
 }

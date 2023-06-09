@@ -28,11 +28,11 @@ macro_rules! cfg_dhcp {
     }
 }
 
-macro_rules! cfg_pcap {
+macro_rules! cfg_libpcap {
     ($($item:item)*) => {
         $(
-            #[cfg(feature = "pcap")]
-            #[cfg_attr(docsrs, doc(cfg(feature = "pcap")))]
+            #[cfg(feature = "libpcap")]
+            #[cfg_attr(docsrs, doc(cfg(feature = "libpcap")))]
             $item
         )*
     }

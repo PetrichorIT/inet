@@ -4,12 +4,12 @@ use des::{prelude::*, registry, time::sleep, tracing::Subscriber};
 use inet::{
     dns::{lookup_host, DNSNameserver},
     interface::{add_interface, Interface, NetworkDevice},
-    pcap::{pcap, PcapConfig, PcapFilters},
     routing::{set_default_gateway, RoutingInformation},
+    types::ip::IpMask,
     utils::LinkLayerSwitch,
     TcpListener, TcpStream,
 };
-use inet::{pcap::PcapCapturePoints, types::ip::IpMask};
+use inet_pcap::{pcap, PcapCapturePoints, PcapConfig, PcapFilters};
 use inet_rip::RipRoutingDeamon;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
@@ -173,7 +173,7 @@ fn node_like_setup() {
     set_default_gateway(gateway).unwrap();
 
     pcap(PcapConfig {
-        capture: PcapCapturePoints::CLIENT_DEFAULT,
+        capture: PcapCapturePoints::All,
         filters: PcapFilters::default(),
         output: std::fs::File::create(format!("results/{}.pcap", module_path())).unwrap(),
     })
@@ -206,7 +206,7 @@ impl AsyncModule for Router {
         if par("pcap").unwrap().parse::<bool>().unwrap() {
             pcap(PcapConfig {
                 filters: PcapFilters::default(),
-                capture: PcapCapturePoints::CLIENT_DEFAULT,
+                capture: PcapCapturePoints::All,
                 output: File::create(format!("results/{}.pcap", module_path())).unwrap(),
             })
             .unwrap();

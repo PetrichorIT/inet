@@ -6,12 +6,19 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-inet = { path = "../../inet", features = ["pcap"]} 
+inet = { path = "../../inet" }
+inet-pcap = { path = "../../inet-pcap" }
 des = "*"
 async-trait = "*"
 tracing = "*"
 tokio = "*"
-hyper = { version = "0.14", features = ["full", "http1", "http2", "server", "backports"] }
+hyper = { version = "0.14", features = [
+    "full",
+    "http1",
+    "http2",
+    "server",
+    "backports",
+] }
 async-stream = "0.3"
 axum = "0.6"
 tower = "0.4.13"

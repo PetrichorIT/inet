@@ -9,9 +9,9 @@ use hyper::{
 };
 use inet::{
     interface::{add_interface, Interface, NetworkDevice},
-    pcap::{pcap, PcapCapturePoints, PcapConfig, PcapFilters},
     TcpListener,
 };
+use inet_pcap::{pcap, PcapCapturePoints, PcapConfig, PcapFilters};
 use std::{convert::Infallible, fs::File};
 use tokio::spawn;
 
@@ -31,7 +31,7 @@ impl AsyncModule for Client {
 
         pcap(PcapConfig {
             filters: PcapFilters::default(),
-            capture: PcapCapturePoints::CLIENT_DEFAULT,
+            capture: PcapCapturePoints::All,
             output: File::create("results/client.pcap").unwrap(),
         })
         .unwrap();

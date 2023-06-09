@@ -234,6 +234,13 @@ impl Interface {
             ));
         }
 
+        #[cfg(feature = "libpcap")]
+        crate::libpcap::capture(crate::libpcap::PcapEnvelope {
+            capture: crate::libpcap::PcapCapturePoint::Egress,
+            message: &msg,
+            iface: &self,
+        });
+
         self.state = self.device.send(msg);
         self.schedule_link_update();
 
@@ -305,15 +312,12 @@ impl IOContext {
         // Capture all packets that can be addressed to a interface, event not targeted
         let ifid = *ifid;
 
-        #[cfg(feature = "pcap")]
-        {
-            let mut pcap = self.pcap.borrow_mut();
-            if pcap.capture.capture_l2_incoming() {
-                if let Err(e) = pcap.capture(&msg, ifid, iface) {
-                    tracing::error!(target: "inet/pcap", "failed to capture: {e}")
-                };
-            }
-        }
+        #[cfg(feature = "libpcap")]
+        crate::libpcap::capture(crate::libpcap::PcapEnvelope {
+            capture: crate::libpcap::PcapCapturePoint::Ingress,
+            message: &msg,
+            iface: iface,
+        });
 
         // Check that packet is addressed correctly.
         if iface.device.addr != dest && !dest.is_broadcast() {

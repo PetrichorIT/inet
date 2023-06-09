@@ -47,6 +47,10 @@ pub struct InterfaceName {
 }
 
 impl InterfaceName {
+    pub fn id(&self) -> IfId {
+        self.id
+    }
+
     /// Creates a new interface name from a string
     pub fn new(s: impl AsRef<str>) -> Self {
         let name = s.as_ref().to_string();

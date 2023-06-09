@@ -5,23 +5,26 @@ version = "0.1.0"
 
 [features]
 default = []
-full = ["dns", "uds", "dhcp", "pcap"]
+full = ["dns", "uds", "dhcp"]
 
 dns = ["inet-types/dns"]
 uds = ["inet-types/uds"]
 dhcp = []
-pcap = []
+libpcap = []
 
 [dependencies]
 async-trait = "*"
 fxhash = "0.2.1"
 des = { version = "*", features = ["full"] }
 tokio = "*"
-tracing = { version = "*", features = ["max_level_trace", "release_max_level_trace"]}
+tracing = { version = "*", features = [
+    "max_level_trace",
+    "release_max_level_trace",
+] }
 bytes = "1.4.0"
 rand = "0.8.5"
-inet-types = { path = "../inet-types"}
-bytepack = { path = "../bytepack"}
+inet-types = { path = "../inet-types" }
+bytepack = { path = "../bytepack" }
 
 [dev-dependencies]
 serial_test = "2.0.0"

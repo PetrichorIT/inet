@@ -1,13 +1,10 @@
 use std::fs::File;
 
-use des::{prelude::*, registry, tracing::Subscriber};
-use inet::{
-    interface::{add_interface, Interface, NetworkDevice},
-    pcap::{pcap, PcapCapturePoints, PcapConfig, PcapFilters},
-};
+use des::{prelude::*, registry};
+use inet::interface::{add_interface, Interface, NetworkDevice};
 use inet_bgp::BgpDeamon;
+use inet_pcap::{pcap, PcapCapturePoints, PcapConfig, PcapFilters};
 use tokio::spawn;
-use tracing::metadata::LevelFilter;
 
 struct A;
 #[async_trait::async_trait]
@@ -25,7 +22,7 @@ impl AsyncModule for A {
 
         pcap(PcapConfig {
             filters: PcapFilters::default(),
-            capture: PcapCapturePoints::CLIENT_DEFAULT,
+            capture: PcapCapturePoints::All,
             output: File::create("bin/a.pcap").unwrap(),
         })
         .unwrap();
@@ -57,7 +54,7 @@ impl AsyncModule for B {
 
         pcap(PcapConfig {
             filters: PcapFilters::default(),
-            capture: PcapCapturePoints::CLIENT_DEFAULT,
+            capture: PcapCapturePoints::All,
             output: File::create("bin/b.pcap").unwrap(),
         })
         .unwrap();
@@ -90,10 +87,10 @@ fn main() {
     //     }
     // }
 
-    Subscriber::default()
-        .with_max_level(LevelFilter::TRACE)
-        .init()
-        .unwrap();
+    // Subscriber::default()
+    //     .with_max_level(LevelFilter::TRACE)
+    //     .init()
+    //     .unwrap();
 
     let app =
         NetworkApplication::new(NdlApplication::new("bin/pkt.ndl", registry![A, B, Main]).unwrap());

@@ -97,13 +97,6 @@ impl IOContext {
                         .content(response)
                         .build();
 
-                    #[cfg(feature = "pcap")]
-                    {
-                        let mut pcap = self.pcap.borrow_mut();
-                        if pcap.capture.capture_l2_outgoing() {
-                            pcap.capture(&msg, ifid, iface).expect("Pcap failed")
-                        }
-                    }
                     iface.send_buffered(msg).unwrap();
                 }
 
@@ -288,13 +281,7 @@ impl IOContext {
                                 .dest(MacAddress::BROADCAST.into())
                                 .content(pkt)
                                 .build();
-                            #[cfg(feature = "pcap")]
-                            {
-                                let mut pcap = self.pcap.borrow_mut();
-                                if pcap.capture.capture_l2_outgoing() {
-                                    pcap.capture(&msg, *_ifid, iface).expect("Pcap failed")
-                                }
-                            }
+
                             if buffered {
                                 iface.send_buffered(msg)?;
                             } else {
@@ -312,13 +299,6 @@ impl IOContext {
                                 .content(pkt)
                                 .build();
 
-                            #[cfg(feature = "pcap")]
-                            {
-                                let mut pcap = self.pcap.borrow_mut();
-                                if pcap.capture.capture_l2_outgoing() {
-                                    pcap.capture(&msg, *_ifid, iface).expect("Pcap failed")
-                                }
-                            }
                             if buffered {
                                 iface.send_buffered(msg)?;
                             } else {
@@ -373,13 +353,7 @@ impl IOContext {
                     .dest(mac.into())
                     .content(pkt)
                     .build();
-                #[cfg(feature = "pcap")]
-                {
-                    let mut pcap = self.pcap.borrow_mut();
-                    if pcap.capture.capture_l2_outgoing() {
-                        pcap.capture(&msg, ifid, iface).expect("Pcap failed")
-                    }
-                }
+
                 if buffered {
                     iface.send_buffered(msg)
                 } else {
@@ -397,13 +371,6 @@ impl IOContext {
                     .content(pkt)
                     .build();
 
-                #[cfg(feature = "pcap")]
-                {
-                    let mut pcap = self.pcap.borrow_mut();
-                    if pcap.capture.capture_l2_outgoing() {
-                        pcap.capture(&msg, ifid, iface).expect("Pcap failed")
-                    }
-                }
                 if buffered {
                     iface.send_buffered(msg)
                 } else {
@@ -531,14 +498,6 @@ impl IOContext {
             .content(request)
             .build();
 
-        #[cfg(feature = "pcap")]
-        {
-            let mut pcap = self.pcap.borrow_mut();
-            if pcap.capture.capture_l2_outgoing() {
-                pcap.capture(&msg, iface.name.id, iface)
-                    .expect("Pcap failed")
-            }
-        }
         if !self.arp.active_wakeup {
             self.arp.active_wakeup = true;
             schedule_in(

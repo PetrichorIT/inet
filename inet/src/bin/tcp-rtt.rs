@@ -88,12 +88,12 @@ impl AsyncModule for Client {
         cfg.cong_ctrl = true;
         set_tcp_cfg(cfg).unwrap();
 
-        inet::pcap::pcap(inet::pcap::PcapConfig {
-            filters: inet::pcap::PcapFilters::default(),
-            capture: inet::pcap::PcapCapturePoints::CLIENT_DEFAULT,
-            output: std::fs::File::create("tclient.pcap").unwrap(),
-        })
-        .unwrap();
+        // inet::pcap::pcap(inet::pcap::PcapConfig {
+        //     filters: inet::pcap::PcapFilters::default(),
+        //     capture: inet::pcap::PcapCapturePoints::CLIENT_DEFAULT,
+        //     output: std::fs::File::create("tclient.pcap").unwrap(),
+        // })
+        // .unwrap();
 
         for k in 0..1 {
             self.handles.push(spawn(async move {
@@ -142,12 +142,12 @@ impl AsyncModule for Server {
         cfg.cong_ctrl = true;
         set_tcp_cfg(cfg).unwrap();
 
-        inet::pcap::pcap(inet::pcap::PcapConfig {
-            filters: inet::pcap::PcapFilters::default(),
-            capture: inet::pcap::PcapCapturePoints::CLIENT_DEFAULT,
-            output: std::fs::File::create("tserver.pcap").unwrap(),
-        })
-        .unwrap();
+        // inet::pcap::pcap(inet::pcap::PcapConfig {
+        //     filters: inet::pcap::PcapFilters::default(),
+        //     capture: inet::pcap::PcapCapturePoints::CLIENT_DEFAULT,
+        //     output: std::fs::File::create("tserver.pcap").unwrap(),
+        // })
+        // .unwrap();
 
         spawn(async move {
             let list = TcpListener::bind((Ipv4Addr::UNSPECIFIED, 1000))

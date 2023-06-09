@@ -61,6 +61,10 @@ impl NetworkDeviceInner {
 }
 
 impl NetworkDevice {
+    pub fn is_loopback(&self) -> bool {
+        matches!(self.inner, NetworkDeviceInner::LoopbackDevice)
+    }
+
     /// Creates a local, loopback device.
     pub fn loopback() -> Self {
         Self {

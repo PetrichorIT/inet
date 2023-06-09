@@ -1,13 +1,18 @@
 [workspace]
 members = [
     "inet",
-    "inet-types",
     "inet-bgp",
     "inet-rip",
+    "inet-pcap",
+    "inet-types",
     "bytepack",
     "examples/*",
 ]
 
 [patch.crates-io]
 # des = { git = "https://github.com/PetrichorIT/des", branch = "beta"}
+<<<<<<< HEAD
 des = { path = "../../rust/des/des" }
+=======
+des = { path = "../des/des" }
+>>>>>>> 791c442 (inet-pcap / libpcap seperation)

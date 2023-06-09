@@ -1,7 +1,10 @@
 use std::any::Any;
 
 use super::IOContext;
-use des::{net::plugin::Plugin, prelude::Message};
+use des::{
+    net::plugin::Plugin,
+    prelude::{Message, ModuleId},
+};
 
 /// A plugin managing IO primitives provided by inet.
 pub struct IOPlugin {
@@ -11,9 +14,9 @@ pub struct IOPlugin {
 
 impl IOPlugin {
     /// Creates a new plugin without defined network devices.
-    pub fn new() -> Self {
+    pub(super) fn new(id: ModuleId) -> Self {
         Self {
-            ctx: Some(IOContext::empty()),
+            ctx: Some(IOContext::new(id)),
             prev: None,
         }
     }

@@ -10,8 +10,8 @@ pub mod routing;
 pub mod socket;
 pub mod utils;
 
-cfg_pcap! {
-    pub mod pcap;
+cfg_libpcap! {
+    pub mod libpcap;
 }
 
 cfg_dhcp! {
@@ -46,5 +46,5 @@ pub fn init() {
 }
 
 fn inet_init(this: &des::net::module::ModuleContext) {
-    this.add_plugin(IOPlugin::new(), 1);
+    this.add_plugin(IOPlugin::new(this.id()), 1);
 }

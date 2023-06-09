@@ -5,7 +5,10 @@ use crate::{
     routing::{ForwardingTableV4, Ipv6RoutingTable},
     IOPlugin, Udp,
 };
-use des::{net::plugin::PluginError, prelude::Message};
+use des::{
+    net::plugin::PluginError,
+    prelude::{Message, ModuleId},
+};
 use fxhash::{FxBuildHasher, FxHashMap};
 use inet_types::{
     icmp::PROTO_ICMP,
@@ -18,9 +21,6 @@ use std::{
     panic::UnwindSafe,
 };
 
-#[cfg(feature = "pcap")]
-use crate::pcap::Pcap;
-
 #[cfg(feature = "uds")]
 use crate::uds::Uds;
 
@@ -32,14 +32,12 @@ thread_local! {
 }
 
 pub(crate) struct IOContext {
+    pub(super) id: ModuleId,
     pub(super) ifaces: FxHashMap<IfId, Interface>,
 
     pub(super) arp: ArpTable,
     pub(super) ipv4_fwd: ForwardingTableV4,
     pub(super) ipv6router: Ipv6RoutingTable,
-
-    #[cfg(feature = "pcap")]
-    pub(super) pcap: RefCell<Pcap>,
     pub(super) icmp: Icmp,
 
     pub(super) sockets: Sockets,
@@ -67,16 +65,15 @@ impl Current {
 }
 
 impl IOContext {
-    pub fn empty() -> Self {
+    pub fn new(id: ModuleId) -> Self {
         Self {
+            id,
             ifaces: FxHashMap::with_hasher(FxBuildHasher::default()),
 
             arp: ArpTable::new(),
             ipv4_fwd: ForwardingTableV4::new(),
             ipv6router: Ipv6RoutingTable::new(),
 
-            #[cfg(feature = "pcap")]
-            pcap: RefCell::new(Pcap::new()),
             icmp: Icmp::new(),
 
             sockets: Sockets::new(),
@@ -320,3 +317,10 @@ impl IOContext {
 }
 
 impl UnwindSafe for IOContext {}
+
+impl Drop for IOContext {
+    fn drop(&mut self) {
+        #[cfg(feature = "libpcap")]
+        crate::libpcap::close(self.id);
+    }
+}

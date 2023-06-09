@@ -10,10 +10,14 @@ name = "bgp"
 path = "bin/bgp.rs"
 
 [dependencies]
-inet = { path = "../inet", features = ["pcap"]}
-bytepack = { path = "../bytepack"}
-des = { version = "*", features = ["full"]}
+inet = { path = "../inet" }
+inet-pcap = { path = "../inet-pcap" }
+bytepack = { path = "../bytepack" }
+des = { version = "*", features = ["full"] }
 fxhash = "*"
 async-trait = "*"
-tracing = { version = "*", features = ["max_level_trace", "release_max_level_trace"]}
+tracing = { version = "*", features = [
+    "max_level_trace",
+    "release_max_level_trace",
+] }
 tokio = "*"
