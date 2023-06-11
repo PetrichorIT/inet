@@ -286,7 +286,7 @@ impl IOContext {
         // Precheck for link layer updates
         if msg.header().kind == KIND_LINK_UPDATE {
             let Some(&update) = msg.try_content::<LinkUpdate>() else {
-                tracing::error!(target: "inet/link", "found message with kind KIND_LINK_UPDATE, did not contain link updates");
+                tracing::error!("found message with kind KIND_LINK_UPDATE, did not contain link updates");
                 return PassThrough(msg)
             };
             self.recv_linklayer_update(update);
@@ -326,7 +326,7 @@ impl IOContext {
 
         if msg.header().kind == KIND_ARP {
             let Some(arp) = msg.try_content::<ArpPacket>() else {
-                tracing::error!(target: "inet/arp", "found message with kind 0x0806 (arp), but did not contain ARP packet");
+                tracing::error!("found message with kind 0x0806 (arp), but did not contain ARP packet");
                 return PassThrough(msg);
             };
 

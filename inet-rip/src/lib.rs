@@ -231,7 +231,7 @@ impl RipRoutingDeamon {
                 result = sock.recv_from(&mut buf) => match result {
                     Ok(vv) => vv,
                     Err(e) => {
-                        tracing::error!(target: "inet/rip", "socket recv error: {e}");
+                        tracing::error!("socket recv error: {e}");
                         continue;
                     }
                 },

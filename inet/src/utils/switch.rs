@@ -66,11 +66,14 @@ impl Module for LinkLayerSwitch {
                     continue;
                 }
 
-                tracing::error!(target: "inet/switch", "could not duplicate packet {}: unexpected content", msg.str())
+                tracing::error!(
+                    "could not duplicate packet {}: unexpected content",
+                    msg.str()
+                )
             }
         } else {
             let Some(port) = self.mapping.get(&dest) else {
-                tracing::error!(target: "inet/switch", "could not find addr {} in local mapping: either not existent or not active", dest);
+                tracing::error!("could not find addr {} in local mapping: either not existent or not active", dest);
                 return
             };
 

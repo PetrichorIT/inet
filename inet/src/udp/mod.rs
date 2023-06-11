@@ -103,7 +103,7 @@ impl IOContext {
         let is_broadcast = is_broadcast(packet.dest());
 
         let Ok(udp) = UdpPacket::from_buffer(packet.content()) else {
-            tracing::error!(target: "inet/udp", "received ip-packet with proto=0x11 (udp) but content was no udp-packet");
+            tracing::error!("received ip-packet with proto=0x11 (udp) but content was no udp-packet");
             return false;
         };
 
@@ -120,7 +120,7 @@ impl IOContext {
                 sock.recv_q += udp.content.len();
 
                 let Some(mng) = self.udp.binds.get_mut(fd) else {
-                    tracing::error!(target: "inet/udp", "found udp socket, but missing udp manager");
+                    tracing::error!("found udp socket, but missing udp manager");
                     return false;
                 };
 
@@ -134,14 +134,14 @@ impl IOContext {
                 return false;
             };
             if !sock.interface.contains(&ifid) {
-                tracing::error!(target: "inet/udp", "interface missmatch");
+                tracing::error!("interface missmatch");
                 return false;
             }
 
             sock.recv_q += udp.content.len();
 
             let Some(mng) = self.udp.binds.get_mut(fd) else {
-                tracing::error!(target: "inet/udp", "found udp socket, but missing udp manager");
+                tracing::error!("found udp socket, but missing udp manager");
                 return false;
             };
 

@@ -158,7 +158,7 @@ impl DNSNameserver {
         let socket =
             UdpSocket::bind(SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), 53)).await?;
 
-        tracing::trace!(target: "inet/dns", "Created socket at {}", socket.local_addr().unwrap());
+        tracing::trace!("Created socket at {}", socket.local_addr().unwrap());
 
         let mut buf = [0u8; 512];
         loop {
@@ -198,7 +198,7 @@ impl DNSNameserver {
             }
         }
 
-        tracing::trace!(target: "inet/dns", "Closed socket at {}", socket.local_addr().unwrap());
+        tracing::trace!("Closed socket at {}", socket.local_addr().unwrap());
 
         Ok(())
     }
@@ -222,7 +222,6 @@ impl DNSNameserver {
             if self.active_transactions[i].deadline < SimTime::now() {
                 let transaction = self.active_transactions.remove(i);
                 tracing::trace!(
-                    target: "inet/dns",
                     "[0x{:x}] Recursive transaction 0x{:x} timed out",
                     transaction.client_transaction,
                     transaction.local_transaction
@@ -249,7 +248,6 @@ impl DNSNameserver {
 
         let (mode, ra) = self.get_mode(&msg, client);
         tracing::trace!(
-            target: "inet/dns",
             "[0x{:x}] Got request from {} with {} questions in mode {:?} (ra = {})",
             msg.transaction,
             client,

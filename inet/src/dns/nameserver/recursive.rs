@@ -81,7 +81,6 @@ impl DNSNameserver {
                     // (1) Direct resolve catch case
                     if i == 0 && addrs.len() > 0 {
                         tracing::trace!(
-                            target: "inet/dns",
                             "[0x{:x}] Recursive query {} terminated due to {} cache entries",
                             req.transaction,
                             domain,
@@ -150,7 +149,6 @@ impl DNSNameserver {
 
                 let t = self.get_transaction_num();
                 tracing::trace!(
-                    target: "inet/dns",
                     "[0x{:x}] Initiaing recursion of {} {} with nameserver {} ({}) -> transaction {:x}",
                     req.transaction,
                     qtyp,
@@ -199,7 +197,7 @@ impl DNSNameserver {
         // (0) Resolver is in recursive mode
         // (1) Find corresponding transaction
         let Some((i, _)) = self.active_transactions.iter().enumerate().find(|(_, t)| t.local_transaction == msg.transaction) else {
-            tracing::warn!(target: "inet/dns", "[0x{:x}] Got response to transaction not owned by this resolver from {}", msg.transaction, source);
+            tracing::warn!("[0x{:x}] Got response to transaction not owned by this resolver from {}", msg.transaction, source);
             return;
         };
         let transaction = self.active_transactions.remove(i);
@@ -207,7 +205,6 @@ impl DNSNameserver {
 
         if msg.rcode != DNSResponseCode::NoError {
             tracing::warn!(
-                target: "inet/dns",
                 "[0x{:x}] Got response to transaction {} with errors {:?} from {}",
                 transaction.client_transaction,
                 msg.transaction,
@@ -243,7 +240,6 @@ impl DNSNameserver {
             let addr = addr_of_record!(addr);
             let t = self.get_transaction_num();
             tracing::trace!(
-                target: "inet/dns",
                 "[0x{:x}] Referal of request {} {} to next zone {} with nameserver {} at {} -> transaction {}",
                 transaction.client_transaction,
                 transaction.client_question.qtyp,
@@ -268,7 +264,6 @@ impl DNSNameserver {
         } else {
             // (2.2) Upstream server provided anwsers
             tracing::trace!(
-                target: "inet/dns",
                 "[0x{:x}] Finished recursive resolve with anwser {} and {} additional records",
                 transaction.client_transaction,
                 msg.anwsers[0],

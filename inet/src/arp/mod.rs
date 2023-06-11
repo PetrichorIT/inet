@@ -45,7 +45,6 @@ impl IOContext {
 
                 // (0) Add sender entry to local arp table
                 if !arp.src_ip_addr().is_unspecified() {
-                    // tracing::trace!(target: "inet/arp", "receiving arp request for {}", arp.dest_paddr);
                     let sendable = self.arp.update(ArpEntryInternal {
                         negated: false,
                         hostname: None,
@@ -86,7 +85,11 @@ impl IOContext {
 
                     assert_eq!(addr, requested_addr);
 
-                    tracing::trace!(target: "inet/arp", "responding to arp request for {} with {}", arp.dest_ip_addr(), iface.device.addr);
+                    tracing::trace!(
+                        "responding to arp request for {} with {}",
+                        arp.dest_ip_addr(),
+                        iface.device.addr
+                    );
 
                     let response = arp.into_response(iface.device.addr);
 
@@ -115,7 +118,6 @@ impl IOContext {
                     });
 
                     tracing::trace!(
-                        target: "inet/arp",
                         "receiving arp response for {} is {} (sending {})",
                         arp.dest_ip_addr(),
                         arp.dest_mac_addr(),
@@ -174,7 +176,7 @@ impl IOContext {
                         }
                     }
 
-                    tracing::error!(target: "inet/arp", "could not resolve for {addr} dropping packets");
+                    tracing::error!("could not resolve for {addr} dropping packets");
                     self.arp.requests.remove(&addr);
                 } else {
                     req.deadline = SimTime::now() + self.arp.config.timeout;
@@ -445,7 +447,11 @@ impl IOContext {
                     let Some(eth) = self.ifaces.iter_mut().find(|(_, iface)| !iface.flags.loopback) else {
                         panic!()
                     };
-                    tracing::trace!(target: "inet/arp", "redirecting ARP request to new interface {} (socket operates on {})", eth.1.name, name);
+                    tracing::trace!(
+                        "redirecting ARP request to new interface {} (socket operates on {})",
+                        eth.1.name,
+                        name
+                    );
                     // ifid = *eth.0;
                     iface = eth.1;
                 }
@@ -458,7 +464,11 @@ impl IOContext {
                     let Some(eth) = self.ifaces.iter_mut().find(|(_, iface)| !iface.flags.loopback) else {
                             panic!()
                         };
-                    tracing::trace!(target: "inet/arp", "redirecting ARP request to new interface {} (socket operates on {})", eth.1.name, name);
+                    tracing::trace!(
+                        "redirecting ARP request to new interface {} (socket operates on {})",
+                        eth.1.name,
+                        name
+                    );
                     // ifid = *eth.0;
                     iface = eth.1;
                 }
@@ -471,7 +481,11 @@ impl IOContext {
 
         self.arp.requests.get_mut(&dest).unwrap().iface = iface.name.id;
 
-        tracing::trace!(target: "inet/arp", "missing address resolution for {}, initiating ARP request at {}", dest, iface.name);
+        tracing::trace!(
+            "missing address resolution for {}, initiating ARP request at {}",
+            dest,
+            iface.name
+        );
 
         let request = ArpPacket::new_request(
             iface.device.addr,

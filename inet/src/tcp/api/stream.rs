@@ -313,6 +313,9 @@ impl IOContext {
 
         self.bind_peer(fd, peer);
         let mut ctrl = TransmissionControlBlock::new(fd, self.get_socket_addr(fd)?, config);
+        let span = ctrl.span.clone();
+        let _g = span.entered();
+
         self.process_state_closed(&mut ctrl, TcpEvent::SysOpen(peer));
 
         self.tcp.streams.insert(fd, ctrl);
@@ -326,6 +329,8 @@ impl IOContext {
         let Some(tcp) = self.tcp.streams.get_mut(&fd) else {
             return Err(Error::new(ErrorKind::InvalidInput, "invalid fd - socket dropped"))
         };
+        let span = tcp.span.clone();
+        let _g = span.entered();
 
         if tcp.syn_resend_counter >= 3 {
             return Err(Error::new(

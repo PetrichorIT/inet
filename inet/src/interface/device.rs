@@ -51,7 +51,10 @@ impl NetworkDeviceInner {
         }
 
         // No channel attached to gate chain.
-        tracing::warn!(target: "inet/iface", "creating ethernet device with non-delayed link (staring at {})", output.path());
+        tracing::warn!(
+            "creating ethernet device with non-delayed link (staring at {})",
+            output.path()
+        );
         Self::EthernetDevice {
             output,
             input,
