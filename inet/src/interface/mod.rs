@@ -257,6 +257,13 @@ impl Interface {
         assert!(!self.device.is_busy(), "Link notif send invalid message");
         if let Some(msg) = self.buffer.pop_front() {
             // still busy with link layer events.
+            #[cfg(feature = "libpcap")]
+            crate::libpcap::capture(crate::libpcap::PcapEnvelope {
+                capture: crate::libpcap::PcapCapturePoint::Egress,
+                message: &msg,
+                iface: &self,
+            });
+
             self.state.merge_new(self.device.send(msg));
             self.schedule_link_update();
 

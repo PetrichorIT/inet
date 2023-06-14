@@ -424,6 +424,7 @@ impl IOContext {
 
     fn tcp_send_packet(&mut self, ctrl: &mut TransmissionControlBlock, ip: IpPacket) {
         if ctrl.tx_queue.len() > 32 {
+            tracing::error!("clearing output queue");
             ctrl.tx_queue.clear();
         }
 
