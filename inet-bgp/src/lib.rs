@@ -3,15 +3,22 @@ use std::{
     net::{IpAddr, Ipv4Addr},
 };
 
+use adj_in::{AdjIn, Peer, Route};
+use adj_rib_out::AdjRIBOut;
+use des::time::SimTime;
 use fxhash::{FxBuildHasher, FxHashMap};
 use inet::TcpListener;
-use peering::{NeighborDeamon, NeighborHandle};
-use pkt::BgpNrli;
+use loc_rib::LocRib;
+use peering::{BgpPeeringCfg, NeighborDeamon, NeighborHandle};
+use pkt::{BgpUpdatePacket, Nlri};
 use tokio::sync::mpsc::channel;
 
 use tracing::{Instrument, Level};
 use types::AsNumber;
 
+pub mod adj_in;
+pub mod adj_rib_out;
+pub mod loc_rib;
 pub mod peering;
 pub mod pkt;
 pub mod types;
@@ -19,15 +26,16 @@ pub mod types;
 pub struct BgpDeamon {
     as_num: AsNumber,
     router_id: Ipv4Addr,
-    networks: Vec<BgpNrli>,
+    networks: Vec<Nlri>,
     neighbors: Vec<BgpNodeInformation>,
+    default_cfg: BgpPeeringCfg,
 }
 
-#[derive(Debug, Clone)]
-struct BgpNodeInformation {
-    identifier: String,
-    addr: Ipv4Addr,
-    as_num: AsNumber,
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BgpNodeInformation {
+    pub identifier: String,
+    pub addr: Ipv4Addr,
+    pub as_num: AsNumber,
 }
 
 impl BgpNodeInformation {
@@ -40,20 +48,21 @@ impl BgpNodeInformation {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 #[non_exhaustive]
-enum NeighborIngressEvent {
-    ConnectionEstablished(),
-    Update(),
+pub enum NeighborIngressEvent {
+    ConnectionEstablished(BgpNodeInformation),
+    Update(Ipv4Addr, BgpUpdatePacket),
     Notification(),
     ConnectionLost(),
 }
 
 #[derive(Debug)]
 #[non_exhaustive]
-enum NeighborEgressEvent {
+pub enum NeighborEgressEvent {
     Start,
     Stop,
+    Advertise(BgpUpdatePacket),
 }
 
 impl BgpDeamon {
@@ -63,6 +72,7 @@ impl BgpDeamon {
             router_id,
             neighbors: Vec::new(),
             networks: Vec::new(),
+            default_cfg: BgpPeeringCfg::default(),
         }
     }
 
@@ -89,26 +99,34 @@ impl BgpDeamon {
         self
     }
 
+    pub fn add_nlri(mut self, nlri: Nlri) -> Self {
+        self.networks.push(nlri);
+        self
+    }
+
     #[tracing::instrument(name = "bgp", skip_all)]
     pub async fn deploy(self) -> Result<()> {
         let (tx, mut rx) = channel(32);
 
-        let mut neighbor_send_handles = Vec::new();
+        let mut neighbor_send_handles = FxHashMap::with_hasher(FxBuildHasher::default());
         let mut neighbor_tcp_handles = FxHashMap::with_hasher(FxBuildHasher::default());
+
+        let host_info = BgpNodeInformation {
+            identifier: String::from("host"),
+            addr: self.router_id,
+            as_num: self.as_num,
+        };
 
         for neighbor in &self.neighbors {
             let (etx, erx) = channel(8);
             let (tcp_tx, tcp_rx) = channel(8);
             let deamon = NeighborDeamon::new(
-                BgpNodeInformation {
-                    identifier: String::from("host"),
-                    addr: self.router_id,
-                    as_num: self.as_num,
-                },
+                host_info.clone(),
                 neighbor.clone(),
                 tx.clone(),
                 erx,
                 tcp_rx,
+                self.default_cfg.clone(),
             );
 
             let span = tracing::span!(
@@ -122,7 +140,7 @@ impl BgpDeamon {
                 task: tokio::spawn(deamon.deploy().instrument(span)),
             };
             handle.tx.send(NeighborEgressEvent::Start).await.unwrap();
-            neighbor_send_handles.push(handle);
+            neighbor_send_handles.insert(neighbor.addr, handle);
             neighbor_tcp_handles.insert(IpAddr::V4(neighbor.addr), tcp_tx);
         }
 
@@ -145,12 +163,61 @@ impl BgpDeamon {
 
         let _ = listener_handle;
 
-        loop {
-            tokio::select! {
-                val = rx.recv() => {
-                    dbg!(val);
-                }
+        let mut adj_rib_in = AdjIn::new();
+        let mut loc_rib = LocRib::new();
+        let mut adj_rib_out = AdjRIBOut::new(host_info);
+
+        if !self.networks.is_empty() {
+            let route = Route {
+                id: 0b1,
+                peer: Peer {
+                    as_num: self.as_num,
+                    next_hop: Ipv4Addr::UNSPECIFIED,
+                },
+                path: Vec::new(),
+                ts: SimTime::ZERO,
+                new_route: false,
             };
+            for network in self.networks {
+                loc_rib.add_dest(network, &route);
+            }
+        }
+
+        loop {
+            use NeighborEgressEvent::*;
+            use NeighborIngressEvent::*;
+
+            if adj_rib_in.is_dirty() {
+                for (dest, path) in adj_rib_in.paths() {
+                    if !path.new_route {
+                        continue;
+                    }
+
+                    if loc_rib.lookup(dest).is_none() {
+                        loc_rib.add_dest(dest, path);
+                        loc_rib.advertise_dest(dest, &mut adj_rib_out);
+                        tracing::info!("new route to destination {dest:?}");
+                    }
+                }
+
+                adj_rib_in.unset_dirty();
+            }
+
+            let event = tokio::select! {
+                event = rx.recv() => event,
+                _ = adj_rib_out.tick() => continue,
+            };
+
+            match event.unwrap() {
+                ConnectionEstablished(peer) => {
+                    tracing::info!("new active neighbor {}", peer.str());
+                    adj_rib_in.register(&peer);
+                    adj_rib_out.register(&peer, &neighbor_send_handles);
+                    loc_rib.psh_publish(&peer, &mut adj_rib_out);
+                }
+                Update(peer, update) => adj_rib_in.process(update, peer),
+                _ => todo!(),
+            }
         }
     }
 }

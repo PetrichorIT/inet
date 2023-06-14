@@ -4,6 +4,7 @@ use bytepack::{
     ToBytestream,
 };
 use std::{
+    fmt::Debug,
     io::{Error, Read, Write},
     net::Ipv4Addr,
 };
@@ -155,7 +156,7 @@ pub enum BgpOpenOption {
 pub struct BgpUpdatePacket {
     pub withdrawn_routes: Vec<BgpWithdrawnRoute>,
     pub path_attributes: Vec<BgpPathAttribute>,
-    pub nlris: Vec<BgpNrli>,
+    pub nlris: Vec<Nlri>,
 }
 
 impl ToBytestream for BgpUpdatePacket {
@@ -204,7 +205,7 @@ impl FromBytestream for BgpUpdatePacket {
         // NRLI
         let mut nlris = Vec::new();
         while !bytestream.is_empty() {
-            nlris.push(BgpNrli::from_bytestream(bytestream)?)
+            nlris.push(Nlri::from_bytestream(bytestream)?)
         }
         Ok(BgpUpdatePacket {
             withdrawn_routes,
@@ -214,36 +215,99 @@ impl FromBytestream for BgpUpdatePacket {
     }
 }
 
-pub type BgpWithdrawnRoute = BgpNrli;
+pub type BgpWithdrawnRoute = Nlri;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct BgpNrli {
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Nlri {
     /* custom encoding */
-    pub prefix: Ipv4Addr,
-    pub prefix_len: u8,
+    bytes: [u8; 4],
 }
 
-impl ToBytestream for BgpNrli {
-    type Error = Error;
-    fn to_bytestream(&self, bytestream: &mut BytestreamWriter) -> Result<(), Self::Error> {
-        self.prefix_len.write_to(bytestream, ByteOrder::BigEndian)?;
-        let bit_to_next_octet = (8 - (self.prefix_len % 8)) % 8;
-        let octet_len = (self.prefix_len + bit_to_next_octet) / 8;
-        bytestream.write_all(&self.prefix.octets()[..octet_len as usize])
+impl Nlri {
+    pub fn prefix(&self) -> Ipv4Addr {
+        let dword = u32::from_be_bytes([self.bytes[1], self.bytes[2], self.bytes[3], 0]);
+        let mask = !(u32::MAX >> self.bytes[0]);
+        Ipv4Addr::from(mask & dword)
+    }
+
+    pub fn prefix_len(&self) -> usize {
+        self.bytes[0] as usize
+    }
+
+    pub fn new(prefix: Ipv4Addr, len: u8) -> Self {
+        assert!(
+            len <= 24,
+            "NLRIs are limited to a prefix len between 0 and 24 (inclusive)"
+        );
+        let oct = prefix.octets();
+        let mut ret = Self {
+            bytes: [len, oct[0], oct[1], oct[2]],
+        };
+        ret.normalize();
+        ret
+    }
+
+    fn normalize(&mut self) {
+        let relevant_bytes = 8 + self.bytes[0];
+        let mask = !(u32::MAX.checked_shr(relevant_bytes as u32).unwrap_or(0));
+        let bytes = u32::from_be_bytes(self.bytes);
+        self.bytes = (bytes & mask).to_be_bytes();
     }
 }
 
-impl FromBytestream for BgpNrli {
+impl ToBytestream for Nlri {
+    type Error = Error;
+    fn to_bytestream(&self, bytestream: &mut BytestreamWriter) -> Result<(), Self::Error> {
+        let len = self.bytes[0];
+        let bit_to_next_octet = (8 - (len % 8)) % 8;
+        let octet_len = (len + bit_to_next_octet) / 8;
+        bytestream.write_all(&self.bytes[..(octet_len + 1) as usize])
+    }
+}
+
+impl FromBytestream for Nlri {
     type Error = Error;
     fn from_bytestream(bytestream: &mut BytestreamReader) -> Result<Self, Self::Error> {
         let prefix_len = u8::read_from(bytestream, ByteOrder::BigEndian)?;
+        assert!(prefix_len <= 24, "invalid prefix len");
+
         let bit_to_next_octet = (8 - (prefix_len % 8)) % 8;
         let octet_len = (prefix_len + bit_to_next_octet) / 8;
-        let mut buf = [0; 4];
-        bytestream.read_exact(&mut buf[..octet_len as usize])?;
-        Ok(Self {
-            prefix: Ipv4Addr::from(buf),
-            prefix_len,
-        })
+        let mut bytes = [0; 4];
+        bytes[0] = prefix_len;
+        bytestream.read_exact(&mut bytes[1..(octet_len + 1) as usize])?;
+        Ok(Self { bytes })
+    }
+}
+
+impl Debug for Nlri {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}/{}", self.prefix(), self.prefix_len())
+    }
+}
+#[cfg(test)]
+mod tests {
+    use std::io;
+
+    use super::*;
+
+    #[test]
+    fn parse_nlri() -> io::Result<()> {
+        let nlri = Nlri::new(Ipv4Addr::new(255, 254, 253, 252), 16);
+        assert_eq!(nlri, Nlri::from_buffer(nlri.to_buffer()?)?);
+
+        let nlri = Nlri::new(Ipv4Addr::new(255, 254, 253, 252), 17);
+        assert_eq!(nlri, Nlri::from_buffer(nlri.to_buffer()?)?);
+
+        let nlri = Nlri::new(Ipv4Addr::new(255, 254, 253, 252), 18);
+        assert_eq!(nlri, Nlri::from_buffer(nlri.to_buffer()?)?);
+
+        let nlri = Nlri::new(Ipv4Addr::new(255, 254, 253, 252), 19);
+        assert_eq!(nlri, Nlri::from_buffer(nlri.to_buffer()?)?);
+
+        let nlri = Nlri::new(Ipv4Addr::new(255, 254, 253, 252), 21);
+        assert_eq!(nlri, Nlri::from_buffer(nlri.to_buffer()?)?);
+
+        Ok(())
     }
 }

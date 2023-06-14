@@ -12,6 +12,8 @@ use tokio::{
     task::JoinHandle,
 };
 
+use crate::pkt::BgpUpdatePacket;
+
 use self::{
     timers::{Timer, Timers, TimersCfg},
     types::*,
@@ -24,13 +26,15 @@ use super::{
 mod timers;
 mod types;
 
+pub use types::BgpPeeringCfg;
+
 #[derive(Debug)]
-pub(crate) struct NeighborDeamon {
+pub struct NeighborDeamon {
     peering_kind: PeeringKind,
 
     peer_info: BgpNodeInformation,
     host_info: BgpNodeInformation,
-    cfg: BgpPeeringCfg,
+    pub cfg: BgpPeeringCfg,
 
     timers: Timers,
 
@@ -63,14 +67,14 @@ impl NeighborDeamon {
         tx: Sender<NeighborIngressEvent>,
         rx: Receiver<NeighborEgressEvent>,
         tcp_rx: Receiver<TcpStream>,
+        cfg: BgpPeeringCfg,
     ) -> Self {
         Self {
             peering_kind: PeeringKind::for_as(host_info.as_num, peer_info.as_num),
 
             host_info,
             peer_info,
-            cfg: BgpPeeringCfg::default(),
-
+            cfg,
             timers: Timers::new(TimersCfg::default()),
 
             last_keepalive_received: SimTime::ZERO,
@@ -118,6 +122,13 @@ impl NeighborDeamon {
         }
     }
 
+    fn update(&self, update: BgpUpdatePacket) -> BgpPacket {
+        BgpPacket {
+            marker: u128::MAX,
+            kind: BgpPacketKind::Update(update),
+        }
+    }
+
     fn try_recv_incoming_tcp_stream(&mut self) -> Option<TcpStream> {
         loop {
             match self.tcp_rx.try_recv() {
@@ -136,7 +147,7 @@ impl NeighborDeamon {
         }
     }
 
-    pub(crate) async fn deploy(self) -> Result<()> {
+    pub async fn deploy(self) -> Result<()> {
         self._deploy().await.map_err(|e| {
             tracing::error!(">>> {e}");
             e
@@ -335,7 +346,6 @@ impl NeighborDeamon {
                                 },
                                 _ => {}
                             }
-
 
                             if self.cfg.delay_open {
                                 tracing::debug!("[active] accepted incoming tcp connection, delay open");
@@ -599,6 +609,7 @@ impl NeighborDeamon {
                                     tracing::info!("[openconfirm] established BGP {{ {:?} <--> {:?} }}", self.host_info.str(), self.peer_info.str());
                                     self.last_keepalive_received = SimTime::now();
                                     self.timers.enable_timer(Timer::HoldTimer);
+                                    self.tx.send(NeighborIngressEvent::ConnectionEstablished(self.peer_info.clone())).await.unwrap();
                                     state = Established(stream)
                                 },
                                 _ => state = OpenConfirm(stream)
@@ -618,6 +629,10 @@ impl NeighborDeamon {
                                 // TODO: peer osci
                                 self.connect_retry_counter = 0;
                                 state = Idle;
+                            },
+                            Advertise(update) => {
+                                write_stream!(stream, self.update(update));
+                                state = Established(stream);
                             }
                             _ => todo!()
                         },
@@ -646,6 +661,11 @@ impl NeighborDeamon {
                                 BgpPacketKind::Keepalive() => {
                                     self.last_keepalive_received = SimTime::now();
                                     self.timers.enable_timer(Timer::HoldTimer);
+                                    state = Established(stream);
+                                }
+                                BgpPacketKind::Update(update) => {
+                                    self.timers.enable_timer(Timer::HoldTimer);
+                                    self.tx.send(NeighborIngressEvent::Update(self.peer_info.addr, update)).await.expect("deamon dead");
                                     state = Established(stream);
                                 }
                                 _ => todo!()

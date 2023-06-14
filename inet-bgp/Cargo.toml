@@ -9,6 +9,7 @@ edition = "2021"
 name = "bgp"
 path = "bin/bgp.rs"
 
+
 [dependencies]
 inet = { path = "../inet" }
 inet-pcap = { path = "../inet-pcap" }
@@ -21,3 +22,6 @@ tracing = { version = "*", features = [
     "release_max_level_trace",
 ] }
 tokio = "*"
+
+[dev-dependencies]
+serial_test = "*"

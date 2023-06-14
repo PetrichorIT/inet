@@ -2,7 +2,7 @@ use std::fs::File;
 
 use des::{prelude::*, registry};
 use inet::interface::{add_interface, Interface, NetworkDevice};
-use inet_bgp::BgpDeamon;
+use inet_bgp::{pkt::Nlri, BgpDeamon};
 use inet_pcap::{pcap, PcapCapturePoints, PcapConfig, PcapFilters};
 use tokio::spawn;
 
@@ -30,6 +30,7 @@ impl AsyncModule for A {
         spawn(
             BgpDeamon::new(1000, Ipv4Addr::new(192, 168, 0, 101))
                 .add_neighbor(Ipv4Addr::new(192, 168, 0, 102), 2000)
+                .add_nlri(Nlri::new(Ipv4Addr::new(10, 0, 2, 0), 24))
                 .deploy(),
         );
     }
@@ -46,9 +47,18 @@ impl AsyncModule for B {
     }
 
     async fn at_sim_start(&mut self, _: usize) {
-        add_interface(Interface::ethv4(
-            NetworkDevice::eth(),
+        add_interface(Interface::ethv4_named(
+            "link-a",
+            NetworkDevice::eth_select(|p| p.input.name().starts_with("a")),
             Ipv4Addr::new(192, 168, 0, 102),
+            Ipv4Addr::new(255, 255, 255, 0),
+        ))
+        .unwrap();
+        add_interface(Interface::ethv4_named(
+            "link-c",
+            NetworkDevice::eth_select(|p| p.input.name().starts_with("c")),
+            Ipv4Addr::new(192, 168, 0, 102),
+            Ipv4Addr::new(255, 255, 255, 0),
         ))
         .unwrap();
 
@@ -62,6 +72,78 @@ impl AsyncModule for B {
         spawn(
             BgpDeamon::new(2000, Ipv4Addr::new(192, 168, 0, 102))
                 .add_neighbor(Ipv4Addr::new(192, 168, 0, 101), 1000)
+                .add_neighbor(Ipv4Addr::new(192, 168, 0, 103), 3000)
+                .add_nlri(Nlri::new(Ipv4Addr::new(20, 3, 8, 0), 24))
+                .deploy(),
+        );
+    }
+}
+
+struct C;
+#[async_trait::async_trait]
+impl AsyncModule for C {
+    fn new() -> Self {
+        Self
+    }
+
+    async fn at_sim_start(&mut self, _: usize) {
+        add_interface(Interface::ethv4_named(
+            "link-b",
+            NetworkDevice::eth_select(|p| p.input.name().starts_with("b")),
+            Ipv4Addr::new(192, 168, 0, 103),
+            Ipv4Addr::new(255, 255, 255, 0),
+        ))
+        .unwrap();
+        add_interface(Interface::ethv4_named(
+            "link-d",
+            NetworkDevice::eth_select(|p| p.input.name().starts_with("d")),
+            Ipv4Addr::new(192, 168, 0, 103),
+            Ipv4Addr::new(255, 255, 255, 0),
+        ))
+        .unwrap();
+
+        pcap(PcapConfig {
+            filters: PcapFilters::default(),
+            capture: PcapCapturePoints::All,
+            output: File::create("bin/c.pcap").unwrap(),
+        })
+        .unwrap();
+
+        spawn(
+            BgpDeamon::new(3000, Ipv4Addr::new(192, 168, 0, 103))
+                .add_neighbor(Ipv4Addr::new(192, 168, 0, 102), 2000)
+                .add_neighbor(Ipv4Addr::new(192, 168, 0, 104), 3000)
+                .add_nlri(Nlri::new(Ipv4Addr::new(30, 3, 1, 0), 16))
+                .deploy(),
+        );
+    }
+}
+
+struct D;
+#[async_trait::async_trait]
+impl AsyncModule for D {
+    fn new() -> Self {
+        Self
+    }
+
+    async fn at_sim_start(&mut self, _: usize) {
+        add_interface(Interface::ethv4(
+            NetworkDevice::eth(),
+            Ipv4Addr::new(192, 168, 0, 104),
+        ))
+        .unwrap();
+
+        pcap(PcapConfig {
+            filters: PcapFilters::default(),
+            capture: PcapCapturePoints::All,
+            output: File::create("bin/d.pcap").unwrap(),
+        })
+        .unwrap();
+
+        spawn(
+            BgpDeamon::new(3000, Ipv4Addr::new(192, 168, 0, 104))
+                .add_neighbor(Ipv4Addr::new(192, 168, 0, 103), 3000)
+                .add_nlri(Nlri::new(Ipv4Addr::new(40, 3, 1, 0), 16))
                 .deploy(),
         );
     }
@@ -77,26 +159,17 @@ impl Module for Main {
 fn main() {
     inet::init();
 
-    // struct Policy;
-    // impl ScopeConfigurationPolicy for Policy {
-    //     fn configure(&self, scope: &str) -> ScopeConfiguration {
-    //         ScopeConfiguration {
-    //             fmt: Box::new(NoColorFormatter),
-    //             output: Box::new(std::io::stdout()),
-    //         }
-    //     }
-    // }
+    des::tracing::Subscriber::default()
+        .with_max_level(tracing::metadata::LevelFilter::TRACE)
+        .init()
+        .unwrap();
 
-    // Subscriber::default()
-    //     .with_max_level(LevelFilter::TRACE)
-    //     .init()
-    //     .unwrap();
-
-    let app =
-        NetworkApplication::new(NdlApplication::new("bin/pkt.ndl", registry![A, B, Main]).unwrap());
+    let app = NetworkApplication::new(
+        NdlApplication::new("bin/pkt.ndl", registry![A, B, C, D, Main]).unwrap(),
+    );
     let rt = Builder::seeded(123)
         .max_time(1000.0.into())
-        .max_itr(1000)
+        .max_itr(100)
         .build(app);
 
     let _ = rt.run();

@@ -45,12 +45,12 @@ impl Debug for NeighborDeamonState {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct BgpPeeringCfg {
-    pub(crate) colliosion_detect: bool,
-    pub(crate) damp_peer_oscillation: bool,
-    pub(crate) delay_open: bool,
-    pub(crate) passiv_tcp_estab: bool,
-    pub(crate) notif_without_open: bool,
+pub struct BgpPeeringCfg {
+    pub colliosion_detect: bool,
+    pub damp_peer_oscillation: bool,
+    pub delay_open: bool,
+    pub passiv_tcp_estab: bool,
+    pub notif_without_open: bool,
 }
 
 impl Default for BgpPeeringCfg {

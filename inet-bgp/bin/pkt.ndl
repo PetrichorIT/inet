@@ -7,6 +7,24 @@ module A {
 
 module B {
     gates {
+        a_in @input,
+        a_out @output,
+        c_in @input,
+        c_out @output,
+    }
+}
+
+module C {
+    gates {
+        b_in @input,
+        b_out @output,
+        d_in @input,
+        d_out @output,
+    }
+}
+
+module D {
+    gates {
         in @input,
         out @output,
     }
@@ -21,11 +39,19 @@ link L {
 module Main {
     submodules {
         a: A,
-        b: B
+        b: B,
+        c: C,
+        d: D,
     }
     connections {
-        a/out --> L --> b/in,
-        a/in <-- L <-- b/out,
+        a/out --> L --> b/a_in,
+        a/in <-- L <-- b/a_out,
+
+        c/b_out --> L --> b/c_in,
+        c/b_in <-- L <-- b/c_out,
+
+        c/d_out --> L --> d/in,
+        c/d_in <-- L <-- d/out,
     }
 }
 
