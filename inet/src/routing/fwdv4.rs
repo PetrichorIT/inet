@@ -1,14 +1,69 @@
 use crate::interface::InterfaceName;
-use std::{fmt::Display, net::Ipv4Addr};
+use std::{fmt::Display, io, net::Ipv4Addr};
 
-pub(crate) struct ForwardingTableV4 {
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct RoutingTableId(usize);
+impl RoutingTableId {
+    pub const DEFAULT: RoutingTableId = RoutingTableId(0);
+}
+
+pub(crate) struct FwdV4 {
+    tables: Vec<FwdTableV4>,
+}
+
+impl FwdV4 {
+    pub(crate) fn new() -> Self {
+        Self {
+            tables: vec![FwdTableV4::new()],
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        self.tables.len()
+    }
+
+    pub(crate) fn set_default_gw(&mut self, gateway: Ipv4Gateway, iface: InterfaceName) {
+        self.tables
+            .last_mut()
+            .expect("no tables, not allowed")
+            .set_default_gw(gateway, iface)
+    }
+
+    pub(crate) fn lookup(&self, addr: Ipv4Addr) -> Option<(&Ipv4Gateway, &InterfaceName)> {
+        for table in self.tables.iter().rev() {
+            if let Some(ret) = table.lookup(addr) {
+                return Some(ret);
+            }
+        }
+        None
+    }
+
+    pub(crate) fn add_table(&mut self) -> io::Result<RoutingTableId> {
+        self.tables.push(FwdTableV4::new());
+        Ok(RoutingTableId(self.len() - 1))
+    }
+
+    pub(crate) fn add_entry(&mut self, entry: FwdEntryV4, table_id: RoutingTableId) {
+        self.tables[table_id.0].add_entry(entry)
+    }
+
+    pub(crate) fn entries(&self) -> Vec<FwdEntryV4> {
+        let mut ret = Vec::with_capacity(32);
+        for table in self.tables.iter().rev() {
+            ret.extend(table.entries.iter().cloned());
+        }
+        ret
+    }
+}
+
+pub(crate) struct FwdTableV4 {
     // A list of all fwd entrys with the smallest prefixes first
-    pub(super) entries: Vec<ForwardingEntryV4>,
+    pub(super) entries: Vec<FwdEntryV4>,
 }
 
 /// A forwarding entry. Will not expire since FWD should be managed manually by routing deamons
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct ForwardingEntryV4 {
+pub struct FwdEntryV4 {
     /// The subnet this entry points to.
     pub dest: Ipv4Addr,
     /// The netmask of the targeted subnet.
@@ -30,7 +85,7 @@ pub enum Ipv4Gateway {
     Gateway(Ipv4Addr),
 }
 
-impl ForwardingTableV4 {
+impl FwdTableV4 {
     pub(crate) fn new() -> Self {
         Self {
             entries: Vec::new(),
@@ -44,15 +99,14 @@ impl ForwardingTableV4 {
                 f.iface = iface;
             } else {
                 self.entries
-                    .insert(0, ForwardingEntryV4::default_gw(gateway, iface))
+                    .insert(0, FwdEntryV4::default_gw(gateway, iface))
             }
         } else {
-            self.entries
-                .push(ForwardingEntryV4::default_gw(gateway, iface));
+            self.entries.push(FwdEntryV4::default_gw(gateway, iface));
         }
     }
 
-    pub(crate) fn add_entry(&mut self, entry: ForwardingEntryV4) {
+    pub(crate) fn add_entry(&mut self, entry: FwdEntryV4) {
         if let Some(in_place) = self.entries.iter_mut().find(|e| e.matches(&entry)) {
             *in_place = entry;
         } else {
@@ -74,7 +128,7 @@ impl ForwardingTableV4 {
     }
 }
 
-impl ForwardingEntryV4 {
+impl FwdEntryV4 {
     pub(crate) fn default_gw(gateway: Ipv4Gateway, iface: InterfaceName) -> Self {
         Self {
             dest: Ipv4Addr::UNSPECIFIED,
@@ -102,7 +156,7 @@ impl ForwardingEntryV4 {
     }
 }
 
-impl Display for ForwardingEntryV4 {
+impl Display for FwdEntryV4 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
@@ -118,15 +172,15 @@ mod tests {
 
     #[test]
     fn netmask_ordering() {
-        let mut fwd = ForwardingTableV4::new();
+        let mut fwd = FwdTableV4::new();
         fwd.set_default_gw(Ipv4Gateway::Local, InterfaceName::new("gw"));
-        fwd.add_entry(ForwardingEntryV4 {
+        fwd.add_entry(FwdEntryV4 {
             dest: Ipv4Addr::new(1, 2, 3, 0),
             mask: Ipv4Addr::new(255, 255, 255, 0),
             gateway: Ipv4Gateway::Local,
             iface: InterfaceName::new("sub24"),
         });
-        fwd.add_entry(ForwardingEntryV4 {
+        fwd.add_entry(FwdEntryV4 {
             dest: Ipv4Addr::new(1, 2, 0, 0),
             mask: Ipv4Addr::new(255, 255, 0, 0),
             gateway: Ipv4Gateway::Local,
@@ -136,14 +190,14 @@ mod tests {
         assert_eq!(
             fwd.entries,
             vec![
-                ForwardingEntryV4::default_gw(Ipv4Gateway::Local, InterfaceName::new("gw")),
-                ForwardingEntryV4 {
+                FwdEntryV4::default_gw(Ipv4Gateway::Local, InterfaceName::new("gw")),
+                FwdEntryV4 {
                     dest: Ipv4Addr::new(1, 2, 0, 0),
                     mask: Ipv4Addr::new(255, 255, 0, 0),
                     gateway: Ipv4Gateway::Local,
                     iface: InterfaceName::new("sub16"),
                 },
-                ForwardingEntryV4 {
+                FwdEntryV4 {
                     dest: Ipv4Addr::new(1, 2, 3, 0),
                     mask: Ipv4Addr::new(255, 255, 255, 0),
                     gateway: Ipv4Gateway::Local,
@@ -155,15 +209,15 @@ mod tests {
 
     #[test]
     fn lookup() {
-        let mut fwd = ForwardingTableV4::new();
+        let mut fwd = FwdTableV4::new();
         fwd.set_default_gw(Ipv4Gateway::Local, InterfaceName::new("gw"));
-        fwd.add_entry(ForwardingEntryV4 {
+        fwd.add_entry(FwdEntryV4 {
             dest: Ipv4Addr::new(1, 2, 3, 0),
             mask: Ipv4Addr::new(255, 255, 255, 0),
             gateway: Ipv4Gateway::Local,
             iface: InterfaceName::new("sub24"),
         });
-        fwd.add_entry(ForwardingEntryV4 {
+        fwd.add_entry(FwdEntryV4 {
             dest: Ipv4Addr::new(1, 2, 0, 0),
             mask: Ipv4Addr::new(255, 255, 0, 0),
             gateway: Ipv4Gateway::Local,

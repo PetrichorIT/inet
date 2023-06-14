@@ -7,7 +7,7 @@ use adj_in::{AdjIn, Peer, Route};
 use adj_rib_out::AdjRIBOut;
 use des::time::SimTime;
 use fxhash::{FxBuildHasher, FxHashMap};
-use inet::TcpListener;
+use inet::{interface::InterfaceName, routing::add_routing_table, TcpListener};
 use loc_rib::LocRib;
 use peering::{BgpPeeringCfg, NeighborDeamon, NeighborHandle};
 use pkt::{BgpUpdatePacket, Nlri};
@@ -26,6 +26,7 @@ pub mod types;
 pub struct BgpDeamon {
     as_num: AsNumber,
     router_id: Ipv4Addr,
+    local_iface: Option<InterfaceName>,
     networks: Vec<Nlri>,
     neighbors: Vec<BgpNodeInformation>,
     default_cfg: BgpPeeringCfg,
@@ -35,6 +36,7 @@ pub struct BgpDeamon {
 pub struct BgpNodeInformation {
     pub identifier: String,
     pub addr: Ipv4Addr,
+    pub iface: InterfaceName,
     pub as_num: AsNumber,
 }
 
@@ -70,31 +72,19 @@ impl BgpDeamon {
         Self {
             as_num,
             router_id,
+            local_iface: None,
             neighbors: Vec::new(),
             networks: Vec::new(),
             default_cfg: BgpPeeringCfg::default(),
         }
     }
 
-    pub fn add_neighbor(mut self, addr: Ipv4Addr, as_num: AsNumber) -> Self {
+    pub fn add_neighbor(mut self, addr: Ipv4Addr, as_num: AsNumber, iface: &str) -> Self {
         self.neighbors.push(BgpNodeInformation {
             identifier: String::new(),
             addr,
             as_num,
-        });
-        self
-    }
-
-    pub fn add_named_neighbor(
-        mut self,
-        identifer: impl AsRef<str>,
-        addr: Ipv4Addr,
-        as_num: AsNumber,
-    ) -> Self {
-        self.neighbors.push(BgpNodeInformation {
-            identifier: identifer.as_ref().to_string(),
-            addr,
-            as_num,
+            iface: InterfaceName::from(iface),
         });
         self
     }
@@ -106,6 +96,8 @@ impl BgpDeamon {
 
     #[tracing::instrument(name = "bgp", skip_all)]
     pub async fn deploy(self) -> Result<()> {
+        let table_id = add_routing_table()?;
+
         let (tx, mut rx) = channel(32);
 
         let mut neighbor_send_handles = FxHashMap::with_hasher(FxBuildHasher::default());
@@ -115,13 +107,20 @@ impl BgpDeamon {
             identifier: String::from("host"),
             addr: self.router_id,
             as_num: self.as_num,
+            iface: self
+                .local_iface
+                .clone()
+                .unwrap_or(InterfaceName::from("invalid")),
         };
 
         for neighbor in &self.neighbors {
             let (etx, erx) = channel(8);
             let (tcp_tx, tcp_rx) = channel(8);
+            let mut host_info = host_info.clone();
+            host_info.iface = neighbor.iface.clone();
+
             let deamon = NeighborDeamon::new(
-                host_info.clone(),
+                host_info,
                 neighbor.clone(),
                 tx.clone(),
                 erx,
@@ -164,7 +163,7 @@ impl BgpDeamon {
         let _ = listener_handle;
 
         let mut adj_rib_in = AdjIn::new();
-        let mut loc_rib = LocRib::new();
+        let mut loc_rib = LocRib::new(table_id);
         let mut adj_rib_out = AdjRIBOut::new(host_info);
 
         if !self.networks.is_empty() {
@@ -173,6 +172,7 @@ impl BgpDeamon {
                 peer: Peer {
                     as_num: self.as_num,
                     next_hop: Ipv4Addr::UNSPECIFIED,
+                    iface: self.local_iface.unwrap_or(InterfaceName::from("invalid")),
                 },
                 path: Vec::new(),
                 ts: SimTime::ZERO,

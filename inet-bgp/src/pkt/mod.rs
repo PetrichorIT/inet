@@ -234,6 +234,10 @@ impl Nlri {
         self.bytes[0] as usize
     }
 
+    pub fn netmask(&self) -> Ipv4Addr {
+        Ipv4Addr::from(!(u32::MAX >> self.prefix_len()))
+    }
+
     pub fn new(prefix: Ipv4Addr, len: u8) -> Self {
         assert!(
             len <= 24,

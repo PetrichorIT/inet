@@ -11,7 +11,7 @@ use super::{
 };
 use crate::{
     arp::ArpEntryInternal,
-    routing::{ForwardingEntryV4, Ipv4Gateway, Ipv6Gateway},
+    routing::{FwdEntryV4, Ipv4Gateway, Ipv6Gateway, RoutingTableId},
     IOContext,
 };
 
@@ -55,8 +55,10 @@ impl IOContext {
                         expires: SimTime::MAX,
                     });
 
-                    self.ipv4_fwd
-                        .add_entry(ForwardingEntryV4::broadcast(iface.name.clone()));
+                    self.ipv4_fwd.add_entry(
+                        FwdEntryV4::broadcast(iface.name.clone()),
+                        RoutingTableId::DEFAULT,
+                    );
                 }
 
                 if iface.ipv6_subnet().is_some() {
@@ -112,12 +114,15 @@ impl IOContext {
             if let Some((addr, mask)) = iface.ipv4_subnet() {
                 // TODO: Maybe this needs to be added allways, but lets try to restrict to LANs
                 if !mask.is_unspecified() {
-                    self.ipv4_fwd.add_entry(ForwardingEntryV4 {
-                        dest: addr,
-                        mask,
-                        gateway: Ipv4Gateway::Local,
-                        iface: iface.name.clone(),
-                    });
+                    self.ipv4_fwd.add_entry(
+                        FwdEntryV4 {
+                            dest: addr,
+                            mask,
+                            gateway: Ipv4Gateway::Local,
+                            iface: iface.name.clone(),
+                        },
+                        RoutingTableId::DEFAULT,
+                    );
                 }
             }
 

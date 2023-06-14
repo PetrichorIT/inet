@@ -7,7 +7,7 @@ use des::{
     time::sleep,
 };
 use inet::{
-    interface::{add_interface, Interface, NetworkDevice},
+    interface::{add_interface, Interface, InterfaceName, NetworkDevice},
     TcpListener,
 };
 use inet_bgp::{
@@ -41,11 +41,13 @@ fn semi_passiv_estab() {
                 identifier: String::new(),
                 addr,
                 as_num: 1000,
+                iface: InterfaceName::from("en0"),
             },
             BgpNodeInformation {
                 identifier: String::new(),
                 addr: Ipv4Addr::new(192, 168, 1, 200),
                 as_num: 2000,
+                iface: InterfaceName::from("en0"),
             },
             itx,
             erx,
@@ -73,7 +75,8 @@ fn semi_passiv_estab() {
                 BgpNodeInformation {
                     identifier: String::new(),
                     addr: Ipv4Addr::new(192, 168, 1, 200),
-                    as_num: 2000
+                    as_num: 2000,
+                    iface: InterfaceName::from("en0"),
                 }
             ))
         );
@@ -94,11 +97,13 @@ fn semi_passiv_estab() {
                 identifier: String::new(),
                 addr,
                 as_num: 2000,
+                iface: InterfaceName::from("en0"),
             },
             BgpNodeInformation {
                 identifier: String::new(),
                 addr: Ipv4Addr::new(192, 168, 1, 100),
                 as_num: 1000,
+                iface: InterfaceName::from("en0"),
             },
             itx,
             erx,
@@ -128,7 +133,8 @@ fn semi_passiv_estab() {
                 BgpNodeInformation {
                     identifier: String::new(),
                     addr: Ipv4Addr::new(192, 168, 1, 100),
-                    as_num: 1000
+                    as_num: 1000,
+                    iface: InterfaceName::from("en0"),
                 }
             ))
         );
@@ -180,11 +186,13 @@ fn semi_passiv_estab_delayed_client() {
                 identifier: String::new(),
                 addr,
                 as_num: 1000,
+                iface: InterfaceName::from("en0"),
             },
             BgpNodeInformation {
                 identifier: String::new(),
                 addr: Ipv4Addr::new(192, 168, 1, 200),
                 as_num: 2000,
+                iface: InterfaceName::from("en0"),
             },
             itx,
             erx,
@@ -214,7 +222,8 @@ fn semi_passiv_estab_delayed_client() {
                 BgpNodeInformation {
                     identifier: String::new(),
                     addr: Ipv4Addr::new(192, 168, 1, 200),
-                    as_num: 2000
+                    as_num: 2000,
+                    iface: InterfaceName::from("en0"),
                 }
             ))
         );
@@ -235,11 +244,13 @@ fn semi_passiv_estab_delayed_client() {
                 identifier: String::new(),
                 addr,
                 as_num: 2000,
+                iface: InterfaceName::from("en0"),
             },
             BgpNodeInformation {
                 identifier: String::new(),
                 addr: Ipv4Addr::new(192, 168, 1, 100),
                 as_num: 1000,
+                iface: InterfaceName::from("en0"),
             },
             itx,
             erx,
@@ -269,7 +280,8 @@ fn semi_passiv_estab_delayed_client() {
                 BgpNodeInformation {
                     identifier: String::new(),
                     addr: Ipv4Addr::new(192, 168, 1, 100),
-                    as_num: 1000
+                    as_num: 1000,
+                    iface: InterfaceName::from("en0"),
                 }
             ))
         );
@@ -321,11 +333,13 @@ fn semi_passiv_estab_delayed_open() {
                 identifier: String::new(),
                 addr,
                 as_num: 1000,
+                iface: InterfaceName::from("en0"),
             },
             BgpNodeInformation {
                 identifier: String::new(),
                 addr: Ipv4Addr::new(192, 168, 1, 200),
                 as_num: 2000,
+                iface: InterfaceName::from("en0"),
             },
             itx,
             erx,
@@ -355,7 +369,8 @@ fn semi_passiv_estab_delayed_open() {
                 BgpNodeInformation {
                     identifier: String::new(),
                     addr: Ipv4Addr::new(192, 168, 1, 200),
-                    as_num: 2000
+                    as_num: 2000,
+                    iface: InterfaceName::from("en0"),
                 }
             ))
         );
@@ -376,11 +391,13 @@ fn semi_passiv_estab_delayed_open() {
                 identifier: String::new(),
                 addr,
                 as_num: 2000,
+                iface: InterfaceName::from("en0"),
             },
             BgpNodeInformation {
                 identifier: String::new(),
                 addr: Ipv4Addr::new(192, 168, 1, 100),
                 as_num: 1000,
+                iface: InterfaceName::from("en0"),
             },
             itx,
             erx,
@@ -411,7 +428,8 @@ fn semi_passiv_estab_delayed_open() {
                 BgpNodeInformation {
                     identifier: String::new(),
                     addr: Ipv4Addr::new(192, 168, 1, 100),
-                    as_num: 1000
+                    as_num: 1000,
+                    iface: InterfaceName::from("en0"),
                 }
             ))
         );

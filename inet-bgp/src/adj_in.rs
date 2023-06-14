@@ -2,6 +2,7 @@ use std::net::Ipv4Addr;
 
 use des::time::SimTime;
 use fxhash::{FxBuildHasher, FxHashMap};
+use inet::interface::InterfaceName;
 
 use crate::{
     pkt::{BgpPathAttribute, BgpUpdatePacket, Nlri},
@@ -32,6 +33,7 @@ pub struct Route {
 pub struct Peer {
     pub as_num: AsNumber,
     pub next_hop: Ipv4Addr,
+    pub iface: InterfaceName,
 }
 
 impl AdjIn {
@@ -60,6 +62,7 @@ impl AdjIn {
         self.peers.push(Peer {
             as_num: peer.as_num,
             next_hop: peer.addr,
+            iface: peer.iface.clone(),
         })
     }
 
@@ -67,6 +70,7 @@ impl AdjIn {
         let peer = Peer {
             as_num: peer.as_num,
             next_hop: peer.addr,
+            iface: peer.iface.clone(),
         };
         self.peers.retain(|p| *p != peer)
     }

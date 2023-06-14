@@ -3,7 +3,7 @@ use std::{
     net::IpAddr,
 };
 
-use super::{ForwardingEntryV4, Ipv4Gateway};
+use super::{FwdEntryV4, Ipv4Gateway, RoutingTableId};
 use crate::IOContext;
 
 /// Sets the default routing gateway for the entire node.
@@ -19,28 +19,41 @@ pub fn add_routing_entry(
     interface: &str,
 ) -> io::Result<()> {
     IOContext::failable_api(|ctx| {
-        ctx.add_routing_entry(addr.into(), mask.into(), gw.into(), interface)
+        ctx.add_routing_entry(
+            addr.into(),
+            mask.into(),
+            gw.into(),
+            interface,
+            RoutingTableId::DEFAULT,
+        )
     })
 }
 
-#[deprecated]
-pub fn update_routing_entry(
+#[must_use]
+pub fn add_routing_table() -> io::Result<RoutingTableId> {
+    IOContext::failable_api(|ctx| ctx.add_routing_table())
+}
+
+pub fn add_routing_entry_to(
     addr: impl Into<IpAddr>,
     mask: impl Into<IpAddr>,
     gw: impl Into<IpAddr>,
     interface: &str,
+    table_id: RoutingTableId,
 ) -> io::Result<()> {
-    add_routing_entry(addr, mask, gw, interface)
+    IOContext::failable_api(|ctx| {
+        ctx.add_routing_entry(addr.into(), mask.into(), gw.into(), interface, table_id)
+    })
 }
 
 /// Returns the contents of the routing table
-pub fn route() -> io::Result<Vec<ForwardingEntryV4>> {
+pub fn route() -> io::Result<Vec<FwdEntryV4>> {
     IOContext::failable_api(|ctx| Ok(ctx.route()))
 }
 
 impl IOContext {
-    fn route(&mut self) -> Vec<ForwardingEntryV4> {
-        self.ipv4_fwd.entries.clone()
+    fn route(&mut self) -> Vec<FwdEntryV4> {
+        self.ipv4_fwd.entries()
     }
 
     fn set_default_gateway(&mut self, ip: IpAddr) -> io::Result<()> {
@@ -72,6 +85,7 @@ impl IOContext {
         mask: IpAddr,
         gw: IpAddr,
         interface: &str,
+        table_id: RoutingTableId,
     ) -> io::Result<()> {
         // Defines a route to a subnet via a gateway and a defined interface
 
@@ -79,6 +93,8 @@ impl IOContext {
             iface
                 .name.name == interface
         }) else {
+            // dbg!(interface);
+            // dbg!(self.ifaces.values());
             return Err(Error::new(
                 ErrorKind::Other,
                 "interface not found"
@@ -88,12 +104,15 @@ impl IOContext {
         use IpAddr::{V4, V6};
         match (subnet, mask, gw) {
             (V4(dest), V4(mask), V4(gw)) => {
-                self.ipv4_fwd.add_entry(ForwardingEntryV4 {
-                    dest,
-                    mask,
-                    gateway: Ipv4Gateway::Gateway(gw),
-                    iface: iface.name.clone(),
-                });
+                self.ipv4_fwd.add_entry(
+                    FwdEntryV4 {
+                        dest,
+                        mask,
+                        gateway: Ipv4Gateway::Gateway(gw),
+                        iface: iface.name.clone(),
+                    },
+                    table_id,
+                );
             }
             (V6(_dest), V6(_mask), V6(_gw)) => {
                 todo!()
@@ -102,5 +121,9 @@ impl IOContext {
         }
 
         Ok(())
+    }
+
+    fn add_routing_table(&mut self) -> io::Result<RoutingTableId> {
+        self.ipv4_fwd.add_table()
     }
 }

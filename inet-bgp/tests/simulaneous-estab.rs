@@ -13,7 +13,7 @@ use des::{
     time::sleep,
 };
 use inet::{
-    interface::{add_interface, Interface, NetworkDevice},
+    interface::{add_interface, Interface, InterfaceName, NetworkDevice},
     TcpListener,
 };
 use inet_bgp::{
@@ -48,11 +48,13 @@ fn simulatneous_estab() {
                     identifier: String::new(),
                     addr,
                     as_num: 1000,
+                    iface: InterfaceName::from("en0"),
                 },
                 BgpNodeInformation {
                     identifier: String::new(),
                     addr: Ipv4Addr::new(192, 168, 1, 200),
                     as_num: 2000,
+                    iface: InterfaceName::from("en0"),
                 },
                 itx,
                 erx,
@@ -82,7 +84,8 @@ fn simulatneous_estab() {
                     BgpNodeInformation {
                         identifier: String::new(),
                         addr: Ipv4Addr::new(192, 168, 1, 200),
-                        as_num: 2000
+                        as_num: 2000,
+                        iface: InterfaceName::from("en0"),
                     }
                 ))
             );
@@ -103,11 +106,13 @@ fn simulatneous_estab() {
                     identifier: String::new(),
                     addr,
                     as_num: 2000,
+                    iface: InterfaceName::from("en0"),
                 },
                 BgpNodeInformation {
                     identifier: String::new(),
                     addr: Ipv4Addr::new(192, 168, 1, 100),
                     as_num: 1000,
+                    iface: InterfaceName::from("en0"),
                 },
                 itx,
                 erx,
@@ -138,7 +143,8 @@ fn simulatneous_estab() {
                     BgpNodeInformation {
                         identifier: String::new(),
                         addr: Ipv4Addr::new(192, 168, 1, 100),
-                        as_num: 1000
+                        as_num: 1000,
+                        iface: InterfaceName::from("en0"),
                     }
                 ))
             );
@@ -195,11 +201,13 @@ fn synced_estab() {
                     identifier: String::new(),
                     addr,
                     as_num: 1000,
+                    iface: InterfaceName::from("en0"),
                 },
                 BgpNodeInformation {
                     identifier: String::new(),
                     addr: Ipv4Addr::new(192, 168, 1, 200),
                     as_num: 2000,
+                    iface: InterfaceName::from("en0"),
                 },
                 itx,
                 erx,
@@ -227,7 +235,8 @@ fn synced_estab() {
                     BgpNodeInformation {
                         identifier: String::new(),
                         addr: Ipv4Addr::new(192, 168, 1, 200),
-                        as_num: 2000
+                        as_num: 2000,
+                        iface: InterfaceName::from("en0"),
                     }
                 ))
             );
@@ -248,11 +257,13 @@ fn synced_estab() {
                     identifier: String::new(),
                     addr,
                     as_num: 2000,
+                    iface: InterfaceName::from("en0"),
                 },
                 BgpNodeInformation {
                     identifier: String::new(),
                     addr: Ipv4Addr::new(192, 168, 1, 100),
                     as_num: 1000,
+                    iface: InterfaceName::from("en0"),
                 },
                 itx,
                 erx,
@@ -281,7 +292,8 @@ fn synced_estab() {
                     BgpNodeInformation {
                         identifier: String::new(),
                         addr: Ipv4Addr::new(192, 168, 1, 100),
-                        as_num: 1000
+                        as_num: 1000,
+                        iface: InterfaceName::from("en0"),
                     }
                 ))
             );

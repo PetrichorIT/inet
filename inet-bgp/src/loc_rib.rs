@@ -1,5 +1,6 @@
 use des::time::SimTime;
 use fxhash::{FxBuildHasher, FxHashMap};
+use inet::routing::{add_routing_entry_to, RoutingTableId};
 
 use crate::{
     adj_in::{Route, RouteId},
@@ -11,6 +12,7 @@ use crate::{
 pub struct LocRib {
     destinations: FxHashMap<Nlri, (RouteId, Meta)>,
     routes: FxHashMap<RouteId, Route>,
+    table_id: RoutingTableId,
 }
 
 pub struct Meta {
@@ -18,10 +20,11 @@ pub struct Meta {
 }
 
 impl LocRib {
-    pub fn new() -> LocRib {
+    pub fn new(table_id: RoutingTableId) -> LocRib {
         Self {
             destinations: FxHashMap::with_hasher(FxBuildHasher::default()),
             routes: FxHashMap::with_hasher(FxBuildHasher::default()),
+            table_id,
         }
     }
 
@@ -29,7 +32,6 @@ impl LocRib {
         if self.routes.get(&route.id).is_none() {
             self.routes.insert(route.id, route.clone());
         }
-
         self.destinations.insert(
             dest,
             (
@@ -39,6 +41,18 @@ impl LocRib {
                 },
             ),
         );
+
+        if route.id & 0b1 == 0 {
+            // tracing::info!("{dest:?} {route:?}");
+            add_routing_entry_to(
+                dest.prefix(),
+                dest.netmask(),
+                route.peer.next_hop,
+                &*route.peer.iface,
+                self.table_id,
+            )
+            .expect("failed to set route to table");
+        }
     }
 
     pub fn lookup(&self, dest: Nlri) -> Option<&Route> {

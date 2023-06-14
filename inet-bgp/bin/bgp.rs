@@ -1,7 +1,10 @@
 use std::fs::File;
 
 use des::{prelude::*, registry};
-use inet::interface::{add_interface, Interface, NetworkDevice};
+use inet::{
+    interface::{add_interface, Interface, NetworkDevice},
+    routing::route,
+};
 use inet_bgp::{pkt::Nlri, BgpDeamon};
 use inet_pcap::{pcap, PcapCapturePoints, PcapConfig, PcapFilters};
 use tokio::spawn;
@@ -29,7 +32,7 @@ impl AsyncModule for A {
 
         spawn(
             BgpDeamon::new(1000, Ipv4Addr::new(192, 168, 0, 101))
-                .add_neighbor(Ipv4Addr::new(192, 168, 0, 102), 2000)
+                .add_neighbor(Ipv4Addr::new(192, 168, 0, 102), 2000, "en0")
                 .add_nlri(Nlri::new(Ipv4Addr::new(10, 0, 2, 0), 24))
                 .deploy(),
         );
@@ -71,8 +74,8 @@ impl AsyncModule for B {
 
         spawn(
             BgpDeamon::new(2000, Ipv4Addr::new(192, 168, 0, 102))
-                .add_neighbor(Ipv4Addr::new(192, 168, 0, 101), 1000)
-                .add_neighbor(Ipv4Addr::new(192, 168, 0, 103), 3000)
+                .add_neighbor(Ipv4Addr::new(192, 168, 0, 101), 1000, "link-a")
+                .add_neighbor(Ipv4Addr::new(192, 168, 0, 103), 3000, "link-c")
                 .add_nlri(Nlri::new(Ipv4Addr::new(20, 3, 8, 0), 24))
                 .deploy(),
         );
@@ -111,11 +114,17 @@ impl AsyncModule for C {
 
         spawn(
             BgpDeamon::new(3000, Ipv4Addr::new(192, 168, 0, 103))
-                .add_neighbor(Ipv4Addr::new(192, 168, 0, 102), 2000)
-                .add_neighbor(Ipv4Addr::new(192, 168, 0, 104), 3000)
+                .add_neighbor(Ipv4Addr::new(192, 168, 0, 102), 2000, "link-b")
+                .add_neighbor(Ipv4Addr::new(192, 168, 0, 104), 3000, "link-d")
                 .add_nlri(Nlri::new(Ipv4Addr::new(30, 3, 1, 0), 16))
                 .deploy(),
         );
+    }
+
+    async fn at_sim_end(&mut self) {
+        for line in route().unwrap() {
+            tracing::info!("{line}")
+        }
     }
 }
 
@@ -142,7 +151,7 @@ impl AsyncModule for D {
 
         spawn(
             BgpDeamon::new(3000, Ipv4Addr::new(192, 168, 0, 104))
-                .add_neighbor(Ipv4Addr::new(192, 168, 0, 103), 3000)
+                .add_neighbor(Ipv4Addr::new(192, 168, 0, 103), 3000, "en0")
                 .add_nlri(Nlri::new(Ipv4Addr::new(40, 3, 1, 0), 16))
                 .deploy(),
         );
