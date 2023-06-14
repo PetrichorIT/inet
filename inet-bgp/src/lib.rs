@@ -5,7 +5,10 @@ use std::{
 
 use adj_in::{AdjIn, Peer, Route};
 use adj_rib_out::AdjRIBOut;
-use des::time::SimTime;
+use des::{
+    prelude::{module_name, module_path},
+    time::SimTime,
+};
 use fxhash::{FxBuildHasher, FxHashMap};
 use inet::{interface::InterfaceName, routing::add_routing_table, TcpListener};
 use loc_rib::LocRib;

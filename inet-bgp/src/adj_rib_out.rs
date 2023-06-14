@@ -5,7 +5,7 @@ use tokio::sync::mpsc::Sender;
 
 use crate::{
     peering::NeighborHandle,
-    pkt::{BgpPathAttributeOrigin, BgpUpdatePacket},
+    pkt::{BgpPathAttributeNextHop, BgpPathAttributeOrigin, BgpUpdatePacket},
     BgpNodeInformation, NeighborEgressEvent,
 };
 use crate::{
@@ -97,13 +97,9 @@ impl AdjRIBOut {
 
             for entry in rib.entries_mut() {
                 if !entry.flag {
-                    tx.send(NeighborEgressEvent::Advertise(BgpUpdatePacket {
-                        withdrawn_routes: Vec::new(),
-                        path_attributes: entry.path.clone(),
-                        nlris: entry.nlri.clone(),
-                    }))
-                    .await
-                    .expect("Failed");
+                    tx.send(NeighborEgressEvent::Advertise(entry.to_update()))
+                        .await
+                        .expect("Failed");
 
                     entry.flag = true;
                 }
@@ -154,6 +150,29 @@ impl RoutingInformationBase {
 }
 
 impl RIBEntry {
+    pub fn to_update(&self) -> BgpUpdatePacket {
+        let mut path_attributes = self.path.clone();
+        if !path_attributes
+            .iter()
+            .any(|a| matches!(a.attr, BgpPathAttributeKind::NextHop(_)))
+        {
+            path_attributes.push(BgpPathAttribute {
+                flags: BgpPathAttributeFlags {
+                    optional: false,
+                    transitiv: false,
+                    partial: false,
+                    extended_len: false,
+                },
+                attr: BgpPathAttributeKind::NextHop(BgpPathAttributeNextHop { hop: self.next_hop }),
+            })
+        }
+        BgpUpdatePacket {
+            withdrawn_routes: Vec::new(),
+            path_attributes,
+            nlris: self.nlri.clone(),
+        }
+    }
+
     pub fn is_as_on_path(&self, as_num: AsNumber) -> bool {
         for attr in &self.path {
             if let BgpPathAttributeKind::AsPath(ref as_attr) = attr.attr {
@@ -175,7 +194,7 @@ impl RIBEntry {
         for attr in &mut self.path {
             if let BgpPathAttributeKind::AsPath(ref mut as_attr) = attr.attr {
                 if !as_attr.path.contains(&as_num) {
-                    as_attr.path.push(as_num);
+                    as_attr.path.insert(0, as_num);
                 }
                 c |= 0b1;
             }
