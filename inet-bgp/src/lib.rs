@@ -79,6 +79,11 @@ impl BgpDeamon {
         }
     }
 
+    pub fn lan_iface(mut self, iface: &str) -> Self {
+        self.local_iface = Some(InterfaceName::from(iface));
+        self
+    }
+
     pub fn add_neighbor(mut self, addr: Ipv4Addr, as_num: AsNumber, iface: &str) -> Self {
         self.neighbors.push(BgpNodeInformation {
             identifier: String::new(),

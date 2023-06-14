@@ -13,6 +13,7 @@ path = "bin/bgp.rs"
 [dependencies]
 inet = { path = "../inet" }
 inet-pcap = { path = "../inet-pcap" }
+inet-rip = { path = "../inet-rip" }
 bytepack = { path = "../bytepack" }
 des = { version = "*", features = ["full"] }
 fxhash = "*"

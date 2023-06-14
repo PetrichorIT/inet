@@ -11,6 +11,7 @@ use bytepack::{
 use crate::ip::Ipv4Packet;
 
 /// An ICMP packet
+#[derive(Debug)]
 pub struct IcmpPacket {
     pub typ: IcmpType,    // icmp info
     pub content: Vec<u8>, // ip header + first 8 byte payload or padding

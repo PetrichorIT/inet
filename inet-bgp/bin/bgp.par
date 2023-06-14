@@ -1,0 +1,16 @@
+a.node[0].addr = 10.0.2.110
+a.node[1].addr = 10.0.2.111
+a.node[2].addr = 10.0.2.112
+a.node[3].addr = 10.0.2.113
+a.node[4].addr = 10.0.2.114
+
+a.node[0].gw = 10.0.2.100
+a.node[1].gw = 10.0.2.100
+a.node[2].gw = 10.0.2.100
+a.node[3].gw = 10.0.2.100
+a.node[4].gw = 10.0.2.100
+
+
+a.router.addr = 10.0.2.100
+a.router.mask = 255.255.255.0
+a.router.pcap = true

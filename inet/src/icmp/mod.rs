@@ -229,8 +229,7 @@ impl IOContext {
                 ip.proto = PROTO_ICMP;
                 ip.content = icmp.to_buffer().expect("Failed to parse ICMP");
 
-                self.send_ip_packet(SocketIfaceBinding::NotBound, IpPacket::V4(ip), true)
-                    .unwrap()
+                let _ = self.send_ip_packet(SocketIfaceBinding::NotBound, IpPacket::V4(ip), true);
             }
             _ => {}
         }

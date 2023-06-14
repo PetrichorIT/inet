@@ -31,6 +31,7 @@ pub use self::fd::*;
 mod raw;
 pub use self::raw::*;
 
+#[derive(Debug)]
 pub(super) struct Sockets {
     sockets: FxHashMap<Fd, Socket>,
     pub(super) handlers: FxHashMap<(u8, SocketDomain), (Fd, Sender<IpPacket>)>,

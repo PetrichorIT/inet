@@ -1,25 +1,53 @@
-use std::fs::File;
+use std::{fs::File, io::Error};
 
-use des::{prelude::*, registry};
+use des::{prelude::*, registry, time::sleep};
 use inet::{
     interface::{add_interface, Interface, NetworkDevice},
-    routing::route,
+    routing::{add_routing_entry, route, set_default_gateway, RoutingInformation},
+    utils::LinkLayerSwitch,
+    TcpStream, UdpSocket,
 };
 use inet_bgp::{pkt::Nlri, BgpDeamon};
 use inet_pcap::{pcap, PcapCapturePoints, PcapConfig, PcapFilters};
+use inet_rip::RipRoutingDeamon;
 use tokio::spawn;
 
-struct A;
+struct NetA;
+impl Module for NetA {
+    fn new() -> Self {
+        Self
+    }
+}
+
+struct BgpA;
 #[async_trait::async_trait]
-impl AsyncModule for A {
+impl AsyncModule for BgpA {
     fn new() -> Self {
         Self
     }
 
     async fn at_sim_start(&mut self, _: usize) {
-        add_interface(Interface::ethv4(
+        add_interface(Interface::ethv4_named(
+            "en0",
             NetworkDevice::eth(),
+            Ipv4Addr::new(10, 0, 0, 1),
+            Ipv4Addr::new(255, 255, 0, 0),
+        ))
+        .unwrap();
+
+        add_routing_entry(
+            Ipv4Addr::new(10, 0, 2, 0),
+            Ipv4Addr::new(255, 255, 255, 0),
+            Ipv4Addr::new(10, 0, 2, 100),
+            "en0",
+        )
+        .unwrap();
+
+        add_interface(Interface::ethv4_named(
+            "link-b",
+            NetworkDevice::eth_select(|r| r.input.name().starts_with("b")),
             Ipv4Addr::new(192, 168, 0, 101),
+            Ipv4Addr::new(255, 255, 255, 0),
         ))
         .unwrap();
 
@@ -32,10 +60,17 @@ impl AsyncModule for A {
 
         spawn(
             BgpDeamon::new(1000, Ipv4Addr::new(192, 168, 0, 101))
-                .add_neighbor(Ipv4Addr::new(192, 168, 0, 102), 2000, "en0")
-                .add_nlri(Nlri::new(Ipv4Addr::new(10, 0, 2, 0), 24))
+                .add_neighbor(Ipv4Addr::new(192, 168, 0, 102), 2000, "link-b")
+                .lan_iface("en0")
+                .add_nlri(Nlri::new(Ipv4Addr::new(10, 0, 0, 0), 16))
                 .deploy(),
         );
+    }
+
+    async fn at_sim_end(&mut self) {
+        for line in route().unwrap() {
+            tracing::info!("{line}")
+        }
     }
 }
 
@@ -120,12 +155,6 @@ impl AsyncModule for C {
                 .deploy(),
         );
     }
-
-    async fn at_sim_end(&mut self) {
-        for line in route().unwrap() {
-            tracing::info!("{line}")
-        }
-    }
 }
 
 struct D;
@@ -165,17 +194,94 @@ impl Module for Main {
     }
 }
 
+struct Node;
+#[async_trait::async_trait]
+impl AsyncModule for Node {
+    fn new() -> Self {
+        Self
+    }
+
+    async fn at_sim_start(&mut self, _: usize) {
+        add_interface(Interface::ethv4(
+            NetworkDevice::eth(),
+            par("addr").unwrap().parse().unwrap(),
+        ))
+        .unwrap();
+
+        set_default_gateway(par("gw").unwrap().parse::<Ipv4Addr>().unwrap()).unwrap();
+
+        spawn(async move {
+            if module_name() == "node[0]" {
+                sleep(Duration::from_secs(5)).await;
+                tracing::info!("SENDING PKT");
+
+                let tcp = TcpStream::connect("40.3.1.2:80").await;
+                tracing::error!("{tcp:?}");
+            }
+            Ok::<(), Error>(())
+        });
+    }
+}
+
+struct Router;
+#[async_trait::async_trait]
+impl AsyncModule for Router {
+    fn new() -> Self {
+        Self
+    }
+
+    async fn at_sim_start(&mut self, _: usize) {
+        let addr = par("addr").unwrap().parse::<Ipv4Addr>().unwrap();
+        let mask = par("mask").unwrap().parse::<Ipv4Addr>().unwrap();
+
+        let ports = RoutingInformation::collect();
+        let lan = ports
+            .ports
+            .iter()
+            .find(|p| p.output.name() == "lan_out")
+            .cloned()
+            .unwrap();
+
+        if par("pcap").unwrap().parse::<bool>().unwrap() {
+            pcap(PcapConfig {
+                filters: PcapFilters::default(),
+                capture: PcapCapturePoints::All,
+                output: File::create(format!("bin/{}.pcap", module_path())).unwrap(),
+            })
+            .unwrap();
+        }
+
+        spawn(async move {
+            sleep(Duration::from_secs_f64(random::<f64>())).await;
+            let router = RipRoutingDeamon::lan_attached(addr, mask, lan, Default::default());
+            router.deploy().await;
+        });
+
+        spawn(async move {
+            sleep(Duration::from_secs(1)).await;
+            set_default_gateway("10.0.0.1".parse::<Ipv4Addr>().unwrap()).unwrap();
+        });
+    }
+}
+
 fn main() {
     inet::init();
+
+    type Switch = LinkLayerSwitch;
 
     des::tracing::Subscriber::default()
         .with_max_level(tracing::metadata::LevelFilter::TRACE)
         .init()
         .unwrap();
 
-    let app = NetworkApplication::new(
-        NdlApplication::new("bin/pkt.ndl", registry![A, B, C, D, Main]).unwrap(),
+    let mut app = NetworkApplication::new(
+        NdlApplication::new(
+            "bin/bgp.ndl",
+            registry![BgpA, NetA, Switch, Node, Router, B, C, D, Main],
+        )
+        .unwrap(),
     );
+    app.include_par_file("bin/bgp.par");
     let rt = Builder::seeded(123)
         .max_time(1000.0.into())
         .max_itr(100)
