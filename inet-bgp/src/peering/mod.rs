@@ -157,6 +157,7 @@ impl NeighborDeamon {
     async fn _deploy(mut self) -> Result<()> {
         use NeighborDeamonState::*;
         use NeighborEgressEvent::*;
+        use NeighborIngressEvent::*;
 
         sleep(Duration::from_secs_f64(random::<f64>() * 0.25)).await;
         tracing::debug!("@init");
@@ -609,7 +610,7 @@ impl NeighborDeamon {
                                     tracing::info!("[openconfirm] established BGP {{ {:?} <--> {:?} }}", self.host_info.str(), self.peer_info.str());
                                     self.last_keepalive_received = SimTime::now();
                                     self.timers.enable_timer(Timer::HoldTimer);
-                                    self.tx.send(NeighborIngressEvent::ConnectionEstablished(self.peer_info.clone())).await.unwrap();
+                                    self.tx.send(ConnectionEstablished(self.peer_info.clone())).await.unwrap();
                                     state = Established(stream)
                                 },
                                 _ => state = OpenConfirm(stream)
@@ -623,9 +624,10 @@ impl NeighborDeamon {
                     tokio::select! {
                         event = self.rx.recv() => match event.unwrap() {
                             Stop => {
+                                tracing::info!("terminating connection");
                                 write_stream!(stream, self.notif(BgpNotificationPacket::Cease()));
                                 self.timers.disable_timer(Timer::ConnectionRetryTimer);
-                                // TODO: delete all associated routes
+                                self.tx.send(ConnectionLost(self.peer_info.clone())).await.expect("failed");
                                 // TODO: peer osci
                                 self.connect_retry_counter = 0;
                                 state = Idle;
@@ -665,10 +667,17 @@ impl NeighborDeamon {
                                 }
                                 BgpPacketKind::Update(update) => {
                                     self.timers.enable_timer(Timer::HoldTimer);
-                                    self.tx.send(NeighborIngressEvent::Update(self.peer_info.addr, update)).await.expect("deamon dead");
+                                    self.tx.send(Update(self.peer_info.addr, update)).await.expect("deamon dead");
                                     state = Established(stream);
                                 }
-                                _ => todo!()
+                                BgpPacketKind::Notification(notif) => {
+                                    self.connect_retry_counter += 1;
+                                    self.timers.enable_timer(Timer::ConnectionRetryTimer);
+                                    tracing::warn!("connection lost ({notif:?})");
+                                    self.tx.send(ConnectionLost(self.peer_info.clone())).await.expect("deamon dead");
+                                    state = Idle;
+                                },
+                                _ => todo!("{:?}", bgp.kind)
                             }
                         }
                     }

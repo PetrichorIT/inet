@@ -1,26 +1,30 @@
 use std::{
     io::{Error, Result},
     net::{IpAddr, Ipv4Addr},
+    ops::Deref,
 };
 
 use adj_in::{AdjIn, Peer, Route};
-use adj_rib_out::AdjRIBOut;
-use des::{
-    prelude::{module_name, module_path},
-    time::SimTime,
-};
+use adj_out::AdjRIBOut;
+use des::time::SimTime;
 use fxhash::{FxBuildHasher, FxHashMap};
 use inet::{interface::InterfaceName, routing::add_routing_table, TcpListener};
-use loc_rib::LocRib;
+use kernel::{DefaultBgpKernel, Kernel};
+use loc_rib::{LocRib, LocRibWithKernel};
 use peering::{BgpPeeringCfg, NeighborDeamon, NeighborHandle};
 use pkt::{BgpUpdatePacket, Nlri};
-use tokio::sync::mpsc::channel;
+use tokio::{
+    spawn,
+    sync::mpsc::{channel, Sender},
+    task::JoinHandle,
+};
 
 use tracing::{Instrument, Level};
 use types::AsNumber;
 
 pub mod adj_in;
-pub mod adj_rib_out;
+pub mod adj_out;
+pub mod kernel;
 pub mod loc_rib;
 pub mod peering;
 pub mod pkt;
@@ -33,6 +37,19 @@ pub struct BgpDeamon {
     networks: Vec<Nlri>,
     neighbors: Vec<BgpNodeInformation>,
     default_cfg: BgpPeeringCfg,
+    kernel: Option<Box<dyn Kernel>>,
+}
+
+pub struct DepolyedBgpDeamon {
+    tx: Sender<BgpDeamonManagmentEvent>,
+    task: JoinHandle<()>,
+}
+
+impl Deref for DepolyedBgpDeamon {
+    type Target = Sender<BgpDeamonManagmentEvent>;
+    fn deref(&self) -> &Self::Target {
+        &self.tx
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -55,11 +72,18 @@ impl BgpNodeInformation {
 
 #[derive(Debug, PartialEq, Eq)]
 #[non_exhaustive]
+pub enum BgpDeamonManagmentEvent {
+    StopNeighbor(Ipv4Addr),
+}
+
+#[derive(Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum NeighborIngressEvent {
     ConnectionEstablished(BgpNodeInformation),
+    ConnectionLost(BgpNodeInformation),
+
     Update(Ipv4Addr, BgpUpdatePacket),
     Notification(),
-    ConnectionLost(),
 }
 
 #[derive(Debug)]
@@ -79,7 +103,12 @@ impl BgpDeamon {
             neighbors: Vec::new(),
             networks: Vec::new(),
             default_cfg: BgpPeeringCfg::default(),
+            kernel: None,
         }
+    }
+
+    pub fn kernel(mut self, kernel: impl Kernel + 'static) {
+        self.kernel = Some(Box::new(kernel));
     }
 
     pub fn lan_iface(mut self, iface: &str) -> Self {
@@ -103,7 +132,7 @@ impl BgpDeamon {
     }
 
     #[tracing::instrument(name = "bgp", skip_all)]
-    pub async fn deploy(self) -> Result<()> {
+    pub async fn deploy(mut self) -> Result<DepolyedBgpDeamon> {
         let table_id = add_routing_table()?;
 
         let (tx, mut rx) = channel(32);
@@ -168,64 +197,98 @@ impl BgpDeamon {
             .instrument(span),
         );
 
-        let _ = listener_handle;
+        let (mtx, mut mrx) = channel(8);
+        let mtx2 = mtx.clone();
 
-        let mut adj_rib_in = AdjIn::new();
-        let mut loc_rib = LocRib::new(table_id);
-        let mut adj_rib_out = AdjRIBOut::new(host_info);
+        let run_loop = spawn(async move {
+            let _ = listener_handle;
 
-        if !self.networks.is_empty() {
-            let route = Route {
-                id: 0b1,
-                peer: Peer {
-                    as_num: self.as_num,
-                    next_hop: Ipv4Addr::UNSPECIFIED,
-                    iface: self.local_iface.unwrap_or(InterfaceName::from("invalid")),
-                },
-                path: Vec::new(),
-                ts: SimTime::ZERO,
-                new_route: false,
-            };
-            for network in self.networks {
-                loc_rib.add_dest(network, &route);
+            let mut adj_rib_in = AdjIn::new();
+            let mut loc_rib = LocRibWithKernel::new(
+                table_id,
+                self.kernel.take().unwrap_or(Box::new(DefaultBgpKernel)),
+            );
+            let mut adj_rib_out = AdjRIBOut::new(host_info);
+
+            if !self.networks.is_empty() {
+                let route = Route {
+                    id: 0b1,
+                    path: Vec::new(),
+                    ts: SimTime::ZERO,
+                    ucount: 0,
+                };
+                for network in self.networks {
+                    loc_rib.add_dest(
+                        network,
+                        &route,
+                        &Peer {
+                            as_num: self.as_num,
+                            next_hop: Ipv4Addr::UNSPECIFIED,
+                            iface: self
+                                .local_iface
+                                .clone()
+                                .unwrap_or(InterfaceName::from("invalid")),
+                        },
+                    );
+                }
             }
-        }
 
-        loop {
-            use NeighborEgressEvent::*;
-            use NeighborIngressEvent::*;
+            loop {
+                let _ = &mtx2; // ensure mtx2 is moved into the func, and keept alive to prevent None loops
+                use NeighborEgressEvent::*;
+                use NeighborIngressEvent::*;
 
-            if adj_rib_in.is_dirty() {
-                for (dest, path) in adj_rib_in.paths() {
-                    if !path.new_route {
+                if adj_rib_in.is_dirty() {
+                    let done = loc_rib.kernel_decision(&adj_rib_in, &mut adj_rib_out);
+
+                    if done {
+                        adj_rib_in.unset_dirty();
+                    }
+                }
+
+                let event = tokio::select! {
+                    event = rx.recv() => event,
+                    mng = mrx.recv() => {
+                        use BgpDeamonManagmentEvent::*;
+                        match mng.unwrap() {
+                            StopNeighbor(peer) => {
+                                neighbor_send_handles
+                                    .get(&peer)
+                                    .expect("neighbor not found")
+                                    .tx
+                                    .send(Stop)
+                                    .await
+                                    .expect("failed to send");
+                            },
+                        }
                         continue;
                     }
+                    _ = adj_rib_out.tick() => continue,
+                };
 
-                    if loc_rib.lookup(dest).is_none() {
-                        loc_rib.add_dest(dest, path);
-                        loc_rib.advertise_dest(dest, &mut adj_rib_out);
-                        tracing::info!("new route to destination {dest:?}");
+                match event.unwrap() {
+                    ConnectionEstablished(peer) => {
+                        tracing::info!("new active neighbor {}", peer.str());
+                        adj_rib_in.register(&peer);
+                        adj_rib_out.register(&peer, &neighbor_send_handles);
+                        loc_rib.psh_publish(&peer, &mut adj_rib_out);
                     }
+                    ConnectionLost(peer) => {
+                        adj_rib_in.unregister(&peer);
+                        adj_rib_out.unregister(&peer);
+
+                        let done = loc_rib.kernel_decision(&adj_rib_in, &mut adj_rib_out);
+                        assert!(done, "This could be a problem")
+                    }
+                    Update(peer, update) => adj_rib_in.process(update, peer),
+                    _ => todo!(),
                 }
-
-                adj_rib_in.unset_dirty();
             }
+        });
 
-            let event = tokio::select! {
-                event = rx.recv() => event,
-                _ = adj_rib_out.tick() => continue,
-            };
-
-            match event.unwrap() {
-                ConnectionEstablished(peer) => {
-                    tracing::info!("new active neighbor {}", peer.str());
-                    adj_rib_in.register(&peer);
-                    adj_rib_out.register(&peer, &neighbor_send_handles);
-                    loc_rib.psh_publish(&peer, &mut adj_rib_out);
-                }
-                Update(peer, update) => adj_rib_in.process(update, peer),
-                _ => todo!(),
-            }
-        }
+        Ok(DepolyedBgpDeamon {
+            tx: mtx,
+            task: run_loop,
+        })
     }
 }

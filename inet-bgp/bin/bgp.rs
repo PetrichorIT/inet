@@ -3,11 +3,10 @@ use std::{fs::File, io::Error};
 use des::{prelude::*, registry, time::sleep};
 use inet::{
     interface::{add_interface, Interface, NetworkDevice},
-    routing::{add_routing_entry, route, set_default_gateway, RoutingInformation},
+    routing::{add_routing_entry, set_default_gateway, RoutingInformation},
     utils::LinkLayerSwitch,
-    TcpStream, UdpSocket,
 };
-use inet_bgp::{pkt::Nlri, BgpDeamon};
+use inet_bgp::{pkt::Nlri, BgpDeamon, BgpDeamonManagmentEvent};
 use inet_pcap::{pcap, PcapCapturePoints, PcapConfig, PcapFilters};
 use inet_rip::RipRoutingDeamon;
 use tokio::spawn;
@@ -65,12 +64,6 @@ impl AsyncModule for BgpA {
                 .add_nlri(Nlri::new(Ipv4Addr::new(10, 0, 0, 0), 16))
                 .deploy(),
         );
-    }
-
-    async fn at_sim_end(&mut self) {
-        for line in route().unwrap() {
-            tracing::info!("{line}")
-        }
     }
 }
 
@@ -147,13 +140,23 @@ impl AsyncModule for C {
         })
         .unwrap();
 
-        spawn(
-            BgpDeamon::new(3000, Ipv4Addr::new(192, 168, 0, 103))
+        spawn(async {
+            let tx = BgpDeamon::new(3000, Ipv4Addr::new(192, 168, 0, 103))
                 .add_neighbor(Ipv4Addr::new(192, 168, 0, 102), 2000, "link-b")
                 .add_neighbor(Ipv4Addr::new(192, 168, 0, 104), 3000, "link-d")
                 .add_nlri(Nlri::new(Ipv4Addr::new(30, 3, 1, 0), 16))
-                .deploy(),
-        );
+                .deploy()
+                .await?;
+
+            sleep(Duration::from_secs(300)).await;
+            tx.send(BgpDeamonManagmentEvent::StopNeighbor(Ipv4Addr::new(
+                192, 168, 0, 104,
+            )))
+            .await
+            .unwrap();
+
+            Ok::<(), Error>(())
+        });
     }
 }
 
@@ -211,13 +214,13 @@ impl AsyncModule for Node {
         set_default_gateway(par("gw").unwrap().parse::<Ipv4Addr>().unwrap()).unwrap();
 
         spawn(async move {
-            if module_name() == "node[0]" {
-                sleep(Duration::from_secs(5)).await;
-                tracing::info!("SENDING PKT");
+            // if module_name() == "node[0]" {
+            //     sleep(Duration::from_secs(5)).await;
+            //     tracing::info!("SENDING PKT");
 
-                let tcp = TcpStream::connect("40.3.1.2:80").await;
-                tracing::error!("{tcp:?}");
-            }
+            //     let tcp = TcpStream::connect("40.3.1.2:80").await;
+            //     tracing::error!("{tcp:?}");
+            // }
             Ok::<(), Error>(())
         });
     }
