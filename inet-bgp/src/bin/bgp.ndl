@@ -1,0 +1,127 @@
+module BgpNode {
+    gates {
+        in[5] @input,
+        out[5] @output
+    }
+}
+
+module LANSwitch {
+    gates {
+        in[5] @input,
+        out[5] @output,
+
+        gwin @input,
+        gwout @output,
+    }
+}
+
+module LANRouter {
+    gates {
+        lan_in @input,
+        lan_out @output,
+
+        in[5] @input,
+        out[5] @output,
+    }
+}
+
+module LANNode {
+    gates {
+        in @input,
+        out @output,
+    }
+}
+
+link LANLink {
+    jitter: 0.0,
+    latency:0.005,
+    bitrate: 10000000,
+}
+
+module LAN {
+    submodules {
+        switch: LANSwitch,
+        node[5]: LANNode,
+        router: LANRouter,
+    }
+
+    gates {
+        in[5],
+        out[5],
+    }
+
+    connections {
+        node/out --> LANLink --> switch/in,
+        node/in <-- LANLink <-- switch/out,
+
+        router/lan_out --> LANLink --> switch/gwin,
+        router/lan_in <-- LANLink <-- switch/gwout,
+
+        router/out --> out,
+        router/in <-- in,
+    }
+}
+
+link ASLink {
+    jitter: 0.0,
+    latency: 0.03,
+    bitrate: 10000000,
+}
+
+link BackboneLink {
+    jitter: 0.0,
+    latency: 0.03,
+    bitrate: 10000000,
+}
+
+module Main {
+    submodules {
+        lan_a: LAN,
+        bgp_a: BgpNode,
+        bgp_b: BgpNode,
+        bgp_c_1: BgpNode,
+        bgp_c_2: BgpNode,
+        bgp_d_1: BgpNode,
+        bgp_d_2: BgpNode,
+        lan_d_1: LAN,
+        lan_d_2: LAN,
+    }
+
+    connections {
+        // LAN
+
+        lan_a/out[0] --> ASLink --> bgp_a/in[0],
+        lan_a/in[0] <-- ASLink <-- bgp_a/out[0],
+
+        lan_d_1/out[0] --> ASLink --> bgp_d_1/in[0],
+        lan_d_1/in[0] <-- ASLink <-- bgp_d_1/out[0],
+
+        lan_d_2/out[0] --> ASLink --> bgp_d_2/in[0],
+        lan_d_2/in[0] <-- ASLink <-- bgp_d_2/out[0],
+
+        // BGP
+
+        bgp_a/out[1] --> BackboneLink --> bgp_b/in[0],
+        bgp_a/in[1] <-- BackboneLink <-- bgp_b/out[0],
+
+        bgp_a/out[2] --> BackboneLink --> bgp_c_1/in[2],
+        bgp_a/in[2] <-- BackboneLink <-- bgp_c_1/out[2],
+
+        bgp_b/out[1] --> BackboneLink --> bgp_c_1/in[1],
+        bgp_b/in[1] <-- BackboneLink <-- bgp_c_1/out[1],
+
+        bgp_c_2/out[0] --> ASLink --> bgp_c_1/in[0],
+        bgp_c_2/in[0] <-- ASLink <-- bgp_c_1/out[0],
+
+        bgp_c_2/out[1] --> BackboneLink --> bgp_d_1/in[1],
+        bgp_c_2/in[1] <-- BackboneLink <-- bgp_d_1/out[1],
+
+        bgp_d_2/out[2] --> BackboneLink --> bgp_d_1/in[2],
+        bgp_d_2/in[2] <-- BackboneLink <-- bgp_d_1/out[2],
+
+        bgp_d_2/out[1] --> BackboneLink --> bgp_b/in[2],
+        bgp_d_2/in[1] <-- BackboneLink <-- bgp_b/out[2],
+    }
+}
+
+entry Main;

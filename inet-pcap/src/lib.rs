@@ -82,6 +82,20 @@ impl LibPcapDeamon {
         self.output.write_all(&buf)?;
         self.ifaces.push(IfaceInfo { ifid, link_type });
 
+        // FIXME: dirty hack only temporary
+        if self.ifaces.len() == 1 {
+            // Write a empty ethernet packet to get absolute timestamps
+            let buffer = vec![0x00; 14];
+            let ebp = EPB {
+                interface_id: 0,
+                ts: SimTime::ZERO.as_micros() as u64,
+                cap_len: buffer.len() as u32,
+                org_len: buffer.len() as u32,
+                data: buffer,
+            };
+            self.output.write_all(&ebp.to_buffer()?)?;
+        }
+
         Ok(())
     }
 

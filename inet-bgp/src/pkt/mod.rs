@@ -5,8 +5,9 @@ use bytepack::{
 };
 use std::{
     fmt::Debug,
-    io::{Error, Read, Write},
+    io::{Error, ErrorKind, Read, Write},
     net::Ipv4Addr,
+    str::FromStr,
 };
 
 mod attrs;
@@ -289,6 +290,15 @@ impl Debug for Nlri {
         write!(f, "{}/{}", self.prefix(), self.prefix_len())
     }
 }
+
+impl FromStr for Nlri {
+    type Err = Box<dyn std::error::Error>;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let (lhs, rhs) = s.split_once('/').ok_or("missing delimiter '/'")?;
+        Ok(Nlri::new(lhs.parse()?, rhs.parse()?))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::io;

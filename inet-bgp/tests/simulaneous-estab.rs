@@ -45,13 +45,11 @@ fn simulatneous_estab() {
 
             let deamon = NeighborDeamon::new(
                 BgpNodeInformation {
-                    identifier: String::new(),
                     addr,
                     as_num: 1000,
                     iface: InterfaceName::from("en0"),
                 },
                 BgpNodeInformation {
-                    identifier: String::new(),
                     addr: Ipv4Addr::new(192, 168, 1, 200),
                     as_num: 2000,
                     iface: InterfaceName::from("en0"),
@@ -82,7 +80,6 @@ fn simulatneous_estab() {
                 next,
                 Some(NeighborIngressEvent::ConnectionEstablished(
                     BgpNodeInformation {
-                        identifier: String::new(),
                         addr: Ipv4Addr::new(192, 168, 1, 200),
                         as_num: 2000,
                         iface: InterfaceName::from("en0"),
@@ -103,13 +100,11 @@ fn simulatneous_estab() {
 
             let deamon = NeighborDeamon::new(
                 BgpNodeInformation {
-                    identifier: String::new(),
                     addr,
                     as_num: 2000,
                     iface: InterfaceName::from("en0"),
                 },
                 BgpNodeInformation {
-                    identifier: String::new(),
                     addr: Ipv4Addr::new(192, 168, 1, 100),
                     as_num: 1000,
                     iface: InterfaceName::from("en0"),
@@ -141,7 +136,6 @@ fn simulatneous_estab() {
                 next,
                 Some(NeighborIngressEvent::ConnectionEstablished(
                     BgpNodeInformation {
-                        identifier: String::new(),
                         addr: Ipv4Addr::new(192, 168, 1, 100),
                         as_num: 1000,
                         iface: InterfaceName::from("en0"),
@@ -198,13 +192,11 @@ fn synced_estab() {
 
             let deamon = NeighborDeamon::new(
                 BgpNodeInformation {
-                    identifier: String::new(),
                     addr,
                     as_num: 1000,
                     iface: InterfaceName::from("en0"),
                 },
                 BgpNodeInformation {
-                    identifier: String::new(),
                     addr: Ipv4Addr::new(192, 168, 1, 200),
                     as_num: 2000,
                     iface: InterfaceName::from("en0"),
@@ -233,7 +225,6 @@ fn synced_estab() {
                 next,
                 Some(NeighborIngressEvent::ConnectionEstablished(
                     BgpNodeInformation {
-                        identifier: String::new(),
                         addr: Ipv4Addr::new(192, 168, 1, 200),
                         as_num: 2000,
                         iface: InterfaceName::from("en0"),
@@ -254,13 +245,11 @@ fn synced_estab() {
 
             let deamon = NeighborDeamon::new(
                 BgpNodeInformation {
-                    identifier: String::new(),
                     addr,
                     as_num: 2000,
                     iface: InterfaceName::from("en0"),
                 },
                 BgpNodeInformation {
-                    identifier: String::new(),
                     addr: Ipv4Addr::new(192, 168, 1, 100),
                     as_num: 1000,
                     iface: InterfaceName::from("en0"),
@@ -290,7 +279,6 @@ fn synced_estab() {
                 next,
                 Some(NeighborIngressEvent::ConnectionEstablished(
                     BgpNodeInformation {
-                        identifier: String::new(),
                         addr: Ipv4Addr::new(192, 168, 1, 100),
                         as_num: 1000,
                         iface: InterfaceName::from("en0"),

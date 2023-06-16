@@ -38,13 +38,11 @@ fn semi_passiv_estab() {
 
         let deamon = NeighborDeamon::new(
             BgpNodeInformation {
-                identifier: String::new(),
                 addr,
                 as_num: 1000,
                 iface: InterfaceName::from("en0"),
             },
             BgpNodeInformation {
-                identifier: String::new(),
                 addr: Ipv4Addr::new(192, 168, 1, 200),
                 as_num: 2000,
                 iface: InterfaceName::from("en0"),
@@ -73,7 +71,6 @@ fn semi_passiv_estab() {
             next,
             Some(NeighborIngressEvent::ConnectionEstablished(
                 BgpNodeInformation {
-                    identifier: String::new(),
                     addr: Ipv4Addr::new(192, 168, 1, 200),
                     as_num: 2000,
                     iface: InterfaceName::from("en0"),
@@ -94,13 +91,11 @@ fn semi_passiv_estab() {
 
         let mut deamon = NeighborDeamon::new(
             BgpNodeInformation {
-                identifier: String::new(),
                 addr,
                 as_num: 2000,
                 iface: InterfaceName::from("en0"),
             },
             BgpNodeInformation {
-                identifier: String::new(),
                 addr: Ipv4Addr::new(192, 168, 1, 100),
                 as_num: 1000,
                 iface: InterfaceName::from("en0"),
@@ -131,7 +126,6 @@ fn semi_passiv_estab() {
             next,
             Some(NeighborIngressEvent::ConnectionEstablished(
                 BgpNodeInformation {
-                    identifier: String::new(),
                     addr: Ipv4Addr::new(192, 168, 1, 100),
                     as_num: 1000,
                     iface: InterfaceName::from("en0"),
@@ -183,13 +177,11 @@ fn semi_passiv_estab_delayed_client() {
 
         let deamon = NeighborDeamon::new(
             BgpNodeInformation {
-                identifier: String::new(),
                 addr,
                 as_num: 1000,
                 iface: InterfaceName::from("en0"),
             },
             BgpNodeInformation {
-                identifier: String::new(),
                 addr: Ipv4Addr::new(192, 168, 1, 200),
                 as_num: 2000,
                 iface: InterfaceName::from("en0"),
@@ -220,7 +212,6 @@ fn semi_passiv_estab_delayed_client() {
             next,
             Some(NeighborIngressEvent::ConnectionEstablished(
                 BgpNodeInformation {
-                    identifier: String::new(),
                     addr: Ipv4Addr::new(192, 168, 1, 200),
                     as_num: 2000,
                     iface: InterfaceName::from("en0"),
@@ -241,13 +232,11 @@ fn semi_passiv_estab_delayed_client() {
 
         let mut deamon = NeighborDeamon::new(
             BgpNodeInformation {
-                identifier: String::new(),
                 addr,
                 as_num: 2000,
                 iface: InterfaceName::from("en0"),
             },
             BgpNodeInformation {
-                identifier: String::new(),
                 addr: Ipv4Addr::new(192, 168, 1, 100),
                 as_num: 1000,
                 iface: InterfaceName::from("en0"),
@@ -278,7 +267,6 @@ fn semi_passiv_estab_delayed_client() {
             next,
             Some(NeighborIngressEvent::ConnectionEstablished(
                 BgpNodeInformation {
-                    identifier: String::new(),
                     addr: Ipv4Addr::new(192, 168, 1, 100),
                     as_num: 1000,
                     iface: InterfaceName::from("en0"),
@@ -330,13 +318,11 @@ fn semi_passiv_estab_delayed_open() {
 
         let deamon = NeighborDeamon::new(
             BgpNodeInformation {
-                identifier: String::new(),
                 addr,
                 as_num: 1000,
                 iface: InterfaceName::from("en0"),
             },
             BgpNodeInformation {
-                identifier: String::new(),
                 addr: Ipv4Addr::new(192, 168, 1, 200),
                 as_num: 2000,
                 iface: InterfaceName::from("en0"),
@@ -367,7 +353,6 @@ fn semi_passiv_estab_delayed_open() {
             next,
             Some(NeighborIngressEvent::ConnectionEstablished(
                 BgpNodeInformation {
-                    identifier: String::new(),
                     addr: Ipv4Addr::new(192, 168, 1, 200),
                     as_num: 2000,
                     iface: InterfaceName::from("en0"),
@@ -388,13 +373,11 @@ fn semi_passiv_estab_delayed_open() {
 
         let mut deamon = NeighborDeamon::new(
             BgpNodeInformation {
-                identifier: String::new(),
                 addr,
                 as_num: 2000,
                 iface: InterfaceName::from("en0"),
             },
             BgpNodeInformation {
-                identifier: String::new(),
                 addr: Ipv4Addr::new(192, 168, 1, 100),
                 as_num: 1000,
                 iface: InterfaceName::from("en0"),
@@ -426,7 +409,6 @@ fn semi_passiv_estab_delayed_open() {
             next,
             Some(NeighborIngressEvent::ConnectionEstablished(
                 BgpNodeInformation {
-                    identifier: String::new(),
                     addr: Ipv4Addr::new(192, 168, 1, 100),
                     as_num: 1000,
                     iface: InterfaceName::from("en0"),

@@ -1,0 +1,35 @@
+bgp_a.addr = 10.0.0.1
+bgp_a.as = 1000
+bgp_a.pcap = true
+bgp_a.nets = 10.2.0.0/16, 10.3.0.0/16, 10.4.0.0/16
+bgp_a.peers = 20.0.0.1/2000/1, 30.0.0.1/3000/2
+
+bgp_b.addr = 20.0.0.1
+bgp_b.as = 2000
+bgp_b.pcap = true
+bgp_b.nets = 20.0.0.0/8,
+bgp_b.peers = 10.0.0.1/1000/0, 30.0.0.1/3000/1, 40.0.0.2/4000/2
+
+bgp_c_1.addr = 30.0.0.1
+bgp_c_1.as = 3000
+bgp_c_1.pcap = true
+bgp_c_1.nets = 30.0.0.0/8
+bgp_c_1.peers = 10.0.0.1/1000/2, 20.0.0.1/2000/1, 30.0.0.2/3000/0
+
+bgp_c_2.addr = 30.0.0.2
+bgp_c_2.as = 3000
+bgp_c_2.pcap = true
+bgp_c_2.nets = 
+bgp_c_2.peers = 30.0.0.1/3000/0, 40.0.0.1/4000/1
+
+bgp_d_1.addr = 40.0.0.1
+bgp_d_1.as = 4000
+bgp_d_1.pcap = true
+bgp_d_1.nets = 40.3.7.0/24
+bgp_d_1.peers = 30.0.0.2/3000/1, 40.0.0.2/4000/2
+
+bgp_d_2.addr = 40.0.0.2
+bgp_d_2.as = 4000
+bgp_d_2.pcap = true
+bgp_d_2.nets = 40.90.1.0/24
+bgp_d_2.peers = 40.0.0.1/4000/2, 20.0.0.1/2000/1

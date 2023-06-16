@@ -282,7 +282,8 @@ impl NeighborDeamon {
                             );
                             stream
                         }
-                        Err(_e) => {
+                        Err(e) => {
+                            tracing::error!("failed to connect {e}");
                             state = Active;
                             continue;
                         }

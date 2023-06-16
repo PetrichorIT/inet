@@ -1108,7 +1108,10 @@ impl IOContext {
                 ctrl.set_data_timer();
                 ctrl.state = TcpState::LastAck;
             }
-            _ => unimplemented!(),
+            TcpEvent::Fin(_) => {
+                // DO nothgin
+            }
+            _ => unimplemented!("{event:?}"),
         }
     }
 

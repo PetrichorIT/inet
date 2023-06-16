@@ -54,7 +54,6 @@ impl Deref for DepolyedBgpDeamon {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BgpNodeInformation {
-    pub identifier: String,
     pub addr: Ipv4Addr,
     pub iface: InterfaceName,
     pub as_num: AsNumber,
@@ -62,11 +61,7 @@ pub struct BgpNodeInformation {
 
 impl BgpNodeInformation {
     fn str(&self) -> String {
-        if self.identifier.is_empty() {
-            format!("{}/{}", self.addr, self.as_num)
-        } else {
-            self.identifier.clone()
-        }
+        format!("{}/{}", self.addr, self.as_num)
     }
 }
 
@@ -118,7 +113,6 @@ impl BgpDeamon {
 
     pub fn add_neighbor(mut self, addr: Ipv4Addr, as_num: AsNumber, iface: &str) -> Self {
         self.neighbors.push(BgpNodeInformation {
-            identifier: String::new(),
             addr,
             as_num,
             iface: InterfaceName::from(iface),
@@ -141,7 +135,6 @@ impl BgpDeamon {
         let mut neighbor_tcp_handles = FxHashMap::with_hasher(FxBuildHasher::default());
 
         let host_info = BgpNodeInformation {
-            identifier: String::from("host"),
             addr: self.router_id,
             as_num: self.as_num,
             iface: self
