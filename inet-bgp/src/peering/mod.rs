@@ -50,6 +50,7 @@ pub struct NeighborDeamon {
 }
 
 pub(crate) struct NeighborHandle {
+    pub(crate) up: bool,
     pub(crate) tx: Sender<NeighborEgressEvent>,
     pub(crate) task: JoinHandle<Result<()>>,
 }
@@ -492,6 +493,7 @@ impl NeighborDeamon {
                                     // peer decieded the current stream is not valid,
                                     // wait for incoming stream
                                     tracing::warn!("[opensent] connection closed, assuming second connection");
+                                    self.timers.disable_timer(Timer::KeepaliveTimer);
                                     self.timers.enable_timer(Timer::ConnectionRetryTimer);
                                     state = Active;
                                     continue

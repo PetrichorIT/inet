@@ -1,6 +1,6 @@
 use std::{error::Error, fs::File, io::BufWriter};
 
-use des::{prelude::*, registry, tracing::Subscriber};
+use des::{prelude::*, registry, time::sleep_until, tracing::Subscriber};
 use inet::interface::{add_interface, Interface, NetworkDevice};
 use inet_bgp::{pkt::Nlri, types::AsNumber, BgpDeamon};
 use inet_pcap::{PcapCapturePoints, PcapConfig, PcapFilters};
@@ -36,6 +36,13 @@ impl AsyncModule for BgpNode {
             })
             .collect::<Vec<_>>();
 
+        let shutdown = par("shutdown")
+            .as_option()
+            .map(|s| SimTime::from(s.parse::<f64>().unwrap()));
+        let restart = par("restart")
+            .as_option()
+            .map(|s| SimTime::from(s.parse::<f64>().unwrap()));
+
         let pcap = par("pcap").unwrap().parse::<bool>().unwrap();
         if pcap {
             inet_pcap::pcap(PcapConfig {
@@ -65,7 +72,7 @@ impl AsyncModule for BgpNode {
         }
 
         let mut deamon = BgpDeamon::new(as_num, addr);
-        for (addr, as_num, iface) in peers {
+        for &(addr, as_num, iface) in &peers {
             deamon = deamon.add_neighbor(addr, as_num, &format!("link-{iface}"))
         }
         for net in nets {
@@ -73,7 +80,30 @@ impl AsyncModule for BgpNode {
         }
 
         tokio::spawn(async move {
-            let _ = deamon.deploy().await;
+            let mng = deamon.deploy().await.unwrap();
+
+            if let Some(shutdown) = shutdown {
+                sleep_until(shutdown).await;
+                for peer in &peers {
+                    mng.send(inet_bgp::BgpDeamonManagmentEvent::StopPeering(peer.0))
+                        .await
+                        .unwrap();
+                }
+            }
+
+            if let Some(restart) = restart {
+                sleep_until(restart).await;
+                for peer in &peers {
+                    mng.send(inet_bgp::BgpDeamonManagmentEvent::StartPeering(peer.0))
+                        .await
+                        .unwrap();
+                }
+            }
+
+            sleep_until(499.0.into()).await;
+            mng.send(inet_bgp::BgpDeamonManagmentEvent::Status)
+                .await
+                .unwrap();
         });
     }
 }
@@ -103,7 +133,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     .into_app();
     app.include_par_file("src/bin/bgp.par");
     let r = Builder::seeded(123)
-        .max_time(1000.0.into())
+        .max_time(500.0.into())
         .build(app)
         .run()
         .into_app();

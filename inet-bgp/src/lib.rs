@@ -10,7 +10,7 @@ use des::time::SimTime;
 use fxhash::{FxBuildHasher, FxHashMap};
 use inet::{interface::InterfaceName, routing::add_routing_table, TcpListener};
 use kernel::{DefaultBgpKernel, Kernel};
-use loc_rib::{LocRib, LocRibWithKernel};
+use loc_rib::LocRibWithKernel;
 use peering::{BgpPeeringCfg, NeighborDeamon, NeighborHandle};
 use pkt::{BgpUpdatePacket, Nlri};
 use tokio::{
@@ -68,7 +68,9 @@ impl BgpNodeInformation {
 #[derive(Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum BgpDeamonManagmentEvent {
-    StopNeighbor(Ipv4Addr),
+    StopPeering(Ipv4Addr),
+    StartPeering(Ipv4Addr),
+    Status,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -165,6 +167,7 @@ impl BgpDeamon {
             );
 
             let handle = NeighborHandle {
+                up: true,
                 tx: etx,
                 task: tokio::spawn(deamon.deploy().instrument(span)),
             };
@@ -196,12 +199,14 @@ impl BgpDeamon {
         let run_loop = spawn(async move {
             let _ = listener_handle;
 
-            let mut adj_rib_in = AdjIn::new();
+            let mut adj_in = AdjIn::new();
             let mut loc_rib = LocRibWithKernel::new(
                 table_id,
-                self.kernel.take().unwrap_or(Box::new(DefaultBgpKernel)),
+                self.kernel
+                    .take()
+                    .unwrap_or(Box::new(DefaultBgpKernel(host_info.clone()))),
             );
-            let mut adj_rib_out = AdjRIBOut::new(host_info);
+            let mut adj_out = AdjRIBOut::new(host_info);
 
             if !self.networks.is_empty() {
                 let route = Route {
@@ -231,11 +236,11 @@ impl BgpDeamon {
                 use NeighborEgressEvent::*;
                 use NeighborIngressEvent::*;
 
-                if adj_rib_in.is_dirty() {
-                    let done = loc_rib.kernel_decision(&adj_rib_in, &mut adj_rib_out);
+                if adj_in.is_dirty() {
+                    let done = loc_rib.kernel_decision(&adj_in, &mut adj_out);
 
                     if done {
-                        adj_rib_in.unset_dirty();
+                        adj_in.unset_dirty();
                     }
                 }
 
@@ -244,36 +249,72 @@ impl BgpDeamon {
                     mng = mrx.recv() => {
                         use BgpDeamonManagmentEvent::*;
                         match mng.unwrap() {
-                            StopNeighbor(peer) => {
-                                neighbor_send_handles
-                                    .get(&peer)
-                                    .expect("neighbor not found")
-                                    .tx
+                            StopPeering(peer) => {
+                                let hndl = neighbor_send_handles
+                                    .get_mut(&peer)
+                                    .expect("neighbor not found");
+
+                                hndl.up = false;
+                                hndl.tx
                                     .send(Stop)
                                     .await
                                     .expect("failed to send");
                             },
+
+                            StartPeering(peer) => {
+                                let hndl = neighbor_send_handles
+                                    .get_mut(&peer)
+                                    .expect("neighbor not found");
+
+                                hndl.up = false;
+                                hndl.tx
+                                    .send(Start)
+                                    .await
+                                    .expect("failed to send");
+                            }
+
+                            Status => {
+                                let span = tracing::span!(tracing::Level::TRACE, "status").entered();
+                                adj_in.status();
+                                loc_rib.status();
+                                // adj_out.status();
+
+                                drop(span);
+                            }
                         }
                         continue;
                     }
-                    _ = adj_rib_out.tick() => continue,
+                    _ = adj_out.tick() => continue,
                 };
 
                 match event.unwrap() {
                     ConnectionEstablished(peer) => {
                         tracing::info!("new active neighbor {}", peer.str());
-                        adj_rib_in.register(&peer);
-                        adj_rib_out.register(&peer, &neighbor_send_handles);
-                        loc_rib.psh_publish(&peer, &mut adj_rib_out);
+                        adj_in.register(&peer);
+                        adj_out.register(&peer, &neighbor_send_handles);
+                        loc_rib.psh_publish(&peer, &mut adj_out);
                     }
                     ConnectionLost(peer) => {
-                        adj_rib_in.unregister(&peer);
-                        adj_rib_out.unregister(&peer);
+                        adj_in.unregister(&peer);
+                        adj_out.unregister(&peer);
 
-                        let done = loc_rib.kernel_decision(&adj_rib_in, &mut adj_rib_out);
-                        assert!(done, "This could be a problem")
+                        let done = loc_rib.kernel_decision(&adj_in, &mut adj_out);
+                        assert!(done, "This could be a problem");
+
+                        if done {
+                            adj_in.unset_dirty()
+                        }
+
+                        let Some(hndl) =  neighbor_send_handles.get(&peer.addr) else {
+                            todo!()
+                        };
+
+                        if hndl.up {
+                            // should be restarted
+                            hndl.tx.send(Start).await.expect("failed to send")
+                        }
                     }
-                    Update(peer, update) => adj_rib_in.process(update, peer),
+                    Update(peer, update) => adj_in.process(update, peer),
                     _ => todo!(),
                 }
             }

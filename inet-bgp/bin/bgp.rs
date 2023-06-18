@@ -149,7 +149,7 @@ impl AsyncModule for C {
                 .await?;
 
             sleep(Duration::from_secs(300)).await;
-            tx.send(BgpDeamonManagmentEvent::StopNeighbor(Ipv4Addr::new(
+            tx.send(BgpDeamonManagmentEvent::StopPeering(Ipv4Addr::new(
                 192, 168, 0, 104,
             )))
             .await

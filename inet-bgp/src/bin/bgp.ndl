@@ -70,8 +70,8 @@ link ASLink {
 
 link BackboneLink {
     jitter: 0.0,
-    latency: 0.03,
-    bitrate: 10000000,
+    latency: 0.05,
+    bitrate: 100000000,
 }
 
 module Main {

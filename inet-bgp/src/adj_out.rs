@@ -4,6 +4,7 @@ use std::{future::pending, net::Ipv4Addr};
 use tokio::sync::mpsc::Sender;
 
 use crate::{
+    adj_in::{Peer, Route},
     peering::NeighborHandle,
     pkt::{BgpPathAttributeNextHop, BgpPathAttributeOrigin, BgpUpdatePacket},
     BgpNodeInformation, NeighborEgressEvent,
@@ -115,6 +116,35 @@ impl AdjRIBOut {
             rib.withdrawn.push(entry);
             rib.dirty |= true;
             self.dirty |= true;
+        }
+    }
+
+    pub fn withdraw_and_adverise(&mut self, dest: Nlri, route: &Route, peer: &Peer) {
+        for rib in self.ribs.values_mut() {
+            let mut entry = RIBEntry {
+                nlri: vec![dest],
+                next_hop: peer.next_hop,
+                path: route.path.clone(),
+                flag: false,
+                ts: SimTime::now(),
+            };
+
+            let origin = if rib.info.as_num == self.host_info.as_num {
+                BgpPathAttributeOrigin::Igp
+            } else {
+                BgpPathAttributeOrigin::Egp
+            };
+
+            entry.flag = false; // flag represents whether entry was allready advertised
+            entry.add_path_as(self.host_info.as_num, origin);
+            if origin == BgpPathAttributeOrigin::Egp {
+                entry.set_next_hop(self.host_info.addr);
+            }
+
+            rib.rib.add(entry);
+            rib.dirty = true;
+
+            self.dirty = true;
         }
     }
 

@@ -1,7 +1,7 @@
-use std::{fmt::Display, net::Ipv4Addr};
+use std::{collections::HashSet, fmt::Display, net::Ipv4Addr};
 
 use des::time::SimTime;
-use fxhash::{FxBuildHasher, FxHashMap};
+use fxhash::{FxBuildHasher, FxHashMap, FxHashSet};
 use inet::interface::InterfaceName;
 
 use crate::{
@@ -15,8 +15,8 @@ pub struct AdjIn {
     routes_id: RouteId,
     dirty: bool,
     peers: FxHashMap<PeerId, AdjPeerIn>,
-    updated: Vec<(Nlri, PeerId)>,
-    withdrawn: Vec<(Nlri, PeerId)>,
+    updated: FxHashSet<(Nlri, PeerId)>,
+    withdrawn: FxHashSet<(Nlri, PeerId)>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -71,8 +71,18 @@ impl AdjIn {
             peers: FxHashMap::with_hasher(FxBuildHasher::default()),
             routes_id: 0,
             dirty: false,
-            updated: Vec::new(),
-            withdrawn: Vec::new(),
+            updated: FxHashSet::with_hasher(FxBuildHasher::default()),
+            withdrawn: FxHashSet::with_hasher(FxBuildHasher::default()),
+        }
+    }
+
+    pub fn status(&self) {
+        tracing::debug!("[ BGP ADJ IN ]");
+        for (peer, adj) in &self.peers {
+            tracing::debug!("Peer({peer:?})");
+            for (dest, id) in adj.dests.iter().map(|v| v.clone()).collect::<Vec<_>>() {
+                tracing::debug!(" {dest:?} via {} ({})", peer, adj.routes.get(id).unwrap());
+            }
         }
     }
 
@@ -133,7 +143,7 @@ impl AdjIn {
                 adj_table.routes.remove(&route_id);
             }
 
-            self.withdrawn.push((withdrawn, peer_addr));
+            self.withdrawn.insert((withdrawn, peer_addr));
             self.dirty |= true;
         }
 
@@ -163,7 +173,7 @@ impl AdjIn {
                 route.ucount += 1
             }
 
-            self.updated.push((nlri, adj_table.peer.next_hop));
+            self.updated.insert((nlri, adj_table.peer.next_hop));
             self.dirty |= true;
         }
 
@@ -223,5 +233,32 @@ impl AdjIn {
 
     pub fn withdrawn_routes(&self) -> impl Iterator<Item = &(Nlri, PeerId)> {
         self.withdrawn.iter()
+    }
+}
+
+impl Route {
+    pub fn is_as_on_path(&self, as_num: AsNumber) -> bool {
+        for attr in &self.path {
+            if let BgpPathAttributeKind::AsPath(ref as_attr) = attr.attr {
+                if as_attr.path.contains(&as_num) {
+                    return true;
+                }
+            }
+        }
+
+        false
+    }
+}
+
+impl Display for Route {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for attr in &self.path {
+            match &attr.attr {
+                BgpPathAttributeKind::Origin(origin) => write!(f, "ORIGIN({:?}),", origin),
+                BgpPathAttributeKind::AsPath(path) => write!(f, "ASPATH({:?}),", path.path),
+                BgpPathAttributeKind::NextHop(hop) => write!(f, "NEXT({:?}),", hop.hop),
+            }?;
+        }
+        Ok(())
     }
 }

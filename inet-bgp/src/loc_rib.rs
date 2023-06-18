@@ -1,4 +1,7 @@
-use std::ops::{Deref, DerefMut};
+use std::{
+    mem,
+    ops::{Deref, DerefMut},
+};
 
 use des::time::SimTime;
 use fxhash::{FxBuildHasher, FxHashMap};
@@ -24,7 +27,6 @@ impl LocRibWithKernel {
             kernel,
         }
     }
-
     pub fn kernel_decision(&mut self, adj_in: &AdjIn, adj_out: &mut AdjRIBOut) -> bool {
         self.kernel.decision(adj_in, &mut self.loc_rib, adj_out)
     }
@@ -47,11 +49,11 @@ impl DerefMut for LocRibWithKernel {
 pub struct LocRib {
     dests: FxHashMap<Nlri, (RouteId, Meta)>,
     routes: FxHashMap<RouteId, (Route, Peer)>,
-    pending: Vec<Nlri>,
+    pub pending: Vec<Nlri>,
     table_id: RoutingTableId,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Meta {
     written_to_table: bool,
 }
@@ -66,8 +68,19 @@ impl LocRib {
         }
     }
 
-    pub fn pending(&self) -> Vec<Nlri> {
-        self.pending.clone()
+    pub fn status(&self) {
+        let dest = self.dests.iter().map(|v| v.clone()).collect::<Vec<_>>();
+        tracing::debug!("[ LOC RIB ]");
+        for (d, (i, _)) in dest {
+            let (r, p) = self.routes.get(i).unwrap();
+            tracing::debug!(" {d:?} via {} ({r})", p.next_hop);
+        }
+    }
+
+    pub fn pending(&mut self) -> Vec<Nlri> {
+        let mut swp = Vec::new();
+        mem::swap(&mut swp, &mut self.pending);
+        swp
     }
 
     pub fn add_dest(&mut self, dest: Nlri, route: &Route, peer: &Peer) {
@@ -86,17 +99,15 @@ impl LocRib {
         );
         self.routes.get_mut(&route.id).expect("failed").0.ucount += 1;
 
-        if route.id & 0b1 == 0 {
-            // tracing::info!("{dest:?} {route:?}");
-            // add_routing_entry_to(
-            //     dest.prefix(),
-            //     dest.netmask(),
-            //     route.peer.next_hop,
-            //     &*route.peer.iface,
-            //     self.table_id,
-            // )
-            // .expect("failed to set route to table");
-        }
+        // tracing::info!("{dest:?} {route:?}");
+        // add_routing_entry_to(
+        //     dest.prefix(),
+        //     dest.netmask(),
+        //     route.peer.next_hop,
+        //     &*route.peer.iface,
+        //     self.table_id,
+        // )
+        // .expect("failed to set route to table");
     }
 
     /// Call this function if
@@ -104,6 +115,7 @@ impl LocRib {
     pub fn withdraw_canidate(&mut self, dest: &Nlri, dead_peer: &PeerId) {
         // (0) Check whether LOC even uses this route.
         let Some((_, peer)) = self.lookup(*dest) else {
+            tracing::error!("trying to withdraw dest {dest:?} via {dead_peer}");
             todo!()
         };
 
@@ -119,13 +131,13 @@ impl LocRib {
         self.pending.push(*dest);
     }
 
-    fn remove_dest(&mut self, nlri: &Nlri) {
+    pub fn remove_dest(&mut self, nlri: &Nlri) {
         let Some((route_id, _)) = self.dests.remove(nlri) else {
-            return;
+            todo!()
         };
 
         let Some((route, _)) = self.routes.get_mut(&route_id) else {
-            return
+            todo!()
         };
 
         route.ucount = route.ucount.saturating_sub(1);
@@ -141,6 +153,13 @@ impl LocRib {
             .flatten()
     }
 
+    pub fn lookup_mut(&mut self, dest: Nlri) -> Option<&mut (Route, Peer)> {
+        self.dests
+            .get(&dest)
+            .map(|(id, _)| self.routes.get_mut(id))
+            .flatten()
+    }
+
     pub fn advertise_dest(&self, dest: Nlri, out: &mut AdjRIBOut) {
         let Some((route, peer)) = self.lookup(dest) else { return };
         out.advertise_to_all(RIBEntry {
@@ -150,6 +169,11 @@ impl LocRib {
             flag: false,
             ts: SimTime::now(),
         })
+    }
+
+    pub fn withdraw_and_advertise_new(&self, dest: Nlri, out: &mut AdjRIBOut) {
+        let Some((route, peer)) = self.lookup(dest) else { return };
+        out.withdraw_and_adverise(dest, route, peer);
     }
 
     pub fn psh_publish(&self, peer: &BgpNodeInformation, out: &mut AdjRIBOut) {
@@ -197,3 +221,12 @@ impl LocRib {
         }
     }
 }
+
+// impl Drop for LocRib {
+//     fn drop(&mut self) {
+//         let keys = self.dests.keys().cloned().collect::<Vec<_>>();
+//         for key in keys {
+//             tracing::info!("{key:?} :: {:?}", self.lookup(key).unwrap())
+//         }
+//     }
+// }
