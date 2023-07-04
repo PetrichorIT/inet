@@ -16,7 +16,10 @@ use std::{
     time::Duration,
 };
 use tokio::sync::oneshot;
-use tracing::{instrument, Level, Span};
+use tracing::{
+    field::{debug, Empty, Field},
+    instrument, Level, Span,
+};
 
 use crate::{
     interface::{IfId, KIND_IO_TIMEOUT},
@@ -144,7 +147,7 @@ impl Tcp {
 impl TransmissionControlBlock {
     pub fn new(fd: Fd, addr: SocketAddr, config: TcpSocketConfig) -> Self {
         let peer = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0));
-        let span = tracing::span!(Level::TRACE, "socket");
+        let span = tracing::span!(Level::INFO, "stream", local = Empty, peer = Empty);
 
         Self {
             state: TcpState::Closed,
@@ -315,7 +318,9 @@ impl IOContext {
         let Some(interface) = self.ifaces.get_mut(&socket.interface.unwrap_ifid()) else { return };
 
         if !interface.is_busy() {
-            let pkt = ctrl.tx_queue.pop_front().unwrap();
+            let Some(pkt) = ctrl.tx_queue.pop_front() else {
+                return
+            };
             if !ctrl.tx_queue.is_empty() {
                 interface.add_write_interest(ctrl.fd);
             }
@@ -537,7 +542,6 @@ impl IOContext {
             TcpSyscall::Listen() => TcpEvent::SysListen(),
             TcpSyscall::Open(peer) => TcpEvent::SysOpen(peer),
             TcpSyscall::Close() => {
-                tracing::trace!("sys-close");
                 ctrl.dropped = true;
                 TcpEvent::SysClose()
             }
@@ -586,17 +590,20 @@ impl IOContext {
 
     //
 
-    #[instrument(name = "tcp_closed", skip_all)]
+    #[instrument(level = "trace", name = "tcp_closed", skip_all)]
     fn process_state_closed(&mut self, ctrl: &mut TransmissionControlBlock, event: TcpEvent) {
         match event {
             TcpEvent::SysListen() => {
-                ctrl.span = tracing::span!(Level::TRACE, "listener", port = ctrl.local_addr.port());
+                // ctrl.span = tracing::span!(Level::INFO, "listener", port = ctrl.local_addr.port());
+                ctrl.span.record("local", debug(ctrl.local_addr));
                 ctrl.state = TcpState::Listen;
                 // syscall reply
             }
             TcpEvent::SysOpen(peer) => {
                 ctrl.peer_addr = peer;
-                ctrl.span = tracing::span!(Level::TRACE, "stream", local=?ctrl.local_addr, ?peer);
+                // ctrl.span = tracing::span!(Level::INFO, "stream", local=?ctrl.local_addr, ?peer);
+                ctrl.span.record("local", debug(ctrl.local_addr));
+                ctrl.span.record("peer", debug(ctrl.peer_addr));
 
                 self.bind_peer(ctrl.fd, peer);
 
@@ -630,14 +637,16 @@ impl IOContext {
         }
     }
 
-    #[instrument(name = "tcp_listen", skip_all)]
+    #[instrument(level = "trace", name = "tcp_listen", skip_all)]
     fn process_state_listen(&mut self, ctrl: &mut TransmissionControlBlock, event: TcpEvent) {
         match event {
             TcpEvent::Syn((src, dest, syn)) => {
                 assert!(syn.flags.syn);
 
                 ctrl.peer_addr = SocketAddr::new(src, syn.src_port);
-                ctrl.span = tracing::span!(Level::TRACE, "stream", local=?ctrl.local_addr, peer=?ctrl.peer_addr);
+                // ctrl.span = tracing::span!(Level::INFO, "stream", local=?ctrl.local_addr, peer=?ctrl.peer_addr);
+                ctrl.span.record("local", debug(ctrl.local_addr));
+                ctrl.span.record("peer", debug(ctrl.peer_addr));
 
                 ctrl.rx_last_recv_seq_no = syn.seq_no;
                 ctrl.rx_buffer.bump(syn.seq_no + 1);
@@ -680,7 +689,7 @@ impl IOContext {
         }
     }
 
-    #[instrument(name = "tcp_syn_sent", skip_all)]
+    #[instrument(level = "trace", name = "tcp_syn_sent", skip_all)]
     fn process_state_syn_sent(&mut self, ctrl: &mut TransmissionControlBlock, event: TcpEvent) {
         match event {
             TcpEvent::Syn((src, dest, pkt)) => {
@@ -779,7 +788,7 @@ impl IOContext {
         }
     }
 
-    #[instrument(name = "tcp_syn_rcvd", skip_all)]
+    #[instrument(level = "trace", name = "tcp_syn_rcvd", skip_all)]
     fn process_state_syn_rcvd(&mut self, ctrl: &mut TransmissionControlBlock, event: TcpEvent) {
         match event {
             TcpEvent::Syn(_) => (),
@@ -872,7 +881,7 @@ impl IOContext {
         }
     }
 
-    #[instrument(name = "tcp_established", skip_all)]
+    #[instrument(level = "trace", name = "tcp_established", skip_all)]
     fn process_state_established(&mut self, ctrl: &mut TransmissionControlBlock, event: TcpEvent) {
         match event {
             TcpEvent::SysClose() => {
@@ -944,7 +953,7 @@ impl IOContext {
         }
     }
 
-    #[instrument(name = "tcp_fin_wait_1", skip_all)]
+    #[instrument(level = "trace", name = "tcp_fin_wait_1", skip_all)]
     fn process_state_fin_wait1(&mut self, ctrl: &mut TransmissionControlBlock, event: TcpEvent) {
         // Consider self client
         match event {
@@ -996,11 +1005,11 @@ impl IOContext {
             TcpEvent::SysRecv() => {
                 unimplemented!()
             }
-            _ => unimplemented!(),
+            _ => unimplemented!("{event:?}"),
         }
     }
 
-    #[instrument(name = "tcp_fin_wait_2", skip_all)]
+    #[instrument(level = "trace", name = "tcp_fin_wait_2", skip_all)]
     fn process_state_fin_wait2(&mut self, ctrl: &mut TransmissionControlBlock, event: TcpEvent) {
         // consider self client
         // consider non-simultaneous close
@@ -1032,7 +1041,7 @@ impl IOContext {
         }
     }
 
-    #[instrument(name = "tcp_closing", skip_all)]
+    #[instrument(level = "trace", name = "tcp_closing", skip_all)]
     fn process_state_closing(&mut self, ctrl: &mut TransmissionControlBlock, event: TcpEvent) {
         // consider self client or server (both client believe)
         // both parties send FIN, expect ACK
@@ -1060,7 +1069,7 @@ impl IOContext {
         }
     }
 
-    #[instrument(name = "tcp_time_wait", skip_all)]
+    #[instrument(level = "trace", name = "tcp_time_wait", skip_all)]
     fn process_state_time_wait(&mut self, ctrl: &mut TransmissionControlBlock, event: TcpEvent) {
         // consider self client or at least client believe
         // assume either LAST ACK or LAST FIN was allready send
@@ -1078,11 +1087,12 @@ impl IOContext {
             }
             TcpEvent::SysRecv() => unimplemented!(),
             TcpEvent::SysOpen(_) | TcpEvent::SysListen() => unimplemented!(),
+            TcpEvent::SysClose() => {}
             _ => todo!("unknown event :: {event:?}"),
         }
     }
 
-    #[instrument(name = "tcp_close_wait", skip_all)]
+    #[instrument(level = "trace", name = "tcp_close_wait", skip_all)]
     fn process_state_close_wait(&mut self, ctrl: &mut TransmissionControlBlock, event: TcpEvent) {
         // consider self server
         // client will no longer receive data, but may still send
@@ -1115,7 +1125,7 @@ impl IOContext {
         }
     }
 
-    #[instrument(name = "tcp_last_ack", skip_all)]
+    #[instrument(level = "trace", name = "tcp_last_ack", skip_all)]
     fn process_state_last_ack(&mut self, ctrl: &mut TransmissionControlBlock, event: TcpEvent) {
         // consider self server
         match event {

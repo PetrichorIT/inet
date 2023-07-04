@@ -1,4 +1,4 @@
-use std::{collections::HashSet, fmt::Display, net::Ipv4Addr};
+use std::{fmt::Display, net::Ipv4Addr};
 
 use des::time::SimTime;
 use fxhash::{FxBuildHasher, FxHashMap, FxHashSet};

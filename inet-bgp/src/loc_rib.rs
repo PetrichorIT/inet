@@ -100,14 +100,23 @@ impl LocRib {
         self.routes.get_mut(&route.id).expect("failed").0.ucount += 1;
 
         // tracing::info!("{dest:?} {route:?}");
-        // add_routing_entry_to(
-        //     dest.prefix(),
-        //     dest.netmask(),
-        //     route.peer.next_hop,
-        //     &*route.peer.iface,
-        //     self.table_id,
-        // )
-        // .expect("failed to set route to table");
+        // if &*peer.iface != "invalid" {
+        //     tracing::error!(
+        //         "{} & {} || {} ({})",
+        //         dest.prefix(),
+        //         dest.netmask(),
+        //         peer.next_hop,
+        //         &*peer.iface
+        //     );
+        //     inet::routing::add_routing_entry_to(
+        //         dest.prefix(),
+        //         dest.netmask(),
+        //         peer.next_hop,
+        //         &*peer.iface,
+        //         self.table_id,
+        //     )
+        //     .expect("failed to set route to table");
+        // }
     }
 
     /// Call this function if

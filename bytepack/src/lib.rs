@@ -101,7 +101,7 @@ pub struct BytestreamReader<'a> {
 impl BytestreamReader<'_> {
     pub fn extract(&mut self, n: usize) -> io::Result<BytestreamReader<'_>> {
         if self.buf.len() < n {
-            todo!()
+            return Err(io::Error::new(io::ErrorKind::Other, "invalid length"));
         }
         let stream = BytestreamReader {
             buf: &self.buf[..n],

@@ -3,9 +3,10 @@ use bytepack::{
     ByteOrder, BytestreamReader, BytestreamWriter, FromBytestream, StreamReader, StreamWriter,
     ToBytestream,
 };
+use des::{prelude::module_path, time::SimTime};
 use std::{
     fmt::Debug,
-    io::{Error, ErrorKind, Read, Write},
+    io::{Error, Read, Write},
     net::Ipv4Addr,
     str::FromStr,
 };
@@ -15,6 +16,19 @@ mod error;
 
 pub use self::attrs::*;
 pub use self::error::*;
+
+pub struct BgpPacketStream(pub Vec<BgpPacket>);
+
+impl FromBytestream for BgpPacketStream {
+    type Error = Error;
+    fn from_bytestream(stream: &mut BytestreamReader) -> Result<Self, Self::Error> {
+        let mut pkts = Vec::new();
+        while !stream.is_empty() {
+            pkts.push(BgpPacket::from_bytestream(stream)?)
+        }
+        Ok(Self(pkts))
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BgpPacket {
@@ -83,16 +97,22 @@ impl ToBytestream for BgpPacketKind {
 impl FromBytestream for BgpPacketKind {
     type Error = Error;
     fn from_bytestream(bytestream: &mut BytestreamReader) -> Result<Self, Self::Error> {
-        let _len = u16::read_from(bytestream, ByteOrder::BigEndian)?;
+        let total_len = u16::read_from(bytestream, ByteOrder::BigEndian)?;
         let typ = u8::read_from(bytestream, ByteOrder::BigEndian)?;
 
+        let variable_len = total_len - 19;
+
+        let mut substream = bytestream.extract(variable_len as usize)?;
         let kind = match typ {
-            1 => BgpPacketKind::Open(BgpOpenPacket::from_bytestream(bytestream)?),
-            2 => BgpPacketKind::Update(BgpUpdatePacket::from_bytestream(bytestream)?),
-            3 => BgpPacketKind::Notification(BgpNotificationPacket::from_bytestream(bytestream)?),
+            1 => BgpPacketKind::Open(BgpOpenPacket::from_bytestream(&mut substream)?),
+            2 => BgpPacketKind::Update(BgpUpdatePacket::from_bytestream(&mut substream)?),
+            3 => {
+                BgpPacketKind::Notification(BgpNotificationPacket::from_bytestream(&mut substream)?)
+            }
             4 => BgpPacketKind::Keepalive(),
             _ => todo!(),
         };
+
         Ok(kind)
     }
 }
@@ -274,7 +294,13 @@ impl FromBytestream for Nlri {
     type Error = Error;
     fn from_bytestream(bytestream: &mut BytestreamReader) -> Result<Self, Self::Error> {
         let prefix_len = u8::read_from(bytestream, ByteOrder::BigEndian)?;
-        assert!(prefix_len <= 24, "invalid prefix len");
+        assert!(
+            prefix_len <= 24,
+            "[ {} ] {} invalid prefix len\n{:?}",
+            module_path(),
+            SimTime::now(),
+            bytestream
+        );
 
         let bit_to_next_octet = (8 - (prefix_len % 8)) % 8;
         let octet_len = (prefix_len + bit_to_next_octet) / 8;

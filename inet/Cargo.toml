@@ -17,10 +17,7 @@ async-trait = "*"
 fxhash = "0.2.1"
 des = { version = "*", features = ["full"] }
 tokio = "*"
-tracing = { version = "*", features = [
-    "max_level_trace",
-    "release_max_level_trace",
-] }
+tracing = { version = "*" }
 bytes = "1.4.0"
 rand = "0.8.5"
 inet-types = { path = "../inet-types" }

@@ -11,6 +11,7 @@ path = "bin/bgp.rs"
 
 
 [dependencies]
+tracing = "*"
 inet = { path = "../inet" }
 inet-pcap = { path = "../inet-pcap" }
 inet-rip = { path = "../inet-rip" }
@@ -18,10 +19,6 @@ bytepack = { path = "../bytepack" }
 des = { version = "*", features = ["full"] }
 fxhash = "*"
 async-trait = "*"
-tracing = { version = "*", features = [
-    "max_level_trace",
-    "release_max_level_trace",
-] }
 tokio = "*"
 
 [dev-dependencies]

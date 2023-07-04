@@ -7,6 +7,7 @@ impl RoutingTableId {
     pub const DEFAULT: RoutingTableId = RoutingTableId(0);
 }
 
+#[derive(Debug)]
 pub(crate) struct FwdV4 {
     tables: Vec<FwdTableV4>,
 }
@@ -56,6 +57,7 @@ impl FwdV4 {
     }
 }
 
+#[derive(Debug)]
 pub(crate) struct FwdTableV4 {
     // A list of all fwd entrys with the smallest prefixes first
     pub(super) entries: Vec<FwdEntryV4>,

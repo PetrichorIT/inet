@@ -15,7 +15,6 @@ use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     spawn,
 };
-use tracing::level_filters::LevelFilter;
 
 struct Client;
 #[async_trait::async_trait]
@@ -40,7 +39,7 @@ impl AsyncModule for Client {
         spawn(async move {
             sleep(Duration::from_secs(1)).await;
 
-            for _ in 0..5 {
+            for _ in 0..100 {
                 let domain = DOMAINS[random::<usize>() % DOMAINS.len()];
                 let mut stream = TcpStream::connect((domain, 80)).await.unwrap();
                 stream.write_all(domain.as_bytes()).await.unwrap();
@@ -269,10 +268,7 @@ impl Module for Main {
 fn main() {
     inet::init();
 
-    Subscriber::default()
-        .with_max_level(LevelFilter::TRACE)
-        .init()
-        .unwrap();
+    Subscriber::default().init().unwrap();
 
     type Switch = LinkLayerSwitch;
 
@@ -284,12 +280,11 @@ fn main() {
     .unwrap();
     let mut app = NetworkApplication::new(app);
     app.include_par_file("main.par");
-    let rt = Builder::seeded(123).max_time(50.0.into()).build(app);
-    let app = rt.run().into_app();
-    app.globals()
-        .topology
-        .lock()
-        .unwrap()
-        .write_to_svg("results/graph.svg")
-        .unwrap();
+    let rt = Builder::seeded(123).max_time(200.0.into()).build(app);
+    let _app = rt.run().into_app();
+    // app.globals()
+    //     .topology
+    //     .borrow()
+    //     .write_to_svg("results/graph.svg")
+    //     .unwrap();
 }

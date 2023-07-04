@@ -42,6 +42,7 @@ pub struct BgpDeamon {
 
 pub struct DepolyedBgpDeamon {
     tx: Sender<BgpDeamonManagmentEvent>,
+    #[allow(unused)]
     task: JoinHandle<()>,
 }
 

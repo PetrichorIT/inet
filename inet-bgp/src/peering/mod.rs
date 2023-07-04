@@ -12,7 +12,7 @@ use tokio::{
     task::JoinHandle,
 };
 
-use crate::pkt::BgpUpdatePacket;
+use crate::pkt::{BgpPacketStream, BgpUpdatePacket};
 
 use self::{
     timers::{Timer, Timers, TimersCfg},
@@ -52,6 +52,8 @@ pub struct NeighborDeamon {
 pub(crate) struct NeighborHandle {
     pub(crate) up: bool,
     pub(crate) tx: Sender<NeighborEgressEvent>,
+
+    #[allow(unused)]
     pub(crate) task: JoinHandle<Result<()>>,
 }
 
@@ -623,67 +625,94 @@ impl NeighborDeamon {
                     }
                 }
 
-                Established(mut stream) => {
-                    tokio::select! {
-                        event = self.rx.recv() => match event.unwrap() {
-                            Stop => {
-                                tracing::info!("terminating connection");
-                                write_stream!(stream, self.notif(BgpNotificationPacket::Cease()));
-                                self.timers.disable_timer(Timer::ConnectionRetryTimer);
-                                self.tx.send(ConnectionLost(self.peer_info.clone())).await.expect("failed");
-                                // TODO: peer osci
-                                self.connect_retry_counter = 0;
-                                state = Idle;
-                            },
-                            Advertise(update) => {
-                                write_stream!(stream, self.update(update));
-                                state = Established(stream);
-                            }
-                            _ => todo!()
-                        },
+                Established(stream) => state = self.process_state_established(stream).await?,
+            }
+        }
+    }
 
-                        timer = self.timers.next() => match timer {
-                            Timer::HoldTimer => {
-                                write_stream!(stream, self.notif(BgpNotificationPacket::HoldTimerExpires()));
-                                self.timers.disable_timer(Timer::ConnectionRetryTimer);
-                                self.connect_retry_counter += 1;
-                                // TODO: peer osci
-                                state = Idle;
-                            }
-                            Timer::KeepaliveTimer => {
-                                write_stream!(stream, self.keepalive());
-                                self.timers.enable_timer(Timer::KeepaliveTimer);
-                                state = Established(stream);
-                            }
-                            _ => todo!()
-                        },
+    async fn process_state_established(
+        &mut self,
+        mut stream: TcpStream,
+    ) -> Result<NeighborDeamonState> {
+        use NeighborDeamonState::*;
+        use NeighborEgressEvent::*;
+        use NeighborIngressEvent::*;
 
-                        n = stream.read(&mut buf) => {
-                            let n = n?;
-                            let bgp = BgpPacket::from_buffer(&buf[..n])?;
+        let mut buf = [0; 1024];
 
-                            match bgp.kind {
-                                BgpPacketKind::Keepalive() => {
-                                    self.last_keepalive_received = SimTime::now();
-                                    self.timers.enable_timer(Timer::HoldTimer);
-                                    state = Established(stream);
-                                }
-                                BgpPacketKind::Update(update) => {
-                                    self.timers.enable_timer(Timer::HoldTimer);
-                                    self.tx.send(Update(self.peer_info.addr, update)).await.expect("deamon dead");
-                                    state = Established(stream);
-                                }
-                                BgpPacketKind::Notification(notif) => {
-                                    self.connect_retry_counter += 1;
-                                    self.timers.enable_timer(Timer::ConnectionRetryTimer);
-                                    tracing::warn!("connection lost ({notif:?})");
-                                    self.tx.send(ConnectionLost(self.peer_info.clone())).await.expect("deamon dead");
-                                    state = Idle;
-                                },
-                                _ => todo!("{:?}", bgp.kind)
-                            }
-                        }
+        loop {
+            let n = tokio::select! {
+                event = self.rx.recv() => match event.expect("BGP deamon crashed -- crashing worker process") {
+                    Stop => {
+                        tracing::info!("terminating connection");
+                        write_stream!(stream, self.notif(BgpNotificationPacket::Cease()));
+                        self.timers.disable_timer(Timer::ConnectionRetryTimer);
+                        self.tx.send(ConnectionLost(self.peer_info.clone())).await.expect("failed");
+                        // TODO: peer osci
+                        self.connect_retry_counter = 0;
+                        return Ok(Idle);
+                    },
+                    Advertise(update) => {
+                        write_stream!(stream, self.update(update));
+                        continue
                     }
+                    _ => todo!()
+                },
+
+                timer = self.timers.next() => match timer {
+                    Timer::HoldTimer => {
+                        write_stream!(stream, self.notif(BgpNotificationPacket::HoldTimerExpires()));
+                        self.timers.disable_timer(Timer::ConnectionRetryTimer);
+                        self.connect_retry_counter += 1;
+                        // TODO: peer osci
+                        return Ok(Idle);
+                    }
+                    Timer::KeepaliveTimer => {
+                        write_stream!(stream, self.keepalive());
+                        self.timers.enable_timer(Timer::KeepaliveTimer);
+                        continue
+                    }
+                    _ => todo!()
+                },
+
+                n = stream.read(&mut buf) => match n {
+                    Ok(0) => {
+                        tracing::warn!("closed connection");
+                        return Ok(Idle);
+                    },
+                    Ok(n) => n,
+                    Err(_e) => {
+                        todo!()
+                    }
+                }
+            };
+
+            let bgps = BgpPacketStream::from_buffer(&buf[..n])?;
+
+            for bgp in bgps.0 {
+                match bgp.kind {
+                    BgpPacketKind::Keepalive() => {
+                        self.last_keepalive_received = SimTime::now();
+                        self.timers.enable_timer(Timer::HoldTimer);
+                    }
+                    BgpPacketKind::Update(update) => {
+                        self.timers.enable_timer(Timer::HoldTimer);
+                        self.tx
+                            .send(Update(self.peer_info.addr, update))
+                            .await
+                            .expect("deamon dead");
+                    }
+                    BgpPacketKind::Notification(notif) => {
+                        self.connect_retry_counter += 1;
+                        self.timers.enable_timer(Timer::ConnectionRetryTimer);
+                        tracing::warn!("connection lost ({notif:?})");
+                        self.tx
+                            .send(ConnectionLost(self.peer_info.clone()))
+                            .await
+                            .expect("deamon dead");
+                        return Ok(Idle);
+                    }
+                    _ => todo!("{:?}", bgp.kind),
                 }
             }
         }

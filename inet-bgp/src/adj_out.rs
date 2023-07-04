@@ -156,7 +156,7 @@ impl AdjRIBOut {
         }
 
         for (
-            peer,
+            _peer,
             AdjOut {
                 rib,
                 dirty,

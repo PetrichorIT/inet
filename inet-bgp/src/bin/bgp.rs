@@ -1,7 +1,10 @@
 use std::{error::Error, fs::File, io::BufWriter};
 
 use des::{prelude::*, registry, time::sleep_until, tracing::Subscriber};
-use inet::interface::{add_interface, Interface, NetworkDevice};
+use inet::{
+    interface::{add_interface, Interface, NetworkDevice},
+    routing::route,
+};
 use inet_bgp::{pkt::Nlri, types::AsNumber, BgpDeamon};
 use inet_pcap::{PcapCapturePoints, PcapConfig, PcapFilters};
 
@@ -106,6 +109,12 @@ impl AsyncModule for BgpNode {
                 .unwrap();
         });
     }
+
+    async fn at_sim_end(&mut self) {
+        for route in route().unwrap() {
+            tracing::debug!("{route}")
+        }
+    }
 }
 
 struct Dummy;
@@ -132,16 +141,12 @@ fn main() -> Result<(), Box<dyn Error>> {
     )?
     .into_app();
     app.include_par_file("src/bin/bgp.par");
-    let r = Builder::seeded(123)
+    let _r = Builder::seeded(123)
         .max_time(500.0.into())
         .build(app)
         .run()
         .into_app();
-    r.globals()
-        .topology
-        .lock()
-        .unwrap()
-        .write_to_svg("src/bin/topo")?;
+    // r.globals().topology.borrow().write_to_svg("src/bin/topo")?;
 
     Ok(())
 }
