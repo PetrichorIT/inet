@@ -90,7 +90,7 @@ impl DNSResourceRecord {
                 format!("{}", Ipv6Addr::from(octets))
             }
             DNSType::NS | DNSType::CNAME | DNSType::PTR => {
-                let dnsstring = DNSString::from_buffer(self.rdata.clone())
+                let dnsstring = DNSString::read_from_slice(&mut &self.rdata[..])
                     .expect("Failed to reparse DNS String");
                 dnsstring.into_inner()
             }

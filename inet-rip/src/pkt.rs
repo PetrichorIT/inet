@@ -156,7 +156,7 @@ mod tests {
             0x00, 0x00, 0x03, 0xeb, // metrics
         ];
 
-        let pkt = RipPacket::from_buffer(buf)?;
+        let pkt = RipPacket::from_slice(buf)?;
 
         assert_eq!(
             pkt,
@@ -193,7 +193,7 @@ mod tests {
         };
         let buf = rip.to_buffer()?;
         assert_eq!(buf.len(), 4 + 20 * 20);
-        let rip2 = RipPacket::from_buffer(buf)?;
+        let rip2 = RipPacket::from_slice(&buf)?;
         assert_eq!(rip, rip2);
 
         Ok(())

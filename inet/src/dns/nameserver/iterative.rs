@@ -82,9 +82,9 @@ impl DNSNameserver {
                     }
 
                     for nameserver in ns {
-                        let nsbytes = nameserver.rdata.clone();
-                        let uri =
-                            DNSString::from_buffer(nsbytes).expect("Failed to parse bytestring");
+                        let mut nsbytes = &nameserver.rdata[..];
+                        let uri = DNSString::read_from_slice(&mut nsbytes)
+                            .expect("Failed to parse bytestring");
                         self.add_node_information_to(
                             &[DNSType::A, DNSType::AAAA],
                             &uri,
@@ -172,9 +172,8 @@ impl DNSNameserver {
                     }
 
                     for nameserver in ns {
-                        let nsbytes = nameserver.rdata.clone();
-                        let uri =
-                            DNSString::from_buffer(nsbytes).expect("Failed to parse bytestring");
+                        let uri = DNSString::read_from_slice(&mut &nameserver.rdata[..])
+                            .expect("Failed to parse bytestring");
                         self.add_node_information_to(
                             &[DNSType::A, DNSType::AAAA],
                             &uri,

@@ -253,32 +253,32 @@ mod tests {
     fn dns_string_parsing() {
         let inp = DNSString::new("www.example.com");
         let bytes = inp.to_buffer().unwrap();
-        let out = DNSString::from_buffer(bytes).unwrap();
+        let out = DNSString::read_from_slice(&mut &bytes[..]).unwrap();
         assert_eq!(inp, out);
 
         let inp = DNSString::new("asg-erfurt.de");
         let bytes = inp.to_buffer().unwrap();
-        let out = DNSString::from_buffer(bytes).unwrap();
+        let out = DNSString::read_from_slice(&mut &bytes[..]).unwrap();
         assert_eq!(inp, out);
 
         let inp = DNSString::new("a.b.c.www.example.com:800");
         let bytes = inp.to_buffer().unwrap();
-        let out = DNSString::from_buffer(bytes).unwrap();
+        let out = DNSString::read_from_slice(&mut &bytes[..]).unwrap();
         assert_eq!(inp, out);
 
         let inp = DNSString::new("cdde.aaoa-adad.com.");
         let bytes = inp.to_buffer().unwrap();
-        let out = DNSString::from_buffer(bytes).unwrap();
+        let out = DNSString::read_from_slice(&mut &bytes[..]).unwrap();
         assert_eq!(inp, out);
 
         let inp = DNSString::new("www.out.out.out.com:80.");
         let bytes = inp.to_buffer().unwrap();
-        let out = DNSString::from_buffer(bytes).unwrap();
+        let out = DNSString::read_from_slice(&mut &bytes[..]).unwrap();
         assert_eq!(inp, out);
 
         let inp = DNSString::new("www.example.com");
         let bytes = inp.to_buffer().unwrap();
-        let out = DNSString::from_buffer(bytes).unwrap();
+        let out = DNSString::read_from_slice(&mut &bytes[..]).unwrap();
         assert_eq!(inp, out);
     }
 

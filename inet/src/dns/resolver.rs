@@ -181,7 +181,7 @@ impl sealed::ToSocketAddrsPriv for (&str, u16) {
                 };
                 buf.truncate(n);
 
-                let mut response = DNSMessage::from_buffer(buf)?;
+                let mut response = DNSMessage::read_from_vec(&mut buf)?;
                 assert!(response.qr);
 
                 if response.rcode != DNSResponseCode::NoError {

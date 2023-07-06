@@ -28,7 +28,7 @@ impl IcmpPacket {
         // Override len with 8
         self.content[2] = 0;
         self.content[3] = 20 + 8;
-        let ip = Ipv4Packet::from_buffer(&self.content).unwrap();
+        let ip = Ipv4Packet::read_from_slice(&mut &self.content[..]).unwrap();
         ip
     }
 }
@@ -213,7 +213,7 @@ impl FromBytestream for IcmpType {
                 let next_hop_mtu = u16::read_from(bytestream, LittleEndian)?;
                 Ok(Self::DestinationUnreachable {
                     next_hop_mtu: next_hop_mtu,
-                    code: IcmpDestinationUnreachableCode::from_buffer(&[code])?,
+                    code: IcmpDestinationUnreachableCode::read_from_slice(&mut &[code][..])?,
                 })
             }
             4 => {
@@ -226,7 +226,7 @@ impl FromBytestream for IcmpType {
 
                 Ok(Self::RedirectMessage {
                     addr,
-                    code: IcmpRedirectCode::from_buffer(&[code])?,
+                    code: IcmpRedirectCode::read_from_slice(&mut &[code][..])?,
                 })
             }
             8 => {
@@ -251,13 +251,13 @@ impl FromBytestream for IcmpType {
             11 => {
                 let _ = u32::read_from(bytestream, LittleEndian)?;
                 Ok(Self::TimeExceeded {
-                    code: IcmpTimeExceededCode::from_buffer(&[code])?,
+                    code: IcmpTimeExceededCode::read_from_slice(&mut &[code][..])?,
                 })
             }
             12 => {
                 let _ = u32::read_from(bytestream, LittleEndian)?;
                 Ok(Self::BadIpHeader {
-                    code: IcmpBadIpHeaderCode::from_buffer(&[code])?,
+                    code: IcmpBadIpHeaderCode::read_from_slice(&mut &[code][..])?,
                 })
             }
             _ => todo!(),

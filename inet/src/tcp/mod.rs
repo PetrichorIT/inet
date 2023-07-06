@@ -227,7 +227,7 @@ impl IOContext {
     pub(super) fn capture_tcp_packet(&mut self, ip_packet: IpPacketRef, ifid: IfId) -> bool {
         assert!(ip_packet.tos() == PROTO_TCP);
 
-        let Ok(tcp_pkt) = TcpPacket::from_buffer(ip_packet.content()) else {
+        let Ok(tcp_pkt) = TcpPacket::from_slice(ip_packet.content()) else {
             tracing::error!("received ip-packet with proto=0x06 (tcp) but content was no tcp-packet");
             return false;
         };

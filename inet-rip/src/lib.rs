@@ -289,7 +289,7 @@ impl RipRoutingDeamon {
                 unreachable!()
             };
 
-            let rip = RipPacket::from_buffer(&buf[..n]).unwrap();
+            let rip = RipPacket::from_slice(&buf[..n]).unwrap();
             let mut changes = Vec::new();
 
             match rip.command {

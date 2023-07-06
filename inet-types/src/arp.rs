@@ -289,7 +289,7 @@ mod tests {
         assert_eq!(r.src_ipv4_addr(), Ipv4Addr::new(1, 2, 3, 4));
         assert_eq!(r.dest_ipv4_addr(), Ipv4Addr::new(255, 254, 253, 252));
 
-        let r = ArpPacket::from_buffer(r.to_buffer().unwrap()).unwrap();
+        let r = ArpPacket::read_from_vec(&mut r.to_buffer().unwrap()).unwrap();
         assert_eq!(r.htype, 1);
         assert_eq!(r.ptype, 0x0800);
         assert_eq!(r.src_mac_addr(), [1, 2, 3, 4, 5, 6].into());
@@ -313,7 +313,7 @@ mod tests {
         assert_eq!(r.src_ipv6_addr(), Ipv6Addr::new(1, 2, 3, 4, 5, 6, 7, 8));
         assert_eq!(r.dest_ipv6_addr(), Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 0));
 
-        let r = ArpPacket::from_buffer(r.to_buffer().unwrap()).unwrap();
+        let r = ArpPacket::read_from_vec(&mut r.to_buffer().unwrap()).unwrap();
         assert_eq!(r.htype, 1);
         assert_eq!(r.ptype, 0x86DD);
         assert_eq!(r.src_mac_addr(), [1, 2, 3, 4, 5, 6].into());

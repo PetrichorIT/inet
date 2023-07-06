@@ -165,7 +165,7 @@ impl DNSNameserver {
             if self.active_transactions.is_empty() {
                 let udp = socket.recv_from(&mut buf).await;
                 let Ok((n, from)) = udp else { break };
-                let Ok(msg) = DNSMessage::from_buffer(&buf[..n]) else { continue };
+                let Ok(msg) = DNSMessage::read_from_slice(&mut &buf[..n]) else { continue };
 
                 let output = self.handle(msg, from);
                 for (pkt, target) in output {
@@ -178,7 +178,7 @@ impl DNSNameserver {
                 tokio::select! {
                     udp = socket.recv_from(&mut buf) => {
                         let Ok((n, from)) = udp else { break };
-                        let Ok(msg) = DNSMessage::from_buffer(&buf[..n]) else { continue };
+                        let Ok(msg) = DNSMessage::read_from_slice(&mut &buf[..n]) else { continue };
 
                         let output = self.handle(msg, from);
                         for (pkt, target) in output {

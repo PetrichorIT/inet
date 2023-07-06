@@ -102,7 +102,7 @@ impl IOContext {
 
         let is_broadcast = is_broadcast(packet.dest());
 
-        let Ok(udp) = UdpPacket::from_buffer(packet.content()) else {
+        let Ok(udp) = UdpPacket::from_slice(packet.content()) else {
             tracing::error!("received ip-packet with proto=0x11 (udp) but content was no udp-packet");
             return false;
         };

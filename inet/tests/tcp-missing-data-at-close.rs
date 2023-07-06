@@ -22,7 +22,7 @@ impl Module for Link {
         // random packet drop 10 %
         if (random::<usize>() % 10) == 7 {
             let ippacket = msg.content::<Ipv4Packet>();
-            let tcp = TcpPacket::from_buffer(&ippacket.content).unwrap();
+            let tcp = TcpPacket::from_slice(&ippacket.content).unwrap();
 
             tracing::error!(
                 "DROP {} --> {} :: Tcp {{ {} seq_no = {} ack_no = {} win = {} data = {} bytes }}",

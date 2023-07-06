@@ -87,39 +87,60 @@ impl Write for BytestreamWriter {
 pub trait FromBytestream: Sized {
     type Error;
     fn from_bytestream(stream: &mut BytestreamReader) -> Result<Self, Self::Error>;
-    fn from_buffer(buffer: impl AsRef<[u8]>) -> Result<Self, Self::Error> {
-        let buf = buffer.as_ref();
-        Self::from_bytestream(&mut BytestreamReader { buf })
+
+    fn from_slice(slice: &[u8]) -> Result<Self, Self::Error> {
+        let mut reader = BytestreamReader { slice };
+        Self::from_bytestream(&mut reader)
+    }
+
+    fn read_from_slice(slice: &mut &[u8]) -> Result<Self, Self::Error> {
+        let mut reader = BytestreamReader { slice };
+        let object = Self::from_bytestream(&mut reader)?;
+        *slice = reader.slice;
+        Ok(object)
+    }
+
+    fn read_from_vec(vec: &mut Vec<u8>) -> Result<Self, Self::Error> {
+        let mut reader = BytestreamReader { slice: &vec };
+        let len = reader.slice.len();
+        let object = Self::from_bytestream(&mut reader)?;
+        let consumed = len - reader.slice.len();
+        vec.drain(..consumed);
+        Ok(object)
     }
 }
 
 #[derive(Debug)]
 pub struct BytestreamReader<'a> {
-    buf: &'a [u8],
+    slice: &'a [u8],
 }
 
 impl BytestreamReader<'_> {
     pub fn extract(&mut self, n: usize) -> io::Result<BytestreamReader<'_>> {
-        if self.buf.len() < n {
-            return Err(io::Error::new(io::ErrorKind::Other, "invalid length"));
+        if self.slice.len() < n {
+            dbg!(self.slice.len(), n);
+            return Err(io::Error::new(
+                io::ErrorKind::Other,
+                "invalid substream length",
+            ));
         }
         let stream = BytestreamReader {
-            buf: &self.buf[..n],
+            slice: &self.slice[..n],
         };
-        self.buf = &self.buf[n..];
+        self.slice = &self.slice[n..];
         Ok(stream)
     }
 
     pub fn is_empty(&self) -> bool {
-        self.buf.is_empty()
+        self.slice.is_empty()
     }
 }
 
 impl Read for BytestreamReader<'_> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        let min = buf.len().min(self.buf.len());
-        buf[..min].copy_from_slice(&self.buf[..min]);
-        self.buf = &self.buf[min..];
+        let min = buf.len().min(self.slice.len());
+        buf[..min].copy_from_slice(&self.slice[..min]);
+        self.slice = &self.slice[min..];
         Ok(min)
     }
 }
@@ -236,11 +257,35 @@ mod tests {
             vals: vec![1, 2, 3, 4],
             trail: u64::MAX,
         };
-        let buf = a.to_buffer().unwrap();
-        let new = A::from_buffer(&buf);
+        let mut buf = a.to_buffer().unwrap();
+        let new = A::read_from_vec(&mut buf);
 
         println!("{:?}", a);
         println!("{:?}", buf);
         println!("{:?}", new);
+    }
+
+    #[test]
+    fn from_mut_slice() {
+        #[derive(Debug, PartialEq, Eq)]
+        struct AB {
+            a: u32,
+            b: u32,
+        }
+        impl FromBytestream for AB {
+            type Error = std::io::Error;
+            fn from_bytestream(stream: &mut BytestreamReader) -> Result<Self, Self::Error> {
+                Ok(Self {
+                    a: u32::read_from(stream, ByteOrder::BigEndian)?,
+                    b: u32::read_from(stream, ByteOrder::BigEndian)?,
+                })
+            }
+        }
+
+        let buf = [0, 0, 0, 0, 255, 255, 255, 255, 0, 1, 2, 3];
+        let mut slice = &buf[..];
+        let ab = AB::read_from_slice(&mut slice).unwrap();
+        assert_eq!(ab, AB { a: 0, b: u32::MAX });
+        assert_eq!(slice, [0, 1, 2, 3]);
     }
 }

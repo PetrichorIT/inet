@@ -34,10 +34,8 @@ macro_rules! addr_of_record {
 macro_rules! domain_of_record {
     ($r:expr) => {
         match $r.typ {
-            DNSType::NS | DNSType::PTR => {
-                <DNSString as FromBytestream>::from_buffer($r.rdata.clone())
-                    .expect("Failed to parse rdata into DNSString")
-            }
+            DNSType::NS | DNSType::PTR => <DNSString as FromBytestream>::from_slice(&$r.rdata[..])
+                .expect("Failed to parse rdata into DNSString"),
             _ => unreachable!("Expected DNSResourceRecord with domain name."),
         }
     };

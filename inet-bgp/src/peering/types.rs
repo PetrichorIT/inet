@@ -2,6 +2,8 @@ use crate::types::AsNumber;
 use inet::TcpStream;
 use std::{fmt::Debug, future::Future, io::Result, pin::Pin};
 
+use super::stream::BgpStream;
+
 #[derive(Debug)]
 pub(crate) enum PeeringKind {
     Internal,
@@ -18,14 +20,14 @@ impl PeeringKind {
     }
 }
 
-pub(crate) enum NeighborDeamonState {
+pub(super) enum NeighborDeamonState {
     Idle,
     Connect(Pin<Box<dyn Future<Output = Result<TcpStream>> + Send>>),
     Active,
-    ActiveDelayOpen(TcpStream),
-    OpenSent(TcpStream),
-    OpenConfirm(TcpStream),
-    Established(TcpStream),
+    ActiveDelayOpen(BgpStream),
+    OpenSent(BgpStream),
+    OpenConfirm(BgpStream),
+    Established(BgpStream),
 }
 
 impl Debug for NeighborDeamonState {

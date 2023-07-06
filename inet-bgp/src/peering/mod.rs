@@ -1,4 +1,4 @@
-use bytepack::{FromBytestream, ToBytestream};
+use bytepack::ToBytestream;
 use des::{prelude::*, time::*};
 use inet::TcpStream;
 use std::{
@@ -7,12 +7,12 @@ use std::{
     time::Duration,
 };
 use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt},
+    io::AsyncWriteExt,
     sync::mpsc::{Receiver, Sender},
     task::JoinHandle,
 };
 
-use crate::pkt::{BgpPacketStream, BgpUpdatePacket};
+use crate::{peering::stream::BgpStream, pkt::BgpUpdatePacket};
 
 use self::{
     timers::{Timer, Timers, TimersCfg},
@@ -23,6 +23,7 @@ use super::{
     BgpNodeInformation, NeighborEgressEvent, NeighborIngressEvent,
 };
 
+mod stream;
 mod timers;
 mod types;
 
@@ -164,9 +165,6 @@ impl NeighborDeamon {
 
         sleep(Duration::from_secs_f64(random::<f64>() * 0.25)).await;
         tracing::debug!("@init");
-
-        const BUF_SIZE: usize = 1024;
-        let mut buf = [0; BUF_SIZE];
 
         let mut state = Idle;
         loop {
@@ -311,7 +309,7 @@ impl NeighborDeamon {
                             state = Active;
                             continue;
                         }
-                        state = OpenSent(stream);
+                        state = OpenSent(BgpStream::new(stream));
                     }
                 }
 
@@ -357,13 +355,13 @@ impl NeighborDeamon {
                                 self.connect_retry_counter = 0;
                                 self.timers.disable_timer(Timer::ConnectionRetryTimer);
                                 self.timers.enable_timer(Timer::DelayOpenTimer);
-                                state = ActiveDelayOpen(stream);
+                                state = ActiveDelayOpen(BgpStream::new(stream));
                             } else {
                                 tracing::debug!("[active] accepted incoming tcp connection");
                                 self.timers.disable_timer(Timer::ConnectionRetryTimer);
                                 stream.write_all(&self.open_pkt().to_buffer()?).await?;
                                 self.timers.enable_timer(Timer::HoldTimer);
-                                state = OpenSent(stream)
+                                state = OpenSent(BgpStream::new(stream))
                             }
                         }
                     }
@@ -371,10 +369,15 @@ impl NeighborDeamon {
 
                 ActiveDelayOpen(mut stream) => {
                     tokio::select! {
-                        n = stream.read(&mut buf) => {
-                            // TODO: missing hold timer funny buisness
-                            let n = n?;
-                            let bgp = BgpPacket::from_buffer(&buf[..n])?;
+                        done = stream.recv() => {
+                            let done = done?;
+                            if done {
+                                todo!()
+                            }
+                            let Some(bgp) = stream.next()? else {
+                                state = ActiveDelayOpen(stream);
+                                continue
+                            };
                             match bgp.kind {
                                 BgpPacketKind::Open(open) => {
                                     self.peering_kind = match self.check_open(&open) {
@@ -472,7 +475,7 @@ impl NeighborDeamon {
 
                             if incoming_rank > stream_rank {
                                 tracing::debug!("[opensent] switching to incoming stream, discarding own");
-                                stream = incoming;
+                                stream = BgpStream::new(incoming);
 
                                 // Switching to a new stream requires
                                 // a new sending of the OPEN pkt
@@ -489,9 +492,9 @@ impl NeighborDeamon {
                        // - if OPEN-INVALID: send NOTIF and close, return to IDLE
                        // - else, send KEEPALIVE, change to OPENCONFIRM
                        // - configure hold time, set keepalive timer
-                        n = stream.read(&mut buf) => {
-                            let n = match n {
-                                Ok(0) => {
+                        done = stream.recv() => {
+                            match done {
+                                Ok(true) => {
                                     // peer decieded the current stream is not valid,
                                     // wait for incoming stream
                                     tracing::warn!("[opensent] connection closed, assuming second connection");
@@ -500,7 +503,7 @@ impl NeighborDeamon {
                                     state = Active;
                                     continue
                                 }
-                                Ok(n) => n,
+                                Ok(false) => {},
                                 Err(e) => {
                                     tracing::error!("[opensent] connection broke, assuming second connection: {e:?}");
                                     self.timers.enable_timer(Timer::ConnectionRetryTimer);
@@ -509,7 +512,10 @@ impl NeighborDeamon {
                                 }
                             };
 
-                            let bgp = BgpPacket::from_buffer(&buf[..n])?;
+                            let Some(bgp) = stream.next()? else {
+                                state = OpenSent(stream);
+                                continue
+                            };
                             match bgp.kind {
                                 BgpPacketKind::Open(open) => {
                                     self.peering_kind = match self.check_open(&open) {
@@ -587,9 +593,10 @@ impl NeighborDeamon {
                         },
 
 
-                        n = stream.read(&mut buf) => {
-                            let n = match n {
-                                Ok(n) => n,
+                        done = stream.recv() => {
+                            match done {
+                                Ok(true) => todo!(),
+                                Ok(false) => {},
                                 Err(e) => {
                                     tracing::error!("{e:?}");
                                     state = Idle;
@@ -597,7 +604,10 @@ impl NeighborDeamon {
                                 }
                             };
 
-                            let bgp = BgpPacket::from_buffer(&buf[..n])?;
+                            let Some(bgp) = stream.next()? else {
+                                state = OpenConfirm(stream);
+                                continue;
+                            };
                             match bgp.kind {
                                 BgpPacketKind::Open(_) => {
                                     todo!("needs collision mngt")
@@ -632,16 +642,13 @@ impl NeighborDeamon {
 
     async fn process_state_established(
         &mut self,
-        mut stream: TcpStream,
+        mut stream: BgpStream,
     ) -> Result<NeighborDeamonState> {
         use NeighborDeamonState::*;
         use NeighborEgressEvent::*;
         use NeighborIngressEvent::*;
-
-        let mut buf = [0; 1024];
-
         loop {
-            let n = tokio::select! {
+            tokio::select! {
                 event = self.rx.recv() => match event.expect("BGP deamon crashed -- crashing worker process") {
                     Stop => {
                         tracing::info!("terminating connection");
@@ -675,21 +682,19 @@ impl NeighborDeamon {
                     _ => todo!()
                 },
 
-                n = stream.read(&mut buf) => match n {
-                    Ok(0) => {
+                done = stream.recv() => match done {
+                    Ok(true) => {
                         tracing::warn!("closed connection");
                         return Ok(Idle);
                     },
-                    Ok(n) => n,
+                    Ok(false) => {},
                     Err(_e) => {
                         todo!()
                     }
                 }
             };
 
-            let bgps = BgpPacketStream::from_buffer(&buf[..n])?;
-
-            for bgp in bgps.0 {
+            while let Some(bgp) = stream.next()? {
                 match bgp.kind {
                     BgpPacketKind::Keepalive() => {
                         self.last_keepalive_received = SimTime::now();
