@@ -4,8 +4,8 @@ use std::{
 };
 
 use bytepack::{
-    raw_enum, ByteOrder, BytestreamReader, BytestreamWriter, FromBytestream, StreamReader,
-    StreamWriter, ToBytestream,
+    raw_enum, BytestreamReader, BytestreamWriter, FromBytestream, ReadBytesExt, ToBytestream,
+    WriteBytesExt, BE,
 };
 
 use crate::types::AsNumber;
@@ -19,39 +19,37 @@ pub struct BgpPathAttribute {
 
 impl ToBytestream for BgpPathAttribute {
     type Error = Error;
-    fn to_bytestream(&self, bytestream: &mut BytestreamWriter) -> Result<(), Self::Error> {
-        self.flags.to_bytestream(bytestream)?;
-        self.attr
-            .kind()
-            .write_to(bytestream, ByteOrder::BigEndian)?;
+    fn to_bytestream(&self, stream: &mut BytestreamWriter) -> Result<(), Self::Error> {
+        self.flags.to_bytestream(stream)?;
+        stream.write_u8(self.attr.kind())?;
 
         let len = self.attr.len();
         if self.flags.extended_len {
-            (len as u16).write_to(bytestream, ByteOrder::BigEndian)?;
+            stream.write_u16::<BE>(len as u16)?;
         } else {
-            (len as u8).write_to(bytestream, ByteOrder::BigEndian)?;
+            stream.write_u8(len as u8)?;
         }
 
-        self.attr.to_bytestream(bytestream)?;
+        self.attr.to_bytestream(stream)?;
         Ok(())
     }
 }
 
 impl FromBytestream for BgpPathAttribute {
     type Error = Error;
-    fn from_bytestream(bytestream: &mut BytestreamReader) -> Result<Self, Self::Error> {
-        let flags = BgpPathAttributeFlags::from_bytestream(bytestream)?;
-        let kind = u8::read_from(bytestream, ByteOrder::BigEndian)?;
+    fn from_bytestream(stream: &mut BytestreamReader) -> Result<Self, Self::Error> {
+        let flags = BgpPathAttributeFlags::from_bytestream(stream)?;
+        let kind = stream.read_u8()?;
         let len = if flags.extended_len {
-            u16::read_from(bytestream, ByteOrder::BigEndian)? as usize
+            stream.read_u16::<BE>()? as usize
         } else {
-            u8::read_from(bytestream, ByteOrder::BigEndian)? as usize
+            stream.read_u8()? as usize
         };
-        let mut substream = bytestream.extract(len)?;
+        let mut substream = stream.extract(len)?;
 
         let attr = match kind {
-            1 => BgpPathAttributeKind::Origin(BgpPathAttributeOrigin::from_bytestream(
-                &mut substream,
+            1 => BgpPathAttributeKind::Origin(BgpPathAttributeOrigin::from_raw_repr(
+                substream.read_u8()?,
             )?),
             2 if len > 0 => BgpPathAttributeKind::AsPath(BgpPathAttributeAsPath::from_bytestream(
                 &mut substream,
@@ -95,7 +93,7 @@ impl ToBytestream for BgpPathAttributeFlags {
         if self.extended_len {
             byte |= 0b0001_0000;
         }
-        byte.write_to(bytestream, ByteOrder::BigEndian)?;
+        bytestream.write_u8(byte)?;
         Ok(())
     }
 }
@@ -103,7 +101,7 @@ impl ToBytestream for BgpPathAttributeFlags {
 impl FromBytestream for BgpPathAttributeFlags {
     type Error = Error;
     fn from_bytestream(bytestream: &mut BytestreamReader) -> Result<Self, Self::Error> {
-        let byte = u8::read_from(bytestream, ByteOrder::BigEndian)?;
+        let byte = bytestream.read_u8()?;
         Ok(Self {
             optional: byte & 0b1000_0000 != 0,
             transitiv: byte & 0b0100_0000 != 0,
@@ -153,7 +151,7 @@ impl ToBytestream for BgpPathAttributeKind {
     type Error = Error;
     fn to_bytestream(&self, bytestream: &mut BytestreamWriter) -> Result<(), Self::Error> {
         match self {
-            Self::Origin(origin) => origin.to_bytestream(bytestream),
+            Self::Origin(origin) => bytestream.write_u8(origin.to_raw_repr()),
             Self::AsPath(path) => path.to_bytestream(bytestream),
             Self::NextHop(next_hop) => next_hop.to_bytestream(bytestream),
         }
@@ -181,10 +179,10 @@ impl ToBytestream for BgpPathAttributeAsPath {
     type Error = Error;
     fn to_bytestream(&self, bytestream: &mut BytestreamWriter) -> Result<(), Self::Error> {
         if !self.path.is_empty() {
-            self.typ.to_bytestream(bytestream)?;
-            (self.path.len() as u8).write_to(bytestream, ByteOrder::BigEndian)?;
+            bytestream.write_u8(self.typ.to_raw_repr())?;
+            bytestream.write_u8(self.path.len() as u8)?;
             for seg in &self.path {
-                (*seg as u32).write_to(bytestream, ByteOrder::BigEndian)?;
+                bytestream.write_u32::<BE>(*seg as u32)?;
             }
         }
         Ok(())
@@ -194,17 +192,17 @@ impl ToBytestream for BgpPathAttributeAsPath {
 impl FromBytestream for BgpPathAttributeAsPath {
     type Error = Error;
     fn from_bytestream(bytestream: &mut BytestreamReader) -> Result<Self, Self::Error> {
-        let typ = u8::read_from(bytestream, ByteOrder::BigEndian)?;
+        let typ = bytestream.read_u8()?;
         let typ = match typ {
             1 => BgpPathAttributeAsPathTyp::AsSet,
             2 => BgpPathAttributeAsPathTyp::AsSequence,
             _ => todo!(),
         };
-        let len = u8::read_from(bytestream, ByteOrder::BigEndian)?;
+        let len = bytestream.read_u8()?;
         let mut path = Vec::new();
         for _i in 0..len {
             // dbg!(as_num);02 02 00 00 fe 4c 00 00 fe b0
-            let as_num = u32::read_from(bytestream, ByteOrder::BigEndian)?;
+            let as_num = bytestream.read_u32::<BE>()?;
             path.push(as_num as u16)
         }
         Ok(Self { typ, path })
@@ -237,7 +235,7 @@ impl FromBytestream for BgpPathAttributeNextHop {
     type Error = Error;
     fn from_bytestream(bytestream: &mut BytestreamReader) -> Result<Self, Self::Error> {
         Ok(BgpPathAttributeNextHop {
-            hop: Ipv4Addr::from(u32::read_from(bytestream, ByteOrder::BigEndian)?),
+            hop: Ipv4Addr::from(bytestream.read_u32::<BE>()?),
         })
     }
 }

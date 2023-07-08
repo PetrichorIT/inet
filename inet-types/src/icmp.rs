@@ -4,8 +4,8 @@ use std::{
 };
 
 use bytepack::{
-    raw_enum, ByteOrder::*, BytestreamReader, BytestreamWriter, FromBytestream, StreamReader,
-    StreamWriter, ToBytestream,
+    raw_enum, BytestreamReader, BytestreamWriter, FromBytestream, ReadBytesExt, ToBytestream,
+    WriteBytesExt, BE,
 };
 
 use crate::ip::Ipv4Packet;
@@ -19,7 +19,7 @@ pub struct IcmpPacket {
 
 impl IcmpPacket {
     pub fn new(typ: IcmpType, pkt: &Ipv4Packet) -> Self {
-        let mut content = pkt.to_buffer().expect("Failed to write incoming IP ???");
+        let mut content = pkt.to_vec().expect("Failed to write incoming IP ???");
         content.truncate(28);
         Self { typ, content }
     }
@@ -113,78 +113,78 @@ pub enum IcmpType {
 
 impl ToBytestream for IcmpType {
     type Error = Error;
-    fn to_bytestream(&self, bytestream: &mut BytestreamWriter) -> Result<(), Self::Error> {
+    fn to_bytestream(&self, stream: &mut BytestreamWriter) -> Result<(), Self::Error> {
         match self {
             Self::EchoReply {
                 identifier,
                 sequence,
             } => {
-                0u8.write_to(bytestream, LittleEndian)?; // type
-                0u8.write_to(bytestream, LittleEndian)?; // code
-                0x00_00u16.write_to(bytestream, LittleEndian)?; // checksum
-                identifier.write_to(bytestream, BigEndian)?;
-                sequence.write_to(bytestream, BigEndian)?;
+                stream.write_u8(0)?;
+                stream.write_u8(0)?;
+                stream.write_u16::<BE>(0)?;
+                stream.write_u16::<BE>(*identifier)?;
+                stream.write_u16::<BE>(*sequence)?;
                 Ok(())
             }
             Self::DestinationUnreachable { next_hop_mtu, code } => {
-                3u8.write_to(bytestream, LittleEndian)?;
-                code.to_bytestream(bytestream)?;
-                0x00_00u16.write_to(bytestream, LittleEndian)?; // checksum
-                0x00_00u16.write_to(bytestream, LittleEndian)?; // unused
-                next_hop_mtu.write_to(bytestream, LittleEndian)?; // next_hop_mtu
+                stream.write_u8(3)?;
+                stream.write_u8(code.to_raw_repr())?;
+                stream.write_u16::<BE>(0)?; // checksum
+                stream.write_u16::<BE>(0)?; // unused
+                stream.write_u16::<BE>(*next_hop_mtu)?;
                 Ok(())
             }
             Self::SourceQuench => {
-                4u8.write_to(bytestream, LittleEndian)?; // type
-                0u8.write_to(bytestream, LittleEndian)?; // code
-                0x00_00u16.write_to(bytestream, LittleEndian)?; // checksum
-                0x00_00_00_00u32.write_to(bytestream, LittleEndian)?; // unused
+                stream.write_u8(4)?;
+                stream.write_u8(0)?;
+                stream.write_u16::<BE>(0)?; // checksum
+                stream.write_u32::<BE>(0)?; // unused
                 Ok(())
             }
             Self::RedirectMessage { addr, code } => {
-                5u8.write_to(bytestream, LittleEndian)?;
-                code.to_bytestream(bytestream)?;
-                0x00_00u16.write_to(bytestream, LittleEndian)?; // checksum
-                bytestream.write_all(&addr.octets())?;
+                stream.write_u8(5)?;
+                stream.write_u8(code.to_raw_repr())?;
+                stream.write_u16::<BE>(0)?; // checksum
+                stream.write_all(&addr.octets())?;
                 Ok(())
             }
             Self::EchoRequest {
                 identifier,
                 sequence,
             } => {
-                8u8.write_to(bytestream, LittleEndian)?; // type
-                0u8.write_to(bytestream, LittleEndian)?; // code
-                0x00_00u16.write_to(bytestream, LittleEndian)?; // checksum
-                identifier.write_to(bytestream, BigEndian)?;
-                sequence.write_to(bytestream, BigEndian)?;
+                stream.write_u8(8)?;
+                stream.write_u8(0)?;
+                stream.write_u16::<BE>(0)?; // checksum
+                stream.write_u16::<BE>(*identifier)?;
+                stream.write_u16::<BE>(*sequence)?;
                 Ok(())
             }
             Self::RouterAdvertisment => {
-                9u8.write_to(bytestream, LittleEndian)?; // type
-                0u8.write_to(bytestream, LittleEndian)?; // code
-                0x00_00u16.write_to(bytestream, LittleEndian)?; // checksum
-                0x00_00_00_00u32.write_to(bytestream, LittleEndian)?; // unused
+                stream.write_u8(9)?;
+                stream.write_u8(0)?;
+                stream.write_u16::<BE>(0)?; // checksum
+                stream.write_u32::<BE>(0)?;
                 Ok(())
             }
             Self::RouterSolicitation => {
-                10u8.write_to(bytestream, LittleEndian)?; // type
-                0u8.write_to(bytestream, LittleEndian)?; // code
-                0x00_00u16.write_to(bytestream, LittleEndian)?; // checksum
-                0x00_00_00_00u32.write_to(bytestream, LittleEndian)?; // unused
+                stream.write_u8(10)?;
+                stream.write_u8(0)?;
+                stream.write_u16::<BE>(0)?; // checksum
+                stream.write_u32::<BE>(0)?;
                 Ok(())
             }
             Self::TimeExceeded { code } => {
-                11u8.write_to(bytestream, LittleEndian)?;
-                code.to_bytestream(bytestream)?;
-                0x00_00u16.write_to(bytestream, LittleEndian)?; // checksum
-                0x00_00_00_00u32.write_to(bytestream, LittleEndian)?; // unused
+                stream.write_u8(11)?;
+                stream.write_u8(code.to_raw_repr())?;
+                stream.write_u16::<BE>(0)?; // checksum
+                stream.write_u32::<BE>(0)?;
                 Ok(())
             }
             Self::BadIpHeader { code } => {
-                12u8.write_to(bytestream, LittleEndian)?; // type
-                code.to_bytestream(bytestream)?; // code
-                0x00_00u16.write_to(bytestream, LittleEndian)?; // checksum
-                0x00_00_00_00u32.write_to(bytestream, LittleEndian)?; // unused
+                stream.write_u8(12)?;
+                stream.write_u8(code.to_raw_repr())?;
+                stream.write_u16::<BE>(0)?; // checksum
+                stream.write_u32::<BE>(0)?;
                 Ok(())
             }
             _ => todo!(),
@@ -194,45 +194,46 @@ impl ToBytestream for IcmpType {
 
 impl FromBytestream for IcmpType {
     type Error = Error;
-    fn from_bytestream(bytestream: &mut BytestreamReader) -> Result<Self, Self::Error> {
-        let typ = u8::read_from(bytestream, LittleEndian)?;
-        let code = u8::read_from(bytestream, LittleEndian)?;
-        let _chksum = u16::read_from(bytestream, LittleEndian)?;
+    fn from_bytestream(stream: &mut BytestreamReader) -> Result<Self, Self::Error> {
+        let typ = stream.read_u8()?;
+        let code = stream.read_u8()?;
+        let _checksum = stream.read_u16::<BE>()?;
+
         match typ {
             0 => {
                 assert_eq!(code, 0, "Divergent code not allowed on echo reply");
-                let identifier = u16::read_from(bytestream, BigEndian)?;
-                let sequence = u16::read_from(bytestream, BigEndian)?;
+                let identifier = stream.read_u16::<BE>()?;
+                let sequence = stream.read_u16::<BE>()?;
                 Ok(Self::EchoReply {
                     identifier,
                     sequence,
                 })
             }
             3 => {
-                let _ = u16::read_from(bytestream, LittleEndian)?;
-                let next_hop_mtu = u16::read_from(bytestream, LittleEndian)?;
+                let _ = stream.read_u16::<BE>()?;
+                let next_hop_mtu = stream.read_u16::<BE>()?;
                 Ok(Self::DestinationUnreachable {
                     next_hop_mtu: next_hop_mtu,
-                    code: IcmpDestinationUnreachableCode::read_from_slice(&mut &[code][..])?,
+                    code: IcmpDestinationUnreachableCode::from_raw_repr(code)?,
                 })
             }
             4 => {
                 assert_eq!(code, 0, "Divergent code not allowed on source quench");
-                let _ = u32::read_from(bytestream, LittleEndian)?;
+                let _ = stream.read_u32::<BE>()?;
                 Ok(Self::SourceQuench)
             }
             5 => {
-                let addr = Ipv4Addr::from(u32::read_from(bytestream, BigEndian)?);
+                let addr = Ipv4Addr::from(stream.read_u32::<BE>()?);
 
                 Ok(Self::RedirectMessage {
                     addr,
-                    code: IcmpRedirectCode::read_from_slice(&mut &[code][..])?,
+                    code: IcmpRedirectCode::from_raw_repr(code)?,
                 })
             }
             8 => {
                 assert_eq!(code, 0, "Divergent code not allowed on echo request");
-                let identifier = u16::read_from(bytestream, BigEndian)?;
-                let sequence = u16::read_from(bytestream, BigEndian)?;
+                let identifier = stream.read_u16::<BE>()?;
+                let sequence = stream.read_u16::<BE>()?;
                 Ok(Self::EchoRequest {
                     identifier,
                     sequence,
@@ -240,24 +241,24 @@ impl FromBytestream for IcmpType {
             }
             9 => {
                 assert_eq!(code, 0, "Divergent code not allowed on route advertisment");
-                let _ = u32::read_from(bytestream, LittleEndian)?;
+                let _ = stream.read_u32::<BE>()?;
                 Ok(Self::RouterAdvertisment)
             }
             10 => {
                 assert_eq!(code, 0, "Divergent code not allowed on route solicitation");
-                let _ = u32::read_from(bytestream, LittleEndian)?;
+                let _ = stream.read_u32::<BE>()?;
                 Ok(Self::RouterSolicitation)
             }
             11 => {
-                let _ = u32::read_from(bytestream, LittleEndian)?;
+                let _ = stream.read_u32::<BE>()?;
                 Ok(Self::TimeExceeded {
-                    code: IcmpTimeExceededCode::read_from_slice(&mut &[code][..])?,
+                    code: IcmpTimeExceededCode::from_raw_repr(code)?,
                 })
             }
             12 => {
-                let _ = u32::read_from(bytestream, LittleEndian)?;
+                let _ = stream.read_u32::<BE>()?;
                 Ok(Self::BadIpHeader {
-                    code: IcmpBadIpHeaderCode::read_from_slice(&mut &[code][..])?,
+                    code: IcmpBadIpHeaderCode::from_raw_repr(code)?,
                 })
             }
             _ => todo!(),

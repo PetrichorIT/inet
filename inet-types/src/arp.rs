@@ -2,13 +2,10 @@
 
 use super::iface::MacAddress;
 use bytepack::FromBytestream;
-use bytepack::{
-    ByteOrder::BigEndian, BytestreamReader, BytestreamWriter, StreamReader, StreamWriter,
-    ToBytestream,
-};
+use bytepack::{BytestreamReader, BytestreamWriter, ReadBytesExt, ToBytestream, WriteBytesExt, BE};
 
 use des::prelude::*;
-use std::io::Read;
+use std::io::{Error, ErrorKind, Read};
 use std::{io::Write, net::Ipv4Addr};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -200,31 +197,30 @@ impl ArpPacket {
 
 impl ToBytestream for ArpPacket {
     type Error = std::io::Error;
-    fn to_bytestream(&self, bytestream: &mut BytestreamWriter) -> Result<(), Self::Error> {
-        self.htype.write_to(bytestream, BigEndian)?;
-        self.ptype.write_to(bytestream, BigEndian)?;
-        self.haddrlen.write_to(bytestream, BigEndian)?;
-        self.paddrlen.write_to(bytestream, BigEndian)?;
+    fn to_bytestream(&self, stream: &mut BytestreamWriter) -> Result<(), Self::Error> {
+        stream.write_u16::<BE>(self.htype)?;
+        stream.write_u16::<BE>(self.ptype)?;
+        stream.write_u8(self.haddrlen)?;
+        stream.write_u8(self.paddrlen)?;
 
-        self.operation.to_bytestream(bytestream)?;
-
-        bytestream.write_all(&self.raw)
+        self.operation.to_bytestream(stream)?;
+        stream.write_all(&self.raw)
     }
 }
 
 impl FromBytestream for ArpPacket {
     type Error = std::io::Error;
-    fn from_bytestream(bytestream: &mut BytestreamReader) -> Result<Self, Self::Error> {
-        let htype = u16::read_from(bytestream, BigEndian)?;
-        let ptype = u16::read_from(bytestream, BigEndian)?;
+    fn from_bytestream(stream: &mut BytestreamReader) -> Result<Self, Self::Error> {
+        let htype = stream.read_u16::<BE>()?;
+        let ptype = stream.read_u16::<BE>()?;
 
-        let haddrlen = u8::read_from(bytestream, BigEndian)?;
-        let paddrlen = u8::read_from(bytestream, BigEndian)?;
-        let operation = ARPOperation::from_bytestream(bytestream)?;
+        let haddrlen = stream.read_u8()?;
+        let paddrlen = stream.read_u8()?;
+        let operation = ARPOperation::from_bytestream(stream)?;
 
-        let size = 2 * haddrlen + 2 * paddrlen;
-        let mut buf = vec![0u8; size as usize];
-        bytestream.read_exact(&mut buf)?;
+        let len = 2 * haddrlen + 2 * paddrlen;
+        let mut buf = vec![0u8; len as usize];
+        stream.read_exact(&mut buf)?;
 
         Ok(ArpPacket {
             htype,
@@ -257,16 +253,16 @@ primitve_enum_repr! {
 
 impl ToBytestream for ARPOperation {
     type Error = std::io::Error;
-    fn to_bytestream(&self, bytestream: &mut BytestreamWriter) -> Result<(), Self::Error> {
-        self.to_raw().write_to(bytestream, BigEndian)
+    fn to_bytestream(&self, stream: &mut BytestreamWriter) -> Result<(), Self::Error> {
+        stream.write_u16::<BE>(self.to_raw())
     }
 }
 
 impl FromBytestream for ARPOperation {
     type Error = std::io::Error;
-    fn from_bytestream(bytestream: &mut BytestreamReader) -> Result<Self, Self::Error> {
-        let tag = u16::read_from(bytestream, BigEndian)?;
-        Ok(Self::from_raw(tag).unwrap())
+    fn from_bytestream(stream: &mut BytestreamReader) -> Result<Self, Self::Error> {
+        let tag = stream.read_u16::<BE>()?;
+        Self::from_raw(tag).ok_or(Error::new(ErrorKind::InvalidData, "invalid discriminant"))
     }
 }
 
@@ -289,7 +285,7 @@ mod tests {
         assert_eq!(r.src_ipv4_addr(), Ipv4Addr::new(1, 2, 3, 4));
         assert_eq!(r.dest_ipv4_addr(), Ipv4Addr::new(255, 254, 253, 252));
 
-        let r = ArpPacket::read_from_vec(&mut r.to_buffer().unwrap()).unwrap();
+        let r = ArpPacket::read_from_vec(&mut r.to_vec().unwrap()).unwrap();
         assert_eq!(r.htype, 1);
         assert_eq!(r.ptype, 0x0800);
         assert_eq!(r.src_mac_addr(), [1, 2, 3, 4, 5, 6].into());
@@ -313,7 +309,7 @@ mod tests {
         assert_eq!(r.src_ipv6_addr(), Ipv6Addr::new(1, 2, 3, 4, 5, 6, 7, 8));
         assert_eq!(r.dest_ipv6_addr(), Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 0));
 
-        let r = ArpPacket::read_from_vec(&mut r.to_buffer().unwrap()).unwrap();
+        let r = ArpPacket::read_from_vec(&mut r.to_vec().unwrap()).unwrap();
         assert_eq!(r.htype, 1);
         assert_eq!(r.ptype, 0x86DD);
         assert_eq!(r.src_mac_addr(), [1, 2, 3, 4, 5, 6].into());

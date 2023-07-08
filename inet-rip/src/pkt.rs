@@ -1,7 +1,7 @@
 use bytepack::raw_enum;
 use bytepack::{
-    ByteOrder::BigEndian, BytestreamReader, BytestreamWriter, FromBytestream, StreamReader,
-    StreamWriter, ToBytestream,
+    BytestreamReader, BytestreamWriter, FromBytestream, ReadBytesExt, ToBytestream, WriteBytesExt,
+    BE,
 };
 use std::{io::Error, net::Ipv4Addr};
 
@@ -48,12 +48,12 @@ impl RipPacket {
 
 impl ToBytestream for RipPacket {
     type Error = Error;
-    fn to_bytestream(&self, bytestream: &mut BytestreamWriter) -> Result<(), Self::Error> {
-        self.command.to_bytestream(bytestream)?;
-        2u8.write_to(bytestream, BigEndian)?;
-        0u16.write_to(bytestream, BigEndian)?;
+    fn to_bytestream(&self, stream: &mut BytestreamWriter) -> Result<(), Self::Error> {
+        stream.write_u8(self.command.to_raw_repr())?;
+        stream.write_u8(2)?;
+        stream.write_u16::<BE>(0)?;
         for entry in &self.entries {
-            entry.to_bytestream(bytestream)?;
+            entry.to_bytestream(stream)?;
         }
         Ok(())
     }
@@ -61,15 +61,15 @@ impl ToBytestream for RipPacket {
 
 impl FromBytestream for RipPacket {
     type Error = Error;
-    fn from_bytestream(bytestream: &mut BytestreamReader) -> Result<Self, Self::Error> {
-        let command = RipCommand::from_bytestream(bytestream)?;
-        let version = u8::read_from(bytestream, BigEndian)?;
+    fn from_bytestream(stream: &mut BytestreamReader) -> Result<Self, Self::Error> {
+        let command = RipCommand::from_raw_repr(stream.read_u8()?)?;
+        let version = stream.read_u8()?;
         assert_eq!(version, 2);
-        assert_eq!(0, u16::read_from(bytestream, BigEndian)?);
+        assert_eq!(0, stream.read_u16::<BE>()?);
 
         let mut entries = Vec::new();
-        while !bytestream.is_empty() {
-            entries.push(RipEntry::from_bytestream(bytestream)?);
+        while !stream.is_empty() {
+            entries.push(RipEntry::from_bytestream(stream)?);
         }
         Ok(RipPacket { command, entries })
     }
@@ -79,27 +79,27 @@ pub const AF_INET: u16 = 2;
 
 impl ToBytestream for RipEntry {
     type Error = Error;
-    fn to_bytestream(&self, bytestream: &mut BytestreamWriter) -> Result<(), Self::Error> {
-        self.addr_fam.write_to(bytestream, BigEndian)?;
-        0u16.write_to(bytestream, BigEndian)?;
-        u32::from(self.target).write_to(bytestream, BigEndian)?;
-        u32::from(self.mask).write_to(bytestream, BigEndian)?;
-        u32::from(self.next_hop).write_to(bytestream, BigEndian)?;
-        self.metric.write_to(bytestream, BigEndian)?;
+    fn to_bytestream(&self, stream: &mut BytestreamWriter) -> Result<(), Self::Error> {
+        stream.write_u16::<BE>(self.addr_fam)?;
+        stream.write_u16::<BE>(0)?;
 
+        stream.write_u32::<BE>(u32::from(self.target))?;
+        stream.write_u32::<BE>(u32::from(self.mask))?;
+        stream.write_u32::<BE>(u32::from(self.next_hop))?;
+        stream.write_u32::<BE>(self.metric)?;
         Ok(())
     }
 }
 
 impl FromBytestream for RipEntry {
     type Error = Error;
-    fn from_bytestream(bytestream: &mut BytestreamReader) -> Result<Self, Self::Error> {
-        let addr_fam = u16::read_from(bytestream, BigEndian)?;
-        assert_eq!(0, u16::read_from(bytestream, BigEndian)?);
-        let target = Ipv4Addr::from(u32::read_from(bytestream, BigEndian)?);
-        let mask = Ipv4Addr::from(u32::read_from(bytestream, BigEndian)?);
-        let next_hop = Ipv4Addr::from(u32::read_from(bytestream, BigEndian)?);
-        let metric = u32::read_from(bytestream, BigEndian)?;
+    fn from_bytestream(stream: &mut BytestreamReader) -> Result<Self, Self::Error> {
+        let addr_fam = stream.read_u16::<BE>()?;
+        assert_eq!(0, stream.read_u16::<BE>()?);
+        let target = Ipv4Addr::from(stream.read_u32::<BE>()?);
+        let mask = Ipv4Addr::from(stream.read_u32::<BE>()?);
+        let next_hop = Ipv4Addr::from(stream.read_u32::<BE>()?);
+        let metric = stream.read_u32::<BE>()?;
 
         Ok(Self {
             addr_fam,
@@ -129,7 +129,7 @@ mod tests {
             }],
         };
 
-        let buf = pkt.to_buffer()?;
+        let buf = pkt.to_vec()?;
         assert_eq!(
             buf,
             &[
@@ -191,7 +191,7 @@ mod tests {
             command: RipCommand::Request,
             entries,
         };
-        let buf = rip.to_buffer()?;
+        let buf = rip.to_vec()?;
         assert_eq!(buf.len(), 4 + 20 * 20);
         let rip2 = RipPacket::from_slice(&buf)?;
         assert_eq!(rip, rip2);

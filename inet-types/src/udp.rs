@@ -1,6 +1,6 @@
 use bytepack::{
-    ByteOrder::BigEndian, BytestreamReader, BytestreamWriter, FromBytestream, StreamReader,
-    StreamWriter, ToBytestream,
+    BytestreamReader, BytestreamWriter, FromBytestream, ReadBytesExt, ToBytestream, WriteBytesExt,
+    BE,
 };
 use std::io::{Read, Write};
 
@@ -16,29 +16,27 @@ pub struct UdpPacket {
 
 impl ToBytestream for UdpPacket {
     type Error = std::io::Error;
-    fn to_bytestream(&self, bytestream: &mut BytestreamWriter) -> Result<(), Self::Error> {
-        self.src_port.write_to(bytestream, BigEndian)?;
-        self.dest_port.write_to(bytestream, BigEndian)?;
-        (8 + self.content.len() as u16).write_to(bytestream, BigEndian)?;
-        self.checksum.write_to(bytestream, BigEndian)?;
+    fn to_bytestream(&self, stream: &mut BytestreamWriter) -> Result<(), Self::Error> {
+        stream.write_u16::<BE>(self.src_port)?;
+        stream.write_u16::<BE>(self.dest_port)?;
+        stream.write_u16::<BE>(self.content.len() as u16 + 8)?;
+        stream.write_u16::<BE>(self.checksum)?;
 
-        bytestream.write_all(&self.content)?;
+        stream.write_all(&self.content)?;
         Ok(())
     }
 }
 
 impl FromBytestream for UdpPacket {
     type Error = std::io::Error;
-    fn from_bytestream(bytestream: &mut BytestreamReader) -> Result<Self, Self::Error> {
-        let src_port = u16::read_from(bytestream, BigEndian)?;
-        let dest_port = u16::read_from(bytestream, BigEndian)?;
-        let length = u16::read_from(bytestream, BigEndian)?;
-        let checksum = u16::read_from(bytestream, BigEndian)?;
+    fn from_bytestream(stream: &mut BytestreamReader) -> Result<Self, Self::Error> {
+        let src_port = stream.read_u16::<BE>()?;
+        let dest_port = stream.read_u16::<BE>()?;
+        let len = stream.read_u16::<BE>()?;
+        let checksum = stream.read_u16::<BE>()?;
 
-        let mut buf = Vec::new();
-        bytestream.read_to_end(&mut buf)?;
-
-        assert_eq!(buf.len() as u16, length - 8);
+        let mut buf = vec![0; (len - 8) as usize];
+        stream.read_exact(&mut buf)?;
 
         Ok(Self {
             src_port,

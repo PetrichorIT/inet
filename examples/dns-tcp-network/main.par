@@ -47,4 +47,4 @@ d1.node[4].zone = bund.de.
 d1.node[4].domain = ns0.bund-de.de
 
 
-*.router.pcap = true
+*.router.pcap = false

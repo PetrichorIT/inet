@@ -139,7 +139,7 @@ impl DNSNameserver {
                             class: DNSClass::Internet,
                             typ: DNSType::NS,
                             ttl: 17000,
-                            rdata: DNSString::new(v.1).to_buffer().unwrap(),
+                            rdata: DNSString::new(v.1).to_vec().unwrap(),
                         },
                         v.0,
                     )

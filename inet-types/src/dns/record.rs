@@ -1,7 +1,8 @@
 use crate::dns::DNSString;
-use bytepack::{ByteOrder::BigEndian, FromBytestream, StreamReader, StreamWriter, ToBytestream};
 use bytepack::{BytestreamReader, BytestreamWriter};
+use bytepack::{FromBytestream, ReadBytesExt, ToBytestream, WriteBytesExt, BE};
 use std::fmt::Display;
+use std::io::{Read, Write};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::str::FromStr;
 
@@ -17,35 +18,30 @@ pub struct DNSResourceRecord {
 
 impl ToBytestream for DNSResourceRecord {
     type Error = std::io::Error;
-    fn to_bytestream(&self, bytestream: &mut BytestreamWriter) -> Result<(), Self::Error> {
-        self.name.to_bytestream(bytestream)?;
+    fn to_bytestream(&self, stream: &mut BytestreamWriter) -> Result<(), Self::Error> {
+        self.name.to_bytestream(stream)?;
 
-        self.typ.to_raw().write_to(bytestream, BigEndian)?;
-        self.class.to_raw().write_to(bytestream, BigEndian)?;
-        self.ttl.write_to(bytestream, BigEndian)?;
+        stream.write_u16::<BE>(self.typ.to_raw())?;
+        stream.write_u16::<BE>(self.class.to_raw())?;
+        stream.write_i32::<BE>(self.ttl)?;
 
-        (self.rdata.len() as u16).write_to(bytestream, BigEndian)?;
-        for byte in &self.rdata {
-            byte.write_to(bytestream, BigEndian)?;
-        }
-
+        stream.write_u16::<BE>(self.rdata.len() as u16)?;
+        stream.write_all(&self.rdata)?;
         Ok(())
     }
 }
 
 impl FromBytestream for DNSResourceRecord {
     type Error = std::io::Error;
-    fn from_bytestream(bytestream: &mut BytestreamReader) -> Result<Self, Self::Error> {
-        let name = DNSString::from_bytestream(bytestream)?;
+    fn from_bytestream(stream: &mut BytestreamReader) -> Result<Self, Self::Error> {
+        let name = DNSString::from_bytestream(stream)?;
 
-        let typ = DNSType::from_raw(u16::read_from(bytestream, BigEndian)?).unwrap();
-        let class = DNSClass::from_raw(u16::read_from(bytestream, BigEndian)?).unwrap();
-        let ttl = i32::read_from(bytestream, BigEndian)?;
-        let len = u16::read_from(bytestream, BigEndian)? as usize;
-        let mut rdata = Vec::with_capacity(len);
-        for _ in 0..len {
-            rdata.push(u8::read_from(bytestream, BigEndian)?);
-        }
+        let typ = DNSType::from_raw(stream.read_u16::<BE>()?).unwrap();
+        let class = DNSClass::from_raw(stream.read_u16::<BE>()?).unwrap();
+        let ttl = stream.read_i32::<BE>()?;
+        let len = stream.read_u16::<BE>()? as usize;
+        let mut rdata = vec![0; len];
+        stream.read_exact(&mut rdata)?;
 
         Ok(DNSResourceRecord {
             name,

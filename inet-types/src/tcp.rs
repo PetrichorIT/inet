@@ -4,8 +4,8 @@ use std::{
 };
 
 use bytepack::{
-    ByteOrder::BigEndian, BytestreamReader, BytestreamWriter, FromBytestream, StreamReader,
-    StreamWriter, ToBytestream,
+    BytestreamReader, BytestreamWriter, FromBytestream, ReadBytesExt, ToBytestream, WriteBytesExt,
+    BE,
 };
 
 pub const PROTO_TCP: u8 = 0x06;
@@ -124,25 +124,24 @@ impl Display for TcpFlags {
 
 impl ToBytestream for TcpPacket {
     type Error = std::io::Error;
-    fn to_bytestream(&self, bytestream: &mut BytestreamWriter) -> Result<(), Self::Error> {
-        self.src_port.write_to(bytestream, BigEndian)?;
-        self.dest_port.write_to(bytestream, BigEndian)?;
+    fn to_bytestream(&self, stream: &mut BytestreamWriter) -> Result<(), Self::Error> {
+        stream.write_u16::<BE>(self.src_port)?;
+        stream.write_u16::<BE>(self.dest_port)?;
 
-        self.seq_no.write_to(bytestream, BigEndian)?;
-        self.ack_no.write_to(bytestream, BigEndian)?;
+        stream.write_u32::<BE>(self.seq_no)?;
+        stream.write_u32::<BE>(self.ack_no)?;
 
-        let hlen_marker = bytestream.add_marker(0u8, BigEndian)?;
-        self.flags.to_bytestream(bytestream)?;
-        self.window.write_to(bytestream, BigEndian)?;
-
-        0u16.write_to(bytestream, BigEndian)?;
-        self.urgent_ptr.write_to(bytestream, BigEndian)?;
+        let hlen_marker = stream.create_typed_marker::<u8>()?;
+        self.flags.to_bytestream(stream)?;
+        stream.write_u16::<BE>(self.window)?;
+        stream.write_u16::<BE>(0)?;
+        stream.write_u16::<BE>(self.urgent_ptr)?;
 
         for option in &self.options {
-            option.to_bytestream(bytestream)?;
+            option.to_bytestream(stream)?;
         }
 
-        let mut options_len = bytestream.len_since(&hlen_marker)? - 7;
+        let mut options_len = stream.len_since_marker(&hlen_marker) - 7;
         if options_len > 0 {
             if *self.options.last().unwrap() != TcpOption::EndOfOptionsList() {
                 return Err(Error::new(
@@ -153,7 +152,7 @@ impl ToBytestream for TcpPacket {
             // Add padding
             let rem = 4 - (options_len % 4);
             for _ in 0..rem {
-                bytestream.write_all(&[0])?;
+                stream.write_all(&[0])?;
             }
             options_len += rem;
         }
@@ -162,8 +161,8 @@ impl ToBytestream for TcpPacket {
         let hlen = hlen / 4;
         let hlen = (0b1111_0000 & (hlen << 4)) as u8;
 
-        bytestream.write_to_marker(hlen_marker, hlen)?;
-        bytestream.write_all(&self.content)?;
+        stream.update_marker(&hlen_marker).write_u8(hlen)?;
+        stream.write_all(&self.content)?;
 
         Ok(())
     }
@@ -171,7 +170,7 @@ impl ToBytestream for TcpPacket {
 
 impl ToBytestream for TcpFlags {
     type Error = std::io::Error;
-    fn to_bytestream(&self, bytestream: &mut BytestreamWriter) -> Result<(), Self::Error> {
+    fn to_bytestream(&self, stream: &mut BytestreamWriter) -> Result<(), Self::Error> {
         let mut byte = 0u8;
         if self.cwr {
             byte |= 0b1000_0000;
@@ -199,58 +198,54 @@ impl ToBytestream for TcpFlags {
             byte |= 0b0000_0001;
         }
 
-        byte.write_to(bytestream, BigEndian)?;
-
-        Ok(())
+        stream.write_u8(byte)
     }
 }
 
 impl ToBytestream for TcpOption {
     type Error = std::io::Error;
-    fn to_bytestream(&self, bytestream: &mut BytestreamWriter) -> Result<(), Self::Error> {
+    fn to_bytestream(&self, stream: &mut BytestreamWriter) -> Result<(), Self::Error> {
         match self {
             Self::MaximumSegmentSize(mss) => {
-                2u8.write_to(bytestream, BigEndian)?;
-                4u8.write_to(bytestream, BigEndian)?;
-                mss.write_to(bytestream, BigEndian)?;
+                stream.write_u8(2)?;
+                stream.write_u8(4)?;
+                stream.write_u16::<BE>(*mss)
             }
             Self::WindowScaling(cnt) => {
-                3u8.write_to(bytestream, BigEndian)?;
-                3u8.write_to(bytestream, BigEndian)?;
-                cnt.write_to(bytestream, BigEndian)?;
+                stream.write_u8(3)?;
+                stream.write_u8(3)?;
+                stream.write_u8(*cnt)
             }
             Self::Timestamp(send, recv) => {
-                8u8.write_to(bytestream, BigEndian)?;
-                10u8.write_to(bytestream, BigEndian)?;
-                send.write_to(bytestream, BigEndian)?;
-                recv.write_to(bytestream, BigEndian)?;
+                stream.write_u8(8)?;
+                stream.write_u8(10)?;
+                stream.write_u32::<BE>(*send)?;
+                stream.write_u32::<BE>(*recv)
             }
-            Self::EndOfOptionsList() => {
-                0u8.write_to(bytestream, BigEndian)?;
-            }
+            Self::EndOfOptionsList() => stream.write_u8(0),
         }
-        Ok(())
     }
 }
 
 impl FromBytestream for TcpPacket {
     type Error = std::io::Error;
-    fn from_bytestream(bytestream: &mut BytestreamReader) -> Result<Self, Self::Error> {
-        let src_port = u16::read_from(bytestream, BigEndian)?;
-        let dest_port = u16::read_from(bytestream, BigEndian)?;
+    fn from_bytestream(stream: &mut BytestreamReader) -> Result<Self, Self::Error> {
+        let src_port = stream.read_u16::<BE>()?;
+        let dest_port = stream.read_u16::<BE>()?;
 
-        let seq_no = u32::read_from(bytestream, BigEndian)?;
-        let ack_no = u32::read_from(bytestream, BigEndian)?;
+        let seq_no = stream.read_u32::<BE>()?;
+        let ack_no = stream.read_u32::<BE>()?;
 
-        let hlen = u8::read_from(bytestream, BigEndian)? >> 4 & 0b1111;
-        let flags = TcpFlags::from_bytestream(bytestream)?;
-        let window = u16::read_from(bytestream, BigEndian)?;
+        let hlen = stream.read_u8()? >> 4 & 0b1111;
+        let flags = TcpFlags::from_bytestream(stream)?;
+        let window = stream.read_u16::<BE>()?;
 
-        let _ = u16::read_from(bytestream, BigEndian)?;
-        let urgent_ptr = u16::read_from(bytestream, BigEndian)?;
+        let zero = stream.read_u16::<BE>()?;
+        assert_eq!(zero, 0);
+        let urgent_ptr = stream.read_u16::<BE>()?;
 
         let options_len = hlen * 4 - 20;
-        let mut substream = bytestream.extract(options_len as usize)?;
+        let mut substream = stream.extract(options_len as usize)?;
         let mut options = Vec::new();
         while !substream.is_empty() {
             let option = TcpOption::from_bytestream(&mut substream)?;
@@ -259,9 +254,8 @@ impl FromBytestream for TcpPacket {
                 break;
             }
         }
-
         let mut content = Vec::new();
-        bytestream.read_to_end(&mut content)?;
+        stream.read_to_end(&mut content)?;
 
         Ok(TcpPacket {
             src_port,
@@ -279,8 +273,8 @@ impl FromBytestream for TcpPacket {
 
 impl FromBytestream for TcpFlags {
     type Error = std::io::Error;
-    fn from_bytestream(bytestream: &mut BytestreamReader) -> Result<Self, Self::Error> {
-        let byte = u8::read_from(bytestream, BigEndian)?;
+    fn from_bytestream(stream: &mut BytestreamReader) -> Result<Self, Self::Error> {
+        let byte = stream.read_u8()?;
 
         let cwr = byte & 0b1000_0000 != 0;
         let ece = byte & 0b0100_0000 != 0;
@@ -306,30 +300,27 @@ impl FromBytestream for TcpFlags {
 
 impl FromBytestream for TcpOption {
     type Error = std::io::Error;
-    fn from_bytestream(bytestream: &mut BytestreamReader) -> Result<Self, Self::Error> {
-        let kind = u8::read_from(bytestream, BigEndian)?;
+    fn from_bytestream(stream: &mut BytestreamReader) -> Result<Self, Self::Error> {
+        let kind = stream.read_u8()?;
         if kind == 0 {
             return Ok(Self::EndOfOptionsList());
         }
 
-        let len = u8::read_from(bytestream, BigEndian)? - 2;
-        let mut bytes = vec![0u8; len as usize];
-        bytestream.read_exact(&mut bytes)?;
-
-        let mut bytes = std::io::Cursor::new(bytes);
+        let len = stream.read_u8()? - 2;
+        let mut substream = stream.extract(len as usize)?;
 
         match kind {
             2 => {
-                let mss = u16::read_from(&mut bytes, BigEndian)?;
+                let mss = substream.read_u16::<BE>()?;
                 Ok(Self::MaximumSegmentSize(mss))
             }
             3 => {
-                let cnt = u8::read_from(&mut bytes, BigEndian)?;
+                let cnt = substream.read_u8()?;
                 Ok(Self::WindowScaling(cnt))
             }
             8 => {
-                let send = u32::read_from(&mut bytes, BigEndian)?;
-                let recv = u32::read_from(&mut bytes, BigEndian)?;
+                let send = substream.read_u32::<BE>()?;
+                let recv = substream.read_u32::<BE>()?;
                 Ok(Self::Timestamp(send, recv))
             }
             _ => Err(Error::new(ErrorKind::Other, "invalid tcp options kind")),

@@ -22,7 +22,7 @@ fn v4_empty() -> std::io::Result<()> {
         content: Vec::new(),
     };
 
-    let output = Ipv4Packet::read_from_vec(&mut input.to_buffer()?)?;
+    let output = Ipv4Packet::read_from_vec(&mut input.to_vec()?)?;
     assert_eq!(input, output);
 
     let input = Ipv4Packet {
@@ -41,7 +41,7 @@ fn v4_empty() -> std::io::Result<()> {
         content: Vec::new(),
     };
 
-    let output = Ipv4Packet::read_from_vec(&mut input.to_buffer()?)?;
+    let output = Ipv4Packet::read_from_vec(&mut input.to_vec()?)?;
     assert_eq!(input, output);
 
     let input = Ipv4Packet {
@@ -60,7 +60,7 @@ fn v4_empty() -> std::io::Result<()> {
         content: Vec::new(),
     };
 
-    let output = Ipv4Packet::read_from_vec(&mut input.to_buffer()?)?;
+    let output = Ipv4Packet::read_from_vec(&mut input.to_vec()?)?;
     assert_eq!(input, output);
 
     let input = Ipv4Packet {
@@ -79,7 +79,7 @@ fn v4_empty() -> std::io::Result<()> {
         content: Vec::new(),
     };
 
-    let output = Ipv4Packet::read_from_vec(&mut input.to_buffer()?)?;
+    let output = Ipv4Packet::read_from_vec(&mut input.to_vec()?)?;
     assert_eq!(input, output);
 
     let input = Ipv4Packet {
@@ -95,7 +95,7 @@ fn v4_empty() -> std::io::Result<()> {
         content: Vec::new(),
     };
 
-    let output = Ipv4Packet::read_from_vec(&mut input.to_buffer()?)?;
+    let output = Ipv4Packet::read_from_vec(&mut input.to_vec()?)?;
     assert_eq!(input, output);
 
     Ok(())
@@ -119,7 +119,7 @@ fn v4_with_content() -> std::io::Result<()> {
         content: vec![1, 2, 3, 3, 4, 5, 6, 6, 7, 2, 7, 6, 1, 5, 5, 4, 1, 3],
     };
 
-    let output = Ipv4Packet::read_from_vec(&mut input.to_buffer()?)?;
+    let output = Ipv4Packet::read_from_vec(&mut input.to_vec()?)?;
     assert_eq!(input, output);
 
     let input = Ipv4Packet {
@@ -138,7 +138,7 @@ fn v4_with_content() -> std::io::Result<()> {
         content: vec![1, 2, 3, 3, 4, 5, 6, 6, 7, 2, 7, 6, 1, 5, 5, 4, 1, 3],
     };
 
-    let output = Ipv4Packet::read_from_vec(&mut input.to_buffer()?)?;
+    let output = Ipv4Packet::read_from_vec(&mut input.to_vec()?)?;
     assert_eq!(input, output);
 
     let input = Ipv4Packet {
@@ -157,7 +157,7 @@ fn v4_with_content() -> std::io::Result<()> {
         content: vec![1; 100],
     };
 
-    let output = Ipv4Packet::read_from_vec(&mut input.to_buffer()?)?;
+    let output = Ipv4Packet::read_from_vec(&mut input.to_vec()?)?;
     assert_eq!(input, output);
 
     let input = Ipv4Packet {
@@ -176,7 +176,7 @@ fn v4_with_content() -> std::io::Result<()> {
         content: vec![1; 500],
     };
 
-    let output = Ipv4Packet::read_from_vec(&mut input.to_buffer()?)?;
+    let output = Ipv4Packet::read_from_vec(&mut input.to_vec()?)?;
     assert_eq!(input, output);
 
     let input = Ipv4Packet {
@@ -192,7 +192,7 @@ fn v4_with_content() -> std::io::Result<()> {
         content: vec![255; 100],
     };
 
-    let output = Ipv4Packet::read_from_vec(&mut input.to_buffer()?)?;
+    let output = Ipv4Packet::read_from_vec(&mut input.to_vec()?)?;
     assert_eq!(input, output);
 
     Ok(())
@@ -211,7 +211,7 @@ fn v6_empty() -> std::io::Result<()> {
         content: Vec::new(),
     };
 
-    let output = Ipv6Packet::read_from_vec(&mut input.to_buffer()?)?;
+    let output = Ipv6Packet::read_from_vec(&mut input.to_vec()?)?;
     assert_eq!(input, output);
 
     // panic!();
@@ -227,7 +227,7 @@ fn v6_empty() -> std::io::Result<()> {
         content: Vec::new(),
     };
 
-    let output = Ipv6Packet::read_from_vec(&mut input.to_buffer()?)?;
+    let output = Ipv6Packet::read_from_vec(&mut input.to_vec()?)?;
     assert_eq!(input, output);
 
     let input = Ipv6Packet {
@@ -241,7 +241,7 @@ fn v6_empty() -> std::io::Result<()> {
         content: Vec::new(),
     };
 
-    let output = Ipv6Packet::read_from_vec(&mut input.to_buffer()?)?;
+    let output = Ipv6Packet::read_from_vec(&mut input.to_vec()?)?;
     assert_eq!(input, output);
 
     let input = Ipv6Packet {
@@ -255,7 +255,7 @@ fn v6_empty() -> std::io::Result<()> {
         content: Vec::new(),
     };
 
-    let output = Ipv6Packet::read_from_vec(&mut input.to_buffer()?)?;
+    let output = Ipv6Packet::read_from_vec(&mut input.to_vec()?)?;
     assert_eq!(input, output);
 
     let input = Ipv6Packet {
@@ -269,7 +269,7 @@ fn v6_empty() -> std::io::Result<()> {
         content: Vec::new(),
     };
 
-    let output = Ipv6Packet::read_from_vec(&mut input.to_buffer()?)?;
+    let output = Ipv6Packet::read_from_vec(&mut input.to_vec()?)?;
     assert_eq!(input, output);
 
     Ok(())
@@ -290,7 +290,7 @@ fn v6_with_content() -> std::io::Result<()> {
         ],
     };
 
-    let output = Ipv6Packet::read_from_vec(&mut input.to_buffer()?)?;
+    let output = Ipv6Packet::read_from_vec(&mut input.to_vec()?)?;
     assert_eq!(input, output);
 
     // panic!();
@@ -308,7 +308,7 @@ fn v6_with_content() -> std::io::Result<()> {
         ],
     };
 
-    let output = Ipv6Packet::read_from_vec(&mut input.to_buffer()?)?;
+    let output = Ipv6Packet::read_from_vec(&mut input.to_vec()?)?;
     assert_eq!(input, output);
 
     let input = Ipv6Packet {
@@ -322,7 +322,7 @@ fn v6_with_content() -> std::io::Result<()> {
         content: vec![1; 100],
     };
 
-    let output = Ipv6Packet::read_from_vec(&mut input.to_buffer()?)?;
+    let output = Ipv6Packet::read_from_vec(&mut input.to_vec()?)?;
     assert_eq!(input, output);
 
     let input = Ipv6Packet {
@@ -336,7 +336,7 @@ fn v6_with_content() -> std::io::Result<()> {
         content: vec![13; 100],
     };
 
-    let output = Ipv6Packet::read_from_vec(&mut input.to_buffer()?)?;
+    let output = Ipv6Packet::read_from_vec(&mut input.to_vec()?)?;
     assert_eq!(input, output);
 
     let input = Ipv6Packet {
@@ -350,7 +350,7 @@ fn v6_with_content() -> std::io::Result<()> {
         content: vec![1; 500],
     };
 
-    let output = Ipv6Packet::read_from_vec(&mut input.to_buffer()?)?;
+    let output = Ipv6Packet::read_from_vec(&mut input.to_vec()?)?;
     assert_eq!(input, output);
 
     Ok(())
@@ -361,18 +361,18 @@ fn ipv4_addr() {
     let addr = Ipv4Addr::new(1, 2, 3, 4);
     assert_eq!(
         addr,
-        Ipv4Addr::read_from_vec(&mut addr.to_buffer().unwrap()).unwrap()
+        Ipv4Addr::read_from_vec(&mut addr.to_vec().unwrap()).unwrap()
     );
 
     let addr = Ipv4Addr::new(0, 2, 3, 4);
     assert_eq!(
         addr,
-        Ipv4Addr::read_from_vec(&mut addr.to_buffer().unwrap()).unwrap()
+        Ipv4Addr::read_from_vec(&mut addr.to_vec().unwrap()).unwrap()
     );
 
     let addr = Ipv4Addr::new(255, 255, 3, 4);
     assert_eq!(
         addr,
-        Ipv4Addr::read_from_vec(&mut addr.to_buffer().unwrap()).unwrap()
+        Ipv4Addr::read_from_vec(&mut addr.to_vec().unwrap()).unwrap()
     );
 }

@@ -169,7 +169,7 @@ impl DNSNameserver {
 
                 let output = self.handle(msg, from);
                 for (pkt, target) in output {
-                    let buf = pkt.to_buffer()?;
+                    let buf = pkt.to_vec()?;
                     socket.send_to(&buf, target).await?;
                 }
             } else {
@@ -182,7 +182,7 @@ impl DNSNameserver {
 
                         let output = self.handle(msg, from);
                         for (pkt, target) in output {
-                            let buf = pkt.to_buffer()?;
+                            let buf = pkt.to_vec()?;
                             socket.send_to(&buf, target).await?;
                         }
                     },
@@ -190,7 +190,7 @@ impl DNSNameserver {
                         let mut output = Vec::new();
                         self.check_timeouts(&mut output);
                         for (pkt, target) in output {
-                            let buf = pkt.to_buffer()?;
+                            let buf = pkt.to_vec()?;
                             socket.send_to(&buf, target).await?;
                         }
                     }

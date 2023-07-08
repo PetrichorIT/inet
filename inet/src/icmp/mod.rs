@@ -81,7 +81,7 @@ impl IOContext {
                     proto: PROTO_ICMP,
                     src: ip_icmp.dest,
                     dest: ip_icmp.src,
-                    content: icmp.to_buffer().expect("Failed to parse ICMP"),
+                    content: icmp.to_vec().expect("Failed to parse ICMP"),
                 };
                 self.send_ip_packet(SocketIfaceBinding::Bound(ifid), IpPacket::V4(ip), true)
                     .expect("Failed to send");
@@ -209,7 +209,7 @@ impl IOContext {
                 let mut ip = pkt.reverse();
                 ip.src = Ipv4Addr::UNSPECIFIED;
                 ip.proto = PROTO_ICMP;
-                ip.content = icmp.to_buffer().expect("Failed to parse ICMP");
+                ip.content = icmp.to_vec().expect("Failed to parse ICMP");
 
                 self.send_ip_packet(SocketIfaceBinding::NotBound, IpPacket::V4(ip), true)
                     .unwrap()
@@ -227,7 +227,7 @@ impl IOContext {
                 let mut ip = pkt.reverse();
                 ip.src = Ipv4Addr::UNSPECIFIED;
                 ip.proto = PROTO_ICMP;
-                ip.content = icmp.to_buffer().expect("Failed to parse ICMP");
+                ip.content = icmp.to_vec().expect("Failed to parse ICMP");
 
                 let _ = self.send_ip_packet(SocketIfaceBinding::NotBound, IpPacket::V4(ip), true);
             }
@@ -245,7 +245,7 @@ impl IOContext {
         let mut ip = pkt.reverse();
         ip.src = Ipv4Addr::UNSPECIFIED;
         ip.proto = PROTO_ICMP;
-        ip.content = icmp.to_buffer().expect("Failed to parse ICMP");
+        ip.content = icmp.to_vec().expect("Failed to parse ICMP");
         self.send_ip_packet(SocketIfaceBinding::Bound(ifid), IpPacket::V4(ip), true)
             .unwrap();
     }
@@ -262,7 +262,7 @@ impl IOContext {
             let mut ip = pkt.reverse();
             ip.src = Ipv4Addr::UNSPECIFIED;
             ip.proto = PROTO_ICMP;
-            ip.content = icmp.to_buffer().expect("Failed to parse ICMP");
+            ip.content = icmp.to_vec().expect("Failed to parse ICMP");
             self.send_ip_packet(SocketIfaceBinding::Bound(ifid), IpPacket::V4(ip), true)
                 .unwrap();
         }

@@ -1,7 +1,7 @@
 use crate::types::{AsNumber, BgpIdentifier};
 use bytepack::{
-    ByteOrder, BytestreamReader, BytestreamWriter, FromBytestream, StreamReader, StreamWriter,
-    ToBytestream,
+    BytestreamReader, BytestreamWriter, FromBytestream, ReadBytesExt, ToBytestream, WriteBytesExt,
+    BE,
 };
 use des::{prelude::module_path, time::SimTime};
 use std::{
@@ -41,10 +41,10 @@ impl ToBytestream for BgpPacket {
     type Error = Error;
     fn to_bytestream(&self, bytestream: &mut BytestreamWriter) -> Result<(), Self::Error> {
         bytestream.write_all(&self.marker.to_ne_bytes())?;
-        let len_marker = bytestream.add_marker(0u16, ByteOrder::BigEndian)?;
+        let len_marker = bytestream.create_typed_marker::<u16>()?;
         self.kind.to_bytestream(bytestream)?;
-        let len = 20 + bytestream.len_since(&len_marker)? as u16;
-        bytestream.write_to_marker(len_marker, len)?;
+        let len = 20 + bytestream.len_since_marker(&len_marker) as u16;
+        bytestream.update_marker(&len_marker).write_u16::<BE>(len)?;
         Ok(())
     }
 }
@@ -54,7 +54,7 @@ impl FromBytestream for BgpPacket {
     fn from_bytestream(bytestream: &mut BytestreamReader) -> Result<Self, Self::Error> {
         let mut marker = [0; 16];
         bytestream.read_exact(&mut marker)?;
-        let len = u16::read_from(bytestream, ByteOrder::BigEndian)?;
+        let len = bytestream.read_u16::<BE>()?;
         let mut substream = bytestream.extract((len - 20) as usize)?;
         let kind = BgpPacketKind::from_bytestream(&mut substream)?;
         Ok(Self {
@@ -75,7 +75,7 @@ pub enum BgpPacketKind {
 impl ToBytestream for BgpPacketKind {
     type Error = Error;
     fn to_bytestream(&self, bytestream: &mut BytestreamWriter) -> Result<(), Self::Error> {
-        let typ_marker = bytestream.add_marker(0, ByteOrder::BigEndian)?;
+        let typ_marker = bytestream.create_typed_marker::<u8>()?;
         let typ = match self {
             Self::Open(pkt) => {
                 pkt.to_bytestream(bytestream)?;
@@ -91,14 +91,14 @@ impl ToBytestream for BgpPacketKind {
             }
             Self::Keepalive() => 4u8,
         };
-        bytestream.write_to_marker(typ_marker, typ)
+        bytestream.update_marker(&typ_marker).write_u8(typ)
     }
 }
 
 impl FromBytestream for BgpPacketKind {
     type Error = Error;
     fn from_bytestream(bytestream: &mut BytestreamReader) -> Result<Self, Self::Error> {
-        let typ = u8::read_from(bytestream, ByteOrder::BigEndian)?;
+        let typ = bytestream.read_u8()?;
         let kind = match typ {
             1 => BgpPacketKind::Open(BgpOpenPacket::from_bytestream(bytestream)?),
             2 => BgpPacketKind::Update(BgpUpdatePacket::from_bytestream(bytestream)?),
@@ -128,15 +128,11 @@ pub struct BgpOpenPacket {
 impl ToBytestream for BgpOpenPacket {
     type Error = Error;
     fn to_bytestream(&self, bytestream: &mut BytestreamWriter) -> Result<(), Self::Error> {
-        self.version.write_to(bytestream, ByteOrder::BigEndian)?;
-        // pad!(bytestream, 3)?;
-        self.as_number.write_to(bytestream, ByteOrder::BigEndian)?;
-        // pad!(bytestream, 2)?;
-        self.hold_time.write_to(bytestream, ByteOrder::BigEndian)?;
-        // pad!(bytestream, 2)?;
-        self.identifier.write_to(bytestream, ByteOrder::BigEndian)?;
-        0u8.write_to(bytestream, ByteOrder::BigEndian)?;
-        // pad!(bytestream, 3)?;
+        bytestream.write_u8(self.version)?;
+        bytestream.write_u16::<BE>(self.as_number)?;
+        bytestream.write_u16::<BE>(self.hold_time)?;
+        bytestream.write_u32::<BE>(self.identifier)?;
+        bytestream.write_u8(0)?;
         Ok(())
     }
 }
@@ -144,14 +140,11 @@ impl ToBytestream for BgpOpenPacket {
 impl FromBytestream for BgpOpenPacket {
     type Error = Error;
     fn from_bytestream(bytestream: &mut BytestreamReader) -> Result<Self, Self::Error> {
-        let version = u8::read_from(bytestream, ByteOrder::BigEndian)?;
-        // rpad!(bytestream, 3)?;
-        let as_number = AsNumber::read_from(bytestream, ByteOrder::BigEndian)?;
-        // rpad!(bytestream, 2)?;
-        let hold_time = u16::read_from(bytestream, ByteOrder::BigEndian)?;
-        // rpad!(bytestream, 2)?;
-        let identifier = u32::read_from(bytestream, ByteOrder::BigEndian)?;
-        // rpad!(bytestream, 4)?;
+        let version = bytestream.read_u8()?;
+        let as_number = bytestream.read_u16::<BE>()?;
+        let hold_time = bytestream.read_u16::<BE>()?;
+        let identifier = bytestream.read_u32::<BE>()?;
+        assert_eq!(0, bytestream.read_u8()?); // SURE ?
         Ok(Self {
             version,
             as_number,
@@ -177,19 +170,23 @@ pub struct BgpUpdatePacket {
 impl ToBytestream for BgpUpdatePacket {
     type Error = Error;
     fn to_bytestream(&self, bytestream: &mut BytestreamWriter) -> Result<(), Self::Error> {
-        let wlen_marker = bytestream.add_marker(0, ByteOrder::BigEndian)?;
+        let wlen_marker = bytestream.create_typed_marker::<u16>()?;
         for route in &self.withdrawn_routes {
             route.to_bytestream(bytestream)?;
         }
-        let wlen = bytestream.len_since(&wlen_marker)?;
-        bytestream.write_to_marker(wlen_marker, wlen as u16)?;
+        let wlen = bytestream.len_since_marker(&wlen_marker);
+        bytestream
+            .update_marker(&wlen_marker)
+            .write_u16::<BE>(wlen as u16)?;
 
-        let alen_marker = bytestream.add_marker(0, ByteOrder::BigEndian)?;
+        let alen_marker = bytestream.create_typed_marker::<u16>()?;
         for attr in &self.path_attributes {
             attr.to_bytestream(bytestream)?;
         }
-        let alen = bytestream.len_since(&alen_marker)?;
-        bytestream.write_to_marker(alen_marker, alen as u16)?;
+        let alen = bytestream.len_since_marker(&alen_marker);
+        bytestream
+            .update_marker(&alen_marker)
+            .write_u16::<BE>(alen as u16)?;
 
         for route in &self.nlris {
             route.to_bytestream(bytestream)?;
@@ -202,7 +199,7 @@ impl FromBytestream for BgpUpdatePacket {
     type Error = Error;
     fn from_bytestream(bytestream: &mut BytestreamReader) -> Result<Self, Self::Error> {
         // Withdrawn routes
-        let wlen = u16::read_from(bytestream, ByteOrder::BigEndian)? as usize;
+        let wlen = bytestream.read_u16::<BE>()? as usize;
         let mut wroutes_substream = bytestream.extract(wlen)?;
         let mut withdrawn_routes = Vec::new();
         while !wroutes_substream.is_empty() {
@@ -210,7 +207,7 @@ impl FromBytestream for BgpUpdatePacket {
         }
 
         // path attributes
-        let alen = u16::read_from(bytestream, ByteOrder::BigEndian)? as usize;
+        let alen = bytestream.read_u16::<BE>()? as usize;
         let mut attr_substream = bytestream.extract(alen)?;
         let mut path_attributes = Vec::new();
         while !attr_substream.is_empty() {
@@ -287,7 +284,7 @@ impl ToBytestream for Nlri {
 impl FromBytestream for Nlri {
     type Error = Error;
     fn from_bytestream(bytestream: &mut BytestreamReader) -> Result<Self, Self::Error> {
-        let prefix_len = u8::read_from(bytestream, ByteOrder::BigEndian)?;
+        let prefix_len = bytestream.read_u8()?;
         assert!(
             prefix_len <= 24,
             "[ {} ] {} invalid prefix len\n{:?}",
@@ -329,19 +326,19 @@ mod tests {
     #[test]
     fn parse_nlri() -> io::Result<()> {
         let nlri = Nlri::new(Ipv4Addr::new(255, 254, 253, 252), 16);
-        assert_eq!(nlri, Nlri::from_slice(&nlri.to_buffer()?)?);
+        assert_eq!(nlri, Nlri::from_slice(&nlri.to_vec()?)?);
 
         let nlri = Nlri::new(Ipv4Addr::new(255, 254, 253, 252), 17);
-        assert_eq!(nlri, Nlri::from_slice(&nlri.to_buffer()?)?);
+        assert_eq!(nlri, Nlri::from_slice(&nlri.to_vec()?)?);
 
         let nlri = Nlri::new(Ipv4Addr::new(255, 254, 253, 252), 18);
-        assert_eq!(nlri, Nlri::from_slice(&nlri.to_buffer()?)?);
+        assert_eq!(nlri, Nlri::from_slice(&nlri.to_vec()?)?);
 
         let nlri = Nlri::new(Ipv4Addr::new(255, 254, 253, 252), 19);
-        assert_eq!(nlri, Nlri::from_slice(&nlri.to_buffer()?)?);
+        assert_eq!(nlri, Nlri::from_slice(&nlri.to_vec()?)?);
 
         let nlri = Nlri::new(Ipv4Addr::new(255, 254, 253, 252), 21);
-        assert_eq!(nlri, Nlri::from_slice(&nlri.to_buffer()?)?);
+        assert_eq!(nlri, Nlri::from_slice(&nlri.to_vec()?)?);
 
         Ok(())
     }
@@ -359,7 +356,7 @@ mod tests {
             }),
         };
 
-        assert_eq!(open, BgpPacket::from_slice(&open.to_buffer()?).unwrap());
+        assert_eq!(open, BgpPacket::from_slice(&open.to_vec()?).unwrap());
         Ok(())
     }
 }

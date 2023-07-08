@@ -289,7 +289,7 @@ impl IOContext {
             tracing::trace!("invalid incoming connection, sending RST");
 
             let rst = TcpPacket::rst_for_syn(&tcp_pkt);
-            let rst = ip_packet.response(rst.to_buffer().unwrap());
+            let rst = ip_packet.response(rst.to_vec().unwrap());
             self.send_ip_packet(SocketIfaceBinding::Bound(ifid), rst, true);
             true
         } else {
@@ -1628,7 +1628,7 @@ impl TransmissionControlBlock {
     }
 
     fn ip_packet_for(&self, tcp: TcpPacket) -> IpPacket {
-        let content = tcp.to_buffer().unwrap();
+        let content = tcp.to_vec().unwrap();
         match self.local_addr {
             SocketAddr::V4(local) => IpPacket::V4(Ipv4Packet {
                 dscp: 0,

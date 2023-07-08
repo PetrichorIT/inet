@@ -1,7 +1,7 @@
 use super::{DNSClass, DNSResourceRecord, DNSString, DNSType};
 use bytepack::{
-    ByteOrder::BigEndian, BytestreamReader, BytestreamWriter, FromBytestream, StreamReader,
-    StreamWriter, ToBytestream,
+    BytestreamReader, BytestreamWriter, FromBytestream, ReadBytesExt, ToBytestream, WriteBytesExt,
+    BE,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -89,9 +89,8 @@ impl DNSMessage {
 
 impl ToBytestream for DNSMessage {
     type Error = std::io::Error;
-    fn to_bytestream(&self, bytestream: &mut BytestreamWriter) -> Result<(), Self::Error> {
-        self.transaction.write_to(bytestream, BigEndian)?;
-
+    fn to_bytestream(&self, stream: &mut BytestreamWriter) -> Result<(), Self::Error> {
+        stream.write_u16::<BE>(self.transaction)?;
         let mut b0 = self.opcode.to_raw() << 3;
         if self.qr {
             b0 |= 0b1000_0000;
@@ -105,30 +104,30 @@ impl ToBytestream for DNSMessage {
         if self.rd {
             b0 |= 0b0000_0001;
         }
-        b0.write_to(bytestream, BigEndian)?;
+        stream.write_u8(b0)?;
 
         let mut b1 = self.rcode.to_raw();
         if self.ra {
             b1 |= 0b1000_0000;
         }
-        b1.write_to(bytestream, BigEndian)?;
+        stream.write_u8(b1)?;
 
-        (self.questions.len() as u16).write_to(bytestream, BigEndian)?;
-        (self.anwsers.len() as u16).write_to(bytestream, BigEndian)?;
-        (self.auths.len() as u16).write_to(bytestream, BigEndian)?;
-        (self.additional.len() as u16).write_to(bytestream, BigEndian)?;
+        stream.write_u16::<BE>(self.questions.len() as u16)?;
+        stream.write_u16::<BE>(self.anwsers.len() as u16)?;
+        stream.write_u16::<BE>(self.auths.len() as u16)?;
+        stream.write_u16::<BE>(self.additional.len() as u16)?;
 
         for q in &self.questions {
-            q.to_bytestream(bytestream)?;
+            q.to_bytestream(stream)?;
         }
         for a in &self.anwsers {
-            a.to_bytestream(bytestream)?;
+            a.to_bytestream(stream)?;
         }
         for a in &self.auths {
-            a.to_bytestream(bytestream)?;
+            a.to_bytestream(stream)?;
         }
         for a in &self.additional {
-            a.to_bytestream(bytestream)?;
+            a.to_bytestream(stream)?;
         }
 
         Ok(())
@@ -137,10 +136,10 @@ impl ToBytestream for DNSMessage {
 
 impl FromBytestream for DNSMessage {
     type Error = std::io::Error;
-    fn from_bytestream(bytestream: &mut BytestreamReader) -> Result<Self, Self::Error> {
-        let transaction = u16::read_from(bytestream, BigEndian)?;
-        let b0 = u8::read_from(bytestream, BigEndian)?;
-        let b1 = u8::read_from(bytestream, BigEndian)?;
+    fn from_bytestream(stream: &mut BytestreamReader) -> Result<Self, Self::Error> {
+        let transaction = stream.read_u16::<BE>()?;
+        let b0 = stream.read_u8()?;
+        let b1 = stream.read_u8()?;
 
         let qr = (0b1000_0000 & b0) != 0;
         let aa = (0b0000_0100 & b0) != 0;
@@ -151,15 +150,15 @@ impl FromBytestream for DNSMessage {
         let ra = (0b1000_0000 & b1) != 0;
         let rcode = DNSResponseCode::from_raw(b1 & 0b1111u8).unwrap();
 
-        let questions_len = u16::read_from(bytestream, BigEndian)?;
-        let anwsers_len = u16::read_from(bytestream, BigEndian)?;
-        let auth_len = u16::read_from(bytestream, BigEndian)?;
-        let additional_len = u16::read_from(bytestream, BigEndian)?;
+        let questions_len = stream.read_u16::<BE>()?;
+        let anwsers_len = stream.read_u16::<BE>()?;
+        let auth_len = stream.read_u16::<BE>()?;
+        let additional_len = stream.read_u16::<BE>()?;
 
         let mut questions = Vec::new();
 
         for _ in 0..questions_len {
-            let v = DNSQuestion::from_bytestream(bytestream)?;
+            let v = DNSQuestion::from_bytestream(stream)?;
             questions.push(v);
         }
 
@@ -167,7 +166,7 @@ impl FromBytestream for DNSMessage {
 
         let mut anwsers = Vec::new();
         for _ in 0..anwsers_len {
-            let v = DNSResourceRecord::from_bytestream(bytestream)?;
+            let v = DNSResourceRecord::from_bytestream(stream)?;
             anwsers.push(v);
         }
 
@@ -175,13 +174,13 @@ impl FromBytestream for DNSMessage {
 
         let mut auths = Vec::new();
         for _ in 0..auth_len {
-            let v = DNSResourceRecord::from_bytestream(bytestream)?;
+            let v = DNSResourceRecord::from_bytestream(stream)?;
             auths.push(v);
         }
 
         let mut additional = Vec::new();
         for _ in 0..additional_len {
-            let v = DNSResourceRecord::from_bytestream(bytestream)?;
+            let v = DNSResourceRecord::from_bytestream(stream)?;
             additional.push(v);
         }
 
@@ -256,22 +255,21 @@ pub struct DNSQuestion {
 
 impl ToBytestream for DNSQuestion {
     type Error = std::io::Error;
-    fn to_bytestream(&self, bytestream: &mut BytestreamWriter) -> Result<(), Self::Error> {
-        self.qname.to_bytestream(bytestream)?;
-        self.qtyp.to_raw().write_to(bytestream, BigEndian)?;
-        self.qclass.to_raw().write_to(bytestream, BigEndian)?;
-
+    fn to_bytestream(&self, stream: &mut BytestreamWriter) -> Result<(), Self::Error> {
+        self.qname.to_bytestream(stream)?;
+        stream.write_u16::<BE>(self.qtyp.to_raw())?;
+        stream.write_u16::<BE>(self.qclass.to_raw())?;
         Ok(())
     }
 }
 
 impl FromBytestream for DNSQuestion {
     type Error = std::io::Error;
-    fn from_bytestream(bytestream: &mut BytestreamReader) -> Result<Self, Self::Error> {
-        let qname = DNSString::from_bytestream(bytestream)?;
+    fn from_bytestream(stream: &mut BytestreamReader) -> Result<Self, Self::Error> {
+        let qname = DNSString::from_bytestream(stream)?;
 
-        let qtyp = DNSType::from_raw(u16::read_from(bytestream, BigEndian)?).unwrap();
-        let qclass = DNSClass::from_raw(u16::read_from(bytestream, BigEndian)?).unwrap();
+        let qtyp = DNSType::from_raw(stream.read_u16::<BE>()?).unwrap();
+        let qclass = DNSClass::from_raw(stream.read_u16::<BE>()?).unwrap();
 
         Ok(DNSQuestion {
             qname,

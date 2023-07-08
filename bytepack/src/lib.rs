@@ -1,10 +1,10 @@
 use std::{
     io::{self, Read, Write},
-    marker::PhantomData,
+    mem,
     net::Ipv4Addr,
 };
 
-pub use bytestream::{ByteOrder, StreamReader, StreamWriter};
+pub use byteorder::*;
 
 /// This trait allows types to be converted into bytestreams
 /// using custom implmentations.
@@ -13,69 +13,59 @@ pub trait ToBytestream {
     type Error;
     /// Appends self to the provided bytestream.
     fn to_bytestream(&self, stream: &mut BytestreamWriter) -> Result<(), Self::Error>;
+
     /// Appends self to a new bytestream, retuned as a bytevector in the end.
-    fn to_buffer(&self) -> Result<Vec<u8>, Self::Error> {
-        let mut stream = BytestreamWriter { buf: Vec::new() };
+    fn to_vec(&self) -> Result<Vec<u8>, Self::Error> {
+        let mut vec = Vec::new();
+        let mut stream = BytestreamWriter { buf: &mut vec };
         self.to_bytestream(&mut stream)?;
-        Ok(stream.buf)
+        Ok(vec)
     }
 
-    fn to_buffer_with(&self, buf: Vec<u8>) -> Result<Vec<u8>, Self::Error> {
+    fn append_to_vec(&self, buf: &mut Vec<u8>) -> Result<(), Self::Error> {
         let mut stream = BytestreamWriter { buf };
         self.to_bytestream(&mut stream)?;
-        Ok(stream.buf)
+        Ok(())
     }
 }
 
 #[derive(Debug)]
-pub struct BytestreamWriter {
-    buf: Vec<u8>,
+pub struct BytestreamWriter<'a> {
+    buf: &'a mut Vec<u8>,
 }
 
-pub struct PositionMarker<T> {
+#[derive(Debug)]
+pub struct Marker {
     pos: usize,
     len: usize,
-    order: ByteOrder,
-    _phantom: PhantomData<T>,
 }
 
-impl BytestreamWriter {
-    pub fn add_marker<T: StreamWriter>(
-        &mut self,
-        value: T,
-        order: ByteOrder,
-    ) -> io::Result<PositionMarker<T>> {
+impl BytestreamWriter<'_> {
+    pub fn create_maker(&mut self, len: usize) -> io::Result<Marker> {
         let pos = self.buf.len();
-        value.write_to(self, order)?;
-        let len = self.buf.len() - pos;
-        Ok(PositionMarker {
-            pos,
-            order,
-            len,
-            _phantom: PhantomData,
-        })
+        self.write_all(&vec![0; len])?;
+        Ok(Marker { pos, len })
     }
 
-    pub fn write_to_marker<T: StreamWriter>(
-        &mut self,
-        marker: PositionMarker<T>,
-        value: T,
-    ) -> io::Result<()> {
-        let mut slice = &mut self.buf[marker.pos..(marker.pos + marker.len)];
-        value.write_to(&mut slice, marker.order)
+    pub fn create_typed_marker<T>(&mut self) -> io::Result<Marker> {
+        self.create_maker(mem::size_of::<T>())
     }
 
-    pub fn len_since<T>(&self, marker: &PositionMarker<T>) -> io::Result<usize> {
+    pub fn update_marker(&mut self, marker: &Marker) -> &mut [u8] {
+        &mut self.buf[marker.pos..(marker.pos + marker.len)]
+    }
+
+    pub fn len_since_marker(&mut self, marker: &Marker) -> usize {
         let pos = self.buf.len();
         if let Some(len) = pos.checked_sub(marker.pos + marker.len) {
-            return Ok(len);
+            return len;
         } else {
             todo!()
         }
     }
 }
 
-impl Write for BytestreamWriter {
+impl Write for BytestreamWriter<'_> {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
         self.buf.write(buf)
     }
@@ -147,15 +137,13 @@ impl Read for BytestreamReader<'_> {
 
 #[macro_export]
 macro_rules! raw_enum {
-    (
-        $(#[$outer:meta])*
-        $vis: vis enum $ident: ident {
-            type Repr = $repr:ty where $order:expr;
-            $(
-                $variant:tt = $prim:literal,
-            )+
-        }
-    ) => {
+    ($(#[$outer:meta])*
+    $vis: vis enum $ident: ident {
+        type Repr = $repr:ty where $order:ty;
+        $(
+            $variant:tt = $prim:literal,
+        )+
+    }) => {
         $(#[$outer])*
         #[repr($repr)]
         $vis enum $ident {
@@ -164,30 +152,21 @@ macro_rules! raw_enum {
             )+
         }
 
-        impl ::bytepack::ToBytestream for $ident {
-            type Error = ::std::io::Error;
-            fn to_bytestream(&self, stream: &mut ::bytepack::BytestreamWriter)
-                -> ::std::result::Result<(), Self::Error> {
-                    use ::bytepack::StreamWriter;
-                    (*self as $repr).write_to(stream, $order)
+        impl $ident {
+            $vis fn from_raw_repr(repr: $repr) -> ::std::io::Result<Self> {
+                match repr {
+                    $(
+                        $prim => Ok(Self::$variant),
+                    )+
+                    _ => Err(::std::io::Error::new(
+                        ::std::io::ErrorKind::InvalidInput,
+                        "unknown discriminant"
+                    ))
+                }
             }
-        }
 
-        impl ::bytepack::FromBytestream for $ident {
-            type Error = ::std::io::Error;
-            fn from_bytestream(stream: &mut ::bytepack::BytestreamReader)
-                -> ::std::result::Result<Self, Self::Error> {
-                    use ::bytepack::StreamReader;
-                    let value = <$repr>::read_from(stream, $order)?;
-                    match value {
-                        $(
-                            $prim => Ok(Self::$variant),
-                        )+
-                        _ => Err(::std::io::Error::new(
-                            ::std::io::ErrorKind::InvalidInput,
-                            "unknown discriminant"
-                        ))
-                    }
+            $vis fn to_raw_repr(&self) -> $repr {
+                *self as $repr
             }
         }
     };
@@ -203,18 +182,14 @@ impl ToBytestream for Ipv4Addr {
 impl FromBytestream for Ipv4Addr {
     type Error = std::io::Error;
     fn from_bytestream(bytestream: &mut BytestreamReader) -> Result<Self, Self::Error> {
-        Ok(Ipv4Addr::from(u32::read_from(
-            bytestream,
-            ByteOrder::BigEndian,
-        )?))
+        Ok(Ipv4Addr::from(bytestream.read_u32::<BE>()?))
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ::byteorder::{WriteBytesExt, BE};
-    use bytestream::StreamReader;
+    use ::byteorder::{ReadBytesExt, WriteBytesExt, BE};
     use std::io::Error;
 
     #[test]
@@ -227,13 +202,13 @@ mod tests {
         impl ToBytestream for A {
             type Error = Error;
             fn to_bytestream(&self, stream: &mut BytestreamWriter) -> Result<(), Self::Error> {
-                let marker = stream.add_marker(0u16, ByteOrder::BigEndian)?;
+                let marker = stream.create_typed_marker::<u16>()?;
                 for val in &self.vals {
                     stream.write_u16::<BE>(*val)?;
                 }
-                let len = stream.len_since(&marker)?;
-                stream.write_to_marker(marker, len as u16)?;
-                self.trail.write_to(stream, ByteOrder::BigEndian)?;
+                let len = stream.len_since_marker(&marker) as u16;
+                stream.update_marker(&marker).write_u16::<BE>(len)?;
+                stream.write_u64::<BE>(self.trail)?;
                 Ok(())
             }
         }
@@ -241,13 +216,13 @@ mod tests {
         impl FromBytestream for A {
             type Error = Error;
             fn from_bytestream(stream: &mut BytestreamReader) -> Result<Self, Self::Error> {
-                let len = u16::read_from(stream, ByteOrder::BigEndian)?;
+                let len = stream.read_u16::<BE>()?;
                 let mut substr = stream.extract(len as usize)?;
                 let mut vals = Vec::new();
                 while !substr.is_empty() {
-                    vals.push(u16::read_from(&mut substr, ByteOrder::BigEndian)?);
+                    vals.push(substr.read_u16::<BE>()?);
                 }
-                let trail = u64::read_from(stream, ByteOrder::BigEndian)?;
+                let trail = stream.read_u64::<BE>()?;
 
                 Ok(Self { vals, trail })
             }
@@ -257,7 +232,7 @@ mod tests {
             vals: vec![1, 2, 3, 4],
             trail: u64::MAX,
         };
-        let mut buf = a.to_buffer().unwrap();
+        let mut buf = a.to_vec().unwrap();
         let new = A::read_from_vec(&mut buf);
 
         println!("{:?}", a);
@@ -276,8 +251,8 @@ mod tests {
             type Error = std::io::Error;
             fn from_bytestream(stream: &mut BytestreamReader) -> Result<Self, Self::Error> {
                 Ok(Self {
-                    a: u32::read_from(stream, ByteOrder::BigEndian)?,
-                    b: u32::read_from(stream, ByteOrder::BigEndian)?,
+                    a: stream.read_u32::<BE>()?,
+                    b: stream.read_u32::<BE>()?,
                 })
             }
         }

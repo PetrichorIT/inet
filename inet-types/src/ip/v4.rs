@@ -1,14 +1,12 @@
 use bytepack::{
-    ByteOrder::BigEndian, BytestreamReader, BytestreamWriter, FromBytestream, StreamReader,
-    StreamWriter, ToBytestream,
+    BytestreamReader, BytestreamWriter, FromBytestream, ReadBytesExt, ToBytestream, WriteBytesExt,
+    BE,
 };
 use des::net::message::MessageBody;
 use std::{
-    io::{Error, ErrorKind, Write},
+    io::{Error, ErrorKind, Read, Write},
     net::Ipv4Addr,
 };
-
-use super::IpVersion;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Ipv4Packet {
@@ -78,59 +76,51 @@ impl Ipv4Flags {
 
 impl ToBytestream for Ipv4Packet {
     type Error = std::io::Error;
-    fn to_bytestream(&self, bytestream: &mut BytestreamWriter) -> Result<(), Self::Error> {
-        let byte0 = 0b0100_0101u8;
-        byte0.write_to(bytestream, BigEndian)?;
-
-        let byte1 = (self.dscp << 2) | self.enc;
-        byte1.write_to(bytestream, BigEndian)?;
+    fn to_bytestream(&self, stream: &mut BytestreamWriter) -> Result<(), Self::Error> {
+        stream.write_u8(0b0100_0101)?;
+        stream.write_u8((self.dscp << 2) | self.enc)?;
 
         let len = 20 + self.content.len() as u16;
-        len.write_to(bytestream, BigEndian)?;
-        self.identification.write_to(bytestream, BigEndian)?;
+        stream.write_u16::<BE>(len)?;
+        stream.write_u16::<BE>(self.identification)?;
 
         let fbyte = self.flags.as_u16() | self.fragment_offset;
-        fbyte.write_to(bytestream, BigEndian)?;
+        stream.write_u16::<BE>(fbyte)?;
 
-        self.ttl.write_to(bytestream, BigEndian)?;
-        self.proto.write_to(bytestream, BigEndian)?;
+        stream.write_u8(self.ttl)?;
+        stream.write_u8(self.proto)?;
+        stream.write_u16::<BE>(0)?;
 
-        // TODO: make checksum
-        0u16.write_to(bytestream, BigEndian)?;
+        stream.write_all(&self.src.octets())?;
+        stream.write_all(&self.dest.octets())?;
 
-        u32::from_be_bytes(self.src.octets()).write_to(bytestream, BigEndian)?;
-        u32::from_be_bytes(self.dest.octets()).write_to(bytestream, BigEndian)?;
-
-        bytestream.write_all(&self.content)?;
+        stream.write_all(&self.content)?;
         Ok(())
     }
 }
 
 impl FromBytestream for Ipv4Packet {
     type Error = std::io::Error;
-    fn from_bytestream(bytestream: &mut BytestreamReader) -> Result<Self, Self::Error> {
-        let byte0 = u8::read_from(bytestream, BigEndian)?;
+    fn from_bytestream(stream: &mut BytestreamReader) -> Result<Self, Self::Error> {
+        let byte0 = stream.read_u8()?;
         let version = byte0 >> 4;
-        let _version = match version {
-            4 => IpVersion::V4,
-            6 => {
-                return Err(Error::new(
-                    ErrorKind::InvalidData,
-                    "ipv4 packet expeced, got ipv6 flag",
-                ))
-            }
-            _ => unimplemented!(),
-        };
+        if version != 4 {
+            return Err(Error::new(
+                ErrorKind::InvalidData,
+                "Ipv4 version flag expected, got other value",
+            ));
+        }
+
         // let ihl = byte0 & 0x0f;
 
-        let byte1 = u8::read_from(bytestream, BigEndian)?;
+        let byte1 = stream.read_u8()?;
         let dscp = byte1 >> 2;
         let enc = byte1 & 0x03;
 
-        let len = u16::read_from(bytestream, BigEndian)?;
-        let identification = u16::read_from(bytestream, BigEndian)?;
+        let len = stream.read_u16::<BE>()?;
+        let identification = stream.read_u16::<BE>()?;
 
-        let fword = u16::read_from(bytestream, BigEndian)?;
+        let fword = stream.read_u16::<BE>()?;
         let flags = {
             let fbyte = fword >> 13;
             let mut flags = Ipv4Flags {
@@ -147,20 +137,18 @@ impl FromBytestream for Ipv4Packet {
         };
         let fragment_offset = fword & 0x1fff;
 
-        let ttl = u8::read_from(bytestream, BigEndian)?;
-        let proto = u8::read_from(bytestream, BigEndian)?;
+        let ttl = stream.read_u8()?;
+        let proto = stream.read_u8()?;
 
-        let _checksum = u16::read_from(bytestream, BigEndian)?;
+        let _checksum = stream.read_u16::<BE>()?;
         // TODO: check checksum
 
-        let src = Ipv4Addr::from(u32::read_from(bytestream, BigEndian)?);
-        let dest = Ipv4Addr::from(u32::read_from(bytestream, BigEndian)?);
+        let src = Ipv4Addr::from(stream.read_u32::<BE>()?);
+        let dest = Ipv4Addr::from(stream.read_u32::<BE>()?);
 
         // fetch rest
-        let mut content = Vec::with_capacity(len as usize - 20);
-        for _ in 0..(len - 20) {
-            content.push(u8::read_from(bytestream, BigEndian)?);
-        }
+        let mut content = vec![0; len as usize - 20];
+        stream.read_exact(&mut content)?;
 
         Ok(Self {
             // ihl,

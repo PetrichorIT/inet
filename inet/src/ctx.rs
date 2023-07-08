@@ -28,7 +28,7 @@ use super::{socket::*, tcp::Tcp};
 use inet_types::{tcp::PROTO_TCP, udp::PROTO_UDP};
 
 thread_local! {
-    static CURRENT: RefCell<Option<IOContext>> = const { RefCell::new(None) };
+    static CURRENT: RefCell<Option<Box<IOContext>>> = const { RefCell::new(None) };
 }
 
 pub(crate) struct IOContext {
@@ -90,7 +90,7 @@ impl IOContext {
         }
     }
 
-    pub(super) fn swap_in(ingoing: Option<IOContext>) -> Option<IOContext> {
+    pub(super) fn swap_in(ingoing: Option<Box<IOContext>>) -> Option<Box<IOContext>> {
         CURRENT.with(|ctx| {
             let mut ctx = ctx.borrow_mut();
             let ret = ctx.take();

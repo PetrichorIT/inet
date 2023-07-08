@@ -101,7 +101,7 @@ impl IOContext {
             },
             &ip,
         );
-        ip.content = icmp.to_buffer().expect("Failed to parse ICMP");
+        ip.content = icmp.to_vec().expect("Failed to parse ICMP");
 
         self.send_ip_packet(
             SocketIfaceBinding::Any(self.ifaces.keys().copied().collect::<Vec<_>>()),

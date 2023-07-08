@@ -214,7 +214,7 @@ impl RipRoutingDeamon {
                 metric: 16,
             }],
         };
-        sock.send_to(&req.to_buffer().unwrap(), (Ipv4Addr::BROADCAST, 520))
+        sock.send_to(&req.to_vec().unwrap(), (Ipv4Addr::BROADCAST, 520))
             .await
             .unwrap();
 
@@ -259,7 +259,7 @@ impl RipRoutingDeamon {
                     for (target, requests) in updates {
                         let pkts = RipPacket::packets(RipCommand::Request, &requests);
                         for pkt in pkts {
-                            sock.send_to(&pkt.to_buffer().unwrap(), (target, 520)).await.unwrap();
+                            sock.send_to(&pkt.to_vec().unwrap(), (target, 520)).await.unwrap();
                         }
                     }
 
@@ -307,7 +307,7 @@ impl RipRoutingDeamon {
                     {
                         // request entire routing table
                         let dvs = self.full_dvs_for(raddr);
-                        sock.send_to(&dvs.to_buffer().unwrap(), from).await.unwrap();
+                        sock.send_to(&dvs.to_vec().unwrap(), from).await.unwrap();
                     } else {
                         for entry in &mut rip.entries {
                             // (0) Check local DVs
@@ -324,7 +324,7 @@ impl RipRoutingDeamon {
                                 metric: dv.cost,
                             };
                         }
-                        sock.send_to(&rip.to_buffer().unwrap(), from).await.unwrap();
+                        sock.send_to(&rip.to_vec().unwrap(), from).await.unwrap();
                     }
                 }
                 RipCommand::Response => {
@@ -398,11 +398,11 @@ impl RipRoutingDeamon {
                 for pkt in publ {
                     for n in self.neighbors.keys() {
                         if new_neighbor && *n == raddr {
-                            sock.send_to(&self.full_dvs_for(*n).to_buffer().unwrap(), (*n, 520))
+                            sock.send_to(&self.full_dvs_for(*n).to_vec().unwrap(), (*n, 520))
                                 .await
                                 .unwrap();
                         } else {
-                            sock.send_to(&pkt.to_buffer().unwrap(), (*n, 520))
+                            sock.send_to(&pkt.to_vec().unwrap(), (*n, 520))
                                 .await
                                 .unwrap();
                         }

@@ -1,14 +1,12 @@
 use bytepack::{
-    ByteOrder::BigEndian, BytestreamReader, BytestreamWriter, FromBytestream, StreamReader,
-    StreamWriter, ToBytestream,
+    BytestreamReader, BytestreamWriter, FromBytestream, ReadBytesExt, ToBytestream, WriteBytesExt,
+    BE,
 };
 use des::net::message::MessageBody;
 use std::{
-    io::{Error, ErrorKind, Write},
+    io::{Error, ErrorKind, Read, Write},
     net::Ipv6Addr,
 };
-
-use super::IpVersion;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Ipv6Packet {
@@ -25,53 +23,44 @@ pub struct Ipv6Packet {
 
 impl ToBytestream for Ipv6Packet {
     type Error = std::io::Error;
-    fn to_bytestream(&self, bytestream: &mut BytestreamWriter) -> Result<(), Self::Error> {
+    fn to_bytestream(&self, stream: &mut BytestreamWriter) -> Result<(), Self::Error> {
         let header = (6 << 4) | (self.traffic_class >> 4);
-        header.write_to(bytestream, BigEndian)?;
+        stream.write_u8(header)?;
 
-        // [32..24 24..16 16..8 8..0]
         let bytes = self.flow_label.to_be_bytes();
         let byte_0 = ((self.traffic_class & 0b1111) << 4) | bytes[1] & 0b1111;
-        byte_0.write_to(bytestream, BigEndian)?;
-        bytes[2].write_to(bytestream, BigEndian)?;
-        bytes[3].write_to(bytestream, BigEndian)?;
+        stream.write_u8(byte_0)?;
+        stream.write_u8(bytes[2])?;
+        stream.write_u8(bytes[3])?;
 
         let len = self.content.len() as u16;
-        len.write_to(bytestream, BigEndian)?;
-        self.next_header.write_to(bytestream, BigEndian)?;
-        self.hop_limit.write_to(bytestream, BigEndian)?;
+        stream.write_u16::<BE>(len)?;
+        stream.write_u8(self.next_header)?;
+        stream.write_u8(self.hop_limit)?;
 
-        for byte in self.src.octets() {
-            byte.write_to(bytestream, BigEndian)?;
-        }
-        for byte in self.dest.octets() {
-            byte.write_to(bytestream, BigEndian)?;
-        }
+        stream.write_all(&self.src.octets())?;
+        stream.write_all(&self.dest.octets())?;
 
-        bytestream.write_all(&self.content)?;
+        stream.write_all(&self.content)?;
         Ok(())
     }
 }
 
 impl FromBytestream for Ipv6Packet {
     type Error = std::io::Error;
-    fn from_bytestream(bytestream: &mut BytestreamReader) -> Result<Self, Self::Error> {
-        let byte0 = u8::read_from(bytestream, BigEndian)?;
-        let byte1 = u8::read_from(bytestream, BigEndian)?;
-        let byte2 = u8::read_from(bytestream, BigEndian)?;
-        let byte3 = u8::read_from(bytestream, BigEndian)?;
+    fn from_bytestream(stream: &mut BytestreamReader) -> Result<Self, Self::Error> {
+        let byte0 = stream.read_u8()?;
+        let byte1 = stream.read_u8()?;
+        let byte2 = stream.read_u8()?;
+        let byte3 = stream.read_u8()?;
 
         let version = byte0 >> 4;
-        let _version = match version {
-            4 => {
-                return Err(Error::new(
-                    ErrorKind::InvalidData,
-                    "ipv6 packet expeced, got ipv4 flag",
-                ))
-            }
-            6 => IpVersion::V6,
-            _ => unimplemented!(),
-        };
+        if version != 6 {
+            return Err(Error::new(
+                ErrorKind::InvalidData,
+                "ipv6 packet expeced, got ipv4 flag",
+            ));
+        }
 
         // println!("{:b} {:b} {:b} {:b}", byte0, byte1, byte2, byte3);
         let traffic_class = ((byte0 & 0b1111) << 4) | ((byte1 >> 4) & 0b1111);
@@ -79,27 +68,16 @@ impl FromBytestream for Ipv6Packet {
         let f2 = byte1 & 0b1111;
         let flow_label = u32::from_be_bytes([0, f2, byte2, byte3]);
 
-        let len = u16::read_from(bytestream, BigEndian)?;
-        let next_header = u8::read_from(bytestream, BigEndian)?;
-        let hop_limit = u8::read_from(bytestream, BigEndian)?;
+        let len = stream.read_u16::<BE>()?;
+        let next_header = stream.read_u8()?;
+        let hop_limit = stream.read_u8()?;
 
-        let mut src = [0u8; 16];
-        let mut dest = [0u8; 16];
-        for item in &mut src {
-            *item = u8::read_from(bytestream, BigEndian)?;
-        }
-        for item in &mut dest {
-            *item = u8::read_from(bytestream, BigEndian)?;
-        }
-
-        let src = Ipv6Addr::from(src);
-        let dest = Ipv6Addr::from(dest);
+        let src = Ipv6Addr::from(stream.read_u128::<BE>()?);
+        let dest = Ipv6Addr::from(stream.read_u128::<BE>()?);
 
         // fetch rest
-        let mut content = Vec::with_capacity(len as usize);
-        for _ in 0..len {
-            content.push(u8::read_from(bytestream, BigEndian)?);
-        }
+        let mut content = vec![0; len as usize];
+        stream.read_exact(&mut content)?;
 
         Ok(Self {
             traffic_class,

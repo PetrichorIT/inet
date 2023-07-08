@@ -118,14 +118,14 @@ impl DNSZoneFile {
                     typ,
                     class: split[2].parse().unwrap(),
                     ttl: split[1].parse().unwrap(),
-                    rdata: DNSString::new(split[4]).to_buffer().unwrap(),
+                    rdata: DNSString::new(split[4]).to_vec().unwrap(),
                 }),
                 DNSType::PTR => this.records.push(DNSResourceRecord {
                     name: split[0].into(),
                     typ,
                     class: split[2].parse().unwrap(),
                     ttl: split[1].parse().unwrap(),
-                    rdata: DNSString::new(split[4]).to_buffer().unwrap(),
+                    rdata: DNSString::new(split[4]).to_vec().unwrap(),
                 }),
                 _ => unimplemented!(),
             }

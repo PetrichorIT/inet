@@ -1,8 +1,8 @@
 use std::io::{Error, ErrorKind};
 
 use bytepack::{
-    raw_enum, ByteOrder, BytestreamReader, BytestreamWriter, FromBytestream, StreamReader,
-    StreamWriter, ToBytestream,
+    raw_enum, BytestreamReader, BytestreamWriter, FromBytestream, ReadBytesExt, ToBytestream,
+    WriteBytesExt,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -21,28 +21,28 @@ impl ToBytestream for BgpNotificationPacket {
     fn to_bytestream(&self, stream: &mut BytestreamWriter) -> Result<(), Self::Error> {
         match self {
             Self::MessageHeaderError(err) => {
-                1u8.write_to(stream, ByteOrder::BigEndian)?;
-                err.to_bytestream(stream)
+                stream.write_u8(1)?;
+                stream.write_u8(err.to_raw_repr())
             }
             Self::OpenMessageError(err) => {
-                2u8.write_to(stream, ByteOrder::BigEndian)?;
-                err.to_bytestream(stream)
+                stream.write_u8(2)?;
+                stream.write_u8(err.to_raw_repr())
             }
             Self::UpdateMessageError(err) => {
-                3u8.write_to(stream, ByteOrder::BigEndian)?;
-                err.to_bytestream(stream)
+                stream.write_u8(3)?;
+                stream.write_u8(err.to_raw_repr())
             }
             Self::HoldTimerExpires() => {
-                4u8.write_to(stream, ByteOrder::BigEndian)?;
-                0u8.write_to(stream, ByteOrder::BigEndian)
+                stream.write_u8(4)?;
+                stream.write_u8(0)
             }
             Self::FiniteStateMachineError() => {
-                5u8.write_to(stream, ByteOrder::BigEndian)?;
-                0u8.write_to(stream, ByteOrder::BigEndian)
+                stream.write_u8(5)?;
+                stream.write_u8(0)
             }
             Self::Cease() => {
-                6u8.write_to(stream, ByteOrder::BigEndian)?;
-                0u8.write_to(stream, ByteOrder::BigEndian)
+                stream.write_u8(6)?;
+                stream.write_u8(0)
             }
         }
     }
@@ -51,16 +51,16 @@ impl ToBytestream for BgpNotificationPacket {
 impl FromBytestream for BgpNotificationPacket {
     type Error = Error;
     fn from_bytestream(stream: &mut BytestreamReader) -> Result<Self, Self::Error> {
-        let code = u8::read_from(stream, ByteOrder::BigEndian)?;
+        let code = stream.read_u8()?;
         match code {
             1 => Ok(BgpNotificationPacket::MessageHeaderError(
-                BgpMessageHeaderError::from_bytestream(stream)?,
+                BgpMessageHeaderError::from_raw_repr(stream.read_u8()?)?,
             )),
             2 => Ok(BgpNotificationPacket::OpenMessageError(
-                BgpOpenMessageError::from_bytestream(stream)?,
+                BgpOpenMessageError::from_raw_repr(stream.read_u8()?)?,
             )),
             3 => Ok(BgpNotificationPacket::UpdateMessageError(
-                BgpUpdateMessageError::from_bytestream(stream)?,
+                BgpUpdateMessageError::from_raw_repr(stream.read_u8()?)?,
             )),
             4 => Ok(BgpNotificationPacket::HoldTimerExpires()),
             5 => Ok(BgpNotificationPacket::FiniteStateMachineError()),

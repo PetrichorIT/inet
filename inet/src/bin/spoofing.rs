@@ -51,7 +51,7 @@ impl AsyncModule for Spoofer {
                         options: Vec::new(),
                         content: Vec::new(),
                     }
-                    .to_buffer()
+                    .to_vec()
                     .unwrap(),
                 });
                 sock.try_send(pkt).unwrap();

@@ -1,9 +1,6 @@
 #![allow(clippy::cast_possible_wrap)]
 
-use bytepack::{
-    ByteOrder::BigEndian, BytestreamReader, BytestreamWriter, FromBytestream, StreamReader,
-    ToBytestream,
-};
+use bytepack::{BytestreamReader, BytestreamWriter, FromBytestream, ReadBytesExt, ToBytestream};
 use std::{fmt::Display, io::Write, ops::Deref, str::FromStr};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -141,16 +138,16 @@ impl ToBytestream for DNSString {
 
 impl FromBytestream for DNSString {
     type Error = std::io::Error;
-    fn from_bytestream(bytestream: &mut BytestreamReader) -> Result<Self, Self::Error> {
+    fn from_bytestream(stream: &mut BytestreamReader) -> Result<Self, Self::Error> {
         let mut string = String::new();
         let mut labels = Vec::new();
         loop {
-            let label = u8::read_from(bytestream, BigEndian)?;
+            let label = stream.read_u8()?;
             if label == 0 {
                 break;
             }
             for _ in 0..label {
-                string.push(u8::read_from(bytestream, BigEndian)? as char);
+                string.push(stream.read_u8()? as char);
             }
             string.push('.');
             labels.push(string.len() - 1);
@@ -252,32 +249,32 @@ mod tests {
     #[test]
     fn dns_string_parsing() {
         let inp = DNSString::new("www.example.com");
-        let bytes = inp.to_buffer().unwrap();
+        let bytes = inp.to_vec().unwrap();
         let out = DNSString::read_from_slice(&mut &bytes[..]).unwrap();
         assert_eq!(inp, out);
 
         let inp = DNSString::new("asg-erfurt.de");
-        let bytes = inp.to_buffer().unwrap();
+        let bytes = inp.to_vec().unwrap();
         let out = DNSString::read_from_slice(&mut &bytes[..]).unwrap();
         assert_eq!(inp, out);
 
         let inp = DNSString::new("a.b.c.www.example.com:800");
-        let bytes = inp.to_buffer().unwrap();
+        let bytes = inp.to_vec().unwrap();
         let out = DNSString::read_from_slice(&mut &bytes[..]).unwrap();
         assert_eq!(inp, out);
 
         let inp = DNSString::new("cdde.aaoa-adad.com.");
-        let bytes = inp.to_buffer().unwrap();
+        let bytes = inp.to_vec().unwrap();
         let out = DNSString::read_from_slice(&mut &bytes[..]).unwrap();
         assert_eq!(inp, out);
 
         let inp = DNSString::new("www.out.out.out.com:80.");
-        let bytes = inp.to_buffer().unwrap();
+        let bytes = inp.to_vec().unwrap();
         let out = DNSString::read_from_slice(&mut &bytes[..]).unwrap();
         assert_eq!(inp, out);
 
         let inp = DNSString::new("www.example.com");
-        let bytes = inp.to_buffer().unwrap();
+        let bytes = inp.to_vec().unwrap();
         let out = DNSString::read_from_slice(&mut &bytes[..]).unwrap();
         assert_eq!(inp, out);
     }

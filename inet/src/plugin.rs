@@ -8,15 +8,15 @@ use des::{
 
 /// A plugin managing IO primitives provided by inet.
 pub struct IOPlugin {
-    ctx: Option<IOContext>,
-    prev: Option<IOContext>,
+    ctx: Option<Box<IOContext>>,
+    prev: Option<Box<IOContext>>,
 }
 
 impl IOPlugin {
     /// Creates a new plugin without defined network devices.
     pub(super) fn new(id: ModuleId) -> Self {
         Self {
-            ctx: Some(IOContext::new(id)),
+            ctx: Some(Box::new(IOContext::new(id))),
             prev: None,
         }
     }

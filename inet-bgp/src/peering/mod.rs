@@ -60,7 +60,7 @@ pub(crate) struct NeighborHandle {
 
 macro_rules! write_stream {
     ($stream:ident, $t:expr) => {
-        $stream.write_all(&$t.to_buffer()?).await?;
+        $stream.write_all(&$t.to_vec()?).await?;
     };
 }
 
@@ -304,7 +304,7 @@ impl NeighborDeamon {
                         self.timers.enable_timer(Timer::HoldTimer);
 
                         tracing::debug!("[connect] sending OPEN message");
-                        if let Err(e) = stream.write_all(&self.open_pkt().to_buffer()?).await {
+                        if let Err(e) = stream.write_all(&self.open_pkt().to_vec()?).await {
                             tracing::error!("> {e}");
                             state = Active;
                             continue;
@@ -359,7 +359,7 @@ impl NeighborDeamon {
                             } else {
                                 tracing::debug!("[active] accepted incoming tcp connection");
                                 self.timers.disable_timer(Timer::ConnectionRetryTimer);
-                                stream.write_all(&self.open_pkt().to_buffer()?).await?;
+                                stream.write_all(&self.open_pkt().to_vec()?).await?;
                                 self.timers.enable_timer(Timer::HoldTimer);
                                 state = OpenSent(BgpStream::new(stream))
                             }
@@ -387,7 +387,7 @@ impl NeighborDeamon {
                                             stream.write_all(&BgpPacket {
                                                 marker: u128::MAX,
                                                 kind: BgpPacketKind::Notification(BgpNotificationPacket::OpenMessageError(e))
-                                            }.to_buffer()?).await?;
+                                            }.to_vec()?).await?;
                                             state = Idle;
                                             continue;
                                         }
@@ -398,8 +398,8 @@ impl NeighborDeamon {
                                     self.timers.disable_timer(Timer::ConnectionRetryTimer);
                                     self.timers.disable_timer(Timer::DelayOpenTimer);
 
-                                    stream.write_all(&self.open_pkt().to_buffer()?).await?;
-                                    stream.write_all(&self.keepalive().to_buffer()?).await?;
+                                    stream.write_all(&self.open_pkt().to_vec()?).await?;
+                                    stream.write_all(&self.keepalive().to_vec()?).await?;
 
                                     self.timers.enable_timer(Timer::HoldTimer);
                                     self.timers.enable_timer(Timer::KeepaliveTimer);
@@ -424,7 +424,7 @@ impl NeighborDeamon {
                                 tracing::debug!("[active] delayed open, sending OPEN packet");
                                 self.connect_retry_counter = 0;
                                 self.timers.disable_timer(Timer::DelayOpenTimer);
-                                stream.write_all(&self.open_pkt().to_buffer()?).await?;
+                                stream.write_all(&self.open_pkt().to_vec()?).await?;
                                 self.timers.enable_timer(Timer::HoldTimer);
                                 state = OpenSent(stream);
                             },
@@ -480,7 +480,7 @@ impl NeighborDeamon {
                                 // Switching to a new stream requires
                                 // a new sending of the OPEN pkt
                                 tracing::debug!("[opensent] resending OPEN message");
-                                stream.write_all(&self.open_pkt().to_buffer()?).await?;
+                                stream.write_all(&self.open_pkt().to_vec()?).await?;
                             }
 
                             state = OpenSent(stream)
@@ -525,7 +525,7 @@ impl NeighborDeamon {
                                             stream.write_all(&BgpPacket {
                                                 marker: u128::MAX,
                                                 kind: BgpPacketKind::Notification(BgpNotificationPacket::OpenMessageError(e))
-                                            }.to_buffer()?).await?;
+                                            }.to_vec()?).await?;
                                             state = Idle;
                                             continue;
                                         }

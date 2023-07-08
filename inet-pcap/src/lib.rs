@@ -53,7 +53,7 @@ impl LibPcapDeamon {
                 SHBOption::UserApplication(format!("des/inet")),
             ],
         };
-        self.output.write_all(&shb.to_buffer()?)
+        self.output.write_all(&shb.to_vec()?)
     }
 
     fn write_iface(&mut self, ifid: IfId, iface: &Interface) -> Result<()> {
@@ -78,7 +78,7 @@ impl LibPcapDeamon {
             ],
         };
 
-        let buf = idb.to_buffer()?;
+        let buf = idb.to_vec()?;
         self.output.write_all(&buf)?;
         self.ifaces.push(IfaceInfo { ifid, link_type });
 
@@ -93,7 +93,7 @@ impl LibPcapDeamon {
                 org_len: buffer.len() as u32,
                 data: buffer,
             };
-            self.output.write_all(&ebp.to_buffer()?)?;
+            self.output.write_all(&ebp.to_vec()?)?;
         }
 
         Ok(())
@@ -147,7 +147,7 @@ impl LibPcapDeamon {
             // options: Vec::new(),
         };
 
-        self.output.write_all(&epb.to_buffer()?)
+        self.output.write_all(&epb.to_vec()?)
     }
 
     fn write_l3_packet(
@@ -171,7 +171,7 @@ impl LibPcapDeamon {
                     return Err(Error::new(ErrorKind::PermissionDenied, "filter denied"));
                 }
                 // Ethernet header part 1
-                buffer = pkt.to_buffer_with(buffer)?;
+                pkt.append_to_vec(&mut buffer)?;
             }
             KIND_IPV4 => {
                 let pkt = msg.try_content::<Ipv4Packet>().ok_or(Error::new(
@@ -187,7 +187,7 @@ impl LibPcapDeamon {
                     return Err(Error::new(ErrorKind::PermissionDenied, "filter denied"));
                 }
                 // Ethernet header part 1
-                buffer = pkt.to_buffer_with(buffer)?;
+                pkt.append_to_vec(&mut buffer)?;
             }
             KIND_IPV6 => {
                 let pkt = msg.try_content::<Ipv6Packet>().ok_or(Error::new(
@@ -204,7 +204,7 @@ impl LibPcapDeamon {
                 }
 
                 // Ethernet header part 1
-                buffer = pkt.to_buffer_with(buffer)?;
+                pkt.append_to_vec(&mut buffer)?;
             }
             _ => {
                 tracing::error!("unknown packet");
