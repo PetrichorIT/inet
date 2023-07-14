@@ -1,5 +1,6 @@
 use crate::{
     arp::ArpTable,
+    extensions::Extensions,
     icmp::Icmp,
     interface::{IfId, Interface, LinkLayerResult, KIND_LINK_UPDATE},
     routing::{FwdV4, Ipv6RoutingTable},
@@ -50,6 +51,8 @@ pub(crate) struct IOContext {
     pub(super) fd: Fd,
     pub(super) port: u16,
 
+    pub(super) extensions: Extensions,
+
     pub(super) current: Current,
 }
 
@@ -82,6 +85,8 @@ impl IOContext {
 
             #[cfg(feature = "uds")]
             uds: Uds::new(),
+
+            extensions: Extensions::new(),
 
             fd: 100,
             port: 1024,
@@ -194,7 +199,7 @@ impl IOContext {
                 }
 
                 match ip.proto {
-                    0 => return Some(msg),
+                    0 => Some(msg),
                     PROTO_ICMP => {
                         let consumed = self.recv_icmpv4_packet(ip, ifid);
                         if consumed {

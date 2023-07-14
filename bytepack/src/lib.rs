@@ -1,3 +1,14 @@
+#![deny(unused_must_use)]
+#![warn(clippy::pedantic)]
+#![warn(missing_docs, missing_debug_implementations, unreachable_pub)]
+#![allow(clippy::needless_doctest_main, clippy::module_name_repetitions)]
+#![deny(unsafe_code)]
+//! Provides tools for parsing and packing bytestreams.
+//!
+//! The `bytepack` crate provides intuitive tools to assemble and parse
+//! bytestreams, based on abitrary serializable types.
+//!
+
 use std::{
     io::{self, Read, Write},
     mem,
@@ -6,15 +17,33 @@ use std::{
 
 pub use byteorder::*;
 
-/// This trait allows types to be converted into bytestreams
-/// using custom implmentations.
+/// A trait that allows types to be converted into bytestreams.
+///
+/// Any type that implementes `ToBytestream` can be converrted or appened to
+/// a bytestream representation of itself. If the type also implements
+/// `FromBytestream`, it is expected that `FromBytestream::from_bytestream` acts as the
+/// inverse operation to `ToBytestream::to_bytestream`.
 pub trait ToBytestream {
-    /// An error type that may occur, when converting self to a bytestream.
+    /// The type of errors that can occur during serialization.
     type Error;
-    /// Appends self to the provided bytestream.
+
+    /// Appends a serialized representation of `self` to a bytestream writer.
+    ///
+    /// This function is used to serialize `self` into its bytestream representation.
+    /// Use the provided `BytestreamWriter` to write the data to an abitrary
+    /// output.
+    ///
+    /// # Errors
+    ///
+    /// This function can return errors, if either the writer cannot support the
+    /// returned bytestream, or some parsing invariant does not hold.
     fn to_bytestream(&self, stream: &mut BytestreamWriter) -> Result<(), Self::Error>;
 
-    /// Appends self to a new bytestream, retuned as a bytevector in the end.
+    /// Serializes `self` into a standalone bytevector.
+    ///
+    /// # Errors
+    ///
+    /// See `ToBytestream::to_bytestream`.
     fn to_vec(&self) -> Result<Vec<u8>, Self::Error> {
         let mut vec = Vec::new();
         let mut stream = BytestreamWriter { buf: &mut vec };
@@ -22,6 +51,12 @@ pub trait ToBytestream {
         Ok(vec)
     }
 
+    /// Serializes `self`, appending the bytestream to a vector.
+    ///
+    /// # Errors
+    ///
+    /// See `ToBytestream::to_bytestream`.
+    /// If this operation fails, some bytes of the provided `buf` may have allready been edited.
     fn append_to_vec(&self, buf: &mut Vec<u8>) -> Result<(), Self::Error> {
         let mut stream = BytestreamWriter { buf };
         self.to_bytestream(&mut stream)?;
@@ -29,11 +64,18 @@ pub trait ToBytestream {
     }
 }
 
+/// A writeable bytestream abstraction.
+///
+/// This type can be used to write a continous bytestream
+/// using `std::io::Write`, but this type also provides
+/// non-end-of-stream updates, using `Marker`.
 #[derive(Debug)]
 pub struct BytestreamWriter<'a> {
     buf: &'a mut Vec<u8>,
 }
 
+/// A allready written subslice of a `BytestreamWriter`, that
+/// can be used override previous values on the bytestream.
 #[derive(Debug)]
 pub struct Marker {
     pos: usize,
@@ -41,24 +83,47 @@ pub struct Marker {
 }
 
 impl BytestreamWriter<'_> {
+    /// Allocates and writes a `Marker` on the bytestream of the given `len`.
+    ///
+    /// # Errors
+    ///
+    /// May fail, if the bytestream cannot hold `len` more bytes.
     pub fn create_maker(&mut self, len: usize) -> io::Result<Marker> {
         let pos = self.buf.len();
         self.write_all(&vec![0; len])?;
         Ok(Marker { pos, len })
     }
 
+    /// Allocates and writes a new `Marker`, using the size of the type `T`
+    /// as a length indication.
+    ///
+    /// # Errors
+    ///
+    /// May fail, if the bytestream cannot hold `size_of::<T>()` more bytes.
     pub fn create_typed_marker<T>(&mut self) -> io::Result<Marker> {
         self.create_maker(mem::size_of::<T>())
     }
 
+    /// Grants access to the subslice, referenced by the marker
+    /// to update the value.
+    ///
+    /// Note that only the marked subslice is available, so
+    /// writes to this subslice cannot depend on any other
+    /// datapoints.
     pub fn update_marker(&mut self, marker: &Marker) -> &mut [u8] {
         &mut self.buf[marker.pos..(marker.pos + marker.len)]
     }
 
+    /// Messures the number of bytes written since the creation of the marker.
+    /// This returns the number of bytes *after* the end of the marker.
+    ///
+    /// # Panics
+    ///
+    /// May panic if the marker does not belong to this bytestream.
     pub fn len_since_marker(&mut self, marker: &Marker) -> usize {
         let pos = self.buf.len();
         if let Some(len) = pos.checked_sub(marker.pos + marker.len) {
-            return len;
+            len
         } else {
             todo!()
         }
@@ -74,15 +139,46 @@ impl Write for BytestreamWriter<'_> {
     }
 }
 
+/// A trait that allows a type to be deserialized from a bytestream.
+///
+/// Any type that implementes `FromBytestream` can be converrted or appened to
+/// a bytestream representation of itself. If the type also implements
+/// `ToBytestream`, it is expected that `ToBytestream::to_bytestream` acts as the
+/// inverse operation to `FromBytestream::from_bytestream`.
 pub trait FromBytestream: Sized {
+    /// The type of errors that can occur during deserialization.
     type Error;
+
+    /// Parses an instance of `Self` from a given bytestream, returning an error
+    /// of this operation fails.
+    ///
+    /// This parsing function must not fully consume the readers bytestream,
+    /// but might, dependent on the type.
+    ///
+    /// # Errors
+    ///
+    /// May return custom errors, if the parsing fails.
     fn from_bytestream(stream: &mut BytestreamReader) -> Result<Self, Self::Error>;
 
+    /// Parses an instance of `Self` from a slice, consuming the slice.
+    /// This function does not indicate how many bytes were read from the slice.
+    ///
+    /// # Errors
+    ///
+    /// See `FromBytestream::from_bytestream`.
     fn from_slice(slice: &[u8]) -> Result<Self, Self::Error> {
         let mut reader = BytestreamReader { slice };
         Self::from_bytestream(&mut reader)
     }
 
+    /// Parses an instance `Self` from a slice, mutating the slice to
+    /// represent the non-yet-consumed bytes after success.
+    ///
+    /// # Errors
+    ///
+    /// See `FromBytestream::from_bytestream`.
+    /// Note that the slice only mutates, if the parsing succeeds.
+    /// On error, the slice remains unedited.
     fn read_from_slice(slice: &mut &[u8]) -> Result<Self, Self::Error> {
         let mut reader = BytestreamReader { slice };
         let object = Self::from_bytestream(&mut reader)?;
@@ -90,8 +186,13 @@ pub trait FromBytestream: Sized {
         Ok(object)
     }
 
+    /// Parses an instance of `Self` from a vector, consuming all read bytes.
+    ///
+    /// # Errors
+    ///
+    /// See `FromBytestream::from_bytestream`.
     fn read_from_vec(vec: &mut Vec<u8>) -> Result<Self, Self::Error> {
-        let mut reader = BytestreamReader { slice: &vec };
+        let mut reader = BytestreamReader { slice: vec };
         let len = reader.slice.len();
         let object = Self::from_bytestream(&mut reader)?;
         let consumed = len - reader.slice.len();
@@ -100,15 +201,23 @@ pub trait FromBytestream: Sized {
     }
 }
 
+/// A readable bytestream, with substream abstractions.
+///
+/// Values can be read using `std::io::Read` in combination with
+/// `byteorder::ReadBytesExt`.
 #[derive(Debug)]
 pub struct BytestreamReader<'a> {
     slice: &'a [u8],
 }
 
 impl BytestreamReader<'_> {
+    /// Tries to extract a substream of length `n`.
+    ///
+    /// # Errors
+    ///
+    /// This function fails, if less that `n` bytes remain in the bytestream.
     pub fn extract(&mut self, n: usize) -> io::Result<BytestreamReader<'_>> {
         if self.slice.len() < n {
-            dbg!(self.slice.len(), n);
             return Err(io::Error::new(
                 io::ErrorKind::Other,
                 "invalid substream length",
@@ -121,6 +230,8 @@ impl BytestreamReader<'_> {
         Ok(stream)
     }
 
+    /// Indicates whether a bytestream is full consumed.
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.slice.is_empty()
     }
@@ -135,6 +246,8 @@ impl Read for BytestreamReader<'_> {
     }
 }
 
+/// An macro to automatically implement `ToBytestream` and `FromBytestream`
+/// for primitive enumerations with `#[repr(ux)]`
 #[macro_export]
 macro_rules! raw_enum {
     ($(#[$outer:meta])*

@@ -3,6 +3,7 @@ mod macros;
 
 pub mod arp;
 pub mod dns;
+pub mod extensions;
 pub mod icmp;
 pub mod interface;
 pub mod io;
