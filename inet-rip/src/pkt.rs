@@ -5,14 +5,17 @@ use bytepack::{
 };
 use std::{io::Error, net::Ipv4Addr};
 
+/// A RIP packet.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct RipPacket {
+    /// The packets command, defining the maing of the following entries.
     pub command: RipCommand,
-    // pub version: u8
+    /// The packets payload, containsing RIP entries.
     pub entries: Vec<RipEntry>,
 }
 
 raw_enum! {
+    /// The kind of command, encoded in a RIP packet.
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
     pub enum RipCommand {
         type Repr = u8 where BigEndian;
@@ -21,16 +24,23 @@ raw_enum! {
     }
 }
 
+/// A RIP entry in the RIP table.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct RipEntry {
+    /// The address family of the target (only `AF_INET` is currently supported)
     pub addr_fam: u16,
+    /// The network prefix of the advertised subnet.
     pub target: Ipv4Addr,
+    /// The network mask of the advertised subnet.
     pub mask: Ipv4Addr,
+    /// The next hop enroute to the adverised subnet.
     pub next_hop: Ipv4Addr,
+    /// A metric grading the adverised path.
     pub metric: u32,
 }
 
 impl RipPacket {
+    /// Writes a set of RIP entries to a RIP packet.
     pub fn packets(command: RipCommand, mut entries: &[RipEntry]) -> Vec<RipPacket> {
         let mut r = Vec::with_capacity(entries.len() / 25 + 1);
         while !entries.is_empty() {
@@ -75,6 +85,7 @@ impl FromBytestream for RipPacket {
     }
 }
 
+/// Address familiy `Ipv4/INET`.
 pub const AF_INET: u16 = 2;
 
 impl ToBytestream for RipEntry {

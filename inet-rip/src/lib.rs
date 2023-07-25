@@ -17,17 +17,19 @@ use inet::routing::RoutingPort;
 mod pkt;
 pub use self::pkt::*;
 
-/// Configuration for RIP routers.
+/// Configuration of a single RIP router.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct RipConfig {
-    pub entry_lfietime: Duration,
+    /// The maximum allowed age of any routing entry.
+    pub entry_lifetime: Duration,
+    /// The update interval for routing entries.
     pub entry_update_interval: Duration,
 }
 
 impl Default for RipConfig {
     fn default() -> Self {
         Self {
-            entry_lfietime: Duration::from_secs(200),
+            entry_lifetime: Duration::from_secs(200),
             entry_update_interval: Duration::from_secs(60),
         }
     }
@@ -35,7 +37,7 @@ impl Default for RipConfig {
 
 /// A routing deamon implementing RIP in a LAN.
 ///
-/// Note that this deamon expects that now network interfaces
+/// Note that this deamon expects that no network interfaces
 /// are defined yet.
 #[derive(Debug, Clone)]
 pub struct RipRoutingDeamon {
@@ -162,7 +164,7 @@ impl RipRoutingDeamon {
             mask,
             gateway: router,
             cost: 1,
-            deadline: SimTime::now() + self.cfg.entry_lfietime,
+            deadline: SimTime::now() + self.cfg.entry_lifetime,
             update_time: SimTime::now() + self.cfg.entry_update_interval,
         };
         if let Some(dv) = self.vectors.get_mut(&subnet) {
@@ -342,7 +344,7 @@ impl RipRoutingDeamon {
                                     mask: dv.mask,
                                     gateway: raddr,
                                     cost: dv.metric + 1,
-                                    deadline: SimTime::now() + self.cfg.entry_lfietime,
+                                    deadline: SimTime::now() + self.cfg.entry_lifetime,
                                     update_time: SimTime::now() + self.cfg.entry_update_interval,
                                 };
                                 add_routing_entry(dv.target, dv.mask, raddr, &rport).unwrap();
@@ -355,7 +357,7 @@ impl RipRoutingDeamon {
                                 });
                             } else if route.cost == dv.metric + 1 && route.gateway == dv.next_hop {
                                 // Update
-                                route.deadline = SimTime::now() + self.cfg.entry_lfietime;
+                                route.deadline = SimTime::now() + self.cfg.entry_lifetime;
                                 route.update_time = SimTime::now() + self.cfg.entry_update_interval;
                             }
                         } else {
@@ -371,7 +373,7 @@ impl RipRoutingDeamon {
                                     mask: dv.mask,
                                     gateway: raddr,
                                     cost: dv.metric + 1,
-                                    deadline: SimTime::now() + self.cfg.entry_lfietime,
+                                    deadline: SimTime::now() + self.cfg.entry_lifetime,
                                     update_time: SimTime::now() + self.cfg.entry_update_interval,
                                 },
                             );
