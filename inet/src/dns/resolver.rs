@@ -1,11 +1,31 @@
+use std::future::Future;
 use std::io::{Error, ErrorKind, Result};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
+use std::pin::Pin;
 
-pub async fn lookup_host<T>(host: T) -> Result<impl Iterator<Item = SocketAddr>>
+use crate::ctx::IOContext;
+
+#[inline]
+pub(crate) async fn lookup_host<T>(host: T) -> Result<impl Iterator<Item = SocketAddr>>
 where
     T: ToSocketAddrs,
 {
     <T as sealed::ToSocketAddrsPriv>::to_socket_addrs(&host).await
+}
+
+pub type DnsResolver =
+    fn(&str, u16) -> Pin<Box<dyn Future<Output = Result<Vec<SocketAddr>>> + Send>>;
+
+pub fn default_dns_resolve(
+    _host: &str,
+    _port: u16,
+) -> Pin<Box<dyn Future<Output = Result<Vec<SocketAddr>>> + Send>> {
+    Box::pin(async {
+        Err(Error::new(
+            ErrorKind::NotFound,
+            "name could not be resolved - no dns",
+        ))
+    })
 }
 
 mod sealed {
@@ -130,101 +150,14 @@ impl ToSocketAddrs for (&str, u16) {}
 impl sealed::ToSocketAddrsPriv for (&str, u16) {
     type Iter = std::vec::IntoIter<SocketAddr>;
     async fn to_socket_addrs(&self) -> std::io::Result<Self::Iter> {
-        // let mut s = self.0;
-        // if s.starts_with('[') && s.ends_with(']') {
-        //     s = &s[1..(s.len() - 1)]
-        // }
         if let Ok(ip) = self.0.parse() {
             return Ok(vec![SocketAddr::new(ip, self.1)].into_iter());
         };
 
-        #[cfg(feature = "dns")]
-        {
-            // Imports
-            use std::time::Duration;
+        let f = IOContext::with_current(|ctx| ctx.dns);
 
-            use bytepack::{FromBytestream, ToBytestream};
-            use des::time::sleep;
-            use inet_types::dns::{DNSMessage, DNSResponseCode, DNSType};
-            use tokio::select;
-
-            use crate::UdpSocket;
-
-            // Real resolve
-            let socket = UdpSocket::bind("127.0.0.1:0").await?;
-            let mut question = DNSMessage::question_a(0x01, self.0);
-            question.rd = true;
-            let buf = question.to_vec()?;
-
-            let localhost = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 53);
-            let n = socket.send_to(&buf, localhost).await?;
-
-            if n != buf.len() {
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::NotConnected,
-                    "could not send dns query",
-                ));
-            }
-
-            loop {
-                let mut buf = vec![0u8; 512];
-                let n = select! {
-                    result = socket.recv_from(&mut buf) => {
-                        result?.0
-                    },
-                    _ = sleep(Duration::new(5, 0)) => {
-                        return Err(std::io::Error::new(
-                            std::io::ErrorKind::TimedOut,
-                            "failed to lookup address information: request timed out"
-                        ))
-                    }
-                };
-                buf.truncate(n);
-
-                let mut response = DNSMessage::read_from_vec(&mut buf)?;
-                assert!(response.qr);
-
-                if response.rcode != DNSResponseCode::NoError {
-                    match response.rcode {
-                  DNSResponseCode::NxDomain => return Err(std::io::Error::new(
-                      std::io::ErrorKind::Other,
-                      "failed to lookup address information: nodename nor servname provided, or not known"
-                  )),
-                  DNSResponseCode::ServFail => return Err(std::io::Error::new(
-                      std::io::ErrorKind::Other,
-                      "failed to lookup address information: dns resolver failed"
-                  )),
-                  _ => unimplemented!()
-              }
-                }
-
-                if !response.anwsers.is_empty() {
-                    let mut vec = Vec::with_capacity(response.additional.len() + 1);
-                    let addr = response.anwsers.remove(0).as_addr();
-                    vec.push(SocketAddr::new(addr, self.1));
-
-                    for additional in response.additional {
-                        if additional.typ != DNSType::A && additional.typ != DNSType::AAAA {
-                            continue;
-                        }
-                        let addr = additional.as_addr();
-                        vec.push(SocketAddr::new(addr, self.1));
-                    }
-                    return Ok(vec.into_iter());
-                } else {
-                    return Err(std::io::Error::new(
-                        std::io::ErrorKind::Other,
-                        "Iterative resolve not supported yet",
-                    ));
-                }
-            }
-        }
-
-        #[cfg(not(feature = "dns"))]
-        Err(Error::new(
-            ErrorKind::NotFound,
-            "name could not be resolved - no dns",
-        ))
+        let addrs = f(self.0, self.1).await?;
+        Ok(addrs.into_iter())
     }
 }
 

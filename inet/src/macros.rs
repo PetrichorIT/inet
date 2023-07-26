@@ -1,13 +1,3 @@
-macro_rules! cfg_dns {
-    ($($item:item)*) => {
-        $(
-            #[cfg(feature = "dns")]
-            #[cfg_attr(docsrs, doc(cfg(feature = "dns")))]
-            $item
-        )*
-    }
-}
-
 macro_rules! cfg_uds {
     ($($item:item)*) => {
         $(

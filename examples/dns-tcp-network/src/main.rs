@@ -2,13 +2,14 @@ use std::fs::File;
 
 use des::{prelude::*, registry, time::sleep, tracing::Subscriber};
 use inet::{
-    dns::{lookup_host, DNSNameserver},
+    dns::lookup_host,
     interface::{add_interface, Interface, NetworkDevice},
     routing::{set_default_gateway, RoutingInformation},
     types::ip::IpMask,
     utils::LinkLayerSwitch,
     TcpListener, TcpStream,
 };
+use inet_dns::DNSNameserver;
 use inet_pcap::{pcap, PcapCapturePoints, PcapConfig, PcapFilters};
 use inet_rip::RipRoutingDeamon;
 use tokio::{

@@ -50,6 +50,7 @@ pub struct LocRib {
     dests: FxHashMap<Nlri, (RouteId, Meta)>,
     routes: FxHashMap<RouteId, (Route, Peer)>,
     pub pending: Vec<Nlri>,
+    #[allow(unused)]
     table_id: RoutingTableId,
 }
 

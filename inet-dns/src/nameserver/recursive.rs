@@ -1,8 +1,8 @@
-use bytepack::{FromBytestream, ToBytestream};
-use des::{runtime::random, time::SimTime};
-use inet_types::dns::{
+use crate::types::{
     DNSClass, DNSMessage, DNSQuestion, DNSResourceRecord, DNSResponseCode, DNSString, DNSType,
 };
+use bytepack::{FromBytestream, ToBytestream};
+use des::{runtime::random, time::SimTime};
 use std::{collections::VecDeque, net::SocketAddr, time::Duration};
 
 use super::{DNSNameserver, DNSTransaction};

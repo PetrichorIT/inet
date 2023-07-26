@@ -1,7 +1,7 @@
 #![allow(unused)]
 
+use crate::types::DNSResourceRecord;
 use des::time::SimTime;
-use inet_types::dns::DNSResourceRecord;
 use std::time::Duration;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

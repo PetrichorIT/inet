@@ -20,9 +20,6 @@ pub mod udp;
 #[cfg(feature = "uds")]
 pub mod uds;
 
-#[cfg(feature = "dns")]
-pub mod dns;
-
 #[must_use]
 pub fn split_off_front(mut buf: Vec<u8>, pos: usize) -> Vec<u8> {
     for i in pos..buf.len() {

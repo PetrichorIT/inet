@@ -1,5 +1,5 @@
+use super::types::{DNSClass, DNSResourceRecord, DNSSOAResourceRecord, DNSString, DNSType};
 use bytepack::ToBytestream;
-use inet_types::dns::{DNSClass, DNSResourceRecord, DNSSOAResourceRecord, DNSString, DNSType};
 use std::{
     fs::File,
     io::{BufRead, BufReader},

@@ -6,9 +6,10 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-inet = { path = "../../inet", features = ["dns"] }
+inet = { path = "../../inet" }
 inet-rip = { path = "../../inet-rip" }
 inet-pcap = { path = "../../inet-pcap" }
+inet-dns = { path = "../../inet-dns" }
 des = "*"
 async-trait = "*"
 tracing = "*"

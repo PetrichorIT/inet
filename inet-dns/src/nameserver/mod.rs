@@ -1,19 +1,19 @@
-use crate::UdpSocket;
-
 use super::DNSZoneFile;
+use crate::{
+    real_dns_resolver,
+    types::{
+        DNSClass, DNSMessage, DNSNodeInformation, DNSOpCode, DNSQuestion, DNSResourceRecord,
+        DNSResponseCode, DNSSOAResourceRecord, DNSString, DNSType,
+    },
+};
 use bytepack::{FromBytestream, ToBytestream};
 use des::{
     prelude::{module_path, par},
     time::sleep,
     time::SimTime,
 };
-use inet_types::{
-    dns::{
-        DNSClass, DNSMessage, DNSNodeInformation, DNSOpCode, DNSQuestion, DNSResourceRecord,
-        DNSResponseCode, DNSSOAResourceRecord, DNSString, DNSType,
-    },
-    ip::IpMask,
-};
+use inet::{dns::set_dns_resolver, UdpSocket};
+use inet_types::ip::IpMask;
 use std::{
     collections::VecDeque,
     net::{IpAddr, Ipv4Addr, SocketAddr},
@@ -155,6 +155,8 @@ impl DNSNameserver {
 
 impl DNSNameserver {
     pub async fn launch(&mut self) -> std::io::Result<()> {
+        set_dns_resolver(real_dns_resolver)?;
+
         let socket =
             UdpSocket::bind(SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), 53)).await?;
 

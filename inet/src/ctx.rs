@@ -1,5 +1,6 @@
 use crate::{
     arp::ArpTable,
+    dns::{default_dns_resolve, DnsResolver},
     extensions::Extensions,
     icmp::Icmp,
     interface::{IfId, Interface, LinkLayerResult, KIND_LINK_UPDATE},
@@ -33,6 +34,7 @@ thread_local! {
 }
 
 pub(crate) struct IOContext {
+    #[allow(unused)]
     pub(super) id: ModuleId,
     pub(super) ifaces: FxHashMap<IfId, Interface>,
 
@@ -40,6 +42,8 @@ pub(crate) struct IOContext {
     pub(super) ipv4_fwd: FwdV4,
     pub(super) ipv6router: Ipv6RoutingTable,
     pub(super) icmp: Icmp,
+
+    pub(super) dns: DnsResolver,
 
     pub(super) sockets: Sockets,
     pub(super) udp: Udp,
@@ -76,8 +80,9 @@ impl IOContext {
             arp: ArpTable::new(),
             ipv4_fwd: FwdV4::new(),
             ipv6router: Ipv6RoutingTable::new(),
-
             icmp: Icmp::new(),
+
+            dns: default_dns_resolve,
 
             sockets: Sockets::new(),
             udp: Udp::new(),

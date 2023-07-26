@@ -1,4 +1,4 @@
-use crate::dns::DNSString;
+use super::DNSString;
 use bytepack::{BytestreamReader, BytestreamWriter};
 use bytepack::{FromBytestream, ReadBytesExt, ToBytestream, WriteBytesExt, BE};
 use std::fmt::Display;
