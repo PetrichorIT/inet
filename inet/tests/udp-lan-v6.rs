@@ -10,7 +10,7 @@ use tokio::task::JoinHandle;
 struct Node {
     handles: Vec<JoinHandle<()>>,
 }
-#[async_trait::async_trait]
+
 impl AsyncModule for Node {
     fn new() -> Self {
         Self {
@@ -94,7 +94,7 @@ impl AsyncModule for Node {
         tracing::error!(
             "msg :: {} :: {} // {:?} -> {:?}",
             msg.str(),
-            module_name(),
+            current().name(),
             msg.content::<Ipv6Packet>().src,
             msg.content::<Ipv6Packet>().dest
         );

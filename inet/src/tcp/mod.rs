@@ -3,7 +3,7 @@
 
 use bytepack::{FromBytestream, ToBytestream};
 use des::{
-    prelude::{module_path, schedule_in, GateRef, Message},
+    prelude::{current, schedule_in, GateRef, Message},
     time::SimTime,
 };
 use fxhash::{FxBuildHasher, FxHashMap};
@@ -228,7 +228,9 @@ impl IOContext {
         assert!(ip_packet.tos() == PROTO_TCP);
 
         let Ok(tcp_pkt) = TcpPacket::from_slice(ip_packet.content()) else {
-            tracing::error!("received ip-packet with proto=0x06 (tcp) but content was no tcp-packet");
+            tracing::error!(
+                "received ip-packet with proto=0x06 (tcp) but content was no tcp-packet"
+            );
             return false;
         };
 
@@ -314,12 +316,16 @@ impl IOContext {
             return;
         };
 
-        let Some(socket) = self.sockets.get(&ctrl.fd) else { return };
-        let Some(interface) = self.ifaces.get_mut(&socket.interface.unwrap_ifid()) else { return };
+        let Some(socket) = self.sockets.get(&ctrl.fd) else {
+            return;
+        };
+        let Some(interface) = self.ifaces.get_mut(&socket.interface.unwrap_ifid()) else {
+            return;
+        };
 
         if !interface.is_busy() {
             let Some(pkt) = ctrl.tx_queue.pop_front() else {
-                return
+                return;
             };
             if !ctrl.tx_queue.is_empty() {
                 interface.add_write_interest(ctrl.fd);
@@ -434,8 +440,12 @@ impl IOContext {
         }
 
         ctrl.tx_queue.push_back(ip);
-        let Some(socket) = self.sockets.get(&ctrl.fd) else { return };
-        let Some(interface) = self.ifaces.get_mut(&socket.interface.unwrap_ifid()) else { return };
+        let Some(socket) = self.sockets.get(&ctrl.fd) else {
+            return;
+        };
+        let Some(interface) = self.ifaces.get_mut(&socket.interface.unwrap_ifid()) else {
+            return;
+        };
 
         if !interface.is_busy() {
             self.send_ip_packet(
@@ -452,7 +462,7 @@ impl IOContext {
 impl IOContext {
     fn process_packet(&mut self, fd: Fd, ip: IpPacketRef<'_, '_>, pkt: TcpPacket) {
         let Some(mut ctrl) = self.tcp.streams.remove(&fd) else {
-            return
+            return;
         };
 
         let span = ctrl.span.clone();
@@ -498,7 +508,7 @@ impl IOContext {
 
     fn process_timeout(&mut self, fd: Fd, msg: Message) {
         let Some(mut ctrl) = self.tcp.streams.remove(&fd) else {
-            return
+            return;
         };
 
         let span = ctrl.span.clone();
@@ -532,7 +542,7 @@ impl IOContext {
 
     fn syscall(&mut self, fd: Fd, syscall: TcpSyscall) {
         let Some(mut ctrl) = self.tcp.streams.remove(&fd) else {
-            return
+            return;
         };
 
         let span = ctrl.span.clone();
@@ -1444,7 +1454,10 @@ impl IOContext {
     pub(self) fn tcp_try_write(&mut self, fd: Fd, buf: &[u8]) -> Result<usize> {
         // (0) Get the socket
         let Some(mut ctrl) = self.tcp.streams.remove(&fd) else {
-            return Err(Error::new(ErrorKind::InvalidInput, "invalid fd - socket dropped"))
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                "invalid fd - socket dropped",
+            ));
         };
 
         let span = ctrl.span.clone();
@@ -1478,7 +1491,10 @@ impl IOContext {
     pub(self) fn tcp_try_read(&mut self, fd: Fd, buf: &mut [u8]) -> Result<usize> {
         // (0) Get the socket
         let Some(mut ctrl) = self.tcp.streams.remove(&fd) else {
-            return Err(Error::new(ErrorKind::InvalidInput, "invalid fd - socket dropped"))
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                "invalid fd - socket dropped",
+            ));
         };
 
         let span = ctrl.span.clone();
@@ -1524,7 +1540,10 @@ impl IOContext {
     pub(self) fn tcp_try_peek(&mut self, fd: Fd, buf: &mut [u8]) -> Result<usize> {
         // (0) Get the socket
         let Some(mut ctrl) = self.tcp.streams.remove(&fd) else {
-            return Err(Error::new(ErrorKind::InvalidInput, "invalid fd - socket dropped"))
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                "invalid fd - socket dropped",
+            ));
         };
 
         let span = ctrl.span.clone();

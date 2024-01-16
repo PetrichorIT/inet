@@ -26,8 +26,8 @@ impl Module for Link {
 
     fn handle_message(&mut self, msg: Message) {
         match msg.header().last_gate.as_ref().map(|v| v.name()) {
-            Some("lhs_in") => send(msg, "rhs_out"),
-            Some("rhs_in") => send(msg, "lhs_out"),
+            Some("lhs") => send(msg, "rhs"),
+            Some("rhs") => send(msg, "lhs"),
             _ => todo!(),
         }
     }
@@ -38,7 +38,6 @@ struct TcpServer {
     fd: Arc<AtomicU32>,
 }
 
-#[async_trait::async_trait]
 impl AsyncModule for TcpServer {
     fn new() -> Self {
         Self {
@@ -108,7 +107,6 @@ struct TcpClient {
     fd: Arc<AtomicU32>,
 }
 
-#[async_trait::async_trait]
 impl AsyncModule for TcpClient {
     fn new() -> Self {
         Self {
@@ -128,7 +126,6 @@ impl AsyncModule for TcpClient {
         let fd = self.fd.clone();
 
         tokio::spawn(async move {
-            use tokio::io::AsyncWriteExt;
             let mut stream = TcpStream::connect("69.0.0.100:2000").await.unwrap();
             fd.store(stream.as_raw_fd(), SeqCst);
 
@@ -191,6 +188,6 @@ fn tcp_echo_100k() {
     );
     let rt = Builder::seeded(123).build(app);
     let (_, time, profiler) = rt.run().unwrap();
-    assert_eq!(time.as_secs(), 7);
+    assert_eq!(time.as_secs(), 7); // there is something wrong here
     assert!(profiler.event_count < 8000);
 }

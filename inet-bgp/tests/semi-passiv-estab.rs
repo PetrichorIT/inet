@@ -143,8 +143,7 @@ fn semi_passiv_estab() {
             bitrate: 1000000,
             latency: Duration::from_millis(5),
             jitter: Duration::ZERO,
-            cost: 1.0,
-            queuesize: 0,
+            drop_behaviour: Default::default(),
         }),
     );
 
@@ -284,8 +283,7 @@ fn semi_passiv_estab_delayed_client() {
             bitrate: 1000000,
             latency: Duration::from_millis(5),
             jitter: Duration::ZERO,
-            cost: 1.0,
-            queuesize: 0,
+            drop_behaviour: Default::default(),
         }),
     );
 
@@ -426,8 +424,7 @@ fn semi_passiv_estab_delayed_open() {
             bitrate: 1000000,
             latency: Duration::from_millis(5),
             jitter: Duration::ZERO,
-            cost: 1.0,
-            queuesize: 0,
+            drop_behaviour: Default::default(),
         }),
     );
 

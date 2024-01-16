@@ -16,7 +16,7 @@ where
 pub type DnsResolver =
     fn(&str, u16) -> Pin<Box<dyn Future<Output = Result<Vec<SocketAddr>>> + Send>>;
 
-pub fn default_dns_resolve(
+pub(crate) fn default_dns_resolve(
     _host: &str,
     _port: u16,
 ) -> Pin<Box<dyn Future<Output = Result<Vec<SocketAddr>>> + Send>> {
@@ -31,7 +31,7 @@ pub fn default_dns_resolve(
 mod sealed {
     use std::net::SocketAddr;
 
-    #[async_trait::async_trait]
+    #[allow(async_fn_in_trait)]
     pub trait ToSocketAddrsPriv {
         type Iter: Iterator<Item = SocketAddr> + Send + 'static;
         async fn to_socket_addrs(&self) -> std::io::Result<Self::Iter>;
@@ -41,7 +41,7 @@ mod sealed {
 pub trait ToSocketAddrs: sealed::ToSocketAddrsPriv {}
 
 impl ToSocketAddrs for SocketAddr {}
-#[async_trait::async_trait]
+
 impl sealed::ToSocketAddrsPriv for SocketAddr {
     type Iter = std::option::IntoIter<SocketAddr>;
     async fn to_socket_addrs(&self) -> std::io::Result<Self::Iter> {
@@ -51,7 +51,7 @@ impl sealed::ToSocketAddrsPriv for SocketAddr {
 }
 
 impl ToSocketAddrs for SocketAddrV4 {}
-#[async_trait::async_trait]
+
 impl sealed::ToSocketAddrsPriv for SocketAddrV4 {
     type Iter = std::option::IntoIter<SocketAddr>;
     async fn to_socket_addrs(&self) -> std::io::Result<Self::Iter> {
@@ -60,7 +60,7 @@ impl sealed::ToSocketAddrsPriv for SocketAddrV4 {
 }
 
 impl ToSocketAddrs for SocketAddrV6 {}
-#[async_trait::async_trait]
+
 impl sealed::ToSocketAddrsPriv for SocketAddrV6 {
     type Iter = std::option::IntoIter<SocketAddr>;
     async fn to_socket_addrs(&self) -> std::io::Result<Self::Iter> {
@@ -69,7 +69,7 @@ impl sealed::ToSocketAddrsPriv for SocketAddrV6 {
 }
 
 impl ToSocketAddrs for (IpAddr, u16) {}
-#[async_trait::async_trait]
+
 impl sealed::ToSocketAddrsPriv for (IpAddr, u16) {
     type Iter = std::option::IntoIter<SocketAddr>;
     async fn to_socket_addrs(&self) -> std::io::Result<Self::Iter> {
@@ -79,7 +79,7 @@ impl sealed::ToSocketAddrsPriv for (IpAddr, u16) {
 }
 
 impl ToSocketAddrs for (Ipv4Addr, u16) {}
-#[async_trait::async_trait]
+
 impl sealed::ToSocketAddrsPriv for (Ipv4Addr, u16) {
     type Iter = std::option::IntoIter<SocketAddr>;
     async fn to_socket_addrs(&self) -> std::io::Result<Self::Iter> {
@@ -89,7 +89,7 @@ impl sealed::ToSocketAddrsPriv for (Ipv4Addr, u16) {
 }
 
 impl ToSocketAddrs for (Ipv6Addr, u16) {}
-#[async_trait::async_trait]
+
 impl sealed::ToSocketAddrsPriv for (Ipv6Addr, u16) {
     type Iter = std::option::IntoIter<SocketAddr>;
     async fn to_socket_addrs(&self) -> std::io::Result<Self::Iter> {
@@ -99,7 +99,7 @@ impl sealed::ToSocketAddrsPriv for (Ipv6Addr, u16) {
 }
 
 impl ToSocketAddrs for &[SocketAddr] {}
-#[async_trait::async_trait]
+
 impl sealed::ToSocketAddrsPriv for &[SocketAddr] {
     type Iter = std::vec::IntoIter<SocketAddr>;
     async fn to_socket_addrs(&self) -> std::io::Result<Self::Iter> {
@@ -124,7 +124,7 @@ impl sealed::ToSocketAddrsPriv for &[SocketAddr] {
 }
 
 impl ToSocketAddrs for &str {}
-#[async_trait::async_trait]
+
 impl sealed::ToSocketAddrsPriv for &str {
     type Iter = std::vec::IntoIter<SocketAddr>;
     async fn to_socket_addrs(&self) -> std::io::Result<Self::Iter> {
@@ -133,7 +133,10 @@ impl sealed::ToSocketAddrsPriv for &str {
         }
 
         let Some((host, port)) = self.rsplit_once(':') else {
-            return Err(Error::new(ErrorKind::InvalidInput, "missing port specification"));
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                "missing port specification",
+            ));
         };
 
         let port = match port.parse() {
@@ -146,7 +149,7 @@ impl sealed::ToSocketAddrsPriv for &str {
 }
 
 impl ToSocketAddrs for (&str, u16) {}
-#[async_trait::async_trait]
+
 impl sealed::ToSocketAddrsPriv for (&str, u16) {
     type Iter = std::vec::IntoIter<SocketAddr>;
     async fn to_socket_addrs(&self) -> std::io::Result<Self::Iter> {
@@ -162,7 +165,7 @@ impl sealed::ToSocketAddrsPriv for (&str, u16) {
 }
 
 impl ToSocketAddrs for String {}
-#[async_trait::async_trait]
+
 impl sealed::ToSocketAddrsPriv for String {
     type Iter = std::vec::IntoIter<SocketAddr>;
     async fn to_socket_addrs(&self) -> std::io::Result<Self::Iter> {
@@ -171,7 +174,7 @@ impl sealed::ToSocketAddrsPriv for String {
 }
 
 impl ToSocketAddrs for (String, u16) {}
-#[async_trait::async_trait]
+
 impl sealed::ToSocketAddrsPriv for (String, u16) {
     type Iter = std::vec::IntoIter<SocketAddr>;
     async fn to_socket_addrs(&self) -> std::io::Result<Self::Iter> {

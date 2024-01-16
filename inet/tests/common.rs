@@ -9,7 +9,8 @@ macro_rules! impl_build_named {
             ) -> ModuleRef {
                 let mref = ::des::net::module::ModuleContext::standalone(path);
                 mref.activate();
-                let this = Box::new(<$t as Module>::new());
+                use ::des::net::processing::IntoProcessingElements;
+                let this = <$t as Module>::new().as_processing_chain();
                 mref.upgrade_dummy(this);
                 mref
             }
@@ -24,7 +25,7 @@ macro_rules! impl_build_named {
 
                 // (4) Build and attach custom state
                 mref.activate();
-                let this = Box::new(<Self as Module>::new());
+                let this = <Self as Module>::new().as_processing_chain();
                 mref.upgrade_dummy(this);
 
                 mref

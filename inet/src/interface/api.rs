@@ -3,7 +3,7 @@ use std::{
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
 };
 
-use des::{prelude::module_name, time::SimTime};
+use des::{net::module::current, time::SimTime};
 
 use super::{
     IfId, Interface, InterfaceAddr, InterfaceBusyState, InterfaceFlags, InterfaceName,
@@ -42,6 +42,7 @@ impl IOContext {
             ))
         } else {
             // TODO: check nondup
+            self.meta_changed |= true;
 
             // (0) Check if the iface can be used as a valid broadcast target.
             if !iface.flags.loopback && iface.flags.broadcast {
@@ -89,7 +90,7 @@ impl IOContext {
                     InterfaceAddr::Inet { addr, .. } => {
                         let _ = self.arp.update(ArpEntryInternal {
                             negated: false,
-                            hostname: Some(module_name()),
+                            hostname: Some(current().name()),
                             ip: IpAddr::V4(*addr),
                             mac: iface.device.addr,
                             iface: iface.name.id,
@@ -99,7 +100,7 @@ impl IOContext {
                     InterfaceAddr::Inet6 { addr, .. } => {
                         let _ = self.arp.update(ArpEntryInternal {
                             negated: false,
-                            hostname: Some(module_name()),
+                            hostname: Some(current().name()),
                             ip: IpAddr::V6(*addr),
                             mac: iface.device.addr,
                             iface: iface.name.id,
@@ -146,8 +147,8 @@ impl IOContext {
         let Some(iface) = self.ifaces.get(ifid) else {
             return Err(Error::new(
                 ErrorKind::InvalidInput,
-                "no such interface exists"
-            ))
+                "no such interface exists",
+            ));
         };
         Ok(InterfaceState {
             name: iface.name.clone(),

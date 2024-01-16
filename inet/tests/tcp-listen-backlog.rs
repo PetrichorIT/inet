@@ -11,7 +11,7 @@ use tokio::{spawn, task::JoinHandle};
 struct Client {
     handle: Option<JoinHandle<()>>,
 }
-#[async_trait::async_trait]
+
 impl AsyncModule for Client {
     fn new() -> Self {
         Self { handle: None }
@@ -42,7 +42,7 @@ impl AsyncModule for Client {
 struct Server {
     handle: Option<JoinHandle<()>>,
 }
-#[async_trait::async_trait]
+
 impl AsyncModule for Server {
     fn new() -> Self {
         Self { handle: None }

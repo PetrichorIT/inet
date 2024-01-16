@@ -1,7 +1,7 @@
 //! The Domain-Name-Server Protocol (DNS)
 
 mod resolver;
-pub use resolver::default_dns_resolve;
+pub(crate) use resolver::default_dns_resolve;
 pub use resolver::DnsResolver;
 pub use resolver::ToSocketAddrs;
 

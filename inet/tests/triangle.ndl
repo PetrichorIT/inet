@@ -6,27 +6,23 @@ link LAN {
 
 module A {
     gates {
-        in @input,
-        out @output,
+          port,
     }
 }
 module B {
     gates {
-        in @input,
-        out @output,
+        port,
     }
 }
 module C {
     gates {
-        in @input,
-        out @output,
+         port,
     }
 }
 
 module Main {
     gates {
-        in[3] @input,
-        out[3] @output,
+        port[3]
     }
 
     submodules {
@@ -36,13 +32,9 @@ module Main {
     }
 
     connections {
-        a/out --> LAN --> in[0],
-        b/out --> LAN --> in[1],
-        c/out --> LAN --> in[2],
-
-        a/in <-- LAN <-- out[0],
-        b/in <-- LAN <-- out[1],
-        c/in <-- LAN <-- out[2],
+        a/port <-- LAN --> port[0],
+        b/port <-- LAN --> port[1],
+        c/port <-- LAN --> port[2],
     }
 }
 

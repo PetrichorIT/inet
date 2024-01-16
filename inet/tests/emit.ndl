@@ -1,14 +1,12 @@
 module Emitter {
     gates {
-        in @input,
-        out @output
+        out
     }
 }
 
 module Receiver {
      gates {
-        in @input,
-        out @output
+        in
     }
 }
 
@@ -25,8 +23,7 @@ module Main {
     }
 
     connections {
-        tx/out --> LAN --> rx/in,
-        tx/in <-- LAN <-- rx/out,
+        tx/out <-- LAN --> rx/in,
     }
 }
 

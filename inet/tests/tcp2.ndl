@@ -6,15 +6,13 @@ link Link {
 
 module Client {
     gates {
-        in @input,
-        out @output,
+        port
     } 
 }
 
 module Server {
     gates {
-        in @input,
-        out @output,
+        port
     } 
 }
 
@@ -25,8 +23,7 @@ module Main {
     }
 
     connections {
-        client/out --> Link --> server/in,
-        server/out --> Link --> client/in,
+        client/port <-- Link --> server/port,
     }
 }
 

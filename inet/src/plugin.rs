@@ -1,8 +1,6 @@
-use std::any::Any;
-
 use super::IOContext;
 use des::{
-    net::plugin::Plugin,
+    net::{module::current, processing::ProcessingElement},
     prelude::{Message, ModuleId},
 };
 
@@ -22,24 +20,25 @@ impl IOPlugin {
     }
 }
 
-impl Plugin for IOPlugin {
+impl ProcessingElement for IOPlugin {
     fn event_start(&mut self) {
         let io = self.ctx.take().expect("Theft");
         self.prev = IOContext::swap_in(Some(io));
     }
 
-    fn capture_incoming(&mut self, msg: Message) -> Option<Message> {
+    fn incoming(&mut self, msg: Message) -> Option<Message> {
         IOContext::with_current(|ctx| ctx.recv(msg))
     }
 
     fn event_end(&mut self) {
         self.ctx = IOContext::swap_in(self.prev.take());
-        assert!(self.ctx.is_some());
-    }
+        let Some(ref mut ctx) = self.ctx else {
+            panic!("Stole CTX")
+        };
 
-    fn state(&self) -> Box<dyn Any> {
-        let ip = self.ctx.as_ref().map(|ctx| ctx.get_ip()).flatten();
-        // tracing::info!("returning {:?} at ", ip);
-        Box::new(ip)
+        if ctx.meta_changed {
+            ctx.meta_changed = false;
+            current().set_meta(ctx.meta());
+        }
     }
 }

@@ -24,6 +24,7 @@ cfg_uds! {
     pub mod fs;
 }
 
+use des::net::{module::ModuleId, processing::ProcessorElement};
 pub use inet_types as types;
 
 mod udp;
@@ -43,9 +44,9 @@ use ctx::*;
 ///
 /// Call this function as the first step in your simulation (pre runtime creation)
 pub fn init() {
-    des::net::module::set_setup_fn(inet_init)
+    des::net::processing::set_default_processing_elements(inet_init)
 }
 
-fn inet_init(this: &des::net::module::ModuleContext) {
-    this.add_plugin(IOPlugin::new(this.id()), 1);
+fn inet_init() -> Vec<ProcessorElement> {
+    vec![ProcessorElement::new(IOPlugin::new(ModuleId::NULL))]
 }

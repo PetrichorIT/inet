@@ -17,7 +17,7 @@ static V4: AtomicUsize = AtomicUsize::new(0);
 static V6: AtomicUsize = AtomicUsize::new(0);
 
 struct Emitter;
-#[async_trait::async_trait]
+
 impl AsyncModule for Emitter {
     fn new() -> Self {
         Self
@@ -91,7 +91,7 @@ impl AsyncModule for Emitter {
 }
 
 struct Receiver;
-#[async_trait::async_trait]
+
 impl AsyncModule for Receiver {
     fn new() -> Self {
         Self

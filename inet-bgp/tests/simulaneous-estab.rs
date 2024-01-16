@@ -153,8 +153,7 @@ fn simulatneous_estab() {
                 bitrate: 1000000,
                 latency: Duration::from_millis(5),
                 jitter: Duration::ZERO,
-                cost: 1.0,
-                queuesize: 0,
+                drop_behaviour: Default::default(),
             }),
         );
 
@@ -296,8 +295,7 @@ fn synced_estab() {
                 bitrate: 1000000,
                 latency: Duration::from_millis(5),
                 jitter: Duration::ZERO,
-                cost: 1.0,
-                queuesize: 0,
+                drop_behaviour: Default::default(),
             }),
         );
 

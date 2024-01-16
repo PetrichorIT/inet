@@ -1,8 +1,3 @@
-use des::tokio::{
-    io::{AsyncRead, AsyncWrite},
-    pin,
-    sync::{oneshot, Mutex},
-};
 use inet_types::uds::SocketAddr;
 use std::{
     future::Future,
@@ -11,6 +6,11 @@ use std::{
     pin::Pin,
     sync::{self, Arc},
     task::{Context, Poll, Waker},
+};
+use tokio::{
+    io::{AsyncRead, AsyncWrite},
+    pin,
+    sync::{oneshot, Mutex},
 };
 
 use super::{buf::Buffer, listener::IncomingStream};
@@ -63,7 +63,7 @@ impl AsyncRead for UnixStream {
     fn poll_read(
         self: Pin<&mut Self>,
         cx: &mut Context<'_>,
-        buf: &mut des::tokio::io::ReadBuf<'_>,
+        buf: &mut tokio::io::ReadBuf<'_>,
     ) -> Poll<Result<()>> {
         let lock = self.rx_buf.lock();
         pin!(lock);

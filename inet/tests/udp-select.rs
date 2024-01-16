@@ -17,14 +17,13 @@ const EXPECTED: [u8; 10] = [1, 2, 1, 2, 2, 1, 2, 1, 1, 2];
 struct A {
     handle: Option<JoinHandle<()>>,
 }
-#[async_trait::async_trait]
 impl AsyncModule for A {
     fn new() -> A {
         A { handle: None }
     }
 
     async fn at_sim_start(&mut self, _: usize) {
-        let c = match &module_name()[..] {
+        let c = match &current().name()[..] {
             "a" => 1,
             "b" => 2,
             _ => unreachable!(),
@@ -50,7 +49,7 @@ impl AsyncModule for A {
                 sleep(Duration::from_secs_f64(rem)).await;
                 i += 1;
 
-                let text = format!("Hello from client {}", module_name());
+                let text = format!("Hello from client {}", current().name());
                 tracing::info!("sending from {}", get_ip().unwrap());
                 sock.send(text.as_bytes()).await.unwrap();
             }
@@ -67,7 +66,7 @@ type B = A;
 struct C {
     handle: Option<JoinHandle<()>>,
 }
-#[async_trait::async_trait]
+
 impl AsyncModule for C {
     fn new() -> C {
         C { handle: None }

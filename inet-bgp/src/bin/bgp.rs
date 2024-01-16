@@ -9,7 +9,7 @@ use inet_bgp::{pkt::Nlri, types::AsNumber, BgpDeamon};
 use inet_pcap::{PcapCapturePoints, PcapConfig, PcapFilters};
 
 struct BgpNode;
-#[async_trait::async_trait]
+
 impl AsyncModule for BgpNode {
     fn new() -> Self {
         Self
@@ -52,7 +52,7 @@ impl AsyncModule for BgpNode {
                 filters: PcapFilters::default(),
                 capture: PcapCapturePoints::All,
                 output: BufWriter::new(
-                    File::create(format!("src/bin/pcap/{}.pcap", module_path())).unwrap(),
+                    File::create(format!("src/bin/pcap/{}.pcap", current().path())).unwrap(),
                 ),
             })
             .unwrap();

@@ -8,7 +8,7 @@ use tokio::task::JoinHandle;
 struct Node {
     handles: Vec<JoinHandle<()>>,
 }
-#[async_trait::async_trait]
+
 impl AsyncModule for Node {
     fn new() -> Self {
         Self {

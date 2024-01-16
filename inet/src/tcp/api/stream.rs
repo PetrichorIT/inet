@@ -3,7 +3,6 @@ use crate::{
     dns::{lookup_host, ToSocketAddrs},
     interface::IfId,
     socket::*,
-    socket::*,
     tcp::{
         interest::{TcpInterest, TcpInterestGuard},
         types::{TcpEvent, TcpState, TcpSyscall},

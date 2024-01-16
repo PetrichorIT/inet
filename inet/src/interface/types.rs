@@ -92,6 +92,9 @@ impl<T: AsRef<str>> From<T> for InterfaceName {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum InterfaceStatus {
     /// The interface is active and can be used.
+    ///
+    /// This indicates the existence of the interface, but makes no assumtions
+    /// whether the interface is currently free to send, or at all contected to any endpoint.
     Active,
     /// The interface is only pre-configures not really there.
     #[default]
@@ -112,7 +115,10 @@ impl fmt::Display for InterfaceStatus {
 /// The state of the interfaces sending half.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum InterfaceBusyState {
-    /// The sender has no current work, thus sending will not be delayed
+    /// The sender has no current work, thus sending will not be delayed.
+    ///
+    /// This means that any sending operation on this inteface, will send it's
+    /// first packet unbuffered, thus without a chance of client-side loss.
     Idle,
     /// The sender is currently sending a packet, and will be finished
     /// at the timepoint specified in `until`. All sockets with an interest

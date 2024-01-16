@@ -9,8 +9,21 @@ use inet_types::{
     ip::{Ipv4Packet, Ipv6Packet},
 };
 
+/// A marker to identify wakeup messages for the Switch.
+///
+/// Messages of this kind, will only ever be send using `schedule_at`,
+/// so they should never leak into other modules.
 pub const KIND_SWITCH_WAKEUP: MessageKind = 0x0600;
 
+/// An module that acts as a no-config link layer switch.
+///
+/// This switch learns MAC addresses, by observing incoming packages.
+/// By virtue of using ARP, all ajacent nodes will identifiy themselves using either
+/// ARP responses or ARP requests (broadcast) before any data is send, so
+/// the switch will have learned all nessecary data.
+///
+/// This type represents a fully functional module, thus can be used as a drop-in
+/// in i.e. [`AsyncBuilder`](des::net::AsyncBuilder).
 pub struct LinkLayerSwitch {
     info: RoutingInformation,
     // mac addr --> RoutingPort index
@@ -164,38 +177,3 @@ impl LinkLayerSwitch {
         }
     }
 }
-
-// impl LinkLayerSwitch {
-//     fn send_out(&mut self, msg: Message, pos: usize) {
-//         let gate = gate("out", pos).unwrap();
-//         if let Some(ch) = gate.channel() {
-//             if ch.is_busy() {
-//                 // channel busy semantics must change
-//                 self.queues.entry(pos).or_insert(Vec::new()).push(msg);
-//                 let tft = ch.transmission_finish_time();
-//                 if self.queues.get(&pos).unwrap().len() == 1 {
-//                     schedule_at(Message::new().kind(11).content(pos).build(), tft)
-//                 }
-//             } else {
-//                 send(msg, gate)
-//             }
-//         } else {
-//             send(msg, gate)
-//         }
-//     }
-
-//     fn link_update(&mut self, pos: usize) {
-//         let queue = self.queues.get_mut(&pos).unwrap();
-//         let msg = queue.remove(0);
-
-//         if !queue.is_empty() {
-//             let gate = gate("out", pos).unwrap();
-//             let ch = gate.channel().unwrap();
-//             let delay = ch.calculate_busy(&msg);
-
-//             schedule_in(Message::new().kind(11).content(pos).build(), delay)
-//         }
-
-//         send(msg, ("out", pos));
-//     }
-// }

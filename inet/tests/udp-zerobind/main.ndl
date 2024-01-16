@@ -6,15 +6,13 @@ link LAN {
 
 module Node {
     gates {
-        in @input,
-        out @output,
+        port,
     }
 }
 
 module Switch {
     gates {
-        in[5] @input,
-        out[5] @output,
+        port[5],
     }
 }
 
@@ -25,8 +23,7 @@ module Main {
     }
 
     connections {
-        node/out --> LAN --> switch/in,
-        node/in <-- LAN <-- switch/out,
+        node/port <-- LAN --> switch/port,
     }
 }
 

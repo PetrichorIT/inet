@@ -6,15 +6,13 @@ link LANLink {
 
 module Ping {
     gates {
-        in @input,
-        out @output
+        port
     }
 }
 
 module Pong {
     gates {
-        in @input,
-        out @output,
+        port
     }
 }
 
@@ -25,8 +23,7 @@ module Main {
     }
 
     connections {
-        ping/out --> LANLink --> pong/in,
-        pong/out --> LANLink --> ping/in,
+        ping/port <-- LANLink --> pong/port,
     }
 }
 

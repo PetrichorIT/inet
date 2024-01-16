@@ -16,7 +16,7 @@ fn basic_extension() {
         load_ext(MyExt { value: 42 });
         sleep(Duration::from_secs(1)).await;
 
-        with_ext::<MyExt>(|ext| {
+        with_ext::<MyExt, _>(|ext| {
             assert_eq!(ext.value, 42);
             println!("success")
         });

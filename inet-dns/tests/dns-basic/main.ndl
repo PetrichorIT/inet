@@ -1,7 +1,6 @@
 module Basic {
     gates {
-        in @input,
-        out @output,
+        port,
     }
 }
 
@@ -16,17 +15,14 @@ module DNSServer2: Basic {}
 
 module Switch {
     gates {
-        in[10] @input,
-        out[10] @output,
+        port[10]
     }
 }
 
 module Router {
     gates {
-        wan_in @input,
-        wan_out @output,
-        lan_in @input,
-        lan_out @output,
+        wan,
+        lan
     }
 }
 
@@ -59,26 +55,15 @@ module Main {
     }
 
     connections {
-        client/out --> LANLink --> switch/in[0],
-        client/in <-- LANLink <-- switch/out[0],
+        client/port <-- LANLink --> switch/port[0],
+        dns0/port <-- LANLink --> switch/port[1],
+        dns1/port <-- LANLink --> switch/port[2],
+        dns1alt/port <-- LANLink --> switch/port[4],
 
-        dns0/out --> LANLink --> switch/in[1],
-        dns0/in <-- LANLink <-- switch/out[1],
+        r1/lan <-- LANLink --> switch/port[5],
+        r1/wan <-- WANLink --> r2/wan,
 
-        dns1/out --> LANLink --> switch/in[2],
-        dns1/in <-- LANLink <-- switch/out[2],
-
-        dns1alt/out --> LANLink --> switch/in[4],
-        dns1alt/in <-- LANLink <-- switch/out[4],
-
-        r1/lan_out --> LANLink --> switch/in[5],
-        r1/lan_in <-- LANLink <-- switch/out[5],
-
-        r1/wan_out --> WANLink --> r2/wan_in,
-        r1/wan_in <-- WANLink <-- r2/wan_out,
-
-        r2/lan_out --> LANLink --> dns2alt/in,
-        r2/lan_in <-- LANLink <-- dns2alt/out,
+        r2/lan <-- LANLink --> dns2alt/port,
     }
 }
 

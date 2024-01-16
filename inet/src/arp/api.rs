@@ -58,7 +58,6 @@ impl Display for ArpEntry {
 /// /* ... */
 ///
 /// ```
-
 pub fn arpa() -> Result<Vec<ArpEntry>> {
     IOContext::failable_api(|ctx| Ok(ctx.arpa()))
 }

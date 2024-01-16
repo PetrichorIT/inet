@@ -7,7 +7,7 @@ use inet::{
 use tokio::spawn;
 
 struct Alice {}
-#[async_trait::async_trait]
+
 impl AsyncModule for Alice {
     fn new() -> Self {
         Self {}
@@ -31,7 +31,7 @@ impl AsyncModule for Alice {
 }
 
 struct Bob {}
-#[async_trait::async_trait]
+
 impl AsyncModule for Bob {
     fn new() -> Self {
         Self {}
@@ -54,7 +54,7 @@ impl AsyncModule for Bob {
 }
 
 struct Eve {}
-#[async_trait::async_trait]
+
 impl AsyncModule for Eve {
     fn new() -> Self {
         Self {}
@@ -95,7 +95,7 @@ impl AsyncModule for Eve {
 }
 
 struct Main {}
-#[async_trait::async_trait]
+
 impl AsyncModule for Main {
     fn new() -> Self {
         Self {}

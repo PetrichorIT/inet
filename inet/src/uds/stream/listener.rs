@@ -1,11 +1,11 @@
-use des::tokio::sync::{
-    mpsc::{channel, Receiver, Sender},
-    oneshot, Mutex,
-};
 use inet_types::uds::SocketAddr;
 use std::{
     io::{Error, ErrorKind, Result},
     path::Path,
+};
+use tokio::sync::{
+    mpsc::{channel, Receiver, Sender},
+    oneshot, Mutex,
 };
 
 use super::UnixStream;

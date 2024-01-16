@@ -12,7 +12,7 @@ use tokio::{
 struct Node {
     handles: Vec<JoinHandle<()>>,
 }
-#[async_trait::async_trait]
+
 impl AsyncModule for Node {
     fn new() -> Self {
         Self {
@@ -104,7 +104,7 @@ impl AsyncModule for Node {
         panic!(
             "msg :: {} :: {} // {:?} -> {:?}",
             msg.str(),
-            module_name(),
+            current().name(),
             msg.content::<Ipv4Packet>().src,
             msg.content::<Ipv4Packet>().dest
         )

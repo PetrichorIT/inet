@@ -24,8 +24,8 @@ impl Module for Link {
 
     fn handle_message(&mut self, msg: Message) {
         match msg.header().last_gate.as_ref().map(|v| v.name()) {
-            Some("lhs_in") => send(msg, "rhs_out"),
-            Some("rhs_in") => send(msg, "lhs_out"),
+            Some("lhs") => send(msg, "rhs"),
+            Some("rhs") => send(msg, "lhs"),
             _ => todo!(),
         }
     }
@@ -36,7 +36,6 @@ struct TcpServer {
     fd: Arc<AtomicU32>,
 }
 
-#[async_trait::async_trait]
 impl AsyncModule for TcpServer {
     fn new() -> Self {
         Self {
@@ -76,7 +75,9 @@ impl AsyncModule for TcpServer {
             let mut buf = [0u8; 500];
             let mut acc = 0;
             loop {
-                let Ok(n) = stream.read(&mut buf).await else { break };
+                let Ok(n) = stream.read(&mut buf).await else {
+                    break;
+                };
                 tracing::info!("received {} bytes", n);
 
                 if n == 0 {
@@ -119,7 +120,6 @@ struct TcpClient {
     fd: Arc<AtomicU32>,
 }
 
-#[async_trait::async_trait]
 impl AsyncModule for TcpClient {
     fn new() -> Self {
         Self {

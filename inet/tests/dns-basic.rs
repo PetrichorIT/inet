@@ -21,7 +21,7 @@
 // struct Client {
 //     suc: bool,
 // }
-// #[async_trait::async_trait]
+//
 // impl AsyncModule for Client {
 //     fn new() -> Self {
 //         Self { suc: false }
@@ -106,7 +106,7 @@
 // struct DNSServer0 {
 //     server: Option<DNSNameserver>,
 // }
-// #[async_trait::async_trait]
+//
 // impl AsyncModule for DNSServer0 {
 //     fn new() -> Self {
 //         Self {
@@ -149,7 +149,7 @@
 // struct DNSServer1 {
 //     server: Option<DNSNameserver>,
 // }
-// #[async_trait::async_trait]
+//
 // impl AsyncModule for DNSServer1 {
 //     fn new() -> Self {
 //         Self {
@@ -195,7 +195,7 @@
 // struct DNSServer2 {
 //     server: Option<DNSNameserver>,
 // }
-// #[async_trait::async_trait]
+//
 // impl AsyncModule for DNSServer2 {
 //     fn new() -> Self {
 //         Self {

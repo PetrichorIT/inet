@@ -19,7 +19,7 @@ impl Module for NetA {
 }
 
 struct BgpA;
-#[async_trait::async_trait]
+
 impl AsyncModule for BgpA {
     fn new() -> Self {
         Self
@@ -71,7 +71,7 @@ impl AsyncModule for BgpA {
 // ffffffffffffffffffffffffffffffff 00 1d 0104 fe09 00b4c 0a8000f00
 
 struct B;
-#[async_trait::async_trait]
+
 impl AsyncModule for B {
     fn new() -> Self {
         Self
@@ -111,7 +111,7 @@ impl AsyncModule for B {
 }
 
 struct C;
-#[async_trait::async_trait]
+
 impl AsyncModule for C {
     fn new() -> Self {
         Self
@@ -161,7 +161,7 @@ impl AsyncModule for C {
 }
 
 struct D;
-#[async_trait::async_trait]
+
 impl AsyncModule for D {
     fn new() -> Self {
         Self
@@ -198,7 +198,7 @@ impl Module for Main {
 }
 
 struct Node;
-#[async_trait::async_trait]
+
 impl AsyncModule for Node {
     fn new() -> Self {
         Self
@@ -227,7 +227,7 @@ impl AsyncModule for Node {
 }
 
 struct Router;
-#[async_trait::async_trait]
+
 impl AsyncModule for Router {
     fn new() -> Self {
         Self
@@ -249,7 +249,7 @@ impl AsyncModule for Router {
             pcap(PcapConfig {
                 filters: PcapFilters::default(),
                 capture: PcapCapturePoints::All,
-                output: File::create(format!("bin/{}.pcap", module_path())).unwrap(),
+                output: File::create(format!("bin/{}.pcap", current().path())).unwrap(),
             })
             .unwrap();
         }

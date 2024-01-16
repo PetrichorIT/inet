@@ -13,6 +13,8 @@ use inet::{
 fn udp_ping_pong() {
     inet::init();
 
+    des::tracing::Subscriber::default().init().unwrap();
+
     let mut sim = AsyncBuilder::new();
     sim.set_default_cfg(NodeCfg { join: true });
     sim.node("ping", |mut rx| async move {
@@ -80,7 +82,6 @@ fn udp_ping_pong() {
         while acc < 4098 {
             let mut buf = [0u8; 1024];
             let (n, from) = socket.recv_from(&mut buf).await.unwrap();
-            dbg!(from);
             acc += n;
             socket.send_to(&buf[..n], from).await.unwrap();
         }
@@ -92,6 +93,7 @@ fn udp_ping_pong() {
 
     let _ = Builder::seeded(123)
         .max_time(100.0.into())
+        .max_itr(1000)
         .build(sim.build())
         .run()
         .unwrap();

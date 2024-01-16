@@ -2,15 +2,13 @@ use crate::{
     arp::ArpTable,
     dns::{default_dns_resolve, DnsResolver},
     extensions::Extensions,
+    fs::Fs,
     icmp::Icmp,
     interface::{IfId, Interface, LinkLayerResult, KIND_LINK_UPDATE},
     routing::{FwdV4, Ipv6RoutingTable},
-    IOPlugin, Udp,
+    Udp,
 };
-use des::{
-    net::plugin::PluginError,
-    prelude::{Message, ModuleId},
-};
+use des::prelude::{Message, ModuleId};
 use fxhash::{FxBuildHasher, FxHashMap};
 use inet_types::{
     icmp::PROTO_ICMP,
@@ -52,12 +50,20 @@ pub(crate) struct IOContext {
     #[cfg(feature = "uds")]
     pub(super) uds: Uds,
 
+    pub(super) fs: Fs,
+
     pub(super) fd: Fd,
     pub(super) port: u16,
 
     pub(super) extensions: Extensions,
 
     pub(super) current: Current,
+    pub(super) meta_changed: bool,
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct IOMeta {
+    pub ip: Option<IpAddr>,
 }
 
 #[derive(Debug, Clone)]
@@ -90,6 +96,7 @@ impl IOContext {
 
             #[cfg(feature = "uds")]
             uds: Uds::new(),
+            fs: Fs::new(),
 
             extensions: Extensions::new(),
 
@@ -97,6 +104,7 @@ impl IOContext {
             port: 1024,
 
             current: Current { ifid: IfId::NULL },
+            meta_changed: true,
         }
     }
 
@@ -111,10 +119,10 @@ impl IOContext {
 
     pub(super) fn with_current<R>(f: impl FnOnce(&mut IOContext) -> R) -> R {
         CURRENT.with(|cell| {
-            f(cell.borrow_mut().as_mut().unwrap_or_else(|| {
-                let error = PluginError::expected::<IOPlugin>();
-                panic!("Missing IOContext: {error}")
-            }))
+            f(cell
+                .borrow_mut()
+                .as_mut()
+                .unwrap_or_else(|| panic!("Missing IOContext")))
         })
     }
 
@@ -122,8 +130,7 @@ impl IOContext {
         CURRENT.with(|cell| {
             let mut ctx = cell.borrow_mut();
             let Some(ctx) = ctx.as_mut() else {
-                let error = PluginError::expected::<IOPlugin>();
-                return Err(Error::new(ErrorKind::Other, error))
+                return Err(Error::new(ErrorKind::Other, "Missing IOContext"));
             };
             f(ctx)
         })
@@ -143,6 +150,10 @@ impl IOContext {
 }
 
 impl IOContext {
+    pub fn meta(&self) -> IOMeta {
+        IOMeta { ip: self.get_ip() }
+    }
+
     pub fn recv(&mut self, msg: Message) -> Option<Message> {
         use LinkLayerResult::*;
 
@@ -163,8 +174,10 @@ impl IOContext {
         match kind {
             KIND_IPV4 => {
                 let Some(ip) = msg.try_content::<Ipv4Packet>() else {
-                    tracing::error!("received eth-packet with kind=0x0800 (ip) but content was no ipv4-packet");
-                    return Some(msg)
+                    tracing::error!(
+                        "received eth-packet with kind=0x0800 (ip) but content was no ipv4-packet"
+                    );
+                    return Some(msg);
                 };
 
                 let iface = self.ifaces.get(&ifid).unwrap();
@@ -241,8 +254,10 @@ impl IOContext {
             }
             KIND_IPV6 => {
                 let Some(ip) = msg.try_content::<Ipv6Packet>() else {
-                    tracing::error!("received eth-packet with kind=0x0800 (ip) but content was no ipv4-packet");
-                    return Some(msg)
+                    tracing::error!(
+                        "received eth-packet with kind=0x0800 (ip) but content was no ipv4-packet"
+                    );
+                    return Some(msg);
                 };
 
                 let iface = self.ifaces.get(&ifid).unwrap();
@@ -314,7 +329,7 @@ impl IOContext {
         };
 
         let Some(socket) = self.sockets.get(fd) else {
-            return None
+            return None;
         };
 
         if socket.typ == SocketType::SOCK_STREAM {

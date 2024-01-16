@@ -18,7 +18,7 @@ DNS2 = www
 struct Client {
     suc: bool,
 }
-#[async_trait::async_trait]
+
 impl AsyncModule for Client {
     fn new() -> Self {
         Self { suc: false }
@@ -103,7 +103,7 @@ impl AsyncModule for Client {
 struct DNSServer0 {
     server: Option<DNSNameserver>,
 }
-#[async_trait::async_trait]
+
 impl AsyncModule for DNSServer0 {
     fn new() -> Self {
         Self {
@@ -146,7 +146,7 @@ impl AsyncModule for DNSServer0 {
 struct DNSServer1 {
     server: Option<DNSNameserver>,
 }
-#[async_trait::async_trait]
+
 impl AsyncModule for DNSServer1 {
     fn new() -> Self {
         Self {
@@ -154,7 +154,7 @@ impl AsyncModule for DNSServer1 {
                 DNSNameserver::from_zonefile(
                     "example.org.",
                     "tests/dns-basic/zonefiles/",
-                    if module_name() == "dns1" {
+                    if current().name() == "dns1" {
                         "ns1.example.org."
                     } else {
                         "ns2.example.org."
@@ -192,7 +192,7 @@ impl AsyncModule for DNSServer1 {
 struct DNSServer2 {
     server: Option<DNSNameserver>,
 }
-#[async_trait::async_trait]
+
 impl AsyncModule for DNSServer2 {
     fn new() -> Self {
         Self {
@@ -243,15 +243,11 @@ impl Module for Router {
 
     fn at_sim_start(&mut self, _stage: usize) {
         let ip = par("addr").unwrap().parse().unwrap();
-        add_interface(Interface::ethv4(
-            NetworkDevice::eth_select(|p| p.input.name() == "lan_in"),
-            ip,
-        ))
-        .unwrap();
+        add_interface(Interface::ethv4(NetworkDevice::bidirectional("lan"), ip)).unwrap();
 
         add_interface(Interface::ethv4_named(
             "wan0",
-            NetworkDevice::eth_select(|p| p.input.name() == "wan_in"),
+            NetworkDevice::bidirectional("wan"),
             ip,
             Ipv4Addr::new(255, 0, 0, 0),
         ))

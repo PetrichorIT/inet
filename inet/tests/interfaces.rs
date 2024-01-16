@@ -1,6 +1,5 @@
 use std::{collections::VecDeque, str::FromStr};
 
-use async_trait::async_trait;
 use des::prelude::*;
 use inet::{interface::*, *};
 use serial_test::serial;
@@ -14,7 +13,6 @@ struct SocketBind {
 }
 impl_build_named!(SocketBind);
 
-#[async_trait]
 impl AsyncModule for SocketBind {
     fn new() -> Self {
         Self { handle: None }
@@ -92,7 +90,6 @@ fn udp_empty_socket_bind() {
 struct UdpEcho4200 {}
 impl_build_named!(UdpEcho4200);
 
-#[async_trait]
 impl AsyncModule for UdpEcho4200 {
     fn new() -> Self {
         Self {}
@@ -112,7 +109,7 @@ impl AsyncModule for UdpEcho4200 {
             loop {
                 let Ok((n, src)) = socket.recv_from(&mut buf).await else {
                     tracing::error!("echo server got recv error");
-                    continue
+                    continue;
                 };
 
                 tracing::info!("Echoing {} bytes to {}", n, src);
@@ -133,7 +130,6 @@ struct UdpSingleEchoSender {
 }
 impl_build_named!(UdpSingleEchoSender);
 
-#[async_trait]
 impl AsyncModule for UdpSingleEchoSender {
     fn new() -> Self {
         Self { handle: None }
@@ -185,25 +181,20 @@ fn udp_echo_single_client() {
     let server = UdpEcho4200::build_named(ObjectPath::from("server"), &mut app);
     let client = UdpSingleEchoSender::build_named(ObjectPath::from("client"), &mut app);
 
-    let so = server.create_gate("out", GateServiceType::Output);
-    let si = server.create_gate("in", GateServiceType::Input);
-    let co = client.create_gate("out", GateServiceType::Output);
-    let ci = client.create_gate("in", GateServiceType::Input);
+    let so = server.create_gate("port");
+    let co = client.create_gate("port");
 
-    so.set_next_gate(ci);
-    co.set_next_gate(si);
-
-    let cschan = Channel::new(
-        ObjectPath::appended_channel(&client.path(), "upstream"),
-        ChannelMetrics::new(100000, Duration::from_millis(100), Duration::ZERO),
-    );
-    let scchan = Channel::new(
-        ObjectPath::appended_channel(&server.path(), "downstream"),
-        ChannelMetrics::new(100000, Duration::from_millis(100), Duration::ZERO),
+    let chan = Channel::new(
+        ObjectPath::appended_channel(&client.path(), "chan"),
+        ChannelMetrics::new(
+            100000,
+            Duration::from_millis(100),
+            Duration::ZERO,
+            Default::default(),
+        ),
     );
 
-    co.set_channel(cschan);
-    so.set_channel(scchan);
+    so.connect(co, Some(chan));
 
     app.register_module(server);
     app.register_module(client);
@@ -221,7 +212,6 @@ struct UdpSingleClusteredSender {
 }
 impl_build_named!(UdpSingleClusteredSender);
 
-#[async_trait]
 impl AsyncModule for UdpSingleClusteredSender {
     fn new() -> Self {
         Self { handle: None }
@@ -281,25 +271,20 @@ fn udp_echo_clustered_echo() {
     let server = UdpEcho4200::build_named(ObjectPath::from("server"), &mut app);
     let client = UdpSingleClusteredSender::build_named(ObjectPath::from("client"), &mut app);
 
-    let so = server.create_gate("out", GateServiceType::Output);
-    let si = server.create_gate("in", GateServiceType::Input);
-    let co = client.create_gate("out", GateServiceType::Output);
-    let ci = client.create_gate("in", GateServiceType::Input);
+    let so = server.create_gate("port");
+    let co = client.create_gate("port");
 
-    so.set_next_gate(ci);
-    co.set_next_gate(si);
-
-    let cschan = Channel::new(
-        ObjectPath::appended_channel(&client.path(), "upstream"),
-        ChannelMetrics::new(100000, Duration::from_millis(100), Duration::ZERO),
-    );
-    let scchan = Channel::new(
-        ObjectPath::appended_channel(&server.path(), "downstream"),
-        ChannelMetrics::new(100000, Duration::from_millis(100), Duration::ZERO),
+    let chan = Channel::new(
+        ObjectPath::appended_channel(&client.path(), "chan"),
+        ChannelMetrics::new(
+            100000,
+            Duration::from_millis(100),
+            Duration::ZERO,
+            Default::default(),
+        ),
     );
 
-    co.set_channel(cschan);
-    so.set_channel(scchan);
+    so.connect(co, Some(chan));
 
     app.register_module(server);
     app.register_module(client);
@@ -317,7 +302,6 @@ struct UdpConcurrentClients {
 }
 impl_build_named!(UdpConcurrentClients);
 
-#[async_trait]
 impl AsyncModule for UdpConcurrentClients {
     fn new() -> Self {
         Self { handle: None }
@@ -409,25 +393,20 @@ fn udp_echo_concurrent_clients() {
     let server = UdpEcho4200::build_named(ObjectPath::from("server"), &mut app);
     let client = UdpConcurrentClients::build_named(ObjectPath::from("client"), &mut app);
 
-    let so = server.create_gate("out", GateServiceType::Output);
-    let si = server.create_gate("in", GateServiceType::Input);
-    let co = client.create_gate("out", GateServiceType::Output);
-    let ci = client.create_gate("in", GateServiceType::Input);
+    let so = server.create_gate("port");
+    let co = client.create_gate("port");
 
-    so.set_next_gate(ci);
-    co.set_next_gate(si);
-
-    let cschan = Channel::new(
-        ObjectPath::appended_channel(&client.path(), "upstream"),
-        ChannelMetrics::new(100000, Duration::from_millis(100), Duration::ZERO),
-    );
-    let scchan = Channel::new(
-        ObjectPath::appended_channel(&server.path(), "downstream"),
-        ChannelMetrics::new(100000, Duration::from_millis(100), Duration::ZERO),
+    let chan = Channel::new(
+        ObjectPath::appended_channel(&client.path(), "chhan"),
+        ChannelMetrics::new(
+            100000,
+            Duration::from_millis(100),
+            Duration::ZERO,
+            Default::default(),
+        ),
     );
 
-    co.set_channel(cschan);
-    so.set_channel(scchan);
+    so.connect(co, Some(chan));
 
     app.register_module(server);
     app.register_module(client);

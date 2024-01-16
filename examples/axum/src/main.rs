@@ -16,7 +16,7 @@ use std::{convert::Infallible, fs::File};
 use tokio::spawn;
 
 struct Client;
-#[async_trait::async_trait]
+
 impl AsyncModule for Client {
     fn new() -> Self {
         Self
@@ -53,7 +53,7 @@ impl AsyncModule for Client {
 }
 
 struct Server;
-#[async_trait::async_trait]
+
 impl AsyncModule for Server {
     fn new() -> Self {
         Self
@@ -99,7 +99,7 @@ impl Module for Main {
 
 mod connector {
     use std::future::Future;
-    use std::{mem::transmute, pin::Pin};
+    use std::pin::Pin;
 
     use hyper::client::connect::{Connected, Connection};
     use hyper::Uri;
@@ -127,7 +127,7 @@ mod connector {
             cx: &mut std::task::Context<'_>,
             buf: &mut tokio::io::ReadBuf<'_>,
         ) -> std::task::Poll<std::io::Result<()>> {
-            Pin::new(&mut self.0).poll_read(cx, unsafe { transmute(buf) })
+            Pin::new(&mut self.0).poll_read(cx, buf)
         }
     }
     impl AsyncWrite for InetTcpStream {

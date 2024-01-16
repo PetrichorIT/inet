@@ -1,5 +1,6 @@
 //! Routing utility and networking layer processing.
-use crate::IOPlugin;
+use crate::ctx::IOMeta;
+use des::net::gate::GateKind;
 use des::prelude::*;
 
 mod tablev6;
@@ -94,40 +95,30 @@ impl RoutingPort {
 
     /// Reads all possible routing ports from the env.
     pub fn collect() -> Vec<RoutingPort> {
-        let gates = gates();
+        let gates = current().gates();
         let mut ports = Vec::new();
 
         // (0) Preprocessing
-        let mut inputs = Vec::with_capacity(gates.len() / 2);
-        let mut outputs = Vec::with_capacity(gates.len() / 2);
 
         for gate in gates {
-            match gate.service_type() {
-                GateServiceType::Input => inputs.push(gate),
-                GateServiceType::Output => outputs.push(gate),
+            match gate.kind() {
+                GateKind::Endpoint => ports.push(RoutingPort {
+                    name: gate.name().to_string(),
+                    input: gate.clone(),
+                    output: gate.clone(),
+                    peer: gate
+                        .path_end()
+                        .map(|end| {
+                            end.owner()
+                                .meta::<IOMeta>()
+                                .map(|io| io.ip)
+                                .flatten()
+                                .map(|addr| RoutingPeer { addr })
+                        })
+                        .flatten(),
+                }),
                 _ => {}
             }
-        }
-
-        // (1) Presorting for better performance
-        // TODO
-
-        // (2) Search for valid paths
-
-        for output in outputs {
-            let Some((peer, addr)) = output.path_end().map(|e| (e.owner().id(), e.owner().get_plugin_state::<IOPlugin, Option<IpAddr>>().flatten().map(|addr| RoutingPeer { addr }))) else {
-                continue;
-            };
-
-            let pair = inputs.iter().find(|g| {
-                let Some(pair_peer) = g.path_start().map(|s| s.owner().id()) else {
-                    return false;
-                };
-                pair_peer == peer
-            });
-
-            let Some(pair) = pair else { continue };
-            ports.push(RoutingPort::new(pair.clone(), output, addr));
         }
 
         ports
@@ -161,22 +152,6 @@ impl From<Ipv6Gateway> for IpGateway {
             Ipv6Gateway::Broadcast => IpGateway::Broadcast,
             Ipv6Gateway::Gateway(ip) => IpGateway::Gateway(ip.into()),
         }
-    }
-}
-
-#[allow(unused)]
-fn inferred_service_type(gate: &GateRef) -> GateServiceType {
-    match gate.service_type() {
-        GateServiceType::Undefined => {
-            if gate.next_gate().is_none() && gate.previous_gate().is_some() {
-                return GateServiceType::Input;
-            }
-            if gate.previous_gate().is_none() && gate.next_gate().is_some() {
-                return GateServiceType::Output;
-            }
-            GateServiceType::Undefined
-        }
-        v => v,
     }
 }
 

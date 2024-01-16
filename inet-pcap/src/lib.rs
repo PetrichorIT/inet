@@ -48,7 +48,10 @@ impl LibPcapDeamon {
         let shb = SHB {
             section_len: 0xffff_ffff_ffff_ffff,
             options: vec![
-                SHBOption::HardwareName(format!("(des/inet) simulated node :: {}", module_path())),
+                SHBOption::HardwareName(format!(
+                    "(des/inet) simulated node :: {}",
+                    current().path()
+                )),
                 SHBOption::OperatingSystem(format!("des/inet")),
                 SHBOption::UserApplication(format!("des/inet")),
             ],

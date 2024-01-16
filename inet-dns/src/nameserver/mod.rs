@@ -8,7 +8,7 @@ use crate::{
 };
 use bytepack::{FromBytestream, ToBytestream};
 use des::{
-    prelude::{module_path, par},
+    prelude::{current, par},
     time::sleep,
     time::SimTime,
 };
@@ -117,7 +117,7 @@ impl DNSNameserver {
             domain_name: domain_name.into(),
             ip: IpAddr::from_str(&par("addr").as_option().expect(&format!(
                 "failed to get par 'addr' for module {}",
-                module_path()
+                current().path()
             )))
             .unwrap(),
         };
@@ -167,7 +167,9 @@ impl DNSNameserver {
             if self.active_transactions.is_empty() {
                 let udp = socket.recv_from(&mut buf).await;
                 let Ok((n, from)) = udp else { break };
-                let Ok(msg) = DNSMessage::read_from_slice(&mut &buf[..n]) else { continue };
+                let Ok(msg) = DNSMessage::read_from_slice(&mut &buf[..n]) else {
+                    continue;
+                };
 
                 let output = self.handle(msg, from);
                 for (pkt, target) in output {

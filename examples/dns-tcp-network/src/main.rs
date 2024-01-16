@@ -18,7 +18,7 @@ use tokio::{
 };
 
 struct Client;
-#[async_trait::async_trait]
+
 impl AsyncModule for Client {
     fn new() -> Self {
         Self
@@ -77,7 +77,7 @@ const DOMAINS: [&str; 15] = [
 ];
 
 struct Server;
-#[async_trait::async_trait]
+
 impl AsyncModule for Server {
     fn new() -> Self {
         Self
@@ -127,7 +127,7 @@ impl AsyncModule for Server {
 }
 
 struct Dns;
-#[async_trait::async_trait]
+
 impl AsyncModule for Dns {
     fn new() -> Self {
         Self
@@ -175,13 +175,13 @@ fn node_like_setup() {
     pcap(PcapConfig {
         capture: PcapCapturePoints::All,
         filters: PcapFilters::default(),
-        output: std::fs::File::create(format!("results/{}.pcap", module_path())).unwrap(),
+        output: std::fs::File::create(format!("results/{}.pcap", current().path())).unwrap(),
     })
     .unwrap();
 }
 
 struct Router;
-#[async_trait::async_trait]
+
 impl AsyncModule for Router {
     fn new() -> Self {
         Self
@@ -207,7 +207,7 @@ impl AsyncModule for Router {
             pcap(PcapConfig {
                 filters: PcapFilters::default(),
                 capture: PcapCapturePoints::All,
-                output: File::create(format!("results/{}.pcap", module_path())).unwrap(),
+                output: File::create(format!("results/{}.pcap", current().path())).unwrap(),
             })
             .unwrap();
         }
@@ -245,13 +245,13 @@ impl Module for LAN {
 
         // forward information to router
         let raddr = Ipv4Addr::from(u32::from(addr) + 1);
-        let router = module_path().appended("router");
+        let router = current().path().appended("router");
         par_for("addr", &router).set(raddr).unwrap();
         par_for("mask", &router).set(mask).unwrap();
 
         for i in 0..5 {
             let naddr = Ipv4Addr::from(u32::from(addr) + 101 + i);
-            let node = module_path().appended(format!("node[{i}]"));
+            let node = current().path().appended(format!("node[{i}]"));
             par_for("addr", &node).set(naddr).unwrap();
             par_for("mask", &node).set(mask).unwrap();
             par_for("gateway", &node).set(raddr).unwrap();

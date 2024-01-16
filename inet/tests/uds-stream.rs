@@ -3,18 +3,17 @@
 use std::iter::repeat_with;
 
 use des::time::sleep;
-use des::tokio::io::{AsyncReadExt, AsyncWriteExt};
-use des::tokio::spawn;
-use des::tokio::task::JoinHandle;
 use des::{prelude::*, registry};
 use inet::uds::{UnixListener, UnixStream};
 use serial_test::serial;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::spawn;
+use tokio::task::JoinHandle;
 
 struct Simplex {
     handles: Vec<JoinHandle<()>>,
 }
 
-#[async_trait::async_trait]
 impl AsyncModule for Simplex {
     fn new() -> Self {
         Self {
@@ -73,7 +72,7 @@ fn uds_simplex() {
         .map_err(|e| println!("{e}"))
         .unwrap();
     let app = NetworkApplication::new(app);
-    let rt = Runtime::new_with(app, RuntimeOptions::seeded(123).max_time(100.0.into()));
+    let rt = Builder::seeded(123).max_time(100.0.into()).build(app);
     match rt.run() {
         RuntimeResult::Finished { .. } => {}
         _ => panic!("Unexpected runtime result"),
@@ -84,7 +83,6 @@ struct Duplex {
     handles: Vec<JoinHandle<()>>,
 }
 
-#[async_trait::async_trait]
 impl AsyncModule for Duplex {
     fn new() -> Self {
         Self {
@@ -144,7 +142,7 @@ fn uds_duplex() {
         .map_err(|e| println!("{e}"))
         .unwrap();
     let app = NetworkApplication::new(app);
-    let rt = Runtime::new_with(app, RuntimeOptions::seeded(123).max_time(100.0.into()));
+    let rt = Builder::seeded(123).max_time(100.0.into()).build(app);
     match rt.run() {
         RuntimeResult::Finished { .. } => {}
         _ => panic!("Unexpected runtime result"),
@@ -155,7 +153,6 @@ struct UnnamedPair {
     handles: Vec<JoinHandle<()>>,
 }
 
-#[async_trait::async_trait]
 impl AsyncModule for UnnamedPair {
     fn new() -> Self {
         Self {
@@ -209,7 +206,7 @@ fn uds_stream_unnamed_pair() {
         .map_err(|e| println!("{e}"))
         .unwrap();
     let app = NetworkApplication::new(app);
-    let rt = Runtime::new_with(app, RuntimeOptions::seeded(123).max_time(100.0.into()));
+    let rt = Builder::seeded(123).max_time(100.0.into()).build(app);
     match rt.run() {
         RuntimeResult::Finished { .. } => {}
         _ => panic!("Unexpected runtime result"),

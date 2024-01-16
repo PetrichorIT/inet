@@ -19,9 +19,11 @@ impl Extensions {
         self.mapping.insert(TypeId::of::<E>(), Box::new(ext));
     }
 
-    fn with_ext<E: Any>(&mut self, f: impl FnOnce(&mut E)) {
+    fn with_ext<E: Any, R>(&mut self, f: impl FnOnce(&mut E) -> R) -> Option<R> {
         if let Some(ext) = self.mapping.get_mut(&TypeId::of::<E>()) {
-            f(ext.downcast_mut::<E>().expect("internal errror"))
+            Some(f(ext.downcast_mut::<E>().expect("internal errror")))
+        } else {
+            None
         }
     }
 }

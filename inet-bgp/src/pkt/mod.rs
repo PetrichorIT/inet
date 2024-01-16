@@ -3,7 +3,7 @@ use bytepack::{
     BytestreamReader, BytestreamWriter, FromBytestream, ReadBytesExt, ToBytestream, WriteBytesExt,
     BE,
 };
-use des::{prelude::module_path, time::SimTime};
+use des::{prelude::current, time::SimTime};
 use std::{
     fmt::Debug,
     io::{Error, Read, Write},
@@ -288,7 +288,7 @@ impl FromBytestream for Nlri {
         assert!(
             prefix_len <= 24,
             "[ {} ] {} invalid prefix len\n{:?}",
-            module_path(),
+            current().path(),
             SimTime::now(),
             bytestream
         );

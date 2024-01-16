@@ -13,7 +13,7 @@ type Switch = inet::utils::LinkLayerSwitch;
 struct Node {
     ip: IpAddr,
 }
-#[async_trait::async_trait]
+
 impl AsyncModule for Node {
     fn new() -> Self {
         Self {

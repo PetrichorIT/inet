@@ -6,6 +6,7 @@ members = [
     "inet-pcap",
     "inet-types",
     "inet-dns",
+    "inet-uds",
     "bytepack",
     "examples/*",
 ]

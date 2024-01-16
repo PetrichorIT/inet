@@ -8,7 +8,7 @@ use tokio::{spawn, task::JoinHandle};
 struct OneAttemptClient {
     handles: Vec<JoinHandle<()>>,
 }
-#[async_trait::async_trait]
+
 impl AsyncModule for OneAttemptClient {
     fn new() -> Self {
         Self {
@@ -40,7 +40,7 @@ impl AsyncModule for OneAttemptClient {
 struct MultipleAttemptClient<const EXPECT: bool> {
     handles: Vec<JoinHandle<()>>,
 }
-#[async_trait::async_trait]
+
 impl<const EXPECT: bool> AsyncModule for MultipleAttemptClient<EXPECT> {
     fn new() -> Self {
         Self {
@@ -75,7 +75,7 @@ impl<const EXPECT: bool> AsyncModule for MultipleAttemptClient<EXPECT> {
 }
 
 struct EmptyServer {}
-#[async_trait::async_trait]
+
 impl AsyncModule for EmptyServer {
     fn new() -> Self {
         Self {}
@@ -91,7 +91,7 @@ impl AsyncModule for EmptyServer {
 }
 
 struct BoundServer {}
-#[async_trait::async_trait]
+
 impl AsyncModule for BoundServer {
     fn new() -> Self {
         Self {}

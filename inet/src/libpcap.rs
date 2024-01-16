@@ -1,7 +1,8 @@
 //! An interfaces for capturing packets, akin to libpcap.
 
 use crate::interface::Interface;
-use des::prelude::{module_id, Message, ModuleId};
+use des::net::module::current;
+use des::prelude::{Message, ModuleId};
 use std::cell::RefCell;
 use std::io::Result;
 
@@ -123,11 +124,11 @@ impl Pcap {
 /// Sets the PCAP subscriber for this network node.
 pub fn set_pcap_deamon(deamon: impl PcapSubscriber + 'static) {
     let deamon = Box::new(deamon);
-    LIBPCAP.with(|pcap| pcap.borrow_mut().register(module_id(), deamon));
+    LIBPCAP.with(|pcap| pcap.borrow_mut().register(current().id(), deamon));
 }
 
 pub(crate) fn capture(envelope: PcapEnvelope<'_>) {
-    LIBPCAP.with(|pcap| pcap.borrow_mut().capture(module_id(), envelope))
+    LIBPCAP.with(|pcap| pcap.borrow_mut().capture(current().id(), envelope))
 }
 
 pub(crate) fn close(id: ModuleId) {

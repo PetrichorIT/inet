@@ -36,18 +36,15 @@ impl NetworkDeviceInner {
     }
 
     fn ethernet(output: GateRef, input: GateRef) -> Self {
-        let mut gate = output.clone();
-        while let Some(next_gate) = gate.next_gate() {
-            // (0) check whether the current link contains a channel.
-            if let Some(channel) = gate.channel() {
+        // Limit iterations to prevent endless loops
+        for conn in output.path_iter().take(16) {
+            if let Some(channel) = conn.channel() {
                 return Self::EthernetDevice {
                     output,
                     input,
                     channel: Some(channel),
                 };
             }
-
-            gate = next_gate
         }
 
         // No channel attached to gate chain.
@@ -76,6 +73,14 @@ impl NetworkDevice {
         }
     }
 
+    /// Custom device
+    pub fn custom(input: GateRef, output: GateRef) -> Self {
+        Self {
+            addr: MacAddress::gen(),
+            inner: NetworkDeviceInner::ethernet(output, input),
+        }
+    }
+
     /// Creates the default ethernet device using the gates
     /// "in" and "out" as a duplex connection point.
     pub fn eth() -> Self {
@@ -90,15 +95,26 @@ impl NetworkDevice {
                 }
             }
             _ => {
-                let inout = rinfo
+                // TODO: remove
+                // let inout = rinfo
+                //     .ports
+                //     .into_iter()
+                //     .find(|p| p.input.name() == "in" && p.output.name() == "out");
+
+                dbg!(&rinfo);
+
+                let default_port = rinfo
                     .ports
                     .into_iter()
-                    .find(|p| p.input.name() == "in" && p.output.name() == "out");
+                    .find(|p| p.input.name() == "port" && p.input.pos() == 0);
 
-                if let Some(inout) = inout {
+                if let Some(default_port) = default_port {
                     Self {
                         addr: MacAddress::gen(),
-                        inner: NetworkDeviceInner::ethernet(inout.output, inout.input),
+                        inner: NetworkDeviceInner::ethernet(
+                            default_port.output,
+                            default_port.input,
+                        ),
                     }
                 } else {
                     panic!("cannot create default ethernet device, module has mutiple valid ports, but not (in/out)")
@@ -114,6 +130,21 @@ impl NetworkDevice {
         for r in rinfo.ports {
             let valid = f(&r);
             if valid {
+                return Self {
+                    addr: MacAddress::gen(),
+                    inner: NetworkDeviceInner::ethernet(r.output, r.input),
+                };
+            }
+        }
+
+        unimplemented!("{:?}", RoutingInformation::collect())
+    }
+
+    pub fn bidirectional(name: impl AsRef<str>) -> Self {
+        let name = name.as_ref();
+        let rinfo = RoutingInformation::collect();
+        for r in rinfo.ports {
+            if r.name == name {
                 return Self {
                     addr: MacAddress::gen(),
                     inner: NetworkDeviceInner::ethernet(r.output, r.input),

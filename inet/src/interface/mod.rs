@@ -43,13 +43,20 @@ pub use self::addrs::*;
 /// to internal abstractions
 #[derive(Debug)]
 pub struct Interface {
-    /// The name of the interface
+    /// The name of the interface.
+    ///
+    /// A name uniquely identifies an interface, either directly or through the
+    /// interface-id derived from the name. No two interfaces on the same node
+    /// should share either name or id.
     pub name: InterfaceName,
-    /// The physical network device, representing a NIC in most cases
+    /// The physical network device, representing a NIC in most cases.
+    ///
+    /// This device will be used on receive / send packets using this inteface. In OSI
+    /// terms, this represents the physical layer device.
     pub device: NetworkDevice,
-    /// Flags indicating the state and capabilities of the associated device
+    /// Flags indicating the state and capabilities of the associated device.
     pub flags: InterfaceFlags,
-    /// A list of addresses bound to this interface
+    /// A list of addresses bound to this interface.
     pub addrs: Vec<InterfaceAddr>,
     /// The internal state of the interface
     pub status: InterfaceStatus,

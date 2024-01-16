@@ -1,20 +1,15 @@
 #![cfg(feature = "uds")]
 
-use des::{
-    prelude::*,
-    registry,
-    time::sleep,
-    tokio::{spawn, task::JoinHandle},
-};
+use des::{prelude::*, registry, time::sleep};
 use inet::{fs, uds::UnixDatagram};
 use serial_test::serial;
 use std::iter::repeat_with;
+use tokio::{spawn, task::JoinHandle};
 
 struct PathedDgrams {
     handles: Vec<JoinHandle<()>>,
 }
 
-#[async_trait::async_trait]
 impl AsyncModule for PathedDgrams {
     fn new() -> Self {
         Self {
@@ -94,7 +89,7 @@ fn uds_pathed_dgrams() {
         .map_err(|e| println!("{e}"))
         .unwrap();
     let app = NetworkApplication::new(app);
-    let rt = Runtime::new_with(app, RuntimeOptions::seeded(123).max_time(100.0.into()));
+    let rt = Builder::seeded(123).max_time(100.0.into()).build(app);
     let _ = rt.run().unwrap();
 }
 
@@ -102,7 +97,6 @@ struct UnnamedPair {
     handles: Vec<JoinHandle<()>>,
 }
 
-#[async_trait::async_trait]
 impl AsyncModule for UnnamedPair {
     fn new() -> Self {
         Self {
@@ -157,7 +151,7 @@ fn uds_pair() {
         .map_err(|e| println!("{e}"))
         .unwrap();
     let app = NetworkApplication::new(app);
-    let rt = Runtime::new_with(app, RuntimeOptions::seeded(123).max_time(100.0.into()));
+    let rt = Builder::seeded(123).max_time(100.0.into()).build(app);
     let _ = rt.run().unwrap();
 }
 
@@ -165,7 +159,6 @@ struct FailAtDoubleBinding {
     handles: Vec<JoinHandle<()>>,
 }
 
-#[async_trait::async_trait]
 impl AsyncModule for FailAtDoubleBinding {
     fn new() -> Self {
         Self {
@@ -200,7 +193,7 @@ fn double_bind() {
         .map_err(|e| println!("{e}"))
         .unwrap();
     let app = NetworkApplication::new(app);
-    let rt = Runtime::new_with(app, RuntimeOptions::seeded(123).max_time(100.0.into()));
+    let rt = Builder::seeded(123).max_time(100.0.into()).build(app);
     match rt.run() {
         RuntimeResult::EmptySimulation { .. } => {}
         _ => panic!("Unexpected runtime result"),
@@ -211,7 +204,6 @@ struct NamedTempdir {
     handles: Vec<JoinHandle<()>>,
 }
 
-#[async_trait::async_trait]
 impl AsyncModule for NamedTempdir {
     fn new() -> Self {
         Self {
@@ -262,7 +254,7 @@ fn uds_named_tempdir() {
         .map_err(|e| println!("{e}"))
         .unwrap();
     let app = NetworkApplication::new(app);
-    let rt = Runtime::new_with(app, RuntimeOptions::seeded(123).max_time(100.0.into()));
+    let rt = Builder::seeded(123).max_time(100.0.into()).build(app);
     match rt.run() {
         RuntimeResult::EmptySimulation { .. } => {}
         _ => panic!("Unexpected runtime result"),

@@ -10,7 +10,6 @@ use tokio::task::JoinHandle;
 struct Node {
     handles: Vec<JoinHandle<()>>,
 }
-#[async_trait::async_trait]
 impl AsyncModule for Node {
     fn new() -> Self {
         Self {
@@ -77,7 +76,7 @@ impl AsyncModule for Node {
     }
 
     async fn handle_message(&mut self, msg: Message) {
-        panic!("msg :: {} :: {}", msg.str(), module_name())
+        panic!("msg :: {} :: {}", msg.str(), current().name())
     }
 }
 
@@ -92,14 +91,14 @@ impl Module for Router {
     fn at_sim_start(&mut self, _stage: usize) {
         let ip = par("addr").unwrap().parse().unwrap();
         add_interface(Interface::ethv4(
-            NetworkDevice::eth_select(|p| p.input.name() == "lan_in"),
+            NetworkDevice::eth_select(|p| p.input.name() == "lan"),
             ip,
         ))
         .unwrap();
 
         add_interface(Interface::ethv4_named(
             "wan0",
-            NetworkDevice::eth_select(|p| p.input.name() == "wan_in"),
+            NetworkDevice::eth_select(|p| p.input.name() == "wan"),
             ip,
             Ipv4Addr::UNSPECIFIED,
         ))
@@ -159,9 +158,8 @@ impl Module for Main {
 #[test]
 fn udp_routed() {
     inet::init();
-    // Logger::new()
-    // .interal_max_log_level(tracing::LevelFilter::Trace)
-    // .set_logger();
+
+    // des::tracing::Subscriber::default().init().unwrap();
 
     let app = NdlApplication::new(
         "tests/udp-routed/main.ndl",

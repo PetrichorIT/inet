@@ -12,7 +12,7 @@ use inet_types::{
 use tokio::spawn;
 
 struct Spoofer {}
-#[async_trait::async_trait]
+
 impl AsyncModule for Spoofer {
     fn new() -> Spoofer {
         Self {}
@@ -63,7 +63,7 @@ impl AsyncModule for Spoofer {
 }
 
 struct Reader {}
-#[async_trait::async_trait]
+
 impl AsyncModule for Reader {
     fn new() -> Reader {
         Self {}

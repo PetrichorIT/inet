@@ -1,24 +1,19 @@
 module TcpServer {
     gates {
-        in @input,
-        out @output,
+        port,
     }
 }
 
 module Link {
     gates {
-        lhs_in @input,
-        lhs_out @output,
-
-        rhs_in @input,
-        rhs_out @output,
+        lhs,
+        rhs
     }
 }
 
 module TcpClient {
     gates {
-        in @input,
-        out @output,
+        port
     }
 }
 
@@ -43,11 +38,8 @@ module Main {
     } 
 
     connections {
-        server/out --> LANLink --> mim/rhs_in,
-        server/in <-- LANLinkBuffed <-- mim/rhs_out,
-
-        client/out --> LANLink --> mim/lhs_in,
-        client/in <-- LANLinkBuffed <-- mim/lhs_out,
+        server/port <-- LANLinkBuffed --> mim/rhs,
+        client/port <-- LANLinkBuffed --> mim/lhs,
     }
 }
 

@@ -18,7 +18,7 @@ struct Connector {
 
     drops: Arc<AtomicUsize>,
 }
-#[async_trait::async_trait]
+
 impl AsyncModule for Connector {
     fn new() -> Self {
         Self {
@@ -82,7 +82,7 @@ impl AsyncModule for Connector {
 struct Client {
     handles: Vec<JoinHandle<()>>,
 }
-#[async_trait::async_trait]
+
 impl AsyncModule for Client {
     fn new() -> Self {
         Self {
@@ -130,7 +130,7 @@ impl AsyncModule for Client {
 }
 
 struct Server {}
-#[async_trait::async_trait]
+
 impl AsyncModule for Server {
     fn new() -> Self {
         Self {}
