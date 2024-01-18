@@ -254,13 +254,15 @@ macro_rules! raw_enum {
     $vis: vis enum $ident: ident {
         type Repr = $repr:ty where $order:ty;
         $(
-            $variant:tt = $prim:literal,
+            $(#[$inner:meta])*
+            $variant:ident = $prim:literal,
         )+
     }) => {
         $(#[$outer])*
         #[repr($repr)]
         $vis enum $ident {
             $(
+                $(#[$inner])*
                 $variant = $prim,
             )+
         }

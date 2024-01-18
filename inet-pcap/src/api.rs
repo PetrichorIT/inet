@@ -1,5 +1,6 @@
 use std::io::{BufWriter, Result, Write};
 
+use des::net::module::current;
 use inet::libpcap::set_pcap_deamon;
 
 use crate::LibPcapDeamon;
@@ -17,7 +18,7 @@ where
     pcap.capture = cfg.capture;
     pcap.filters = cfg.filters;
     pcap.ifaces.clear();
-    pcap.write_shb()?;
+    pcap.write_shb(current().path().as_str())?;
 
     set_pcap_deamon(pcap);
 

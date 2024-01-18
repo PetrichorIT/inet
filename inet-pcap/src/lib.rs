@@ -15,6 +15,9 @@ mod blocks;
 mod config;
 mod linktype;
 
+#[cfg(test)]
+mod tests;
+
 use blocks::*;
 
 use linktype::Linktype;
@@ -44,14 +47,11 @@ impl LibPcapDeamon {
         }
     }
 
-    fn write_shb(&mut self) -> Result<()> {
+    fn write_shb(&mut self, node: &str) -> Result<()> {
         let shb = SHB {
             section_len: 0xffff_ffff_ffff_ffff,
             options: vec![
-                SHBOption::HardwareName(format!(
-                    "(des/inet) simulated node :: {}",
-                    current().path()
-                )),
+                SHBOption::HardwareName(format!("(des/inet) simulated node :: {node}")),
                 SHBOption::OperatingSystem(format!("des/inet")),
                 SHBOption::UserApplication(format!("des/inet")),
             ],
