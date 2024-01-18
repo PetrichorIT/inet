@@ -12,13 +12,13 @@ use crate::ip::Ipv4Packet;
 
 /// An ICMP packet
 #[derive(Debug)]
-pub struct IcmpPacket {
-    pub typ: IcmpType,    // icmp info
+pub struct IcmpV4Packet {
+    pub typ: IcmpV4Type,  // icmp info
     pub content: Vec<u8>, // ip header + first 8 byte payload or padding
 }
 
-impl IcmpPacket {
-    pub fn new(typ: IcmpType, pkt: &Ipv4Packet) -> Self {
+impl IcmpV4Packet {
+    pub fn new(typ: IcmpV4Type, pkt: &Ipv4Packet) -> Self {
         let mut content = pkt.to_vec().expect("Failed to write incoming IP ???");
         content.truncate(28);
         Self { typ, content }
@@ -33,7 +33,7 @@ impl IcmpPacket {
     }
 }
 
-impl ToBytestream for IcmpPacket {
+impl ToBytestream for IcmpV4Packet {
     type Error = Error;
     fn to_bytestream(&self, bytestream: &mut BytestreamWriter) -> Result<(), Self::Error> {
         self.typ.to_bytestream(bytestream)?;
@@ -41,10 +41,10 @@ impl ToBytestream for IcmpPacket {
     }
 }
 
-impl FromBytestream for IcmpPacket {
+impl FromBytestream for IcmpV4Packet {
     type Error = Error;
     fn from_bytestream(bytestream: &mut BytestreamReader) -> Result<Self, Self::Error> {
-        let typ = IcmpType::from_bytestream(bytestream)?;
+        let typ = IcmpV4Type::from_bytestream(bytestream)?;
         let mut content = vec![0; 20 + 8];
         let n = bytestream.read(&mut content)?;
         content.truncate(n);
@@ -54,24 +54,24 @@ impl FromBytestream for IcmpPacket {
 
 // # Types
 
-pub const PROTO_ICMP: u8 = 1;
+pub const PROTO_ICMPV4: u8 = 1;
 
 /// The type of the ICMP control message
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[repr(u8)]
-pub enum IcmpType {
+pub enum IcmpV4Type {
     EchoReply {
         identifier: u16,
         sequence: u16,
     } = 0,
     DestinationUnreachable {
         next_hop_mtu: u16,
-        code: IcmpDestinationUnreachableCode,
+        code: IcmpV4DestinationUnreachableCode,
     } = 3,
     SourceQuench = 4,
     RedirectMessage {
         addr: Ipv4Addr,
-        code: IcmpRedirectCode,
+        code: IcmpV4RedirectCode,
     } = 5,
     EchoRequest {
         identifier: u16,
@@ -80,10 +80,10 @@ pub enum IcmpType {
     RouterAdvertisment = 9,
     RouterSolicitation = 10,
     TimeExceeded {
-        code: IcmpTimeExceededCode,
+        code: IcmpV4TimeExceededCode,
     } = 11,
     BadIpHeader {
-        code: IcmpBadIpHeaderCode,
+        code: IcmpV4BadIpHeaderCode,
     } = 12,
     Timestamp {
         identifier: u16,
@@ -111,7 +111,7 @@ pub enum IcmpType {
     ExtendedEchoReply = 43,
 }
 
-impl ToBytestream for IcmpType {
+impl ToBytestream for IcmpV4Type {
     type Error = Error;
     fn to_bytestream(&self, stream: &mut BytestreamWriter) -> Result<(), Self::Error> {
         match self {
@@ -192,7 +192,7 @@ impl ToBytestream for IcmpType {
     }
 }
 
-impl FromBytestream for IcmpType {
+impl FromBytestream for IcmpV4Type {
     type Error = Error;
     fn from_bytestream(stream: &mut BytestreamReader) -> Result<Self, Self::Error> {
         let typ = stream.read_u8()?;
@@ -214,7 +214,7 @@ impl FromBytestream for IcmpType {
                 let next_hop_mtu = stream.read_u16::<BE>()?;
                 Ok(Self::DestinationUnreachable {
                     next_hop_mtu: next_hop_mtu,
-                    code: IcmpDestinationUnreachableCode::from_raw_repr(code)?,
+                    code: IcmpV4DestinationUnreachableCode::from_raw_repr(code)?,
                 })
             }
             4 => {
@@ -227,7 +227,7 @@ impl FromBytestream for IcmpType {
 
                 Ok(Self::RedirectMessage {
                     addr,
-                    code: IcmpRedirectCode::from_raw_repr(code)?,
+                    code: IcmpV4RedirectCode::from_raw_repr(code)?,
                 })
             }
             8 => {
@@ -252,13 +252,13 @@ impl FromBytestream for IcmpType {
             11 => {
                 let _ = stream.read_u32::<BE>()?;
                 Ok(Self::TimeExceeded {
-                    code: IcmpTimeExceededCode::from_raw_repr(code)?,
+                    code: IcmpV4TimeExceededCode::from_raw_repr(code)?,
                 })
             }
             12 => {
                 let _ = stream.read_u32::<BE>()?;
                 Ok(Self::BadIpHeader {
-                    code: IcmpBadIpHeaderCode::from_raw_repr(code)?,
+                    code: IcmpV4BadIpHeaderCode::from_raw_repr(code)?,
                 })
             }
             _ => todo!(),
@@ -271,7 +271,7 @@ impl FromBytestream for IcmpType {
 raw_enum! {
      /// A reponse code to a ICMP redirect message.
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-    pub enum IcmpRedirectCode {
+    pub enum IcmpV4RedirectCode {
         type Repr = u8 where BigEndian;
         RedirectForNetwork = 0,
         RedirectForHost = 1,
@@ -283,7 +283,7 @@ raw_enum! {
 raw_enum! {
      /// A reponse code to a ICMP time exceeded message.
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-    pub enum IcmpTimeExceededCode {
+    pub enum IcmpV4TimeExceededCode {
         type Repr = u8 where BigEndian;
         TimeToLifeInTransit = 0,
         FragmentReassemblyTimeExceeded = 1,
@@ -293,7 +293,7 @@ raw_enum! {
 raw_enum! {
     /// A reponse code to a ICMP desintation unreachable message.
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-    pub enum IcmpDestinationUnreachableCode {
+    pub enum IcmpV4DestinationUnreachableCode {
         type Repr = u8 where BigEndian;
         NetworkUnreachable = 0,
         HostUnreachable = 1,
@@ -317,7 +317,7 @@ raw_enum! {
 raw_enum! {
      /// A reponse code to a ICMP desintation unreachable message.
      #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-    pub enum IcmpBadIpHeaderCode {
+    pub enum IcmpV4BadIpHeaderCode {
         type Repr = u8 where BigEndian;
         SeePointer = 0,
         MissingRequiredOption = 1,

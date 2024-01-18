@@ -1,11 +1,35 @@
 use crate::interface::IfId;
 use des::time::SimTime;
-use inet_types::ip::ipv6_matches_subnet;
-use std::net::Ipv6Addr;
+use inet_types::{
+    icmpv6::{
+        IcmpV6NDPOption, IcmpV6PrefixInformation, IcmpV6RouterAdvertisement,
+        IcmpV6RouterSolicitation,
+    },
+    ip::ipv6_matches_subnet,
+};
+use std::{net::Ipv6Addr, time::Duration};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) struct Ipv6RoutingTable {
     pub(super) entries: Vec<Entry>,
+    pub(super) router: Option<Ipv6RouterConfig>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Ipv6RouterConfig {
+    pub current_hop_limit: u8,
+    pub managed: bool,
+    pub other_cfg: bool,
+    pub lifetime: Duration,
+    pub reachable_time: Duration,
+    pub retransmit_time: Duration,
+    pub prefixes: Vec<Ipv6RoutingPrefix>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Ipv6RoutingPrefix {
+    pub prefix_len: u8,
+    pub prefix: Ipv6Addr,
 }
 
 type Entry = Ipv6RoutingTableEntry;
@@ -22,13 +46,15 @@ pub(crate) struct Ipv6RoutingTableEntry {
 }
 
 /// A type that describes differnt types of packet forwarding in inet.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[allow(dead_code)]
 pub(crate) enum Ipv6Gateway {
     /// This option indicates that packets should be forwarded to a bound LAN.
     Local,
     /// This option is used for the representation of broadcasts.
     Broadcast,
+    /// A multicast address,
+    Multicast(Ipv6Addr),
     /// This option instructs inet to forward packets to the next gateway.
     Gateway(Ipv6Addr),
 }
@@ -37,6 +63,50 @@ impl Ipv6RoutingTable {
     pub fn new() -> Ipv6RoutingTable {
         Self {
             entries: Vec::new(),
+            router: None,
+        }
+    }
+
+    pub(crate) fn response_to_solicitation(
+        &self,
+        req: &IcmpV6RouterSolicitation,
+    ) -> IcmpV6RouterAdvertisement {
+        if let Some(ref router) = self.router {
+            let mut options = Vec::new();
+            for prefix in &router.prefixes {
+                options.push(IcmpV6NDPOption::PrefixInformation(
+                    IcmpV6PrefixInformation {
+                        prefix_len: prefix.prefix_len,
+                        prefix: prefix.prefix,
+
+                        on_link: false,                         // TODO
+                        autonomous_address_configuration: true, // TODO
+                        valid_lifetime: 0,                      // TODO
+                        preferred_lifetime: 0,                  // TODO
+                    },
+                ))
+            }
+
+            for option in &req.options {
+                if let IcmpV6NDPOption::SourceLinkLayerAddress(mac) = option {
+                    options.push(IcmpV6NDPOption::TargetLinkLayerAddress(*mac));
+                    break;
+                }
+            }
+
+            // assign own MAC to response
+
+            IcmpV6RouterAdvertisement {
+                current_hop_limit: router.current_hop_limit,
+                managed: router.managed,
+                other_configuration: router.other_cfg,
+                router_lifetime: router.lifetime.as_secs() as u16,
+                reachable_time: router.reachable_time.as_millis() as u32,
+                retransmit_time: router.retransmit_time.as_millis() as u32,
+                options,
+            }
+        } else {
+            panic!("Host with router interface, missing router configuration")
         }
     }
 
@@ -62,8 +132,12 @@ impl Ipv6RoutingTable {
         }
     }
 
-    pub fn loopuk_gateway(&self, dest: Ipv6Addr) -> Option<(&Ipv6Gateway, &IfId)> {
+    pub fn loopuk_gateway(&self, dest: Ipv6Addr) -> Option<(Ipv6Gateway, IfId)> {
         let now = SimTime::now();
+
+        if dest.is_multicast() {
+            return Some((Ipv6Gateway::Multicast(dest), IfId::NULL));
+        }
 
         let mut state = 0;
         let mut result = None;
@@ -80,7 +154,7 @@ impl Ipv6RoutingTable {
                         continue;
                     }
                 }
-                result = Some((&self.entries[i].gateway, &self.entries[i].iface));
+                result = Some((self.entries[i].gateway, self.entries[i].iface));
                 result_prefixlen = prefixlen(self.entries[i].mask);
             } else if state != 0 && self.entries[i].prio > state {
                 // (1) Valid entry was found, but no longer valid.

@@ -4,15 +4,30 @@
 
 use std::{
     collections::VecDeque,
-    io::{Error, ErrorKind, Result},
+    io::{self, Error, ErrorKind, Result},
 };
 
-use crate::socket::Fd;
-use crate::IOContext;
+use crate::{arp::ArpEntryInternal, IOContext};
+use crate::{
+    routing::Ipv6RoutingPrefix,
+    socket::{Fd, SocketIfaceBinding},
+};
+use bytepack::ToBytestream;
 use des::prelude::*;
-use inet_types::arp::ArpPacket;
-use inet_types::arp::KIND_ARP;
-use inet_types::iface::MacAddress;
+use fxhash::{FxBuildHasher, FxHashMap};
+use inet_types::{
+    arp::ArpPacket,
+    icmpv6::{IcmpV6RouterAdvertisement, PROTO_ICMPV6},
+    ip::{ipv6_merge_mac, IPV6_MULTICAST_ALL_ROUTERS},
+};
+use inet_types::{
+    arp::KIND_ARP,
+    icmpv6::{IcmpV6NDPOption, IcmpV6Packet, IcmpV6RouterSolicitation},
+};
+use inet_types::{
+    iface::MacAddress,
+    ip::{IpPacket, Ipv6Packet},
+};
 
 macro_rules! hash {
     ($v:expr) => {{
@@ -67,6 +82,22 @@ pub struct Interface {
     pub(crate) buffer: VecDeque<Message>,
 }
 
+pub(crate) struct InterfaceMngmt {
+    v6_cfg: FxHashMap<IfId, InterfaceV6Configuration>,
+}
+
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub(crate) struct InterfaceV6Configuration {
+    router_solictation_request: Option<SimTime>, // Timeout for solicitation
+    router_solicitation: Option<RouterSolicitation>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct RouterSolicitation {
+    resp: IcmpV6RouterAdvertisement,
+    prefixes: Vec<Ipv6RoutingPrefix>,
+}
+
 /// A result forwarded after linklayer processing
 #[derive(Debug)]
 pub enum LinkLayerResult {
@@ -84,6 +115,37 @@ pub enum LinkLayerResult {
 }
 
 impl Interface {
+    pub(crate) fn link_local_v6(&self) -> Option<Ipv6Addr> {
+        for addr in &self.addrs {
+            if let InterfaceAddr::Inet6 {
+                addr, prefixlen, ..
+            } = addr
+            {
+                let addr = u128::from(*addr);
+                let link_local_prefix = 0xfe80_0000_0000_0000_0000_0000_0000_0000u128;
+                let mask = u128::MAX << 64;
+                if (addr & mask == link_local_prefix) && *prefixlen == 64 {
+                    return Some(Ipv6Addr::from(addr));
+                }
+            }
+        }
+        None
+    }
+
+    pub fn ethv6_autocfg(device: NetworkDevice) -> Self {
+        let link_local = InterfaceAddr::ipv6_link_local(device.addr);
+        Self {
+            name: InterfaceName::new("en0"),
+            device,
+            flags: InterfaceFlags::en0(),
+            addrs: vec![link_local],
+            status: InterfaceStatus::Active,
+            state: InterfaceBusyState::Idle,
+            prio: 200,
+            buffer: VecDeque::new(),
+        }
+    }
+
     /// Creates a new ethernet interface using the given device
     /// and an IP address for binding to a LAN.
     pub fn eth(device: NetworkDevice, ip: IpAddr) -> Interface {
@@ -131,6 +193,10 @@ impl Interface {
         device: NetworkDevice,
         subnet: Ipv6Addr,
     ) -> Interface {
+        assert!(
+            !subnet.is_multicast() && !subnet.is_unspecified(),
+            "requires unicast address for interface definition"
+        );
         Interface {
             name: InterfaceName::new(name),
             device,
@@ -292,6 +358,21 @@ impl Interface {
     }
 }
 
+impl InterfaceMngmt {
+    pub(super) fn new() -> Self {
+        Self {
+            v6_cfg: FxHashMap::with_hasher(FxBuildHasher::default()),
+        }
+    }
+
+    fn store_router_solicitation_timeout(&mut self, ifid: IfId, timeout: SimTime) {
+        self.v6_cfg
+            .get_mut(&ifid)
+            .expect("Interface not found")
+            .router_solictation_request = Some(timeout);
+    }
+}
+
 impl IOContext {
     pub fn recv_linklayer(&mut self, msg: Message) -> LinkLayerResult {
         use LinkLayerResult::*;
@@ -300,8 +381,10 @@ impl IOContext {
         // Precheck for link layer updates
         if msg.header().kind == KIND_LINK_UPDATE {
             let Some(&update) = msg.try_content::<LinkUpdate>() else {
-                tracing::error!("found message with kind KIND_LINK_UPDATE, did not contain link updates");
-                return PassThrough(msg)
+                tracing::error!(
+                    "found message with kind KIND_LINK_UPDATE, did not contain link updates"
+                );
+                return PassThrough(msg);
             };
             self.recv_linklayer_update(update);
 
@@ -320,7 +403,7 @@ impl IOContext {
 
         // Define the physical device the packet arrived.
         let Some((ifid, iface)) = self.device_for_message(&msg) else {
-            return PassThrough(msg)
+            return PassThrough(msg);
         };
 
         // Capture all packets that can be addressed to a interface, event not targeted
@@ -340,7 +423,9 @@ impl IOContext {
 
         if msg.header().kind == KIND_ARP {
             let Some(arp) = msg.try_content::<ArpPacket>() else {
-                tracing::error!("found message with kind 0x0806 (arp), but did not contain ARP packet");
+                tracing::error!(
+                    "found message with kind 0x0806 (arp), but did not contain ARP packet"
+                );
                 return PassThrough(msg);
             };
 
@@ -366,5 +451,109 @@ impl IOContext {
         self.ifaces
             .iter()
             .find(|(_, iface)| iface.device.last_gate_matches(&msg.header().last_gate))
+    }
+
+    pub(super) fn get_iface(&self, ifid: IfId) -> io::Result<&Interface> {
+        self.ifaces.get(&ifid).ok_or_else(|| {
+            io::Error::new(io::ErrorKind::NotFound, "no interface found under this id")
+        })
+    }
+    pub(super) fn get_mut_iface(&mut self, ifid: IfId) -> io::Result<&mut Interface> {
+        self.ifaces.get_mut(&ifid).ok_or_else(|| {
+            io::Error::new(io::ErrorKind::NotFound, "no interface found under this id")
+        })
+    }
+
+    fn register_v6_interface(&mut self, ifid: IfId) -> io::Result<()> {
+        let iface = self.get_iface(ifid)?;
+        let iface_mac = iface.device.addr;
+        let iface_ll = iface
+            .link_local_v6()
+            .expect("no link local address configured ??");
+
+        tracing::trace!(
+            IFACE=%ifid,
+            MAC=%iface_mac,
+            IP=%iface_ll,
+            "registered for stateless autocfg"
+        );
+
+        self.iface_mngmt
+            .v6_cfg
+            .insert(ifid, InterfaceV6Configuration::default());
+
+        // Send inital router solictation
+        let router_solicitation = IcmpV6Packet::RouterSolicitation(IcmpV6RouterSolicitation {
+            options: vec![IcmpV6NDPOption::SourceLinkLayerAddress(iface_mac)],
+        });
+
+        let pkt = IpPacket::V6(Ipv6Packet {
+            traffic_class: 0,
+            flow_label: 0,
+            next_header: PROTO_ICMPV6,
+            hop_limit: 32,
+            src: iface_ll,
+            dest: IPV6_MULTICAST_ALL_ROUTERS,
+            content: router_solicitation.to_vec()?,
+        });
+
+        self.send_ip_packet(SocketIfaceBinding::Bound(ifid), pkt, true)?;
+        let timeout = SimTime::now() + Duration::from_secs(30);
+        self.iface_mngmt
+            .store_router_solicitation_timeout(ifid, timeout);
+
+        Ok(())
+    }
+
+    pub(super) fn v6_interface_process_router_adv(
+        &mut self,
+        ifid: IfId,
+        adv: IcmpV6RouterAdvertisement,
+    ) {
+        let iface = self.get_iface(ifid).unwrap();
+        let mac = iface.device.addr;
+
+        let mngm = self.iface_mngmt.v6_cfg.get(&ifid).unwrap();
+        let old_prefixes = mngm
+            .router_solicitation
+            .as_ref()
+            .map(|sol| sol.prefixes.clone())
+            .unwrap_or(Vec::new());
+        let mut new_prefixes = Vec::new();
+
+        for option in &adv.options {
+            match option {
+                IcmpV6NDPOption::PrefixInformation(pi) => {
+                    if pi.autonomous_address_configuration {
+                        new_prefixes.push(Ipv6RoutingPrefix {
+                            prefix_len: pi.prefix_len,
+                            prefix: pi.prefix,
+                        })
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        let removed_prefixes = old_prefixes.iter().filter(|p| !new_prefixes.contains(p));
+        for _prefix in removed_prefixes {
+            // TODO
+        }
+
+        let new_prefixes = new_prefixes.iter().filter(|p| !old_prefixes.contains(p));
+        for prefix in new_prefixes {
+            let gen_addr = ipv6_merge_mac(prefix.prefix, mac);
+
+            tracing::trace!(IFACE=%ifid, MAC=%mac, IP=%gen_addr, "stateless configuration assigned address");
+
+            let _ = self.arp.update(ArpEntryInternal {
+                negated: false,
+                hostname: Some(current().name()),
+                ip: IpAddr::V6(gen_addr),
+                mac,
+                iface: ifid,
+                expires: SimTime::MAX,
+            });
+        }
     }
 }

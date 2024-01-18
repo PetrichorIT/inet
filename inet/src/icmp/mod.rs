@@ -12,19 +12,22 @@ use fxhash::{FxBuildHasher, FxHashMap};
 use std::{
     io::{Error, ErrorKind},
     net::{IpAddr, Ipv4Addr},
+    time::Duration,
 };
 
 use bytepack::{FromBytestream, ToBytestream};
 use des::time::SimTime;
 use inet_types::{
-    icmp::{
-        IcmpDestinationUnreachableCode, IcmpPacket, IcmpTimeExceededCode, IcmpType, PROTO_ICMP,
+    icmpv4::{
+        IcmpV4DestinationUnreachableCode, IcmpV4Packet, IcmpV4TimeExceededCode, IcmpV4Type,
+        PROTO_ICMPV4,
     },
-    ip::{IpPacket, IpPacketRef, Ipv4Flags, Ipv4Packet},
+    icmpv6::{IcmpV6NDPOption, IcmpV6Packet, PROTO_ICMPV6},
+    ip::{IpPacket, IpPacketRef, Ipv4Flags, Ipv4Packet, Ipv6Packet},
 };
 
 use self::ping::PingCB;
-use crate::{interface::IfId, socket::SocketIfaceBinding, IOContext};
+use crate::{arp::ArpEntryInternal, interface::IfId, socket::SocketIfaceBinding, IOContext};
 
 mod ping;
 pub use self::ping::*;
@@ -47,22 +50,91 @@ impl Icmp {
 }
 
 impl IOContext {
-    pub(super) fn recv_icmpv4_packet(&mut self, ip_icmp: &Ipv4Packet, ifid: IfId) -> bool {
-        assert_eq!(ip_icmp.proto, PROTO_ICMP);
+    pub(super) fn recv_icmpv6_packet(&mut self, ip_icmp: &Ipv6Packet, ifid: IfId) -> bool {
+        assert_eq!(ip_icmp.next_header, PROTO_ICMPV6);
 
-        let Ok(mut pkt) = IcmpPacket::read_from_slice(&mut &ip_icmp.content[..]) else {
-            tracing::error!("received ip-packet with proto=0x1 (icmp) but content was no icmp-packet");
+        let Ok(pkt) = IcmpV6Packet::read_from_slice(&mut &ip_icmp.content[..]) else {
+            tracing::error!(
+                "received ip-packet with proto=0x58 (icmpv6) but content was no icmpv6-packet"
+            );
+            return false;
+        };
+
+        match pkt {
+            IcmpV6Packet::RouterSolicitation(req) => {
+                if let Some(source_mac) = req.options.iter().find_map(|o| {
+                    if let IcmpV6NDPOption::SourceLinkLayerAddress(mac) = o {
+                        Some(mac)
+                    } else {
+                        None
+                    }
+                }) {
+                    let _ = self.arp.update(ArpEntryInternal {
+                        negated: false,
+                        hostname: None,
+                        ip: IpAddr::V6(ip_icmp.src),
+                        mac: *source_mac,
+                        iface: ifid,
+                        expires: SimTime::now() + Duration::from_secs(120),
+                    });
+                }
+
+                let iface = self.get_iface(ifid).unwrap();
+                if iface.flags.router {
+                    // Only now respond to router solicitation
+                    let mut response = self.ipv6router.response_to_solicitation(&req);
+                    response
+                        .options
+                        .push(IcmpV6NDPOption::SourceLinkLayerAddress(iface.device.addr));
+
+                    let response = IcmpV6Packet::RouterAdvertisment(response);
+
+                    // Send out
+                    let pkt = IpPacket::V6(Ipv6Packet {
+                        traffic_class: 0,
+                        flow_label: 0,
+                        next_header: 58,
+                        hop_limit: 32,
+                        src: iface.link_local_v6().unwrap(),
+                        dest: ip_icmp.src,
+                        content: response.to_vec().unwrap(),
+                    });
+                    self.send_ip_packet(SocketIfaceBinding::Bound(ifid), pkt, true)
+                        .unwrap();
+                }
+            }
+            IcmpV6Packet::RouterAdvertisment(adv) => {
+                // Questions
+                // - solicited in resposne to my req -> stop timer
+                // - new prefixes available
+
+                self.v6_interface_process_router_adv(ifid, adv.clone());
+            }
+
+            _ => {}
+        }
+
+        true
+    }
+
+    pub(super) fn recv_icmpv4_packet(&mut self, ip_icmp: &Ipv4Packet, ifid: IfId) -> bool {
+        assert_eq!(ip_icmp.proto, PROTO_ICMPV4);
+
+        let Ok(mut pkt) = IcmpV4Packet::read_from_slice(&mut &ip_icmp.content[..]) else {
+            tracing::error!(
+                "received ip-packet with proto=0x1 (icmpv4) but content was no icmpv4-packet"
+            );
             return false;
         };
 
         match pkt.typ {
-            IcmpType::EchoRequest {
+            IcmpV4Type::EchoRequest {
                 identifier,
                 sequence,
             } => {
                 // (0) Respond echo request
-                let icmp = IcmpPacket::new(
-                    IcmpType::EchoReply {
+                let icmp = IcmpV4Packet::new(
+                    IcmpV4Type::EchoReply {
                         identifier,
                         sequence,
                     },
@@ -78,7 +150,7 @@ impl IOContext {
                     },
                     fragment_offset: 0,
                     ttl: 32,
-                    proto: PROTO_ICMP,
+                    proto: PROTO_ICMPV4,
                     src: ip_icmp.dest,
                     dest: ip_icmp.src,
                     content: icmp.to_vec().expect("Failed to parse ICMP"),
@@ -86,7 +158,7 @@ impl IOContext {
                 self.send_ip_packet(SocketIfaceBinding::Bound(ifid), IpPacket::V4(ip), true)
                     .expect("Failed to send");
             }
-            IcmpType::EchoReply {
+            IcmpV4Type::EchoReply {
                 identifier,
                 sequence,
             } => {
@@ -105,7 +177,7 @@ impl IOContext {
                     self.icmp.pings.remove(&identifier);
                 }
             }
-            IcmpType::DestinationUnreachable { next_hop_mtu, code } => {
+            IcmpV4Type::DestinationUnreachable { next_hop_mtu, code } => {
                 let ip = pkt.contained();
                 let unreachable = ip.dest;
 
@@ -152,7 +224,7 @@ impl IOContext {
 
                 let _ = next_hop_mtu;
             }
-            IcmpType::TimeExceeded { code } => {
+            IcmpV4Type::TimeExceeded { code } => {
                 let ip = pkt.contained();
                 let unreachable = ip.dest;
 
@@ -198,17 +270,17 @@ impl IOContext {
         match e.kind() {
             ErrorKind::ConnectionRefused => {
                 // Gateway error
-                let icmp = IcmpPacket::new(
-                    IcmpType::DestinationUnreachable {
+                let icmp = IcmpV4Packet::new(
+                    IcmpV4Type::DestinationUnreachable {
                         next_hop_mtu: 0,
-                        code: IcmpDestinationUnreachableCode::NetworkUnreachable,
+                        code: IcmpV4DestinationUnreachableCode::NetworkUnreachable,
                     },
                     pkt,
                 );
 
                 let mut ip = pkt.reverse();
                 ip.src = Ipv4Addr::UNSPECIFIED;
-                ip.proto = PROTO_ICMP;
+                ip.proto = PROTO_ICMPV4;
                 ip.content = icmp.to_vec().expect("Failed to parse ICMP");
 
                 self.send_ip_packet(SocketIfaceBinding::NotBound, IpPacket::V4(ip), true)
@@ -216,17 +288,17 @@ impl IOContext {
             }
             ErrorKind::NotConnected => {
                 // Gateway error
-                let icmp = IcmpPacket::new(
-                    IcmpType::DestinationUnreachable {
+                let icmp = IcmpV4Packet::new(
+                    IcmpV4Type::DestinationUnreachable {
                         next_hop_mtu: 0,
-                        code: IcmpDestinationUnreachableCode::HostUnreachable,
+                        code: IcmpV4DestinationUnreachableCode::HostUnreachable,
                     },
                     pkt,
                 );
 
                 let mut ip = pkt.reverse();
                 ip.src = Ipv4Addr::UNSPECIFIED;
-                ip.proto = PROTO_ICMP;
+                ip.proto = PROTO_ICMPV4;
                 ip.content = icmp.to_vec().expect("Failed to parse ICMP");
 
                 let _ = self.send_ip_packet(SocketIfaceBinding::NotBound, IpPacket::V4(ip), true);
@@ -236,15 +308,15 @@ impl IOContext {
     }
 
     pub(super) fn icmp_ttl_expired(&mut self, ifid: IfId, pkt: &Ipv4Packet) {
-        let icmp = IcmpPacket::new(
-            IcmpType::TimeExceeded {
-                code: IcmpTimeExceededCode::TimeToLifeInTransit,
+        let icmp = IcmpV4Packet::new(
+            IcmpV4Type::TimeExceeded {
+                code: IcmpV4TimeExceededCode::TimeToLifeInTransit,
             },
             pkt,
         );
         let mut ip = pkt.reverse();
         ip.src = Ipv4Addr::UNSPECIFIED;
-        ip.proto = PROTO_ICMP;
+        ip.proto = PROTO_ICMPV4;
         ip.content = icmp.to_vec().expect("Failed to parse ICMP");
         self.send_ip_packet(SocketIfaceBinding::Bound(ifid), IpPacket::V4(ip), true)
             .unwrap();
@@ -252,16 +324,16 @@ impl IOContext {
 
     pub(super) fn icmp_port_unreachable(&mut self, ifid: IfId, pkt: IpPacketRef) {
         if let IpPacketRef::V4(pkt) = pkt {
-            let icmp = IcmpPacket::new(
-                IcmpType::DestinationUnreachable {
+            let icmp = IcmpV4Packet::new(
+                IcmpV4Type::DestinationUnreachable {
                     next_hop_mtu: 0,
-                    code: IcmpDestinationUnreachableCode::PortUnreachable,
+                    code: IcmpV4DestinationUnreachableCode::PortUnreachable,
                 },
                 pkt,
             );
             let mut ip = pkt.reverse();
             ip.src = Ipv4Addr::UNSPECIFIED;
-            ip.proto = PROTO_ICMP;
+            ip.proto = PROTO_ICMPV4;
             ip.content = icmp.to_vec().expect("Failed to parse ICMP");
             self.send_ip_packet(SocketIfaceBinding::Bound(ifid), IpPacket::V4(ip), true)
                 .unwrap();

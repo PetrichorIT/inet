@@ -10,7 +10,7 @@ mod v4;
 pub use v4::{Ipv4Flags, Ipv4Packet};
 
 mod v6;
-pub use v6::Ipv6Packet;
+pub use v6::{ipv6_merge_mac, Ipv6Packet, IPV6_MULTICAST_ALL_ROUTERS};
 
 #[cfg(test)]
 mod tests;

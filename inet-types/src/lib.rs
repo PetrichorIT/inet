@@ -9,7 +9,7 @@
 mod macros;
 
 pub mod arp;
-pub mod icmp;
+pub mod icmpv4;
 pub mod icmpv6;
 pub mod iface;
 pub mod ip;

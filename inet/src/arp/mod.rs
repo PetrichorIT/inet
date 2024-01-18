@@ -15,14 +15,14 @@
 use std::io::{self, Error, ErrorKind};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
-use crate::routing::IpGateway;
+use crate::routing::{IpGateway, Ipv6Gateway};
 use crate::socket::SocketIfaceBinding;
 use crate::{interface::*, IOContext};
 use des::prelude::{schedule_in, Message};
 use des::time::SimTime;
 use inet_types::arp::{ARPOperation, ArpPacket, KIND_ARP};
 use inet_types::iface::MacAddress;
-use inet_types::ip::{IpPacket, KIND_IPV4, KIND_IPV6};
+use inet_types::ip::{IpPacket, Ipv6Packet, KIND_IPV4, KIND_IPV6};
 
 mod table;
 pub use self::table::*;
@@ -223,24 +223,29 @@ impl IOContext {
     ) -> io::Result<()> {
         // (0) Routing table destintation lookup
 
-        let (route, rifid): (IpGateway, IfId) = match &pkt {
+        let (route, rifid, pkt): (IpGateway, IfId, IpPacket) = match pkt {
             IpPacket::V4(pkt) => {
                 let Some((route, rifid)) = self.ipv4_fwd.lookup(pkt.dest) else {
                     return Err(Error::new(
                         ErrorKind::ConnectionRefused,
-                        "no gateway network reachable"
-                    ))
+                        "no gateway network reachable",
+                    ));
                 };
-                (route.clone().into(), rifid.id)
+                (route.clone().into(), rifid.id, IpPacket::V4(pkt))
             }
             IpPacket::V6(pkt) => {
                 let Some((route, rifid)) = self.ipv6router.loopuk_gateway(pkt.dest) else {
                     return Err(Error::new(
                         ErrorKind::ConnectionRefused,
-                        "no gateway network reachable"
-                    ))
+                        "no gateway network reachable",
+                    ));
                 };
-                (route.clone().into(), *rifid)
+
+                if let Ipv6Gateway::Multicast(dest) = route {
+                    return self.multicast_ipv6_packet(ifid, dest, pkt, buffered);
+                }
+
+                (route.into(), rifid, IpPacket::V6(pkt))
             }
         };
 
@@ -314,6 +319,30 @@ impl IOContext {
         }
     }
 
+    fn multicast_ipv6_packet(
+        &mut self,
+        ifid: SocketIfaceBinding,
+        _multicast: Ipv6Addr,
+        pkt: Ipv6Packet,
+        buffered: bool,
+    ) -> io::Result<()> {
+        let ifid = ifid.unwrap_ifid();
+
+        let iface = self.get_mut_iface(ifid)?;
+        let msg = Message::new()
+            .kind(KIND_IPV6)
+            .src(iface.device.addr.into())
+            .dest(MacAddress::BROADCAST.into())
+            .content(pkt)
+            .build();
+
+        if buffered {
+            iface.send_buffered(msg)
+        } else {
+            iface.send(msg)
+        }
+    }
+
     pub fn send_lan_local_ip_packet(
         &mut self,
         ifid: SocketIfaceBinding,
@@ -323,7 +352,7 @@ impl IOContext {
     ) -> io::Result<()> {
         let Some((negated, mac, ifid)) = self.arp_lookup(dest, &ifid) else {
             self.arp_missing_addr_mapping(ifid, pkt, dest)?;
-            return Ok(())
+            return Ok(());
         };
 
         if negated {
@@ -333,7 +362,7 @@ impl IOContext {
         let Some(iface) = self.ifaces.get_mut(&ifid) else {
             return Err(Error::new(
                 ErrorKind::Other,
-                "interface does not exist anymore"
+                "interface does not exist anymore",
             ));
         };
 
@@ -444,7 +473,11 @@ impl IOContext {
                 let mut iface = self.ifaces.get_mut(&ifid).unwrap();
                 if iface.flags.loopback && !dest.is_loopback() {
                     let name = iface.name.clone();
-                    let Some(eth) = self.ifaces.iter_mut().find(|(_, iface)| !iface.flags.loopback) else {
+                    let Some(eth) = self
+                        .ifaces
+                        .iter_mut()
+                        .find(|(_, iface)| !iface.flags.loopback)
+                    else {
                         panic!()
                     };
                     tracing::trace!(
@@ -461,9 +494,13 @@ impl IOContext {
                 let mut iface = self.ifaces.get_mut(&ifids[0]).unwrap();
                 if iface.flags.loopback && !dest.is_loopback() {
                     let name = iface.name.clone();
-                    let Some(eth) = self.ifaces.iter_mut().find(|(_, iface)| !iface.flags.loopback) else {
-                            panic!()
-                        };
+                    let Some(eth) = self
+                        .ifaces
+                        .iter_mut()
+                        .find(|(_, iface)| !iface.flags.loopback)
+                    else {
+                        panic!()
+                    };
                     tracing::trace!(
                         "redirecting ARP request to new interface {} (socket operates on {})",
                         eth.1.name,

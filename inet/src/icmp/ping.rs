@@ -1,6 +1,6 @@
 use bytepack::ToBytestream;
 use des::prelude::*;
-use inet_types::icmp::{IcmpPacket, IcmpType, PROTO_ICMP};
+use inet_types::icmpv4::{IcmpV4Packet, IcmpV4Type, PROTO_ICMPV4};
 use inet_types::ip::{IpPacket, Ipv4Flags, Ipv4Packet};
 use std::io::{Error, ErrorKind, Result};
 use std::net::Ipv4Addr;
@@ -89,13 +89,13 @@ impl IOContext {
             },
             fragment_offset: 0,
             ttl: 32,
-            proto: PROTO_ICMP,
+            proto: PROTO_ICMPV4,
             src: Ipv4Addr::UNSPECIFIED,
             dest: addr,
             content: vec![0; 36],
         };
-        let icmp = IcmpPacket::new(
-            IcmpType::EchoRequest {
+        let icmp = IcmpV4Packet::new(
+            IcmpV4Type::EchoRequest {
                 identifier,
                 sequence,
             },

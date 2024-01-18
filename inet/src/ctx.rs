@@ -4,15 +4,19 @@ use crate::{
     extensions::Extensions,
     fs::Fs,
     icmp::Icmp,
-    interface::{IfId, Interface, LinkLayerResult, KIND_LINK_UPDATE},
+    interface::{IfId, Interface, InterfaceMngmt, LinkLayerResult, KIND_LINK_UPDATE},
     routing::{FwdV4, Ipv6RoutingTable},
     Udp,
 };
 use des::prelude::{Message, ModuleId};
 use fxhash::{FxBuildHasher, FxHashMap};
 use inet_types::{
-    icmp::PROTO_ICMP,
-    ip::{IpPacket, IpPacketRef, Ipv4Packet, Ipv6Packet, KIND_IPV4, KIND_IPV6},
+    icmpv4::PROTO_ICMPV4,
+    icmpv6::PROTO_ICMPV6,
+    ip::{
+        IpPacket, IpPacketRef, Ipv4Packet, Ipv6Packet, IPV6_MULTICAST_ALL_ROUTERS, KIND_IPV4,
+        KIND_IPV6,
+    },
 };
 use std::{
     cell::RefCell,
@@ -35,6 +39,7 @@ pub(crate) struct IOContext {
     #[allow(unused)]
     pub(super) id: ModuleId,
     pub(super) ifaces: FxHashMap<IfId, Interface>,
+    pub(super) iface_mngmt: InterfaceMngmt,
 
     pub(super) arp: ArpTable,
     pub(super) ipv4_fwd: FwdV4,
@@ -82,6 +87,7 @@ impl IOContext {
         Self {
             id,
             ifaces: FxHashMap::with_hasher(FxBuildHasher::default()),
+            iface_mngmt: InterfaceMngmt::new(),
 
             arp: ArpTable::new(),
             ipv4_fwd: FwdV4::new(),
@@ -218,7 +224,7 @@ impl IOContext {
 
                 match ip.proto {
                     0 => Some(msg),
-                    PROTO_ICMP => {
+                    PROTO_ICMPV4 => {
                         let consumed = self.recv_icmpv4_packet(ip, ifid);
                         if consumed {
                             None
@@ -260,7 +266,7 @@ impl IOContext {
                     return Some(msg);
                 };
 
-                let iface = self.ifaces.get(&ifid).unwrap();
+                let iface = self.get_iface(ifid).unwrap();
 
                 // (0) Check whether the received ip packet is addressed for the local machine
                 let local_dest = /*ip.dest ==  Ipv6Addr::BROADCAST
@@ -268,7 +274,10 @@ impl IOContext {
                         .addrs
                         .iter()
                         .any(|addr| addr.matches_ip(IpAddr::V6(ip.dest)));
-                if !local_dest {
+
+                let multicast = ip.dest.is_multicast();
+
+                if !local_dest && !multicast {
                     // (0) Check TTL
                     let mut pkt = ip.clone();
                     pkt.hop_limit = pkt.hop_limit.saturating_sub(1);
@@ -289,6 +298,16 @@ impl IOContext {
                     };
                 }
 
+                if multicast {
+                    // Check whether we support this multicast option
+                    match ip.dest {
+                        IPV6_MULTICAST_ALL_ROUTERS if iface.flags.router => { /* OK */ }
+                        IPV6_MULTICAST_ALL_ROUTERS => { /* ALSO OK WE WANT NEIGHBOR UPDATES STILL */
+                        }
+                        _ => panic!("Unknown multicast: {ip:?}"),
+                    }
+                }
+
                 match ip.next_header {
                     0 => return Some(msg),
                     PROTO_UDP => {
@@ -301,6 +320,14 @@ impl IOContext {
                     }
                     PROTO_TCP => {
                         let consumed = self.capture_tcp_packet(IpPacketRef::V6(ip), ifid);
+                        if consumed {
+                            None
+                        } else {
+                            Some(msg)
+                        }
+                    }
+                    PROTO_ICMPV6 => {
+                        let consumed = self.recv_icmpv6_packet(ip, ifid);
                         if consumed {
                             None
                         } else {

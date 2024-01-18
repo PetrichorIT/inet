@@ -17,14 +17,21 @@ impl From<LinkUpdate> for Message {
 
 /// A numeric identifier derived from a interface name.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, MessageBody)]
-#[repr(transparent)]
-pub struct IfId(u64);
+pub struct IfId(u64, #[cfg(debug_assertions)] &'static str);
 
 impl IfId {
     /// The invalid interface address, representing Option::\<IfId\>::None
-    pub const NULL: IfId = IfId(0);
+    pub const NULL: IfId = IfId(
+        0,
+        #[cfg(debug_assertions)]
+        "null",
+    );
     /// The broadcast interface address, an alias for all active interfaces
-    pub const BROADCAST: IfId = IfId(u64::MAX);
+    pub const BROADCAST: IfId = IfId(
+        u64::MAX,
+        #[cfg(debug_assertions)]
+        "broadcast",
+    );
 }
 
 impl fmt::Debug for IfId {
@@ -34,7 +41,11 @@ impl fmt::Debug for IfId {
 }
 impl fmt::Display for IfId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "0x{:x}", self.0)
+        #[cfg(not(debug_assertions))]
+        return write!(f, "0x{:x}", self.0);
+
+        #[cfg(debug_assertions)]
+        return write!(f, "{}", self.1);
     }
 }
 
@@ -56,8 +67,12 @@ impl InterfaceName {
         let name = s.as_ref().to_string();
         let hash = hash!(name);
         Self {
+            id: IfId(
+                hash,
+                #[cfg(debug_assertions)]
+                name.clone().leak(),
+            ),
             name,
-            id: IfId(hash),
             parent: None,
         }
     }

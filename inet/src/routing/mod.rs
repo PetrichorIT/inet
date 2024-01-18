@@ -5,6 +5,7 @@ use des::prelude::*;
 
 mod tablev6;
 pub(crate) use self::tablev6::*;
+pub use self::tablev6::{Ipv6RouterConfig, Ipv6RoutingPrefix};
 
 mod api;
 pub use self::api::*;
@@ -151,6 +152,7 @@ impl From<Ipv6Gateway> for IpGateway {
             Ipv6Gateway::Local => IpGateway::Local,
             Ipv6Gateway::Broadcast => IpGateway::Broadcast,
             Ipv6Gateway::Gateway(ip) => IpGateway::Gateway(ip.into()),
+            _ => todo!(),
         }
     }
 }

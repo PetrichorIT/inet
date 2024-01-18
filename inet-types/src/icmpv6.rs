@@ -7,6 +7,8 @@ use bytepack::{raw_enum, FromBytestream, ReadBytesExt, ToBytestream, WriteBytesE
 
 use crate::iface::MacAddress;
 
+pub const PROTO_ICMPV6: u8 = 58;
+
 /// An ICMP V6 message.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[repr(u8)]
@@ -72,12 +74,12 @@ impl FromBytestream for IcmpV6Packet {
             ($(
                 $i:ident($t:ident) = $l:literal
             ),*) => {{
-                let code = stream.read_u8()?;
-                match code {
+                let typ = stream.read_u8()?;
+                match typ {
                     $(
                         $l => Ok(Self::$i($t::from_bytestream(stream)?)),
                     )*
-                    _ => todo!()
+                    _ => panic!("no deser implemented yet typ : {typ}")
                 }
             }};
         }

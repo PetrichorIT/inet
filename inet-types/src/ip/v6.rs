@@ -8,6 +8,10 @@ use std::{
     net::Ipv6Addr,
 };
 
+use crate::iface::MacAddress;
+
+pub const IPV6_MULTICAST_ALL_ROUTERS: Ipv6Addr = Ipv6Addr::new(0xff02, 0, 0, 0, 0, 0, 0, 2);
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Ipv6Packet {
     pub traffic_class: u8,
@@ -95,4 +99,11 @@ impl MessageBody for Ipv6Packet {
     fn byte_len(&self) -> usize {
         40 + self.content.len()
     }
+}
+
+/// Merges based on a prefix (not that prefixlen <= 64 is required)
+pub fn ipv6_merge_mac(ip: Ipv6Addr, mac: MacAddress) -> Ipv6Addr {
+    let mut bytes = ip.octets();
+    bytes[10..].copy_from_slice(mac.as_slice());
+    Ipv6Addr::from(bytes)
 }

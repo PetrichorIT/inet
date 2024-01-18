@@ -3,8 +3,12 @@ use std::{
     net::IpAddr,
 };
 
-use super::{FwdEntryV4, Ipv4Gateway, RoutingTableId};
+use super::{FwdEntryV4, Ipv4Gateway, Ipv6RouterConfig, RoutingTableId};
 use crate::IOContext;
+
+pub fn declare_ipv6_router(cfg: Ipv6RouterConfig) -> io::Result<()> {
+    IOContext::failable_api(|ctx| ctx.declare_ipv6_router(cfg))
+}
 
 /// Sets the default routing gateway for the entire node.
 pub fn set_default_gateway(ip: impl Into<IpAddr>) -> io::Result<()> {
@@ -52,21 +56,25 @@ pub fn route() -> io::Result<Vec<FwdEntryV4>> {
 }
 
 impl IOContext {
+    fn declare_ipv6_router(&mut self, cfg: Ipv6RouterConfig) -> io::Result<()> {
+        self.ipv6router.router = Some(cfg);
+        Ok(())
+    }
+
     fn route(&mut self) -> Vec<FwdEntryV4> {
         self.ipv4_fwd.entries()
     }
 
     fn set_default_gateway(&mut self, ip: IpAddr) -> io::Result<()> {
-        let Some(iface) = self.ifaces.values().find(|iface| {
-            iface
-                .addrs
-                .iter()
-                .any(|addr| addr.matches_ip_subnet(ip))
-        }) else {
+        let Some(iface) = self
+            .ifaces
+            .values()
+            .find(|iface| iface.addrs.iter().any(|addr| addr.matches_ip_subnet(ip)))
+        else {
             return Err(Error::new(
                 ErrorKind::Other,
-                "gateway not found on any local subnet"
-            ))
+                "gateway not found on any local subnet",
+            ));
         };
 
         match ip {
@@ -89,16 +97,14 @@ impl IOContext {
     ) -> io::Result<()> {
         // Defines a route to a subnet via a gateway and a defined interface
 
-        let Some(iface) = self.ifaces.values().find(|iface| {
-            iface
-                .name.name == interface
-        }) else {
+        let Some(iface) = self
+            .ifaces
+            .values()
+            .find(|iface| iface.name.name == interface)
+        else {
             // dbg!(interface);
             // dbg!(self.ifaces.values());
-            return Err(Error::new(
-                ErrorKind::Other,
-                "interface not found"
-            ))
+            return Err(Error::new(ErrorKind::Other, "interface not found"));
         };
 
         use IpAddr::{V4, V6};

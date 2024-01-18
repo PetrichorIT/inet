@@ -20,6 +20,8 @@ pub struct InterfaceFlags {
     pub simplex: bool,
     /// *Not currently in use*
     pub promisc: bool,
+    /// Whether the node is a router,
+    pub router: bool,
 }
 
 impl InterfaceFlags {
@@ -35,6 +37,7 @@ impl InterfaceFlags {
             smart: false,
             simplex: false,
             promisc: false,
+            router: false,
         }
     }
 
@@ -50,6 +53,7 @@ impl InterfaceFlags {
             smart: true,
             simplex: true,
             promisc: false,
+            router: false,
         }
     }
 }
@@ -83,6 +87,9 @@ impl std::fmt::Display for InterfaceFlags {
         }
         if self.promisc {
             write!(f, "PROMISC")?
+        }
+        if self.router {
+            write!(f, "ROUTER")?
         }
 
         write!(f, ">")

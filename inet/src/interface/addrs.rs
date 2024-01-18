@@ -52,6 +52,18 @@ impl InterfaceAddr {
         ]
     }
 
+    pub fn ipv6_link_local(mac: MacAddress) -> Self {
+        let mut bytes = [0; 16];
+        bytes[0] = 0xfe;
+        bytes[1] = 0x80;
+        bytes[10..].copy_from_slice(mac.as_slice());
+        Self::Inet6 {
+            addr: Ipv6Addr::from(bytes),
+            prefixlen: 64,
+            scope_id: None,
+        }
+    }
+
     /// Returns the addrs for a loopback interface.
     pub fn en0(ether: MacAddress, v4: Ipv4Addr) -> [Self; 3] {
         let v6 = v4.to_ipv6_compatible();
