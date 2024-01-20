@@ -103,7 +103,9 @@ impl IOContext {
         let is_broadcast = is_broadcast(packet.dest());
 
         let Ok(udp) = UdpPacket::from_slice(packet.content()) else {
-            tracing::error!("received ip-packet with proto=0x11 (udp) but content was no udp-packet");
+            tracing::error!(
+                "received ip-packet with proto=0x11 (udp) but content was no udp-packet"
+            );
             return false;
         };
 
@@ -199,7 +201,10 @@ impl IOContext {
 
     pub(super) fn udp_connect(&mut self, fd: Fd, peer: SocketAddr) -> Result<()> {
         let Some(socket) = self.udp.binds.get_mut(&fd) else {
-            return Err(Error::new(ErrorKind::InvalidInput, "invalid fd - socket dropped"))
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                "invalid fd - socket dropped",
+            ));
         };
 
         socket.state = UdpSocketState::Connected(peer);
@@ -209,7 +214,10 @@ impl IOContext {
 
     pub(super) fn udp_send_to(&mut self, fd: Fd, target: SocketAddr, buf: &[u8]) -> Result<usize> {
         let Some(mng) = self.udp.binds.get_mut(&fd) else {
-            return Err(Error::new(ErrorKind::InvalidInput, "invalid fd - socket dropped"))
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                "invalid fd - socket dropped",
+            ));
         };
 
         // (1.1) Check version match
@@ -278,7 +286,7 @@ impl IOContext {
                     hop_limit: 128,
 
                     src: local,
-                    dest: target,
+                    dst: target,
 
                     content,
                 };
@@ -300,7 +308,10 @@ impl IOContext {
 
     fn udp_take_error(&mut self, fd: Fd) -> Result<Option<Error>> {
         let Some(mng) = self.udp.binds.get_mut(&fd) else {
-            return Err(Error::new(ErrorKind::InvalidInput, "invalid fd - socket dropped"))
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                "invalid fd - socket dropped",
+            ));
         };
 
         Ok(mng.error.take())

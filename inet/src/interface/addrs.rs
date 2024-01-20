@@ -45,7 +45,7 @@ impl InterfaceAddr {
                 scope_id: None,
             },
             InterfaceAddr::Inet6 {
-                addr: Ipv6Addr::new(0xfe80, 0, 0, 0, 0, 0, 0, 1),
+                addr: Ipv6Addr::LOCALHOST,
                 prefixlen: 64,
                 scope_id: Some(0x1),
             },
@@ -151,7 +151,7 @@ impl InterfaceAddr {
 
                 let ip_u128 = u128::from_be_bytes(ip.octets());
                 let addr_u128 = u128::from_be_bytes(addr.octets());
-                let mask_u128 = !(u128::MAX << (128 - prefixlen));
+                let mask_u128 = u128::MAX << (128 - prefixlen);
                 mask_u128 & ip_u128 == mask_u128 & addr_u128
             }
             _ => false,

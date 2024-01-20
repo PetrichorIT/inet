@@ -207,7 +207,7 @@ fn v6_empty() -> std::io::Result<()> {
         hop_limit: 0,
 
         src: Ipv6Addr::new(1, 2, 3, 4, 5, 16, 7, 7),
-        dest: Ipv6Addr::new(9, 8, 17, 16, 4, 5, 6, 7),
+        dst: Ipv6Addr::new(9, 8, 17, 16, 4, 5, 6, 7),
         content: Vec::new(),
     };
 
@@ -223,7 +223,7 @@ fn v6_empty() -> std::io::Result<()> {
         hop_limit: 0,
 
         src: Ipv6Addr::new(1, 12, 3, 4, 1, 5, 6, 71),
-        dest: Ipv6Addr::new(9, 8, 171, 6, 4, 1, 6, 7),
+        dst: Ipv6Addr::new(9, 8, 171, 6, 4, 1, 6, 7),
         content: Vec::new(),
     };
 
@@ -237,7 +237,7 @@ fn v6_empty() -> std::io::Result<()> {
         hop_limit: 64,
 
         src: Ipv6Addr::new(1, 2, 3, 4, 5, 6, 7, 7),
-        dest: Ipv6Addr::new(64, 64, 64, 64, 64, 64, 64, 64),
+        dst: Ipv6Addr::new(64, 64, 64, 64, 64, 64, 64, 64),
         content: Vec::new(),
     };
 
@@ -251,7 +251,7 @@ fn v6_empty() -> std::io::Result<()> {
         hop_limit: 088,
 
         src: Ipv6Addr::new(1, 2, 3, 4, 5, 6, 7, 7),
-        dest: Ipv6Addr::new(9, 8, 7, 6, 4, 5, 6, 7),
+        dst: Ipv6Addr::new(9, 8, 7, 6, 4, 5, 6, 7),
         content: Vec::new(),
     };
 
@@ -265,7 +265,7 @@ fn v6_empty() -> std::io::Result<()> {
         hop_limit: 64,
 
         src: Ipv6Addr::new(1, 2, 3, 4, 5, 6, 7, 7),
-        dest: Ipv6Addr::new(9, 8, 7, 6, 4, 5, 6, 7),
+        dst: Ipv6Addr::new(9, 8, 7, 6, 4, 5, 6, 7),
         content: Vec::new(),
     };
 
@@ -284,7 +284,7 @@ fn v6_with_content() -> std::io::Result<()> {
         hop_limit: 0,
 
         src: Ipv6Addr::new(1, 2, 3, 4, 5, 16, 7, 7),
-        dest: Ipv6Addr::new(9, 8, 17, 16, 4, 5, 6, 7),
+        dst: Ipv6Addr::new(9, 8, 17, 16, 4, 5, 6, 7),
         content: vec![
             1, 2, 3, 5, 6, 4, 4, 134, 1, 241, 21, 3, 123, 123, 123, 12, 3, 12,
         ],
@@ -302,7 +302,7 @@ fn v6_with_content() -> std::io::Result<()> {
         hop_limit: 0,
 
         src: Ipv6Addr::new(1, 12, 3, 4, 1, 5, 6, 71),
-        dest: Ipv6Addr::new(9, 8, 171, 6, 4, 1, 6, 7),
+        dst: Ipv6Addr::new(9, 8, 171, 6, 4, 1, 6, 7),
         content: vec![
             1, 2, 3, 5, 6, 4, 4, 134, 1, 241, 21, 3, 123, 123, 123, 12, 3, 12,
         ],
@@ -318,7 +318,7 @@ fn v6_with_content() -> std::io::Result<()> {
         hop_limit: 64,
 
         src: Ipv6Addr::new(1, 2, 3, 4, 5, 6, 7, 7),
-        dest: Ipv6Addr::new(64, 64, 64, 64, 64, 64, 64, 64),
+        dst: Ipv6Addr::new(64, 64, 64, 64, 64, 64, 64, 64),
         content: vec![1; 100],
     };
 
@@ -332,7 +332,7 @@ fn v6_with_content() -> std::io::Result<()> {
         hop_limit: 088,
 
         src: Ipv6Addr::new(1, 2, 3, 4, 5, 6, 7, 7),
-        dest: Ipv6Addr::new(9, 8, 7, 6, 4, 5, 6, 7),
+        dst: Ipv6Addr::new(9, 8, 7, 6, 4, 5, 6, 7),
         content: vec![13; 100],
     };
 
@@ -346,7 +346,7 @@ fn v6_with_content() -> std::io::Result<()> {
         hop_limit: 64,
 
         src: Ipv6Addr::new(1, 2, 3, 4, 5, 6, 7, 7),
-        dest: Ipv6Addr::new(9, 8, 7, 6, 4, 5, 6, 7),
+        dst: Ipv6Addr::new(9, 8, 7, 6, 4, 5, 6, 7),
         content: vec![1; 500],
     };
 

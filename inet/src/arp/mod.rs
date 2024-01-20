@@ -234,7 +234,7 @@ impl IOContext {
                 (route.clone().into(), rifid.id, IpPacket::V4(pkt))
             }
             IpPacket::V6(pkt) => {
-                let Some((route, rifid)) = self.ipv6router.loopuk_gateway(pkt.dest) else {
+                let Some((route, rifid)) = self.ipv6router.loopuk_gateway(pkt.dst) else {
                     return Err(Error::new(
                         ErrorKind::ConnectionRefused,
                         "no gateway network reachable",

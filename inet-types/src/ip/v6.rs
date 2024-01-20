@@ -8,9 +8,9 @@ use std::{
     net::Ipv6Addr,
 };
 
-use crate::iface::MacAddress;
-
+pub const IPV6_LINK_LOCAL: Ipv6Addr = Ipv6Addr::new(0xfe80, 0, 0, 0, 0, 0, 0, 0);
 pub const IPV6_MULTICAST_ALL_ROUTERS: Ipv6Addr = Ipv6Addr::new(0xff02, 0, 0, 0, 0, 0, 0, 2);
+pub const IPV6_MULTICAST_ALL_NODES: Ipv6Addr = Ipv6Addr::new(0xff02, 0, 0, 0, 0, 0, 0, 1);
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Ipv6Packet {
@@ -20,7 +20,7 @@ pub struct Ipv6Packet {
     pub hop_limit: u8,
 
     pub src: Ipv6Addr,
-    pub dest: Ipv6Addr,
+    pub dst: Ipv6Addr,
 
     pub content: Vec<u8>,
 }
@@ -43,7 +43,7 @@ impl ToBytestream for Ipv6Packet {
         stream.write_u8(self.hop_limit)?;
 
         stream.write_all(&self.src.octets())?;
-        stream.write_all(&self.dest.octets())?;
+        stream.write_all(&self.dst.octets())?;
 
         stream.write_all(&self.content)?;
         Ok(())
@@ -89,7 +89,7 @@ impl FromBytestream for Ipv6Packet {
             next_header,
             hop_limit,
             src,
-            dest,
+            dst: dest,
             content,
         })
     }
@@ -101,9 +101,13 @@ impl MessageBody for Ipv6Packet {
     }
 }
 
-/// Merges based on a prefix (not that prefixlen <= 64 is required)
-pub fn ipv6_merge_mac(ip: Ipv6Addr, mac: MacAddress) -> Ipv6Addr {
-    let mut bytes = ip.octets();
-    bytes[10..].copy_from_slice(mac.as_slice());
+pub fn ipv6_solicited_node_multicast(addr: Ipv6Addr) -> Ipv6Addr {
+    let mut bytes = [0; 16];
+    bytes[0] = 0xff;
+    bytes[1] = 0x02;
+    // pad
+    bytes[11] = 0x01;
+    bytes[12] = 0xff;
+    bytes[13..].copy_from_slice(&mut addr.octets()[13..]);
     Ipv6Addr::from(bytes)
 }

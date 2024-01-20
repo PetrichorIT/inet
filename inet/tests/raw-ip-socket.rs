@@ -72,7 +72,7 @@ impl AsyncModule for Emitter {
                         next_header: PROTO,
                         hop_limit: 64,
                         src: "fe80::02".parse::<Ipv6Addr>().unwrap(),
-                        dest: "fe80::01".parse::<Ipv6Addr>().unwrap(),
+                        dst: "fe80::01".parse::<Ipv6Addr>().unwrap(),
                         content: iter::repeat_with(|| random::<u8>()).take(16).collect(),
                     };
 

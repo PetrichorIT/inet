@@ -96,7 +96,7 @@ impl AsyncModule for Node {
             msg.str(),
             current().name(),
             msg.content::<Ipv6Packet>().src,
-            msg.content::<Ipv6Packet>().dest
+            msg.content::<Ipv6Packet>().dst
         );
         panic!()
     }

@@ -42,7 +42,7 @@ impl TestEmitter {
             next_header: proto,
             hop_limit: 0,
             src: addr,
-            dest: addr,
+            dst: addr,
             content: pkt.to_vec()?,
         };
         self.emit(IpPacket::V6(ip))
@@ -69,7 +69,7 @@ fn sample_ipv6packet() -> Ipv6Packet {
         next_header: 0,
         hop_limit: 0,
         src: "aa:bb:cc:dd::".parse().unwrap(),
-        dest: "11:22:33:4::".parse().unwrap(),
+        dst: "11:22:33:4::".parse().unwrap(),
         content: "Hello World!".as_bytes().to_vec(),
     }
 }

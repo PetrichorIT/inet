@@ -12,7 +12,6 @@ use fxhash::{FxBuildHasher, FxHashMap};
 use std::{
     io::{Error, ErrorKind},
     net::{IpAddr, Ipv4Addr},
-    time::Duration,
 };
 
 use bytepack::{FromBytestream, ToBytestream};
@@ -22,12 +21,11 @@ use inet_types::{
         IcmpV4DestinationUnreachableCode, IcmpV4Packet, IcmpV4TimeExceededCode, IcmpV4Type,
         PROTO_ICMPV4,
     },
-    icmpv6::{IcmpV6NDPOption, IcmpV6Packet, PROTO_ICMPV6},
-    ip::{IpPacket, IpPacketRef, Ipv4Flags, Ipv4Packet, Ipv6Packet},
+    ip::{IpPacket, IpPacketRef, Ipv4Flags, Ipv4Packet},
 };
 
 use self::ping::PingCB;
-use crate::{arp::ArpEntryInternal, interface::IfId, socket::SocketIfaceBinding, IOContext};
+use crate::{interface::IfId, socket::SocketIfaceBinding, IOContext};
 
 mod ping;
 pub use self::ping::*;
@@ -50,73 +48,6 @@ impl Icmp {
 }
 
 impl IOContext {
-    pub(super) fn recv_icmpv6_packet(&mut self, ip_icmp: &Ipv6Packet, ifid: IfId) -> bool {
-        assert_eq!(ip_icmp.next_header, PROTO_ICMPV6);
-
-        let Ok(pkt) = IcmpV6Packet::read_from_slice(&mut &ip_icmp.content[..]) else {
-            tracing::error!(
-                "received ip-packet with proto=0x58 (icmpv6) but content was no icmpv6-packet"
-            );
-            return false;
-        };
-
-        match pkt {
-            IcmpV6Packet::RouterSolicitation(req) => {
-                if let Some(source_mac) = req.options.iter().find_map(|o| {
-                    if let IcmpV6NDPOption::SourceLinkLayerAddress(mac) = o {
-                        Some(mac)
-                    } else {
-                        None
-                    }
-                }) {
-                    let _ = self.arp.update(ArpEntryInternal {
-                        negated: false,
-                        hostname: None,
-                        ip: IpAddr::V6(ip_icmp.src),
-                        mac: *source_mac,
-                        iface: ifid,
-                        expires: SimTime::now() + Duration::from_secs(120),
-                    });
-                }
-
-                let iface = self.get_iface(ifid).unwrap();
-                if iface.flags.router {
-                    // Only now respond to router solicitation
-                    let mut response = self.ipv6router.response_to_solicitation(&req);
-                    response
-                        .options
-                        .push(IcmpV6NDPOption::SourceLinkLayerAddress(iface.device.addr));
-
-                    let response = IcmpV6Packet::RouterAdvertisment(response);
-
-                    // Send out
-                    let pkt = IpPacket::V6(Ipv6Packet {
-                        traffic_class: 0,
-                        flow_label: 0,
-                        next_header: 58,
-                        hop_limit: 32,
-                        src: iface.link_local_v6().unwrap(),
-                        dest: ip_icmp.src,
-                        content: response.to_vec().unwrap(),
-                    });
-                    self.send_ip_packet(SocketIfaceBinding::Bound(ifid), pkt, true)
-                        .unwrap();
-                }
-            }
-            IcmpV6Packet::RouterAdvertisment(adv) => {
-                // Questions
-                // - solicited in resposne to my req -> stop timer
-                // - new prefixes available
-
-                self.v6_interface_process_router_adv(ifid, adv.clone());
-            }
-
-            _ => {}
-        }
-
-        true
-    }
-
     pub(super) fn recv_icmpv4_packet(&mut self, ip_icmp: &Ipv4Packet, ifid: IfId) -> bool {
         assert_eq!(ip_icmp.proto, PROTO_ICMPV4);
 

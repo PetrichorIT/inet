@@ -1,6 +1,7 @@
 use std::{
     io::{self, Read, Write},
     net::Ipv6Addr,
+    time::Duration,
 };
 
 use bytepack::{raw_enum, FromBytestream, ReadBytesExt, ToBytestream, WriteBytesExt, BE};
@@ -749,3 +750,31 @@ impl FromBytestream for IcmpV6MtuOption {
         })
     }
 }
+
+// # RFC 4861 constants
+
+// ## Router constants
+
+pub const NDP_MAX_INITIAL_RTR_ADVERT_INTERVAL: Duration = Duration::from_secs(16);
+pub const NDP_MAX_INITIAL_RTR_ADVERTISEMENTS: usize = 3;
+pub const NDP_MAX_FINAL_RTR_ADVERTISEMENTS: usize = 3;
+pub const NDP_MIN_DELAY_BETWEEN_RAS: Duration = Duration::from_secs(3);
+pub const NDP_MAX_RA_DELAY_TIME: Duration = Duration::from_millis(500);
+
+// ## Host constants
+
+pub const NDP_MAX_RTR_SOLICITATION_DELAY: Duration = Duration::from_secs(1);
+pub const NDP_RTR_SOLICITATION_INTERVAL: Duration = Duration::from_secs(4);
+pub const NDP_MAX_RTR_SOLICITATIONS: usize = 3;
+
+// ## Node constants
+
+pub const NDP_MAX_MULTICAST_SOLICIT: usize = 3;
+pub const NDP_MAX_UNICAST_SOLICIT: usize = 3;
+pub const NDP_MAX_ANYCAST_DELAY_TIME: Duration = Duration::from_secs(3);
+pub const NDP_MAX_NEIGHBOR_ADVERTISEMENT: usize = 3;
+pub const NDP_REACHABLE_TIME: Duration = Duration::from_millis(30_000);
+pub const NDP_RETRANS_TIMER: Duration = Duration::from_millis(1_000);
+pub const NDP_DELAY_FIRST_PROBE: Duration = Duration::from_secs(5);
+pub const NDP_MIN_RANDOM_FACTOR: f64 = 0.5;
+pub const NDP_MAX_RANDOM_FACTOR: f64 = 1.5;

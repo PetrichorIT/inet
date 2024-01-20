@@ -89,7 +89,7 @@ impl IOContext {
         }
 
         // (1) Add all interface addrs to ARP
-        for addr in &iface.addrs {
+        for addr in &*iface.addrs {
             match addr {
                 InterfaceAddr::Inet { addr, .. } => {
                     let _ = self.arp.update(ArpEntryInternal {
@@ -165,7 +165,7 @@ impl IOContext {
         Ok(InterfaceState {
             name: iface.name.clone(),
             flags: iface.flags,
-            addrs: iface.addrs.clone(),
+            addrs: iface.addrs.addrs.clone(),
             status: iface.status,
             busy: iface.state.clone(),
             queuelen: iface.buffer.len(),

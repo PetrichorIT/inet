@@ -1677,7 +1677,7 @@ impl TransmissionControlBlock {
                 next_header: PROTO_TCP,
 
                 src: *local.ip(),
-                dest: if let IpAddr::V6(addr) = self.peer_addr.ip() {
+                dst: if let IpAddr::V6(addr) = self.peer_addr.ip() {
                     addr
                 } else {
                     unreachable!()

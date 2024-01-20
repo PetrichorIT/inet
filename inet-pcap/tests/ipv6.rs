@@ -64,7 +64,7 @@ impl AsyncModule for Router {
         add_interface(iface).unwrap();
 
         declare_ipv6_router(Ipv6RouterConfig {
-            current_hop_limit: 0,
+            current_hop_limit: 255,
             managed: false,
             other_cfg: false,
             lifetime: Duration::from_secs(9000),

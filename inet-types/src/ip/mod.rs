@@ -10,7 +10,10 @@ mod v4;
 pub use v4::{Ipv4Flags, Ipv4Packet};
 
 mod v6;
-pub use v6::{ipv6_merge_mac, Ipv6Packet, IPV6_MULTICAST_ALL_ROUTERS};
+pub use v6::{
+    ipv6_solicited_node_multicast, Ipv6Packet, IPV6_LINK_LOCAL, IPV6_MULTICAST_ALL_NODES,
+    IPV6_MULTICAST_ALL_ROUTERS,
+};
 
 #[cfg(test)]
 mod tests;
@@ -66,7 +69,7 @@ impl IpPacketRef<'_, '_> {
     pub fn dest(&self) -> IpAddr {
         match self {
             Self::V4(v4) => IpAddr::V4(v4.dest),
-            Self::V6(v6) => IpAddr::V6(v6.dest),
+            Self::V6(v6) => IpAddr::V6(v6.dst),
         }
     }
 
@@ -90,8 +93,8 @@ impl IpPacketRef<'_, '_> {
                 flow_label: pkt.flow_label,
                 next_header: pkt.next_header,
                 hop_limit: 20,
-                src: pkt.dest,
-                dest: pkt.src,
+                src: pkt.dst,
+                dst: pkt.src,
                 content,
             }),
         }
@@ -130,7 +133,7 @@ impl IpPacket {
     pub fn dest(&self) -> IpAddr {
         match self {
             Self::V4(pkt) => pkt.dest.into(),
-            Self::V6(pkt) => pkt.dest.into(),
+            Self::V6(pkt) => pkt.dst.into(),
         }
     }
 
@@ -166,7 +169,7 @@ impl IpPacket {
                 next_header: 0,
                 hop_limit: 128,
                 src,
-                dest,
+                dst: dest,
                 content,
             }),
             _ => unreachable!(),

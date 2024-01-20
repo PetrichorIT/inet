@@ -31,7 +31,7 @@ impl IOContext {
     /// Returns ethernet mac address for a given IOContext
     pub(crate) fn get_mac_address(&self) -> Result<Option<MacAddress>> {
         for (_, interface) in &self.ifaces {
-            for addr in &interface.addrs {
+            for addr in &*interface.addrs {
                 if let InterfaceAddr::Ether { addr } = addr {
                     return Ok(Some(*addr));
                 }
@@ -43,7 +43,7 @@ impl IOContext {
 
     pub(crate) fn get_ip(&self) -> Option<IpAddr> {
         for (_, interface) in &self.ifaces {
-            for addr in &interface.addrs {
+            for addr in &*interface.addrs {
                 if let InterfaceAddr::Inet { addr, .. } = addr {
                     return Some(IpAddr::V4(*addr));
                 }

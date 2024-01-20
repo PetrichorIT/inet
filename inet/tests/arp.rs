@@ -66,7 +66,7 @@ impl AsyncModule for Node {
 
         if msg.can_cast::<Ipv6Packet>() {
             let msg = msg.content::<Ipv6Packet>();
-            assert_eq!(msg.dest, self.ip);
+            assert_eq!(msg.dst, self.ip);
             tracing::info!("received message from {}", msg.src);
         }
     }

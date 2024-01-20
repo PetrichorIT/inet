@@ -4,7 +4,8 @@ use crate::{
     extensions::Extensions,
     fs::Fs,
     icmp::Icmp,
-    interface::{IfId, Interface, InterfaceMngmt, LinkLayerResult, KIND_LINK_UPDATE},
+    interface::{IfId, Interface, LinkLayerResult, KIND_LINK_UPDATE},
+    ipv6::Ipv6,
     routing::{FwdV4, Ipv6RoutingTable},
     Udp,
 };
@@ -14,8 +15,8 @@ use inet_types::{
     icmpv4::PROTO_ICMPV4,
     icmpv6::PROTO_ICMPV6,
     ip::{
-        IpPacket, IpPacketRef, Ipv4Packet, Ipv6Packet, IPV6_MULTICAST_ALL_ROUTERS, KIND_IPV4,
-        KIND_IPV6,
+        ipv6_solicited_node_multicast, IpPacket, IpPacketRef, Ipv4Packet, Ipv6Packet,
+        IPV6_MULTICAST_ALL_ROUTERS, KIND_IPV4, KIND_IPV6,
     },
 };
 use std::{
@@ -39,7 +40,8 @@ pub(crate) struct IOContext {
     #[allow(unused)]
     pub(super) id: ModuleId,
     pub(super) ifaces: FxHashMap<IfId, Interface>,
-    pub(super) iface_mngmt: InterfaceMngmt,
+
+    pub(super) ipv6: Ipv6,
 
     pub(super) arp: ArpTable,
     pub(super) ipv4_fwd: FwdV4,
@@ -87,7 +89,7 @@ impl IOContext {
         Self {
             id,
             ifaces: FxHashMap::with_hasher(FxBuildHasher::default()),
-            iface_mngmt: InterfaceMngmt::new(),
+            ipv6: Ipv6::new(),
 
             arp: ArpTable::new(),
             ipv4_fwd: FwdV4::new(),
@@ -273,9 +275,9 @@ impl IOContext {
                     || */iface
                         .addrs
                         .iter()
-                        .any(|addr| addr.matches_ip(IpAddr::V6(ip.dest)));
+                        .any(|addr| addr.matches_ip(IpAddr::V6(ip.dst)));
 
-                let multicast = ip.dest.is_multicast();
+                let multicast = ip.dst.is_multicast();
 
                 if !local_dest && !multicast {
                     // (0) Check TTL
@@ -300,11 +302,17 @@ impl IOContext {
 
                 if multicast {
                     // Check whether we support this multicast option
-                    match ip.dest {
+                    match ip.dst {
                         IPV6_MULTICAST_ALL_ROUTERS if iface.flags.router => { /* OK */ }
                         IPV6_MULTICAST_ALL_ROUTERS => { /* ALSO OK WE WANT NEIGHBOR UPDATES STILL */
                         }
-                        _ => panic!("Unknown multicast: {ip:?}"),
+                        ip if iface
+                            .addrs
+                            .ipv6_addrs()
+                            .iter()
+                            .any(|addr| ip == ipv6_solicited_node_multicast(*addr)) =>
+                        { /* SOLCITED MULTICAST */ }
+                        _ => panic!("Unknown multicast: {} {ip:?}", ip.dst),
                     }
                 }
 
@@ -327,7 +335,7 @@ impl IOContext {
                         }
                     }
                     PROTO_ICMPV6 => {
-                        let consumed = self.recv_icmpv6_packet(ip, ifid);
+                        let consumed = self.ipv6_icmp_recv(ip, ifid).unwrap();
                         if consumed {
                             None
                         } else {

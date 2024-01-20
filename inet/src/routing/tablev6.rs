@@ -1,12 +1,6 @@
 use crate::interface::IfId;
 use des::time::SimTime;
-use inet_types::{
-    icmpv6::{
-        IcmpV6NDPOption, IcmpV6PrefixInformation, IcmpV6RouterAdvertisement,
-        IcmpV6RouterSolicitation,
-    },
-    ip::ipv6_matches_subnet,
-};
+use inet_types::ip::ipv6_matches_subnet;
 use std::{net::Ipv6Addr, time::Duration};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -64,49 +58,6 @@ impl Ipv6RoutingTable {
         Self {
             entries: Vec::new(),
             router: None,
-        }
-    }
-
-    pub(crate) fn response_to_solicitation(
-        &self,
-        req: &IcmpV6RouterSolicitation,
-    ) -> IcmpV6RouterAdvertisement {
-        if let Some(ref router) = self.router {
-            let mut options = Vec::new();
-            for prefix in &router.prefixes {
-                options.push(IcmpV6NDPOption::PrefixInformation(
-                    IcmpV6PrefixInformation {
-                        prefix_len: prefix.prefix_len,
-                        prefix: prefix.prefix,
-
-                        on_link: false,                         // TODO
-                        autonomous_address_configuration: true, // TODO
-                        valid_lifetime: 0,                      // TODO
-                        preferred_lifetime: 0,                  // TODO
-                    },
-                ))
-            }
-
-            for option in &req.options {
-                if let IcmpV6NDPOption::SourceLinkLayerAddress(mac) = option {
-                    options.push(IcmpV6NDPOption::TargetLinkLayerAddress(*mac));
-                    break;
-                }
-            }
-
-            // assign own MAC to response
-
-            IcmpV6RouterAdvertisement {
-                current_hop_limit: router.current_hop_limit,
-                managed: router.managed,
-                other_configuration: router.other_cfg,
-                router_lifetime: router.lifetime.as_secs() as u16,
-                reachable_time: router.reachable_time.as_millis() as u32,
-                retransmit_time: router.retransmit_time.as_millis() as u32,
-                options,
-            }
-        } else {
-            panic!("Host with router interface, missing router configuration")
         }
     }
 
