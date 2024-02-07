@@ -1,9 +1,59 @@
 use std::{
     fmt,
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
+    ops,
 };
 
 use inet_types::iface::MacAddress;
+
+#[derive(Debug, Clone)]
+pub struct InterfaceAddrs {
+    pub(super) addrs: Vec<InterfaceAddr>,
+}
+
+impl InterfaceAddrs {
+    pub fn new(addrs: Vec<InterfaceAddr>) -> Self {
+        Self { addrs }
+    }
+
+    pub fn add(&mut self, addr: InterfaceAddr) {
+        self.addrs.push(addr);
+    }
+
+    pub fn ipv6_addrs(&self) -> Vec<Ipv6Addr> {
+        self.addrs
+            .iter()
+            .filter_map(|addr| {
+                if let InterfaceAddr::Inet6 { addr, .. } = addr {
+                    Some(*addr)
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
+}
+
+impl ops::Deref for InterfaceAddrs {
+    type Target = [InterfaceAddr];
+    fn deref(&self) -> &Self::Target {
+        &self.addrs
+    }
+}
+
+impl ops::DerefMut for InterfaceAddrs {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.addrs
+    }
+}
+
+impl FromIterator<InterfaceAddr> for InterfaceAddrs {
+    fn from_iter<T: IntoIterator<Item = InterfaceAddr>>(iter: T) -> Self {
+        InterfaceAddrs {
+            addrs: iter.into_iter().collect(),
+        }
+    }
+}
 
 /// A interface addr.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

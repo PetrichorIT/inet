@@ -4,8 +4,8 @@ use des::net::gate::GateKind;
 use des::prelude::*;
 
 mod tablev6;
+pub use self::tablev6::Ipv6RouterConfig;
 pub(crate) use self::tablev6::*;
-pub use self::tablev6::{Ipv6RouterConfig, Ipv6RoutingPrefix};
 
 mod api;
 pub use self::api::*;

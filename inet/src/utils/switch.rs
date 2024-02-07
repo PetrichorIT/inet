@@ -112,7 +112,7 @@ impl LinkLayerSwitch {
         };
 
         let src = MacAddress::from(msg.header().src);
-        if src.is_unspecified() || src.is_broadcast() {
+        if src.is_unspecified() || src.is_broadcast() || src.is_multicast() {
             return Some(i);
         }
         self.mapping.insert(src, i);

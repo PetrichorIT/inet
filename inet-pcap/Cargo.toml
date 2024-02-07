@@ -11,3 +11,4 @@ des = "*"
 inet-types = { path = "../inet-types" }
 inet = { path = "../inet", features = ["libpcap"] }
 tracing = "*"
+tokio = "*"

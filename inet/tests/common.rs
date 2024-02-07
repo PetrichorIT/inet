@@ -9,6 +9,7 @@ macro_rules! impl_build_named {
             ) -> ::des::net::module::ModuleRef {
                 let mref = ::des::net::module::ModuleContext::standalone(path);
                 mref.activate();
+                use ::des::net::module::Module;
                 use ::des::net::processing::IntoProcessingElements;
                 let this = <$t as Module>::new().as_processing_chain();
                 mref.upgrade_dummy(this);
@@ -20,6 +21,7 @@ macro_rules! impl_build_named {
                 parent: ::des::net::module::ModuleRef,
                 _rt: &mut ::des::net::NetworkApplication<()>,
             ) -> ::des::net::module::ModuleRef {
+                use ::des::net::module::Module;
                 // (1) Create empty module contxt bound to path.
                 let mref = ::des::net::module::ModuleContext::child_of(name, parent);
 

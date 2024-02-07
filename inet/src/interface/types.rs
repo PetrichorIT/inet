@@ -6,6 +6,8 @@ use crate::socket::Fd;
 pub(crate) const KIND_LINK_UPDATE: MessageKind = 0x0500;
 pub(crate) const KIND_IO_TIMEOUT: MessageKind = 0x0128;
 
+pub(crate) const ID_IPV6_TIMEOUT: MessageId = 0x8d66;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, MessageBody)]
 pub(crate) struct LinkUpdate(pub IfId);
 
@@ -32,6 +34,11 @@ impl IfId {
         #[cfg(debug_assertions)]
         "broadcast",
     );
+
+    pub(crate) fn unchecked(s: &str) -> Self {
+        let name = InterfaceName::new(s);
+        name.id()
+    }
 }
 
 impl fmt::Debug for IfId {

@@ -35,7 +35,7 @@ pub use self::traceroute::*;
 
 pub(crate) struct Icmp {
     pings: FxHashMap<u16, PingCB>,
-    traceroutes: FxHashMap<Ipv4Addr, TracerouteCB>,
+    pub traceroutes: FxHashMap<Ipv4Addr, TracerouteCB>,
 }
 
 impl Icmp {
@@ -145,7 +145,7 @@ impl IOContext {
                         (AF_INET, SOCK_DGRAM) => self.udp_icmp_error(
                             *fd,
                             Error::new(ErrorKind::ConnectionRefused, format!("{code:?}")),
-                            ip,
+                            IpPacket::V4(ip),
                         ),
                         _ => todo!(),
                     }
@@ -180,7 +180,7 @@ impl IOContext {
                             self.udp_icmp_error(
                                 *fd,
                                 Error::new(ErrorKind::Other, format!("{code:?}")),
-                                ip,
+                                IpPacket::V4(ip),
                             );
                         }
                         _ => todo!(),

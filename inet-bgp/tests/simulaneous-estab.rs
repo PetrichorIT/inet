@@ -162,7 +162,7 @@ fn simulatneous_estab() {
 
         let _ = Builder::seeded(hasher.finish())
             .max_time(500.0.into())
-            .max_itr(10)
+            .max_itr(10_000)
             .build(sim.build())
             .run();
     }
@@ -304,7 +304,7 @@ fn synced_estab() {
 
         let _ = Builder::seeded(hasher.finish())
             .max_time(500.0.into())
-            .max_itr(10)
+            .max_itr(10_000)
             .build(sim.build())
             .run();
     }

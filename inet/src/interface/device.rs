@@ -1,6 +1,7 @@
 use std::time::Duration;
 
 use des::{
+    net::module::current,
     prelude::{schedule_in, send, ChannelRef, GateRef, Message},
     time::SimTime,
 };
@@ -65,12 +66,27 @@ impl NetworkDevice {
         matches!(self.inner, NetworkDeviceInner::LoopbackDevice)
     }
 
+    pub fn input(&self) -> Option<GateRef> {
+        match &self.inner {
+            NetworkDeviceInner::EthernetDevice { input, .. } => Some(input.clone()),
+            _ => None,
+        }
+    }
+
     /// Creates a local, loopback device.
     pub fn loopback() -> Self {
         Self {
             addr: MacAddress::NULL,
             inner: NetworkDeviceInner::loopback(),
         }
+    }
+
+    pub fn gate(name: &str, pos: usize) -> Option<Self> {
+        let gate = current().gate(name, pos)?;
+        Some(Self {
+            addr: MacAddress::gen(),
+            inner: NetworkDeviceInner::ethernet(gate.clone(), gate),
+        })
     }
 
     /// Custom device

@@ -1,6 +1,6 @@
 use crate::interface::IfId;
 use des::time::SimTime;
-use inet_types::ip::ipv6_matches_subnet;
+use inet_types::ip::{ipv6_matches_subnet, Ipv6Prefix};
 use std::{net::Ipv6Addr, time::Duration};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -17,13 +17,7 @@ pub struct Ipv6RouterConfig {
     pub lifetime: Duration,
     pub reachable_time: Duration,
     pub retransmit_time: Duration,
-    pub prefixes: Vec<Ipv6RoutingPrefix>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Ipv6RoutingPrefix {
-    pub prefix_len: u8,
-    pub prefix: Ipv6Addr,
+    pub prefixes: Vec<Ipv6Prefix>,
 }
 
 type Entry = Ipv6RoutingTableEntry;

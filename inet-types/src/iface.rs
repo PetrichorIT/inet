@@ -35,7 +35,7 @@ impl MacAddress {
     #[must_use]
     pub fn gen() -> MacAddress {
         let mut mac = random::<[u8; 6]>();
-        mac[0] &= 0b1111_1110;
+        mac[0] &= 0b1111_1100;
         MacAddress(mac)
     }
 

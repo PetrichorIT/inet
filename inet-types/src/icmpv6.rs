@@ -608,6 +608,8 @@ pub enum IcmpV6NDPOption {
     PrefixInformation(IcmpV6PrefixInformation),
     /// Information about eh maximum transfer size of the sender.
     Mtu(IcmpV6MtuOption),
+    /// An unknown option,
+    Unknown(u8, Vec<u8>),
 }
 
 impl ToBytestream for IcmpV6NDPOption {
@@ -624,7 +626,8 @@ impl ToBytestream for IcmpV6NDPOption {
                             stream.write_u8($len)?;
                             inner.to_bytestream(stream)?;
                         }
-                    )*
+                    )*,
+                    _ => todo!()
                 }
             };
         }
@@ -650,7 +653,11 @@ impl FromBytestream for IcmpV6NDPOption {
                     $(
                         ($l, $len) => Ok(Self::$i($t::from_bytestream(stream)?)),
                     )*
-                    _ => todo!()
+                    _ => {
+                        let mut buf = vec![0; len as usize];
+                        stream.read_exact(&mut buf)?;
+                        Ok(Self::Unknown(typ, buf))
+                    }
                 }
             }};
         }

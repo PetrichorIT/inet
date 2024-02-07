@@ -1,4 +1,6 @@
-use std::{net::Ipv6Addr, time::Duration};
+use std::time::Duration;
+
+use inet_types::ip::Ipv6Prefix;
 
 #[derive(Debug, Clone)]
 pub struct RouterInterfaceConfiguration {
@@ -20,8 +22,7 @@ pub struct RouterInterfaceConfiguration {
 
 #[derive(Debug, Clone)]
 pub struct RouterPrefix {
-    pub prefix_len: u8,
-    pub prefix: Ipv6Addr,
+    pub prefix: Ipv6Prefix,
     pub on_link: bool,
     pub autonomous: bool,
     pub valid_lifetime: Duration,

@@ -34,7 +34,7 @@ pub struct InterfaceState {
 }
 
 impl IOContext {
-    fn add_interface(&mut self, iface: Interface) -> Result<()> {
+    pub fn add_interface(&mut self, iface: Interface) -> Result<()> {
         if self.ifaces.get(&iface.name.id).is_some() {
             return Err(Error::new(
                 ErrorKind::Other,
@@ -145,11 +145,15 @@ impl IOContext {
         let ifid = iface.name.id;
         let router = iface.flags.router;
         let loopback = iface.flags.loopback;
+        let addrs = iface.addrs.clone();
 
         self.ifaces.insert(iface.name.id, iface);
 
         if v6 && !router && !loopback {
             self.register_v6_interface(ifid)?;
+            for addr in addrs.ipv6_addrs() {
+                self.ipv6_register_new_iface_addr(ifid, addr).unwrap();
+            }
         }
 
         Ok(())

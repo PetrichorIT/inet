@@ -5,15 +5,14 @@
 use std::{
     collections::VecDeque,
     io::{self, Error, ErrorKind, Result},
-    ops,
 };
 
+use crate::socket::Fd;
 use crate::IOContext;
-use crate::{routing::Ipv6RoutingPrefix, socket::Fd};
 use des::prelude::*;
 use inet_types::iface::MacAddress;
-use inet_types::{arp::ArpPacket, icmpv6::IcmpV6RouterAdvertisement};
-use inet_types::{arp::KIND_ARP, ip::IPV6_LINK_LOCAL};
+use inet_types::{arp::ArpPacket, icmpv6::IcmpV6RouterAdvertisement, ip::Ipv6AddrExt};
+use inet_types::{arp::KIND_ARP, ip::Ipv6Prefix};
 
 macro_rules! hash {
     ($v:expr) => {{
@@ -68,47 +67,6 @@ pub struct Interface {
     pub(crate) buffer: VecDeque<Message>,
 }
 
-#[derive(Debug, Clone)]
-pub struct InterfaceAddrs {
-    addrs: Vec<InterfaceAddr>,
-}
-
-impl InterfaceAddrs {
-    pub fn new(addrs: Vec<InterfaceAddr>) -> Self {
-        Self { addrs }
-    }
-
-    pub fn add(&mut self, addr: InterfaceAddr) {
-        self.addrs.push(addr);
-    }
-
-    pub fn ipv6_addrs(&self) -> Vec<Ipv6Addr> {
-        self.addrs
-            .iter()
-            .filter_map(|addr| {
-                if let InterfaceAddr::Inet6 { addr, .. } = addr {
-                    Some(*addr)
-                } else {
-                    None
-                }
-            })
-            .collect()
-    }
-}
-
-impl ops::Deref for InterfaceAddrs {
-    type Target = [InterfaceAddr];
-    fn deref(&self) -> &Self::Target {
-        &self.addrs
-    }
-}
-
-impl ops::DerefMut for InterfaceAddrs {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.addrs
-    }
-}
-
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub(crate) struct InterfaceV6Configuration {
     router_solictation_request: Option<SimTime>, // Timeout for solicitation
@@ -118,7 +76,7 @@ pub(crate) struct InterfaceV6Configuration {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct RouterSolicitation {
     resp: IcmpV6RouterAdvertisement,
-    prefixes: Vec<Ipv6RoutingPrefix>,
+    prefixes: Vec<Ipv6Prefix>,
 }
 
 /// A result forwarded after linklayer processing
@@ -144,11 +102,8 @@ impl Interface {
                 addr, prefixlen, ..
             } = addr
             {
-                let addr = u128::from(*addr);
-                let link_local_prefix = u128::from(IPV6_LINK_LOCAL);
-                let mask = u128::MAX << 64;
-                if (addr & mask == link_local_prefix) && *prefixlen == 64 {
-                    return Some(Ipv6Addr::from(addr));
+                if Ipv6Prefix::LINK_LOCAL.contains(*addr) && *prefixlen == 64 {
+                    return Some(*addr);
                 }
             }
         }
@@ -206,6 +161,24 @@ impl Interface {
             status: InterfaceStatus::Active,
             state: InterfaceBusyState::Idle,
             prio: 100,
+            buffer: VecDeque::new(),
+        }
+    }
+
+    pub fn ethv6_named_linklocal(name: impl AsRef<str>, device: NetworkDevice) -> Interface {
+        let addr = device.addr.embed_into(Ipv6Addr::LINK_LOCAL);
+        Self::ethv6_named(name, device, addr)
+    }
+
+    pub fn eth_empty(name: impl AsRef<str>, device: NetworkDevice) -> Interface {
+        Interface {
+            name: InterfaceName::new(name),
+            device,
+            flags: InterfaceFlags::en0(),
+            addrs: InterfaceAddrs::new(Vec::new()),
+            status: InterfaceStatus::Active,
+            state: InterfaceBusyState::Idle,
+            prio: 200,
             buffer: VecDeque::new(),
         }
     }
@@ -379,12 +352,47 @@ impl Interface {
     pub fn is_busy(&self) -> bool {
         matches!(self.state, InterfaceBusyState::Busy { .. })
     }
+
+    fn valid_recv_addr(&self, addr: MacAddress) -> bool {
+        if addr.is_broadcast() {
+            return true;
+        }
+        if addr == self.device.addr {
+            return true;
+        }
+
+        if addr.is_multicast() {
+            if [
+                MacAddress::ipv6_multicast(Ipv6Addr::MULTICAST_ALL_NODES),
+                MacAddress::ipv6_multicast(Ipv6Addr::MULTICAST_ALL_ROUTERS),
+            ]
+            .contains(&addr)
+            {
+                return true;
+            }
+
+            // println!(">");
+            for bound in self.addrs.ipv6_addrs() {
+                // println!(
+                //     "{:?} {} {}",
+                //     bound,
+                //     MacAddress::ipv6_multicast(ipv6_solicited_node_multicast(bound)),
+                //     addr
+                // );
+                if MacAddress::ipv6_multicast(Ipv6Addr::solicied_node_multicast(bound)) == addr {
+                    return true;
+                }
+            }
+        }
+
+        false
+    }
 }
 
 impl IOContext {
     pub fn recv_linklayer(&mut self, msg: Message) -> LinkLayerResult {
         use LinkLayerResult::*;
-        let dest = MacAddress::from(msg.header().dest);
+        let dst = MacAddress::from(msg.header().dest);
 
         // Precheck for link layer updates
         if msg.header().kind == KIND_LINK_UPDATE {
@@ -425,8 +433,14 @@ impl IOContext {
         });
 
         // Check that packet is addressed correctly.
-        if iface.device.addr != dest && !dest.is_broadcast() {
-            return PassThrough(msg);
+
+        if !iface.valid_recv_addr(dst) {
+            if dst.is_multicast() {
+                return Consumed();
+            } else {
+                tracing::warn!(IFACE=%ifid, "recieved invalid LL packet {{ dst: {dst} }}");
+                return PassThrough(msg);
+            }
         }
 
         if msg.header().kind == KIND_ARP {

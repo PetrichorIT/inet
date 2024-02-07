@@ -3,7 +3,7 @@ use inet::{
     interface::{add_interface, Interface, NetworkDevice},
     TcpListener, TcpStream,
 };
-use inet_types::ip::Ipv4Packet;
+use inet_types::ip::Ipv6Packet;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     task::JoinHandle,
@@ -105,8 +105,8 @@ impl AsyncModule for Node {
             "msg :: {} :: {} // {:?} -> {:?}",
             msg.str(),
             current().name(),
-            msg.content::<Ipv4Packet>().src,
-            msg.content::<Ipv4Packet>().dest
+            msg.content::<Ipv6Packet>().src,
+            msg.content::<Ipv6Packet>().dst
         )
     }
 }
@@ -143,10 +143,8 @@ impl Module for Main {
 
 #[test]
 fn tcp_lan_v6() {
+    // des::tracing::Subscriber::default().init().unwrap();
     inet::init();
-    // Logger::new()
-    // .interal_max_log_level(tracing::LevelFilter::Trace)
-    // .set_logger();
 
     let app = NdlApplication::new("tests/tcp-lan/main.ndl", registry![Node, Switch, Main])
         .map_err(|e| println!("{e}"))

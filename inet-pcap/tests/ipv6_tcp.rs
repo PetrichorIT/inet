@@ -1,4 +1,4 @@
-use std::{fs::File, net::Ipv6Addr, time::Duration};
+use std::{fs::File, time::Duration};
 
 use des::{
     ndl::NdlApplication,
@@ -8,11 +8,12 @@ use des::{
 };
 use inet::{
     interface::{add_interface, Interface, NetworkDevice},
-    ipv6::{icmp::ping::ping, util::setup_router},
+    ipv6::util::setup_router,
     routing::RoutingPort,
-    utils, UdpSocket,
+    utils, TcpListener, TcpStream,
 };
 use inet_pcap::{pcap, PcapCapturePoints, PcapConfig, PcapFilters};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 #[macro_use]
 mod common;
@@ -38,28 +39,10 @@ impl AsyncModule for HostAlice {
         tokio::spawn(async move {
             des::time::sleep(Duration::from_secs(1)).await;
 
-            let udp = UdpSocket::bind("2003:c1:e719:1234:ac1c:f4ff:fe85:879a:2000")
-                .await
-                .unwrap();
-            udp.send_to(b"Hello world", "2003:c1:e719:1234:fc85:8aff:fed5:1c9d:4000")
-                .await
-                .unwrap();
+            let res = TcpStream::connect("2003:c1:e719:8fff:fc85:8aff:fed5:1a9d:8000").await;
+            tracing::info!("{res:?}");
 
-            let mut buf = [0; 1024];
-            let (n, from) = udp.recv_from(&mut buf).await.unwrap();
-            tracing::info!(
-                "response {:?} from {from:?}",
-                String::from_utf8_lossy(&buf[..n]),
-            );
-
-            let p = ping(
-                "2003:c1:e719:1234:fc85:8aff:fed5:1c9d"
-                    .parse::<Ipv6Addr>()
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-            tracing::info!("ping := {p}")
+            res.unwrap().write_all(b"Hello world").await.unwrap();
         });
     }
 }
@@ -83,14 +66,13 @@ impl AsyncModule for HostBob {
         add_interface(Interface::ethv6_autocfg(NetworkDevice::eth())).unwrap();
 
         tokio::spawn(async move {
-            let udp = UdpSocket::bind(":::4000").await.unwrap();
-            let mut buf = [0; 1024];
-            let (n, from) = udp.recv_from(&mut buf).await.unwrap();
-            tracing::info!(
-                "response {:?} from {from:?}",
-                String::from_utf8_lossy(&buf[..n]),
-            );
-            udp.send_to(b"Hello back", from).await.unwrap();
+            let list = TcpListener::bind(":::8000").await.unwrap();
+            let (mut sock, addr) = list.accept().await.unwrap();
+            tracing::info!("incoming connection from {addr}");
+
+            let mut buf = [0; 128];
+            let n = sock.read(&mut buf).await.unwrap();
+            tracing::info!("received {:?}", String::from_utf8_lossy(&buf[..n]));
         });
     }
 }
@@ -120,16 +102,6 @@ impl AsyncModule for Router {
             ],
         )
         .unwrap();
-
-        tokio::spawn(async move {
-            let udp = UdpSocket::bind(":::4000").await.unwrap();
-            let mut buf = [0; 1024];
-            let (n, from) = udp.recv_from(&mut buf).await.unwrap();
-            tracing::info!(
-                "received {:?} from {from:?}",
-                String::from_utf8_lossy(&buf[..n])
-            );
-        });
     }
 }
 
@@ -144,7 +116,7 @@ impl Module for Main {
 }
 
 #[test]
-fn ipv6_autcfg() {
+fn ipv6_tcp() {
     inet::init();
     des::tracing::Subscriber::default().init().unwrap();
 

@@ -1,0 +1,11 @@
+net[0].router.addr = 2003:abcd:0::1
+net[1].router.addr = 2003:abcd:1::1
+net[2].router.addr = 2003:abcd:2::1
+net[3].router.addr = 2003:abcd:3::1
+net[4].router.addr = 2003:abcd:4::1
+
+net[0].router.prefix = 2003:abcd:0::/64
+net[1].router.prefix = 2003:abcd:1::/64
+net[2].router.prefix = 2003:abcd:2::/64
+net[3].router.prefix = 2003:abcd:3::/64
+net[4].router.prefix = 2003:abcd:4::/64

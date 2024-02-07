@@ -181,7 +181,7 @@ impl IOContext {
                 } else {
                     req.deadline = SimTime::now() + self.arp.config.timeout;
                     req.itr += 1;
-                    let dest = req.buffer[0].dest();
+                    let dest = req.buffer[0].dst();
                     let binding = SocketIfaceBinding::Bound(req.iface);
                     self.arp_send_request(binding, dest).unwrap();
                 }
@@ -221,6 +221,11 @@ impl IOContext {
         pkt: IpPacket,
         buffered: bool,
     ) -> io::Result<()> {
+        if let IpPacket::V6(pkt) = pkt {
+            return self.ipv6_send(pkt, ifid.unwrap_ifid());
+        }
+
+        tracing::warn!("OLD CALL");
         // (0) Routing table destintation lookup
 
         let (route, rifid, pkt): (IpGateway, IfId, IpPacket) = match pkt {
@@ -252,7 +257,7 @@ impl IOContext {
         match route {
             IpGateway::Local => self.send_lan_local_ip_packet(
                 SocketIfaceBinding::Bound(rifid),
-                pkt.dest(),
+                pkt.dst(),
                 pkt,
                 buffered,
             ),
@@ -273,7 +278,7 @@ impl IOContext {
         // Since we are broadcasting, use ff
         match ifid {
             SocketIfaceBinding::Bound(_) => {
-                self.send_lan_local_ip_packet(ifid, pkt.dest(), pkt, buffered)
+                self.send_lan_local_ip_packet(ifid, pkt.dst(), pkt, buffered)
             }
             _ => {
                 for (_ifid, iface) in &mut self.ifaces {

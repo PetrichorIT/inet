@@ -20,11 +20,7 @@ use tokio::sync::mpsc::channel;
 #[serial_test::serial]
 fn semi_passiv_estab() {
     inet::init();
-
-    // Subscriber::default()
-    //     .with_max_level(LevelFilter::TRACE)
-    //     .init()
-    //     .unwrap();
+    // des::tracing::Subscriber::default().init().unwrap();
 
     let mut sim = AsyncBuilder::new();
     sim.set_default_cfg(NodeCfg { join: true });
@@ -149,7 +145,7 @@ fn semi_passiv_estab() {
 
     let _ = Builder::seeded(123)
         .max_time(500.0.into())
-        .max_itr(10)
+        .max_itr(10_000)
         .build(sim.build())
         .run();
 }
@@ -289,7 +285,7 @@ fn semi_passiv_estab_delayed_client() {
 
     let _ = Builder::seeded(123)
         .max_time(500.0.into())
-        .max_itr(10)
+        .max_itr(10_000)
         .build(sim.build())
         .run();
 }
@@ -430,7 +426,7 @@ fn semi_passiv_estab_delayed_open() {
 
     let _ = Builder::seeded(123)
         .max_time(500.0.into())
-        .max_itr(10)
+        .max_itr(10_000)
         .build(sim.build())
         .run();
 }

@@ -100,20 +100,3 @@ fn v4() {
     let rt = Builder::seeded(123).max_itr(500).build(app);
     let _ = rt.run().unwrap_premature_abort();
 }
-
-#[test]
-#[serial]
-fn v6() {
-    inet::init();
-    // Logger::new().set_logger();
-
-    let mut app = NetworkApplication::new(
-        NdlApplication::new("tests/arp/main.ndl", registry![Node, Switch, Main])
-            .map_err(|e| println!("{e}"))
-            .unwrap(),
-    );
-    app.include_par_file("tests/arp/v6.par");
-
-    let rt = Builder::seeded(123).max_itr(500).build(app);
-    let _ = rt.run().unwrap_premature_abort();
-}

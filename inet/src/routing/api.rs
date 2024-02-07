@@ -82,15 +82,14 @@ impl IOContext {
                         .prefixes
                         .iter()
                         .map(|p| RouterPrefix {
-                            prefix: p.prefix,
-                            prefix_len: p.prefix_len,
+                            prefix: *p,
                             on_link: true,
                             autonomous: true,
                             valid_lifetime: Duration::from_secs(300),
                             preferred_lifetime: Duration::from_secs(300),
                         })
                         .collect(),
-                    allow_solicited_advertisments_unicast: true,
+                    allow_solicited_advertisments_unicast: false,
                 },
             );
         }

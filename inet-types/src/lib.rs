@@ -16,6 +16,7 @@ pub mod ip;
 pub mod routing;
 pub mod tcp;
 pub mod udp;
+pub mod util;
 
 #[cfg(feature = "uds")]
 pub mod uds;

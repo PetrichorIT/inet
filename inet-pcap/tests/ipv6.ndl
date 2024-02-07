@@ -1,0 +1,46 @@
+module HostAlice {
+    gates {
+        port
+    }
+}
+
+module HostBob {
+    gates {
+        port
+    }
+}
+
+module Router {
+    gates {
+        port
+    }
+}
+
+module Switch {
+    gates {
+        port[3]
+    }
+}
+
+link LAN {
+    bitrate: 1000000,
+    latency: 0.005,
+    jitter: 0.0,
+}
+
+module Main {
+    submodules {
+        alice: HostAlice,
+        bob: HostBob,
+        router: Router,
+        switch: Switch
+    }
+
+    connections {
+        alice/port <-- LAN --> switch/port[0],
+        bob/port <-- LAN --> switch/port[1],
+        router/port <-- LAN --> switch/port[2],
+    }
+}
+
+entry Main;

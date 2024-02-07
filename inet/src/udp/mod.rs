@@ -152,7 +152,7 @@ impl IOContext {
         }
     }
 
-    pub(super) fn udp_icmp_error(&mut self, fd: Fd, e: Error, ip: Ipv4Packet) {
+    pub(super) fn udp_icmp_error(&mut self, fd: Fd, e: Error, ip: IpPacket) {
         let Some(mng) = self.udp.binds.get_mut(&fd) else {
             return;
         };
@@ -161,7 +161,7 @@ impl IOContext {
             return;
         };
 
-        if ip.dest == addr.ip() {
+        if ip.dst() == addr.ip() {
             // TTL execeeded is correct
             let _ = mng.error.replace(e);
         }

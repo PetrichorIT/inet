@@ -10,10 +10,7 @@ mod v4;
 pub use v4::{Ipv4Flags, Ipv4Packet};
 
 mod v6;
-pub use v6::{
-    ipv6_solicited_node_multicast, Ipv6Packet, IPV6_LINK_LOCAL, IPV6_MULTICAST_ALL_NODES,
-    IPV6_MULTICAST_ALL_ROUTERS,
-};
+pub use v6::{Ipv6AddrExt, Ipv6LongestPrefixTable, Ipv6Packet, Ipv6Prefix};
 
 #[cfg(test)]
 mod tests;
@@ -130,7 +127,7 @@ impl IpPacket {
     }
 
     #[must_use]
-    pub fn dest(&self) -> IpAddr {
+    pub fn dst(&self) -> IpAddr {
         match self {
             Self::V4(pkt) => pkt.dest.into(),
             Self::V6(pkt) => pkt.dst.into(),
@@ -202,4 +199,11 @@ pub fn ipv6_matches_subnet(ip: Ipv6Addr, subnet: Ipv6Addr, mask: Ipv6Addr) -> bo
     }
 
     true
+}
+
+pub fn ipv6_matches_subnet_len(ip: Ipv6Addr, subnet: Ipv6Addr, prefix_len: u8) -> bool {
+    let ip_u128 = u128::from(ip);
+    let subnet_u128 = u128::from(subnet);
+    let mask_u128 = u128::MAX << (128 - prefix_len);
+    ip_u128 & mask_u128 == subnet_u128 & mask_u128
 }

@@ -8,9 +8,8 @@ use std::{
     net::Ipv6Addr,
 };
 
-pub const IPV6_LINK_LOCAL: Ipv6Addr = Ipv6Addr::new(0xfe80, 0, 0, 0, 0, 0, 0, 0);
-pub const IPV6_MULTICAST_ALL_ROUTERS: Ipv6Addr = Ipv6Addr::new(0xff02, 0, 0, 0, 0, 0, 0, 2);
-pub const IPV6_MULTICAST_ALL_NODES: Ipv6Addr = Ipv6Addr::new(0xff02, 0, 0, 0, 0, 0, 0, 1);
+mod addr;
+pub use addr::*;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Ipv6Packet {
@@ -99,15 +98,4 @@ impl MessageBody for Ipv6Packet {
     fn byte_len(&self) -> usize {
         40 + self.content.len()
     }
-}
-
-pub fn ipv6_solicited_node_multicast(addr: Ipv6Addr) -> Ipv6Addr {
-    let mut bytes = [0; 16];
-    bytes[0] = 0xff;
-    bytes[1] = 0x02;
-    // pad
-    bytes[11] = 0x01;
-    bytes[12] = 0xff;
-    bytes[13..].copy_from_slice(&mut addr.octets()[13..]);
-    Ipv6Addr::from(bytes)
 }
