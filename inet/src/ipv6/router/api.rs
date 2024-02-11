@@ -4,7 +4,7 @@ use inet_types::ip::{Ipv6AddrExt, Ipv6Prefix};
 
 use crate::{
     ctx::IOContext,
-    interface::{Interface, InterfaceAddr, NetworkDevice},
+    interface::{Interface, InterfaceAddr, InterfaceAddrV6, NetworkDevice},
     ipv6::cfg::{RouterInterfaceConfiguration, RouterPrefix},
 };
 
@@ -67,11 +67,7 @@ impl IOContext {
         });
 
         interface.addrs = addrs
-            .map(|addr| InterfaceAddr::Inet6 {
-                addr,
-                prefixlen: 64,
-                scope_id: None,
-            })
+            .map(|addr| InterfaceAddr::Inet6(InterfaceAddrV6::new_static(addr, 64)))
             .collect();
         interface.flags.router = true;
 

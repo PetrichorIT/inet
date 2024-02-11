@@ -111,14 +111,6 @@ impl NetworkDevice {
                 }
             }
             _ => {
-                // TODO: remove
-                // let inout = rinfo
-                //     .ports
-                //     .into_iter()
-                //     .find(|p| p.input.name() == "in" && p.output.name() == "out");
-
-                dbg!(&rinfo);
-
                 let default_port = rinfo
                     .ports
                     .into_iter()

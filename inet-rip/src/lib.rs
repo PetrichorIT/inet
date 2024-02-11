@@ -6,7 +6,7 @@ use fxhash::{FxBuildHasher, FxHashMap};
 use std::net::{IpAddr, Ipv4Addr};
 
 use inet::{
-    interface::{add_interface, interface_status, Interface},
+    interface::{add_interface, interface_status_by_ifid, Interface},
     routing::add_routing_entry,
     Current, UdpSocket,
 };
@@ -282,7 +282,7 @@ impl RipRoutingDeamon {
                     None => {
                         // current
                         let c = Current::fetch();
-                        let info = interface_status(&c.ifid).unwrap();
+                        let info = interface_status_by_ifid(c.ifid).unwrap();
                         (info.name.to_string(), true)
                     }
                 };
@@ -314,10 +314,10 @@ impl RipRoutingDeamon {
                         for entry in &mut rip.entries {
                             // (0) Check local DVs
                             let Some(dv) = self.vectors.get(&entry.target) else {
-                            entry.metric = 16;
-                            entry.next_hop = Ipv4Addr::UNSPECIFIED;
-                            continue;
-                        };
+                                entry.metric = 16;
+                                entry.next_hop = Ipv4Addr::UNSPECIFIED;
+                                continue;
+                            };
                             *entry = RipEntry {
                                 addr_fam: AF_INET,
                                 target: dv.subnet,

@@ -1,19 +1,19 @@
 use std::{io, net::Ipv6Addr, time::Duration};
 
+use bitflags::bitflags;
 use des::net::message::{schedule_in, Message};
 use fxhash::{FxBuildHasher, FxHashMap};
-use inet_types::ip::{ipv6_matches_subnet_len, Ipv6AddrExt, Ipv6Packet, KIND_IPV6};
+use inet_types::ip::{Ipv6Packet, KIND_IPV6};
 
-use crate::{
-    ctx::IOContext,
-    interface::{IfId, InterfaceAddr},
-};
+use crate::{ctx::IOContext, interface::IfId};
 
 use self::{
     addrs::PolicyTable,
-    cfg::RouterInterfaceConfiguration,
+    cfg::{HostConfiguration, RouterInterfaceConfiguration},
     icmp::{ping::PingCtrl, tracerouter::TracerouteCB},
-    ndp::{DefaultRouterList, DestinationCache, NeighborCache, PrefixList, Solicitations},
+    ndp::{
+        DefaultRouterList, DestinationCache, NeighborCache, PrefixList, QueryType, Solicitations,
+    },
     router::{Router, RouterState},
     state::InterfaceState,
     timer::TimerCtrl,
@@ -42,6 +42,7 @@ pub struct Ipv6 {
 
     pub is_rooter: bool,
     pub router: Router,
+    pub cfg: HostConfiguration,
     pub router_cfg: FxHashMap<IfId, RouterInterfaceConfiguration>,
     pub router_cfg_default: Option<RouterInterfaceConfiguration>,
     pub router_state: RouterState,
@@ -65,6 +66,7 @@ impl Ipv6 {
 
             iface_state: FxHashMap::with_hasher(FxBuildHasher::default()),
 
+            cfg: HostConfiguration::default(),
             is_rooter: false,
             router: Router::new(),
             router_cfg: FxHashMap::with_hasher(FxBuildHasher::default()),
@@ -79,22 +81,43 @@ impl Ipv6 {
     }
 }
 
+bitflags! {
+    pub struct Ipv6SendFlags: u8 {
+        const DEFAULT = 0b0000_0000;
+        const ALLOW_SRC_UNSPECIFIED = 0b0000_0001;
+    }
+}
+
 impl IOContext {
-    pub fn ipv6_send(&mut self, mut pkt: Ipv6Packet, mut ifid: IfId) -> io::Result<()> {
-        // self.send_ip_packet(
-        //     SocketIfaceBinding::Bound(ifid),
-        //     IpPacket::V6(pkt.clone()),
-        //     true,
-        // )?;
+    pub fn ipv6_send(&mut self, pkt: Ipv6Packet, ifid: IfId) -> io::Result<()> {
+        self.ipv6_send_with_flags(pkt, ifid, Ipv6SendFlags::DEFAULT)
+    }
+
+    pub fn ipv6_send_with_flags(
+        &mut self,
+        mut pkt: Ipv6Packet,
+        mut ifid: IfId,
+        flags: Ipv6SendFlags,
+    ) -> io::Result<()> {
+        // Check that dst is not unspecified, this should have been handled allready
+        if pkt.dst.is_unspecified() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "packet without destination found",
+            ));
+        }
 
         // Assign src addr if nessecary
         if pkt.src.is_unspecified() {
             // (0) Check link local
             let canidates = self.ipv6_src_addr_canidate_set(pkt.dst, ifid);
-            let Some(src) = canidates.select(&self.ipv6.policies) else {
+            if let Some(src) = canidates.select(&self.ipv6.policies) {
+                pkt.src = src.addr;
+            } else if flags.contains(Ipv6SendFlags::ALLOW_SRC_UNSPECIFIED) {
+                /* Do nothing the flag allows this */
+            } else {
                 return Err(io::Error::new(io::ErrorKind::Other, "no valid src addr"));
-            };
-            pkt.src = src.addr;
+            }
         }
 
         // TODO:
@@ -127,6 +150,8 @@ impl IOContext {
             }
         }
 
+        // Interface specification:
+        // This should be borderline immpossible s
         if ifid == IfId::NULL {
             ifid = self.ipv6_ifid_for_src_addr(pkt.src);
         }
@@ -144,7 +169,11 @@ impl IOContext {
 
         // (3) Begin LL address resoloution
         let Some((mac, new_ifid)) = self.ipv6.neighbors.lookup(next_hop) else {
-            self.ipv6_icmp_send_neighbor_solicitation(next_hop, ifid)?;
+            self.ipv6_icmp_send_neighbor_solicitation(
+                next_hop,
+                ifid,
+                QueryType::NeighborSolicitation,
+            )?;
             self.ipv6.neighbors.enqueue(next_hop, pkt);
             return Ok(());
         };
@@ -214,13 +243,16 @@ impl IOContext {
                 }
             }
         }
+
+        self.ipv6.timer.schedule_wakeup();
     }
 }
 
 // # Interface configuration
 
 impl IOContext {
-    pub fn ipv6_register_host_interface(&mut self, ifid: IfId) {
+    pub fn ipv6_register_host_interface(&mut self, ifid: IfId) -> io::Result<()> {
+        tracing::debug!(IFACE = %ifid, "registered new multicast capable inet6 interface");
         self.ipv6.iface_state.insert(
             ifid,
             InterfaceState {
@@ -231,6 +263,8 @@ impl IOContext {
                 retrans_timer: Duration::from_secs(30),
             },
         );
+
+        self.ipv6_icmp_send_router_solicitation(ifid)
     }
 
     pub fn ipv6_register_new_iface_addr(&mut self, ifid: IfId, addr: Ipv6Addr) -> io::Result<()> {

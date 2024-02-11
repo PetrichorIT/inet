@@ -1,6 +1,6 @@
 use axum::{extract::Path, response::Response, routing::get, Router};
 use connector::InetTcpStream;
-use des::{prelude::*, registry, tracing::Subscriber};
+use des::{prelude::*, registry};
 use hyper::{
     client,
     server::{self, accept::from_stream},
@@ -163,11 +163,7 @@ mod connector {
 
 fn main() {
     inet::init();
-
-    Subscriber::default()
-        // .interal_max_log_level(tracing::LevelFilter::Trace)
-        .init()
-        .unwrap();
+    des::tracing::init();
 
     let app = NdlApplication::new("main.ndl", registry![Client, Server, Main])
         .map_err(|e| println!("{e}"))

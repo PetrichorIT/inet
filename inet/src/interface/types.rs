@@ -39,6 +39,11 @@ impl IfId {
         let name = InterfaceName::new(s);
         name.id()
     }
+
+    pub fn matches(&self, interface_name: &str) -> bool {
+        let hash = hash!(interface_name);
+        self.0 == hash
+    }
 }
 
 impl fmt::Debug for IfId {

@@ -10,9 +10,9 @@ use std::{
 use crate::socket::Fd;
 use crate::IOContext;
 use des::prelude::*;
+use inet_types::arp::KIND_ARP;
 use inet_types::iface::MacAddress;
-use inet_types::{arp::ArpPacket, icmpv6::IcmpV6RouterAdvertisement, ip::Ipv6AddrExt};
-use inet_types::{arp::KIND_ARP, ip::Ipv6Prefix};
+use inet_types::{arp::ArpPacket, ip::Ipv6AddrExt};
 
 macro_rules! hash {
     ($v:expr) => {{
@@ -67,18 +67,6 @@ pub struct Interface {
     pub(crate) buffer: VecDeque<Message>,
 }
 
-#[derive(Debug, Default, Clone, PartialEq, Eq)]
-pub(crate) struct InterfaceV6Configuration {
-    router_solictation_request: Option<SimTime>, // Timeout for solicitation
-    router_solicitation: Option<RouterSolicitation>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct RouterSolicitation {
-    resp: IcmpV6RouterAdvertisement,
-    prefixes: Vec<Ipv6Prefix>,
-}
-
 /// A result forwarded after linklayer processing
 #[derive(Debug)]
 pub enum LinkLayerResult {
@@ -96,18 +84,17 @@ pub enum LinkLayerResult {
 }
 
 impl Interface {
-    pub(crate) fn link_local_v6(&self) -> Option<Ipv6Addr> {
-        for addr in &*self.addrs {
-            if let InterfaceAddr::Inet6 {
-                addr, prefixlen, ..
-            } = addr
-            {
-                if Ipv6Prefix::LINK_LOCAL.contains(*addr) && *prefixlen == 64 {
-                    return Some(*addr);
-                }
-            }
+    pub fn empty(name: &str, device: NetworkDevice) -> Self {
+        Self {
+            name: InterfaceName::new(name),
+            device,
+            flags: InterfaceFlags::en0(true),
+            addrs: InterfaceAddrs::new(Vec::new()),
+            status: InterfaceStatus::Active,
+            state: InterfaceBusyState::Idle,
+            prio: 0,
+            buffer: VecDeque::new(),
         }
-        None
     }
 
     pub fn ethv6_autocfg(device: NetworkDevice) -> Self {
@@ -115,7 +102,7 @@ impl Interface {
         Self {
             name: InterfaceName::new("en0"),
             device,
-            flags: InterfaceFlags::en0(),
+            flags: InterfaceFlags::en0(true),
             addrs: InterfaceAddrs::new(vec![link_local]),
             status: InterfaceStatus::Active,
             state: InterfaceBusyState::Idle,
@@ -153,7 +140,7 @@ impl Interface {
         Interface {
             name: InterfaceName::new(name),
             device,
-            flags: InterfaceFlags::en0(),
+            flags: InterfaceFlags::en0(false),
             addrs: InterfaceAddrs::new(vec![InterfaceAddr::Inet {
                 addr: subnet,
                 netmask: mask,
@@ -174,7 +161,7 @@ impl Interface {
         Interface {
             name: InterfaceName::new(name),
             device,
-            flags: InterfaceFlags::en0(),
+            flags: InterfaceFlags::en0(false),
             addrs: InterfaceAddrs::new(Vec::new()),
             status: InterfaceStatus::Active,
             state: InterfaceBusyState::Idle,
@@ -196,12 +183,10 @@ impl Interface {
         Interface {
             name: InterfaceName::new(name),
             device,
-            flags: InterfaceFlags::en0(),
-            addrs: InterfaceAddrs::new(vec![InterfaceAddr::Inet6 {
-                addr: subnet,
-                prefixlen: 64,
-                scope_id: None,
-            }]),
+            flags: InterfaceFlags::en0(true),
+            addrs: InterfaceAddrs::new(vec![InterfaceAddr::Inet6(InterfaceAddrV6::new_static(
+                subnet, 64,
+            ))]),
             status: InterfaceStatus::Active,
             state: InterfaceBusyState::Idle,
             prio: 200,
@@ -219,17 +204,13 @@ impl Interface {
         Interface {
             name: InterfaceName::new(name),
             device,
-            flags: InterfaceFlags::en0(),
+            flags: InterfaceFlags::en0(true),
             addrs: InterfaceAddrs::new(vec![
                 InterfaceAddr::Inet {
                     addr: v4.0,
                     netmask: v4.1,
                 },
-                InterfaceAddr::Inet6 {
-                    addr: v6.0,
-                    prefixlen: v6.1,
-                    scope_id: None,
-                },
+                InterfaceAddr::Inet6(InterfaceAddrV6::new_static(v6.0, v6.1)),
             ]),
             status: InterfaceStatus::Active,
             state: InterfaceBusyState::Idle,
@@ -269,13 +250,9 @@ impl Interface {
     }
 
     pub fn ipv6_subnet(&self) -> Option<(Ipv6Addr, Ipv6Addr)> {
-        self.addrs.iter().find_map(|a| {
-            if let InterfaceAddr::Inet6 {
-                addr, prefixlen, ..
-            } = a
-            {
-                let mask = Ipv6Addr::from(!(u128::MAX.overflowing_shr(*prefixlen as u32).0));
-                Some((*addr, mask))
+        self.addrs.iter().find_map(|addr| {
+            if let InterfaceAddr::Inet6(addr) = addr {
+                Some((addr.addr, addr.mask))
             } else {
                 None
             }
@@ -361,28 +338,23 @@ impl Interface {
             return true;
         }
 
-        if addr.is_multicast() {
-            if [
-                MacAddress::ipv6_multicast(Ipv6Addr::MULTICAST_ALL_NODES),
-                MacAddress::ipv6_multicast(Ipv6Addr::MULTICAST_ALL_ROUTERS),
-            ]
-            .contains(&addr)
-            {
-                return true;
-            }
+        // tracing::info!(
+        //     "{addr} in {:#?}",
+        //     self.addrs
+        //         .v6_multicast
+        //         .iter()
+        //         .map(|b| MacAddress::ipv6_multicast(b.addr).to_string() + &b.to_string())
+        //         .collect::<Vec<_>>()
+        // );
 
-            // println!(">");
-            for bound in self.addrs.ipv6_addrs() {
-                // println!(
-                //     "{:?} {} {}",
-                //     bound,
-                //     MacAddress::ipv6_multicast(ipv6_solicited_node_multicast(bound)),
-                //     addr
-                // );
-                if MacAddress::ipv6_multicast(Ipv6Addr::solicied_node_multicast(bound)) == addr {
-                    return true;
-                }
-            }
+        // Check multicast scopes
+        if self
+            .addrs
+            .v6_multicast
+            .iter()
+            .any(|scope| MacAddress::ipv6_multicast(scope.addr) == addr)
+        {
+            return true;
         }
 
         false
@@ -484,11 +456,5 @@ impl IOContext {
         self.ifaces.get_mut(&ifid).ok_or_else(|| {
             io::Error::new(io::ErrorKind::NotFound, "no interface found under this id")
         })
-    }
-
-    fn register_v6_interface(&mut self, ifid: IfId) -> io::Result<()> {
-        self.ipv6_register_host_interface(ifid);
-        self.ipv6_icmp_send_router_solicitation(ifid)?;
-        Ok(())
     }
 }

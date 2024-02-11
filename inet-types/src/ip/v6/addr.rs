@@ -82,6 +82,9 @@ pub trait Ipv6AddrExt {
     const LINK_LOCAL: Ipv6Addr = Ipv6Prefix::LINK_LOCAL.addr();
     const MULTICAST_ALL_NODES: Ipv6Addr = Ipv6Addr::new(0xff02, 0, 0, 0, 0, 0, 0, 1);
     const MULTICAST_ALL_ROUTERS: Ipv6Addr = Ipv6Addr::new(0xff02, 0, 0, 0, 0, 0, 0, 2);
+    const ONES: Ipv6Addr = Ipv6Addr::new(
+        0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff,
+    );
 
     fn solicied_node_multicast(addr: Ipv6Addr) -> Self;
 

@@ -13,7 +13,7 @@ use inet::{
 fn udp_ping_pong() {
     inet::init();
 
-    des::tracing::Subscriber::default().init().unwrap();
+    // des::tracing::Subscriber::default().init().unwrap();
 
     let mut sim = AsyncBuilder::new();
     sim.set_default_cfg(NodeCfg { join: true });

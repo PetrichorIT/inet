@@ -22,6 +22,8 @@ pub struct InterfaceFlags {
     pub promisc: bool,
     /// Whether the node is a router,
     pub router: bool,
+    /// Wether this interface shoulc be Ipv6 configured
+    pub v6: bool,
 }
 
 impl InterfaceFlags {
@@ -38,11 +40,12 @@ impl InterfaceFlags {
             simplex: false,
             promisc: false,
             router: false,
+            v6: true,
         }
     }
 
     /// The flags for a simple interface
-    pub const fn en0() -> Self {
+    pub const fn en0(v6: bool) -> Self {
         Self {
             up: true,
             loopback: false,
@@ -54,6 +57,7 @@ impl InterfaceFlags {
             simplex: true,
             promisc: false,
             router: false,
+            v6,
         }
     }
 }

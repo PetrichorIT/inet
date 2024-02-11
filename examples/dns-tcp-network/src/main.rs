@@ -1,6 +1,6 @@
 use std::fs::File;
 
-use des::{prelude::*, registry, time::sleep, tracing::Subscriber};
+use des::{prelude::*, registry, time::sleep};
 use inet::{
     dns::lookup_host,
     interface::{add_interface, Interface, NetworkDevice},
@@ -268,8 +268,7 @@ impl Module for Main {
 
 fn main() {
     inet::init();
-
-    Subscriber::default().init().unwrap();
+    des::tracing::init();
 
     type Switch = LinkLayerSwitch;
 

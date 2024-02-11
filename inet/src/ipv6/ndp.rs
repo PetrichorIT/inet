@@ -1,26 +1,23 @@
 use des::time::SimTime;
 use fxhash::{FxBuildHasher, FxHashMap};
 use inet_types::{
-    icmpv6::{
-        IcmpV6NDPOption, IcmpV6NeighborAdvertisment, IcmpV6PrefixInformation,
-        NDP_MAX_RTR_SOLICITATIONS,
-    },
+    icmpv6::{IcmpV6NDPOption, IcmpV6NeighborAdvertisment, IcmpV6PrefixInformation},
     iface::MacAddress,
     ip::{Ipv6Packet, Ipv6Prefix},
     util::FixedBuffer,
 };
 use std::{collections::VecDeque, fmt, net::Ipv6Addr, ops, time::Duration};
 
-use crate::interface::IfId;
+use crate::interface::{IfId, InterfaceAddrV6};
 
 pub struct Solicitations {
     queries: FxHashMap<Ipv6Addr, QueryType>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum QueryType {
     NeighborSolicitation,
-    TentativeAddressCheck,
+    TentativeAddressCheck(InterfaceAddrV6),
 }
 
 impl Solicitations {
@@ -34,7 +31,7 @@ impl Solicitations {
         let entry = self.queries.insert(target, typ);
         assert!(
             entry.is_none(),
-            "Doubly registered query {target} ({typ:?})"
+            "Doubly registered query {target}: allready existent entry {entry:?}"
         );
     }
 
@@ -60,7 +57,7 @@ pub struct NeighborCacheEntry {
     expires: SimTime,
     state: NeighborCacheEntryState,
     resolution_buffer: FixedBuffer<Ipv6Packet>,
-    number_of_sent_solicitations: usize,
+    pub number_of_sent_solicitations: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -89,7 +86,7 @@ impl NeighborCache {
         );
     }
 
-    pub fn lookup(&mut self, ip: Ipv6Addr) -> Option<(MacAddress, IfId)> {
+    pub fn lookup(&self, ip: Ipv6Addr) -> Option<(MacAddress, IfId)> {
         if ip.is_multicast() {
             return Some((MacAddress::ipv6_multicast(ip), IfId::NULL));
         }
@@ -140,10 +137,10 @@ impl NeighborCache {
     }
 
     /// returns whether another request should be send
-    pub fn record_timeout(&mut self, addr: Ipv6Addr) -> bool {
-        let entry = self.mapping.get_mut(&addr).unwrap();
+    pub fn record_timeout(&mut self, addr: Ipv6Addr) -> Option<usize> {
+        let entry = self.mapping.get_mut(&addr)?;
         entry.number_of_sent_solicitations += 1;
-        entry.number_of_sent_solicitations <= NDP_MAX_RTR_SOLICITATIONS
+        Some(entry.number_of_sent_solicitations)
     }
 
     pub fn initalize(&mut self, ip: Ipv6Addr, ifid: IfId) {
@@ -232,6 +229,10 @@ impl NeighborCache {
         if let Some(entry) = self.mapping.get_mut(&ip) {
             entry.is_router = true;
         }
+    }
+
+    pub fn remove(&mut self, target: Ipv6Addr) {
+        self.mapping.remove(&target);
     }
 }
 

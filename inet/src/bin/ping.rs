@@ -1,4 +1,4 @@
-use des::{prelude::*, registry, tracing::Subscriber};
+use des::{prelude::*, registry};
 use inet::{
     icmp::traceroute,
     interface::{add_interface, Interface, NetworkDevice},
@@ -123,11 +123,7 @@ impl AsyncModule for Main {
 
 fn main() {
     inet::init();
-
-    Subscriber::default()
-        // .interal_max_log_level(tracing::LevelFilter::Trace)
-        .init()
-        .unwrap();
+    des::tracing::init();
 
     let app = NdlApplication::new("inet/src/bin/ping.ndl", registry![Alice, Bob, Eve, Main])
         .map_err(|e| println!("{e}"))

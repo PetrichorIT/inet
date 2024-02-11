@@ -11,7 +11,7 @@ macro_rules! impl_build_named {
                 mref.activate();
                 use ::des::net::module::Module;
                 use ::des::net::processing::IntoProcessingElements;
-                let this = <$t as Module>::new().as_processing_chain();
+                let this = <$t as Module>::new().to_processing_chain();
                 mref.upgrade_dummy(this);
                 mref
             }
@@ -27,7 +27,7 @@ macro_rules! impl_build_named {
 
                 // (4) Build and attach custom state
                 mref.activate();
-                let this = <Self as Module>::new().as_processing_chain();
+                let this = <Self as Module>::new().to_processing_chain();
                 mref.upgrade_dummy(this);
 
                 mref

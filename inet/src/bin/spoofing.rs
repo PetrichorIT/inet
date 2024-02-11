@@ -1,5 +1,5 @@
 use bytepack::ToBytestream;
-use des::{prelude::*, registry, time::sleep, tracing::Subscriber};
+use des::{prelude::*, registry, time::sleep};
 use inet::{
     interface::{add_interface, Interface, NetworkDevice},
     socket::RawIpSocket,
@@ -104,8 +104,7 @@ impl Module for Main {
 
 fn main() {
     inet::init();
-
-    Subscriber::default().init().unwrap();
+    des::tracing::init();
 
     let app = NetworkApplication::new(
         NdlApplication::new(

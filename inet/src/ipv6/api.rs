@@ -1,4 +1,15 @@
+use std::io;
+
 use crate::ctx::IOContext;
+
+use super::cfg::HostConfiguration;
+
+pub fn set_node_cfg(cfg: HostConfiguration) -> io::Result<()> {
+    IOContext::failable_api(|ctx| {
+        ctx.ipv6.cfg = cfg;
+        Ok(())
+    })
+}
 
 pub fn ipv6() {
     IOContext::with_current(|ctx| {

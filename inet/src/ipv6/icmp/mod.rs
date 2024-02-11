@@ -1,8 +1,8 @@
 use crate::{
     arp::ArpEntryInternal,
     ctx::IOContext,
-    interface::{IfId, Interface, InterfaceAddr},
-    ipv6::{addrs::CanidateAddr, timer::TimerToken},
+    interface::{IfId, InterfaceAddr, InterfaceAddrV6},
+    ipv6::{addrs::CanidateAddr, timer::TimerToken, Ipv6SendFlags},
 };
 use bytepack::{FromBytestream, ToBytestream};
 use des::{runtime::sample, time::SimTime};
@@ -12,16 +12,12 @@ use inet_types::{
         IcmpV6MtuOption, IcmpV6NDPOption, IcmpV6NeighborAdvertisment, IcmpV6NeighborSolicitation,
         IcmpV6Packet, IcmpV6PrefixInformation, IcmpV6RouterAdvertisement, IcmpV6RouterSolicitation,
         IcmpV6TimeExceeded, IcmpV6TimeExceededCode, NDP_MAX_RANDOM_FACTOR, NDP_MAX_RA_DELAY_TIME,
-        NDP_MIN_RANDOM_FACTOR, NDP_RETRANS_TIMER, PROTO_ICMPV6,
+        NDP_MAX_RTR_SOLICITATIONS, NDP_MIN_RANDOM_FACTOR, NDP_RETRANS_TIMER, PROTO_ICMPV6,
     },
     ip::{IpPacket, Ipv6AddrExt, Ipv6Packet, Ipv6Prefix},
 };
 use rand::distributions::Uniform;
-use std::{
-    io,
-    net::{IpAddr, Ipv6Addr},
-    time::Duration,
-};
+use std::{io, net::Ipv6Addr, time::Duration};
 
 use super::ndp::QueryType;
 
@@ -307,8 +303,6 @@ impl IOContext {
         let iface_mac = iface.device.addr;
         let iface_cfg = self.ipv6.router_cfg.get(&ifid).unwrap();
 
-        let iface_effective_addr = iface.effective_addr_for_src(ip.src).unwrap();
-
         // FIXME: is this really correct ? or should we just respond with unicast ?
 
         // let dur_since_last_update = SimTime::now()
@@ -369,7 +363,7 @@ impl IOContext {
             flow_label: 0,
             next_header: PROTO_ICMPV6,
             hop_limit: 255,
-            src: iface_effective_addr,
+            src: Ipv6Addr::UNSPECIFIED,
             dst: dst_addr,
             content: msg.to_vec()?,
         };
@@ -394,20 +388,26 @@ impl IOContext {
 
         let iface = self.get_iface(ifid)?;
         let iface_mac = iface.device.addr;
-        let iface_ll = iface
-            .link_local_v6()
-            .expect("no link local address configured ??");
 
         tracing::trace!(
             IFACE=%ifid,
             MAC=%iface_mac,
-            IP=%iface_ll,
             "requesting router advertisment"
         );
 
+        // Check whether iface has availabe addr
+        let set = self.ipv6_src_addr_canidate_set(Ipv6Addr::MULTICAST_ALL_ROUTERS, ifid);
+        let src = set
+            .select(&self.ipv6.policies)
+            .map(|canidate| canidate.addr);
+
         // Send inital router solictation
         let req = IcmpV6RouterSolicitation {
-            options: vec![IcmpV6NDPOption::SourceLinkLayerAddress(iface_mac)],
+            options: if src.is_some() {
+                vec![IcmpV6NDPOption::SourceLinkLayerAddress(iface_mac)]
+            } else {
+                Vec::new()
+            },
         };
         let msg = IcmpV6Packet::RouterSolicitation(req);
         let pkt = Ipv6Packet {
@@ -415,12 +415,12 @@ impl IOContext {
             flow_label: 0,
             next_header: PROTO_ICMPV6,
             hop_limit: 255,
-            src: iface_ll,
+            src: src.unwrap_or(Ipv6Addr::UNSPECIFIED),
             dst: Ipv6Addr::MULTICAST_ALL_ROUTERS,
             content: msg.to_vec()?,
         };
 
-        self.ipv6_send(pkt, ifid)?;
+        self.ipv6_send_with_flags(pkt, ifid, Ipv6SendFlags::ALLOW_SRC_UNSPECIFIED)?;
         // TOOD: timeout
 
         Ok(())
@@ -460,6 +460,8 @@ impl IOContext {
             iface_cfg.retrans_timer = Duration::from_millis(adv.retransmit_time as u64);
         }
 
+        let mut new_bindings = Vec::new();
+
         for option in &adv.options {
             match option {
                 IcmpV6NDPOption::SourceLinkLayerAddress(mac) => {
@@ -490,18 +492,16 @@ impl IOContext {
 
                     let autocfg = self.ipv6.prefixes.update(info);
                     if autocfg {
-                        let iface = self.ifaces.get_mut(&ifid).unwrap();
+                        let iface = self.ifaces.get(&ifid).unwrap();
                         let addr = iface.device.addr.embed_into(info.prefix);
 
-                        iface.addrs.add(InterfaceAddr::Inet6 {
-                            addr,
-                            prefixlen: info.prefix_len as usize,
-                            scope_id: None,
-                        });
+                        let mut binding =
+                            InterfaceAddrV6::new_static(addr, info.prefix_len as usize);
+                        let validity = Duration::from_millis(info.preferred_lifetime as u64);
+                        binding.deadline = SimTime::now() + validity;
+                        binding.validity = validity;
 
-                        // TODO: advertise new address for neighbor discover
-                        tracing::debug!(IFACE=%ifid, "assigned new address: {addr}");
-                        self.ipv6.prefixes.assign(info, addr)
+                        new_bindings.push((ifid, binding, info));
                     }
                 }
                 _ => {}
@@ -509,6 +509,12 @@ impl IOContext {
         }
 
         self.ipv6.neighbors.set_router(ip.src);
+
+        for (ifid, binding, info) in new_bindings {
+            let addr = binding.addr;
+            self.interface_add_addr_v6(ifid, binding, false)?;
+            self.ipv6.prefixes.assign(info, addr); // TODO: not sure if before or after address assigning
+        }
 
         Ok(true)
     }
@@ -576,11 +582,7 @@ impl IOContext {
             router: self.ipv6.is_rooter,
             solicited: !ip.src.is_unspecified(),
             overide: false,
-            options: {
-                let mut options = Vec::new();
-                options.push(IcmpV6NDPOption::TargetLinkLayerAddress(iface.device.addr));
-                options
-            },
+            options: vec![IcmpV6NDPOption::TargetLinkLayerAddress(iface.device.addr)],
         };
         let msg = IcmpV6Packet::NeighborAdvertisment(adv);
         let pkt = Ipv6Packet {
@@ -609,31 +611,59 @@ impl IOContext {
         &mut self,
         target: Ipv6Addr,
         ifid: IfId,
+        query: QueryType,
     ) -> io::Result<()> {
+        if let Some(_active_sol) = self.ipv6.solicitations.lookup(target) {
+            return Ok(());
+        }
+
+        let Some(iface) = self.ifaces.get_mut(&ifid) else {
+            return Err(io::Error::new(
+                io::ErrorKind::NotFound,
+                "no interface found for ifid",
+            ));
+        };
+
+        iface.addrs.join(InterfaceAddrV6::MULTICAST_ALL_NODES);
+        if matches!(query, QueryType::TentativeAddressCheck(_)) {
+            iface
+                .addrs
+                .join(InterfaceAddrV6::solicited_node_multicast(target));
+        }
+
+        self.ipv6.solicitations.register(target, query);
+
         if self
             .ipv6
             .timer
             .active(TimerToken::NeighborSolicitationRetransmitTimeout { target, ifid })
         {
-            return Ok(());
+            unreachable!("any sol should be saved in ipv6.solicitations, but non was found")
         }
 
-        self.ipv6
-            .solicitations
-            .register(target, QueryType::NeighborSolicitation);
-
         self.ipv6.neighbors.initalize(target, ifid);
+        self.ipv6_icmp_send_neighbor_solicitation_raw(target, ifid)
+    }
 
-        let iface = self.ifaces.get(&ifid).unwrap();
+    fn ipv6_icmp_send_neighbor_solicitation_raw(
+        &mut self,
+        target: Ipv6Addr,
+        ifid: IfId,
+    ) -> io::Result<()> {
+        let iface_addr = self.ifaces.get(&ifid).unwrap().device.addr;
 
-        // TODO: completetly wrong
+        let dst = Ipv6Addr::solicied_node_multicast(target);
+        let set = self.ipv6_src_addr_canidate_set(dst, ifid);
+        let src = set
+            .select(&self.ipv6.policies)
+            .map(|canidate| canidate.addr);
 
         let req = IcmpV6NeighborSolicitation {
             target,
-            options: {
-                let mut options = Vec::new();
-                options.push(IcmpV6NDPOption::SourceLinkLayerAddress(iface.device.addr));
-                options
+            options: if src.is_some() {
+                vec![IcmpV6NDPOption::SourceLinkLayerAddress(iface_addr)]
+            } else {
+                Vec::new()
             },
         };
         let msg = IcmpV6Packet::NeighborSolicitation(req);
@@ -642,16 +672,16 @@ impl IOContext {
             flow_label: 0,
             next_header: PROTO_ICMPV6,
             hop_limit: 255,
-            src: Ipv6Addr::UNSPECIFIED,
-            dst: Ipv6Addr::solicied_node_multicast(target),
+            src: src.unwrap_or(Ipv6Addr::UNSPECIFIED),
+            dst,
             content: msg.to_vec()?,
         };
 
-        tracing::trace!("send (sol) {} {target}", pkt.src);
+        tracing::trace!("send (sol) from {} for {target}", pkt.src);
 
         // tracing::trace!(IFACE=%ifid, "send (sol) for {target} from {}->{}", pkt.src, pkt.dst);
 
-        self.ipv6_send(pkt, ifid)?;
+        self.ipv6_send_with_flags(pkt, ifid, Ipv6SendFlags::ALLOW_SRC_UNSPECIFIED)?;
 
         self.ipv6.timer.schedule(
             TimerToken::NeighborSolicitationRetransmitTimeout { target, ifid },
@@ -676,8 +706,8 @@ impl IOContext {
             QueryType::NeighborSolicitation => {
                 self.ipv6_icmp_neighbor_solicitation_retrans_timeout(target, ifid)
             }
-            QueryType::TentativeAddressCheck => {
-                self.ipv6_icmp_tentative_solicitaion_retrans_timeout(target, ifid)
+            QueryType::TentativeAddressCheck(binding) => {
+                self.ipv6_icmp_tentative_solicitaion_retrans_timeout(ifid, binding)
             }
         }
     }
@@ -687,37 +717,14 @@ impl IOContext {
         target: Ipv6Addr,
         ifid: IfId,
     ) -> io::Result<()> {
-        let should_retry = self.ipv6.neighbors.record_timeout(target);
+        let should_retry = self
+            .ipv6
+            .neighbors
+            .record_timeout(target)
+            .unwrap_or(usize::MAX)
+            <= NDP_MAX_RTR_SOLICITATIONS;
         if should_retry {
-            let iface = self.ifaces.get(&ifid).unwrap();
-
-            let req = IcmpV6NeighborSolicitation {
-                target,
-                options: {
-                    let mut options = Vec::new();
-                    options.push(IcmpV6NDPOption::SourceLinkLayerAddress(iface.device.addr));
-                    options
-                },
-            };
-            let msg = IcmpV6Packet::NeighborSolicitation(req);
-            let pkt = Ipv6Packet {
-                traffic_class: 0,
-                flow_label: 0,
-                next_header: PROTO_ICMPV6,
-                hop_limit: 255,
-                src: Ipv6Addr::UNSPECIFIED,
-                dst: Ipv6Addr::solicied_node_multicast(target),
-                content: msg.to_vec()?,
-            };
-
-            self.ipv6_send(pkt, ifid)?;
-
-            self.ipv6.timer.schedule(
-                TimerToken::NeighborSolicitationRetransmitTimeout { target, ifid },
-                SimTime::now() + NDP_RETRANS_TIMER,
-            );
-            self.ipv6.timer.schedule_wakeup();
-            Ok(())
+            self.ipv6_icmp_send_neighbor_solicitation_raw(target, ifid)
         } else {
             tracing::warn!(IFACE=%ifid, "could no resolve address for {target}");
 
@@ -756,10 +763,29 @@ impl IOContext {
 
     fn ipv6_icmp_tentative_solicitaion_retrans_timeout(
         &mut self,
-        _target: Ipv6Addr,
-        _ifid: IfId,
+        ifid: IfId,
+        mut binding: InterfaceAddrV6,
     ) -> io::Result<()> {
-        todo!() // Try up to CFG value, then consider addr valid
+        let number_of_sol = self.ipv6.neighbors.record_timeout(binding.addr).unwrap();
+        let should_retry = number_of_sol <= self.ipv6.cfg.dup_addr_detect_transmits;
+
+        if should_retry {
+            self.ipv6_icmp_send_neighbor_solicitation_raw(binding.addr, ifid)
+        } else {
+            self.ipv6.neighbors.remove(binding.addr);
+            self.ipv6.solicitations.remove(binding.addr);
+            tracing::debug!(IFACE = %ifid, "assigning new tentative address {}", binding.addr);
+
+            let Some(iface) = self.ifaces.get_mut(&ifid) else {
+                todo!()
+            };
+
+            if binding.validity != Duration::MAX {
+                binding.deadline = SimTime::now() + binding.validity;
+            }
+            iface.addrs.add(InterfaceAddr::Inet6(binding));
+            Ok(())
+        }
     }
 
     pub fn ipv6_icmp_send_unsolicited_adv(&mut self, ifid: IfId, addr: Ipv6Addr) -> io::Result<()> {
@@ -833,22 +859,5 @@ impl IOContext {
         // TODO: router changes may need to be propagated
 
         Ok(true)
-    }
-}
-
-impl Interface {
-    fn effective_addr_for_src(&self, query: Ipv6Addr) -> Option<Ipv6Addr> {
-        for addr in &*self.addrs {
-            if addr.matches_ip_subnet(IpAddr::V6(query)) {
-                let InterfaceAddr::Inet6 { addr, .. } = addr else {
-                    unreachable!()
-                };
-                return Some(*addr);
-            }
-        }
-
-        dbg!(&self.addrs);
-        dbg!(query, "fe80::abcd".parse::<Ipv6Addr>().unwrap().octets());
-        None
     }
 }

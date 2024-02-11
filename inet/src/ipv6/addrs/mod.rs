@@ -14,9 +14,11 @@ use std::{
     str::FromStr,
 };
 
+use crate::{ctx::IOContext, interface::IfId, socket::Socket};
 use inet_types::ip::{Ipv6AddrExt, Ipv6LongestPrefixTable, Ipv6Prefix};
 
-use crate::{ctx::IOContext, interface::IfId, socket::Socket};
+mod api;
+pub use api::*;
 
 pub struct PolicyTable {
     table: Ipv6LongestPrefixTable<PolicyEntry>,

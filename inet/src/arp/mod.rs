@@ -79,7 +79,7 @@ impl IOContext {
                 if let Some(iaddr) = valid_iaddr {
                     let addr: IpAddr = match iaddr {
                         InterfaceAddr::Inet { addr, .. } => (*addr).into(),
-                        InterfaceAddr::Inet6 { addr, .. } => (*addr).into(),
+                        InterfaceAddr::Inet6(addr) => addr.addr.into(),
                         _ => unreachable!(),
                     };
 

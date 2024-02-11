@@ -1,4 +1,4 @@
-use std::{fs::File, time::Duration};
+use std::fs::File;
 
 use des::{
     ndl::NdlApplication,
@@ -10,10 +10,9 @@ use inet::{
     interface::{add_interface, Interface, NetworkDevice},
     ipv6::util::setup_router,
     routing::RoutingPort,
-    utils, TcpListener, TcpStream,
+    utils::{self, getaddrinfo},
 };
 use inet_pcap::{pcap, PcapCapturePoints, PcapConfig, PcapFilters};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 #[macro_use]
 mod common;
@@ -30,20 +29,16 @@ impl AsyncModule for HostAlice {
         pcap(PcapConfig {
             filters: PcapFilters::default(),
             capture: PcapCapturePoints::All,
-            output: File::create("out/ipv6_icmp_stack_alice.pcap").unwrap(),
+            output: File::create("out/ipv6_tentative_alice.pcap").unwrap(),
         })
         .unwrap();
 
-        add_interface(Interface::ethv6_autocfg(NetworkDevice::eth())).unwrap();
+        add_interface(Interface::empty("en0", NetworkDevice::eth())).unwrap();
+    }
 
-        tokio::spawn(async move {
-            des::time::sleep(Duration::from_secs(1)).await;
-
-            let res = TcpStream::connect("2003:c1:e719:8fff:fc85:8aff:fed5:1a9d:8000").await;
-            tracing::info!("{res:?}");
-
-            res.unwrap().write_all(b"Hello world").await.unwrap();
-        });
+    async fn at_sim_end(&mut self) {
+        let addrs = getaddrinfo().unwrap();
+        assert_eq!(addrs.len(), 3);
     }
 }
 
@@ -59,21 +54,16 @@ impl AsyncModule for HostBob {
         pcap(PcapConfig {
             filters: PcapFilters::default(),
             capture: PcapCapturePoints::All,
-            output: File::create("out/ipv6_icmp_stack_bob.pcap").unwrap(),
+            output: File::create("out/ipv6_tentative_bob.pcap").unwrap(),
         })
         .unwrap();
 
-        add_interface(Interface::ethv6_autocfg(NetworkDevice::eth())).unwrap();
+        add_interface(Interface::empty("en0", NetworkDevice::eth())).unwrap();
+    }
 
-        tokio::spawn(async move {
-            let list = TcpListener::bind(":::8000").await.unwrap();
-            let (mut sock, addr) = list.accept().await.unwrap();
-            tracing::info!("incoming connection from {addr}");
-
-            let mut buf = [0; 128];
-            let n = sock.read(&mut buf).await.unwrap();
-            tracing::info!("received {:?}", String::from_utf8_lossy(&buf[..n]));
-        });
+    async fn at_sim_end(&mut self) {
+        let addrs = getaddrinfo().unwrap();
+        assert_eq!(addrs.len(), 3);
     }
 }
 
@@ -89,7 +79,7 @@ impl AsyncModule for Router {
         pcap(PcapConfig {
             filters: PcapFilters::default(),
             capture: PcapCapturePoints::All,
-            output: File::create("out/ipv6_icmp_stack_router.pcap").unwrap(),
+            output: File::create("out/ipv6_tentative_router.pcap").unwrap(),
         })
         .unwrap();
 
@@ -116,9 +106,9 @@ impl Module for Main {
 }
 
 #[test]
-fn ipv6_tcp() {
+fn ipv6_tentative_addrs() {
     inet::init();
-    // des::tracing::Subscriber::default().init().unwrap();
+    des::tracing::init();
 
     let app = NdlApplication::new(
         "tests/ipv6.ndl",

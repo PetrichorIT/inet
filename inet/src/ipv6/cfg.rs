@@ -3,6 +3,19 @@ use std::time::Duration;
 use inet_types::ip::Ipv6Prefix;
 
 #[derive(Debug, Clone)]
+pub struct HostConfiguration {
+    pub dup_addr_detect_transmits: usize, // The number of solicitations neeed, to confirm the uniqueness of an address
+}
+
+impl Default for HostConfiguration {
+    fn default() -> Self {
+        Self {
+            dup_addr_detect_transmits: 1,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct RouterInterfaceConfiguration {
     pub is_router: bool,
     pub adv_send_advertisments: bool,

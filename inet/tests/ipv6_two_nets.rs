@@ -137,7 +137,7 @@ impl Module for Main {
 #[test]
 fn ipv6_two_nets() -> Result<(), Box<dyn Error>> {
     inet::init();
-    des::tracing::Subscriber::default().init().unwrap();
+    // des::tracing::Subscriber::default().init().unwrap();
 
     let mut app = NdlApplication::new(
         "tests/ipv6_two_nets.ndl",

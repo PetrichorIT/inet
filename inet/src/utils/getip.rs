@@ -27,6 +27,12 @@ pub fn get_ip() -> Option<IpAddr> {
     IOContext::with_current(|ctx| ctx.get_ip())
 }
 
+pub fn getaddrinfo() -> Result<AddrInfo> {
+    IOContext::failable_api(|ctx| Ok(ctx.getaddrinfo()))
+}
+
+pub type AddrInfo = Vec<IpAddr>;
+
 impl IOContext {
     /// Returns ethernet mac address for a given IOContext
     pub(crate) fn get_mac_address(&self) -> Result<Option<MacAddress>> {
@@ -47,11 +53,25 @@ impl IOContext {
                 if let InterfaceAddr::Inet { addr, .. } = addr {
                     return Some(IpAddr::V4(*addr));
                 }
-                if let InterfaceAddr::Inet6 { addr, .. } = addr {
-                    return Some(IpAddr::V6(*addr));
+                if let InterfaceAddr::Inet6(addr) = addr {
+                    return Some(IpAddr::V6(addr.addr));
                 }
             }
         }
         None
+    }
+
+    pub(crate) fn getaddrinfo(&self) -> AddrInfo {
+        let mut info = AddrInfo::new();
+        for (_, iface) in &self.ifaces {
+            for addr in &*iface.addrs {
+                match addr {
+                    InterfaceAddr::Ether { .. } => {}
+                    InterfaceAddr::Inet { addr, .. } => info.push(IpAddr::V4(*addr)),
+                    InterfaceAddr::Inet6(binding) => info.push(IpAddr::V6(binding.addr)),
+                }
+            }
+        }
+        info
     }
 }

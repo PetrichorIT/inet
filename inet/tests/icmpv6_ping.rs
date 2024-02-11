@@ -25,10 +25,10 @@ impl AsyncModule for AliceSuccess {
     }
 
     async fn at_sim_start(&mut self, _stage: usize) {
-        add_interface(Interface::loopback()).unwrap();
+        // add_interface(Interface::loopback()).unwrap();
         add_interface(Interface::ethv6_autocfg(NetworkDevice::eth())).unwrap();
         self.handles.push(tokio::spawn(async move {
-            des::time::sleep(Duration::from_secs(1)).await;
+            des::time::sleep(Duration::from_secs(10)).await;
             let _ping = ipv6::icmp::ping::ping(
                 "2003:c1:e719:8fff:fc85:8aff:fed5:1c9d"
                     .parse::<Ipv6Addr>()
@@ -58,10 +58,10 @@ impl AsyncModule for AliceFailure {
     }
 
     async fn at_sim_start(&mut self, _stage: usize) {
-        add_interface(Interface::loopback()).unwrap();
+        // add_interface(Interface::loopback()).unwrap();
         add_interface(Interface::ethv6_autocfg(NetworkDevice::eth())).unwrap();
         self.handles.push(tokio::spawn(async move {
-            des::time::sleep(Duration::from_secs(1)).await;
+            des::time::sleep(Duration::from_secs(10)).await;
             let err = ipv6::icmp::ping::ping(
                 "2003:c1:e719:8fff:2222:1111:0000:3333"
                     .parse::<Ipv6Addr>()
@@ -89,7 +89,7 @@ impl AsyncModule for Bob {
     }
 
     async fn at_sim_start(&mut self, _stage: usize) {
-        add_interface(Interface::loopback()).unwrap();
+        // add_interface(Interface::loopback()).unwrap();
         add_interface(Interface::ethv6_autocfg(NetworkDevice::eth())).unwrap();
     }
 }
@@ -130,12 +130,14 @@ fn icmpv6_ping_success() -> Result<(), Box<dyn Error>> {
     type Alice = AliceSuccess;
 
     inet::init();
+    // des::tracing::Subscriber::default().init().unwrap();
+
     let app = NdlApplication::new(
         "tests/icmpv6_ping.ndl",
         registry![Bob, Alice, Router, Switch, Main],
     )?;
     let rt = Builder::seeded(123)
-        .max_time(10.0.into())
+        .max_time(30.0.into())
         .build(app.into_app());
     let _res = rt.run();
 
@@ -145,7 +147,7 @@ fn icmpv6_ping_success() -> Result<(), Box<dyn Error>> {
 #[test]
 #[serial]
 fn icmpv6_ping_failure() -> Result<(), Box<dyn Error>> {
-    des::tracing::Subscriber::default().init().unwrap();
+    // des::tracing::Subscriber::default().init().unwrap();
     type Alice = AliceFailure;
 
     inet::init();
@@ -154,7 +156,7 @@ fn icmpv6_ping_failure() -> Result<(), Box<dyn Error>> {
         registry![Bob, Alice, Router, Switch, Main],
     )?;
     let rt = Builder::seeded(123)
-        .max_time(10.0.into())
+        .max_time(100.0.into())
         .build(app.into_app());
     let _res = rt.run();
 

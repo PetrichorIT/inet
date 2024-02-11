@@ -146,7 +146,7 @@ impl Module for Main {
 #[test]
 fn ipv6_autcfg() {
     inet::init();
-    des::tracing::Subscriber::default().init().unwrap();
+    // des::tracing::Subscriber::default().init().unwrap();
 
     let app = NdlApplication::new(
         "tests/ipv6.ndl",

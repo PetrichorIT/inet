@@ -63,16 +63,16 @@ pub fn real_dns_resolver(
 
             if response.rcode != DNSResponseCode::NoError {
                 match response.rcode {
-           DNSResponseCode::NxDomain => return Err(std::io::Error::new(
-               std::io::ErrorKind::Other,
-               "failed to lookup address information: nodename nor servname provided, or not known"
-           )),
-           DNSResponseCode::ServFail => return Err(std::io::Error::new(
-               std::io::ErrorKind::Other,
-               "failed to lookup address information: dns resolver failed"
-           )),
-           _ => unimplemented!()
-       }
+                    DNSResponseCode::NxDomain => return Err(std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        "failed to lookup address information: nodename nor servname provided, or not known"
+                    )),
+                    DNSResponseCode::ServFail => return Err(std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        "failed to lookup address information: dns resolver failed"
+                    )),
+                    _ => unimplemented!()
+                }
             }
 
             if !response.anwsers.is_empty() {

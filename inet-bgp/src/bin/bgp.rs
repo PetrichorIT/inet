@@ -1,6 +1,6 @@
 use std::{error::Error, fs::File, io::BufWriter};
 
-use des::{prelude::*, registry, time::sleep_until, tracing::Subscriber};
+use des::{prelude::*, registry, time::sleep_until};
 use inet::{
     interface::{add_interface, Interface, NetworkDevice},
     routing::route,
@@ -126,8 +126,7 @@ impl Module for Dummy {
 
 fn main() -> Result<(), Box<dyn Error>> {
     inet::init();
-
-    Subscriber::default().init().unwrap();
+    des::tracing::init();
 
     type LANSwitch = inet::utils::LinkLayerSwitch;
     type LANNode = Dummy;

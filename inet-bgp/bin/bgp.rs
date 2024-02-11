@@ -269,13 +269,9 @@ impl AsyncModule for Router {
 
 fn main() {
     inet::init();
+    des::tracing::init();
 
     type Switch = LinkLayerSwitch;
-
-    des::tracing::Subscriber::default()
-        .with_max_level(tracing::metadata::LevelFilter::TRACE)
-        .init()
-        .unwrap();
 
     let mut app = NetworkApplication::new(
         NdlApplication::new(

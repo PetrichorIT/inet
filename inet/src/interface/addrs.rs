@@ -2,30 +2,55 @@ use std::{
     fmt,
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
     ops,
+    time::Duration,
 };
 
-use inet_types::iface::MacAddress;
+use des::time::SimTime;
+use inet_types::{iface::MacAddress, ip::Ipv6AddrExt};
+
+use crate::ipv6::addrs::CanidateAddr;
+
+use super::IfId;
 
 #[derive(Debug, Clone)]
 pub struct InterfaceAddrs {
     pub(super) addrs: Vec<InterfaceAddr>,
+    pub(super) v6_multicast: Vec<InterfaceAddrV6>,
 }
 
 impl InterfaceAddrs {
     pub fn new(addrs: Vec<InterfaceAddr>) -> Self {
-        Self { addrs }
+        Self {
+            addrs,
+            v6_multicast: Vec::new(),
+        }
     }
 
     pub fn add(&mut self, addr: InterfaceAddr) {
+        assert!(
+            !self.addrs.contains(&addr),
+            "cannot assign address twice: {addr}"
+        );
         self.addrs.push(addr);
+    }
+
+    pub fn join(&mut self, addr: InterfaceAddrV6) {
+        if !self
+            .v6_multicast
+            .iter()
+            .any(|binding| binding.addr == addr.addr)
+        {
+            tracing::trace!("joining multicast scope '{addr}'");
+            self.v6_multicast.push(addr);
+        }
     }
 
     pub fn ipv6_addrs(&self) -> Vec<Ipv6Addr> {
         self.addrs
             .iter()
             .filter_map(|addr| {
-                if let InterfaceAddr::Inet6 { addr, .. } = addr {
-                    Some(*addr)
+                if let InterfaceAddr::Inet6(addr) = addr {
+                    Some(addr.addr)
                 } else {
                     None
                 }
@@ -51,6 +76,7 @@ impl FromIterator<InterfaceAddr> for InterfaceAddrs {
     fn from_iter<T: IntoIterator<Item = InterfaceAddr>>(iter: T) -> Self {
         InterfaceAddrs {
             addrs: iter.into_iter().collect(),
+            v6_multicast: Vec::new(),
         }
     }
 }
@@ -71,47 +97,23 @@ pub enum InterfaceAddr {
         netmask: Ipv4Addr,
     },
     /// The Ipv6 declaration
-    Inet6 {
-        /// The net addr.
-        addr: Ipv6Addr,
-        /// The mask to create the subnet
-        prefixlen: usize,
-        /// Scoping.
-        scope_id: Option<usize>,
-    },
+    Inet6(InterfaceAddrV6),
 }
 
 impl InterfaceAddr {
     /// Returns the addrs for a loopback interface.
-    pub fn loopback() -> [Self; 3] {
+    pub fn loopback() -> [Self; 2] {
         [
             InterfaceAddr::Inet {
                 addr: Ipv4Addr::LOCALHOST,
                 netmask: Ipv4Addr::new(255, 255, 255, 0),
             },
-            InterfaceAddr::Inet6 {
-                addr: Ipv6Addr::LOCALHOST,
-                prefixlen: 128,
-                scope_id: None,
-            },
-            InterfaceAddr::Inet6 {
-                addr: Ipv6Addr::LOCALHOST,
-                prefixlen: 64,
-                scope_id: Some(0x1),
-            },
+            InterfaceAddr::Inet6(InterfaceAddrV6::LOCALHOST),
         ]
     }
 
     pub fn ipv6_link_local(mac: MacAddress) -> Self {
-        let mut bytes = [0; 16];
-        bytes[0] = 0xfe;
-        bytes[1] = 0x80;
-        bytes[10..].copy_from_slice(mac.as_slice());
-        Self::Inet6 {
-            addr: Ipv6Addr::from(bytes),
-            prefixlen: 64,
-            scope_id: None,
-        }
+        Self::Inet6(InterfaceAddrV6::new_link_local(mac))
     }
 
     /// Returns the addrs for a loopback interface.
@@ -123,11 +125,7 @@ impl InterfaceAddr {
                 addr: v4,
                 netmask: Ipv4Addr::new(255, 255, 255, 0),
             },
-            InterfaceAddr::Inet6 {
-                addr: v6,
-                prefixlen: 64,
-                scope_id: Some(0x1),
-            },
+            InterfaceAddr::Inet6(InterfaceAddrV6::new_static(v6, 64)),
         ]
     }
 
@@ -149,16 +147,10 @@ impl InterfaceAddr {
 
                 *addr == ip
             }
-
-            Self::Inet6 { addr, .. } if ip.is_ipv6() => {
-                let ip = if let IpAddr::V6(v) = ip {
-                    v
-                } else {
-                    unreachable!()
-                };
-
-                *addr == ip
-            }
+            Self::Inet6(inet6) => match ip {
+                IpAddr::V4(_) => false,
+                IpAddr::V6(addr) => inet6.matches(addr),
+            },
             _ => false,
         }
     }
@@ -190,30 +182,11 @@ impl InterfaceAddr {
                 mask_u32 & ip_u32 == mask_u32 & addr_u32
             }
 
-            Self::Inet6 {
-                addr, prefixlen, ..
-            } if ip.is_ipv6() => {
-                let ip = if let IpAddr::V6(v) = ip {
-                    v
-                } else {
-                    unreachable!()
-                };
-
-                let ip_u128 = u128::from_be_bytes(ip.octets());
-                let addr_u128 = u128::from_be_bytes(addr.octets());
-                let mask_u128 = u128::MAX << (128 - prefixlen);
-                mask_u128 & ip_u128 == mask_u128 & addr_u128
-            }
+            Self::Inet6(inet6) => match ip {
+                IpAddr::V4(_) => false,
+                IpAddr::V6(addr) => inet6.matches_subnet(addr),
+            },
             _ => false,
-        }
-    }
-
-    /// Returns an available Ip.
-    pub fn next_ip(&self) -> Option<IpAddr> {
-        match self {
-            Self::Ether { .. } => None,
-            Self::Inet { addr, .. } => Some(IpAddr::V4(*addr)),
-            Self::Inet6 { addr, .. } => Some(IpAddr::V6(*addr)),
         }
     }
 }
@@ -223,22 +196,137 @@ impl fmt::Display for InterfaceAddr {
         match self {
             Self::Ether { addr } => write!(f, "ether {}", addr),
             Self::Inet { addr, netmask } => write!(f, "inet {} netmask {}", addr, netmask),
-            Self::Inet6 {
-                addr,
-                prefixlen,
-                scope_id,
-            } => write!(
-                f,
-                "inet6 {} prefixlen {}{}",
-                addr,
-                prefixlen,
-                if let Some(scope_id) = scope_id {
-                    format!(" scopeid: 0x{:x}", scope_id)
-                } else {
-                    String::new()
-                }
-            ),
+            Self::Inet6(inet6) => inet6.fmt(f),
         }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct InterfaceAddrV6 {
+    pub addr: Ipv6Addr,
+    pub mask: Ipv6Addr,
+    pub deadline: SimTime,
+    pub validity: Duration,
+    pub flags: InterfaceAddrV6Flags,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct InterfaceAddrV6Flags {
+    pub temporary: bool,
+    pub home_addr: bool,
+    pub care_of_addr: bool,
+}
+
+impl InterfaceAddrV6 {
+    const LOCALHOST: InterfaceAddrV6 = InterfaceAddrV6 {
+        addr: Ipv6Addr::LOCALHOST,
+        mask: Ipv6Addr::new(
+            0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff,
+        ),
+        deadline: SimTime::MAX,
+        validity: Duration::MAX,
+        flags: InterfaceAddrV6Flags {
+            temporary: false,
+            home_addr: false,
+            care_of_addr: false,
+        },
+    };
+
+    pub const MULTICAST_ALL_NODES: InterfaceAddrV6 = InterfaceAddrV6 {
+        addr: Ipv6Addr::MULTICAST_ALL_NODES,
+        mask: Ipv6Addr::ONES,
+        deadline: SimTime::MAX,
+        validity: Duration::MAX,
+        flags: InterfaceAddrV6Flags {
+            temporary: false,
+            home_addr: false,
+            care_of_addr: false,
+        },
+    };
+
+    pub const MULTICAST_ALL_ROUTERS: InterfaceAddrV6 = InterfaceAddrV6 {
+        addr: Ipv6Addr::MULTICAST_ALL_ROUTERS,
+        mask: Ipv6Addr::ONES,
+        deadline: SimTime::MAX,
+        validity: Duration::MAX,
+        flags: InterfaceAddrV6Flags {
+            temporary: false,
+            home_addr: false,
+            care_of_addr: false,
+        },
+    };
+
+    pub fn solicited_node_multicast(addr: Ipv6Addr) -> Self {
+        Self::new_static(Ipv6Addr::solicied_node_multicast(addr), 128)
+    }
+
+    pub fn new_static(addr: Ipv6Addr, prefixlen: usize) -> Self {
+        Self {
+            addr,
+            mask: Ipv6Addr::from(u128::MAX << (128 - prefixlen)),
+            deadline: SimTime::MAX,
+            validity: Duration::MAX,
+            flags: InterfaceAddrV6Flags {
+                temporary: false,
+                home_addr: false,
+                care_of_addr: false,
+            },
+        }
+    }
+
+    pub fn new_link_local(mac: MacAddress) -> Self {
+        Self::new_static(mac.embed_into(Ipv6Addr::LINK_LOCAL), 64)
+    }
+
+    pub fn remaining(&self) -> Duration {
+        self.deadline.duration_since(SimTime::now())
+    }
+
+    pub fn prefix_len(&self) -> u32 {
+        u128::from(self.mask).leading_ones()
+    }
+
+    pub fn to_canidate_addr(&self, ifid: IfId) -> CanidateAddr {
+        let remaining_lifetime = self.remaining().as_secs_f64();
+        let close_to_invalidation = remaining_lifetime < 0.1 * self.validity.as_secs_f64();
+
+        CanidateAddr {
+            addr: self.addr,
+            ifid,
+            preferred: !close_to_invalidation,
+            deprecated: close_to_invalidation,
+            temporary: self.flags.temporary,
+            home_addr: self.flags.home_addr,
+            care_of_addr: self.flags.care_of_addr,
+        }
+    }
+
+    /// Whethe `addr` is destined for this interface
+    pub fn matches(&self, addr: Ipv6Addr) -> bool {
+        addr == self.addr
+    }
+
+    /// Whether `addr` is contained in the same prefix as this interface.
+    pub fn matches_subnet(&self, addr: Ipv6Addr) -> bool {
+        let mask = u128::from(self.mask);
+        let target = u128::from(self.addr);
+        let addr = u128::from(addr);
+        target & mask == target & addr
+    }
+}
+
+impl fmt::Display for InterfaceAddrV6 {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "inet6 {} prefixlen {}", self.addr, self.prefix_len(),)?;
+        if self.flags.temporary {
+            write!(f, " (temporary)")?;
+        }
+        if self.flags.home_addr && self.flags.care_of_addr {
+            write!(f, " (home-addr)")?;
+        } else if self.flags.care_of_addr {
+            write!(f, " (care-of-addr)")?;
+        }
+        Ok(())
     }
 }
 

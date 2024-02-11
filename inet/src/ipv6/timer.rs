@@ -76,13 +76,11 @@ impl TimerCtrl {
 
         while let Some(entry) = self.timers.first() {
             if entry.1 <= now {
-                tokens.push(entry.0);
-                self.timers.pop();
+                tokens.push(self.timers.remove(0).0);
             } else {
                 break;
             }
         }
-
         tokens
     }
 }

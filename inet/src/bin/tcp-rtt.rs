@@ -1,4 +1,4 @@
-use des::{prelude::*, registry, tracing::Subscriber};
+use des::{prelude::*, registry};
 use inet::{
     interface::{add_interface, Interface, NetworkDevice},
     tcp::{set_tcp_cfg, TcpConfig},
@@ -187,8 +187,7 @@ impl Module for Main {
 
 fn main() {
     inet::init();
-
-    Subscriber::default().init().unwrap();
+    des::tracing::init();
 
     let mut app = NetworkApplication::new(
         NdlApplication::new(
