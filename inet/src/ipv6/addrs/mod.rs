@@ -14,7 +14,7 @@ use std::{
     str::FromStr,
 };
 
-use crate::{ctx::IOContext, interface::IfId, socket::Socket};
+use crate::{ctx::IOContext, interface::IfId};
 use inet_types::ip::{Ipv6AddrExt, Ipv6LongestPrefixTable, Ipv6Prefix};
 
 mod api;
@@ -30,6 +30,14 @@ struct PolicyEntry {
 }
 
 impl PolicyTable {
+    fn add(&mut self, prefix: Ipv6Prefix, precedence: usize, label: usize) {
+        self.table.insert(prefix, PolicyEntry { precedence, label });
+    }
+
+    fn remove(&mut self, prefix: Ipv6Prefix) {
+        self.table.remove(prefix);
+    }
+
     fn lookup(&self, addr: Ipv6Addr) -> Option<&PolicyEntry> {
         self.table.lookup(addr)
     }
@@ -188,33 +196,21 @@ impl FromStr for CanidateAddr {
     }
 }
 
-#[derive(Debug, Clone)]
-pub(super) struct AddrSelection {
-    destinations: Vec<(Ipv6Addr, CanidateAddr, SrcAddrCanidateSet)>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct Selection {
-    src: Ipv6Addr,
-    src_ifid: IfId,
-    dst: Ipv6Addr,
-}
-
 impl IOContext {
-    pub(super) fn ipv6_src_addr_canidate_set_for_socket(
-        &self,
-        socket: &Socket,
-        dst: Ipv6Addr,
-    ) -> SrcAddrCanidateSet {
-        let ifid = socket.interface.unwrap_ifid();
-        let mut set = self.ipv6_src_addr_canidate_set(dst, ifid);
-        if let IpAddr::V6(addr) = socket.addr.ip() {
-            if !addr.is_unspecified() {
-                set.addrs.retain(|canidate| canidate.addr == addr);
-            }
-        }
-        set
-    }
+    // pub(super) fn ipv6_src_addr_canidate_set_for_socket(
+    //     &self,
+    //     socket: &Socket,
+    //     dst: Ipv6Addr,
+    // ) -> SrcAddrCanidateSet {
+    //     let ifid = socket.interface.unwrap_ifid();
+    //     let mut set = self.ipv6_src_addr_canidate_set(dst, ifid);
+    //     if let IpAddr::V6(addr) = socket.addr.ip() {
+    //         if !addr.is_unspecified() {
+    //             set.addrs.retain(|canidate| canidate.addr == addr);
+    //         }
+    //     }
+    //     set
+    // }
 
     pub(super) fn ipv6_src_addr_canidate_set(
         &self,
@@ -386,6 +382,18 @@ impl SrcAddrCanidateSet {
     }
 }
 
+#[derive(Debug, Clone)]
+pub(super) struct AddrSelection {
+    destinations: Vec<(Ipv6Addr, CanidateAddr, SrcAddrCanidateSet)>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct Selection {
+    src: Ipv6Addr,
+    src_ifid: IfId,
+    dst: Ipv6Addr,
+}
+
 impl AddrSelection {
     fn new(destinations: Vec<Ipv6Addr>, f: impl Fn(Ipv6Addr) -> SrcAddrCanidateSet) -> Self {
         AddrSelection {
@@ -514,14 +522,7 @@ impl AddrSelection {
     }
 }
 
-impl IOContext {
-    fn ipv6_addr_selection(&self, dst: Ipv6Addr, ifid: IfId) {
-        let mut dst_set =
-            AddrSelection::new(vec![dst], |dst| self.ipv6_src_addr_canidate_set(dst, ifid));
-        let dst = dst_set.select(&self.ipv6.policies);
-    }
-}
-
+#[allow(unused)]
 trait VecExt<T> {
     fn extract_max_by<F>(&mut self, f: F) -> Option<T>
     where

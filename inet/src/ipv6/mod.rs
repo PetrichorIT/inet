@@ -266,10 +266,4 @@ impl IOContext {
 
         self.ipv6_icmp_send_router_solicitation(ifid)
     }
-
-    pub fn ipv6_register_new_iface_addr(&mut self, ifid: IfId, addr: Ipv6Addr) -> io::Result<()> {
-        // will send unsolicited neighbor advertismetns
-        self.ipv6_icmp_send_unsolicited_adv(ifid, addr)?;
-        Ok(())
-    }
 }

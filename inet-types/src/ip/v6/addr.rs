@@ -230,6 +230,10 @@ impl<E> Ipv6LongestPrefixTable<E> {
         }
     }
 
+    pub fn remove(&mut self, prefix: Ipv6Prefix) {
+        self.inner.retain(|(key, _)| *key == prefix)
+    }
+
     pub fn lookup(&self, addr: Ipv6Addr) -> Option<&E> {
         self.inner.iter().find_map(|(prefix, entry)| {
             if prefix.contains(addr) {
