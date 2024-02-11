@@ -199,7 +199,7 @@ impl AsyncModule for Router {
         let lan = ports
             .ports
             .iter()
-            .find(|p| p.output.name() == "lan_out")
+            .find(|p| p.output.name() == "lan")
             .cloned()
             .unwrap();
 

@@ -197,7 +197,7 @@ impl IOContext {
 
     fn ipv6_ifid_for_src_addr(&self, src: Ipv6Addr) -> IfId {
         for (id, iface) in &self.ifaces {
-            if iface.addrs.ipv6_addrs().contains(&src) {
+            if iface.addrs.v6.matches(src) {
                 return *id;
             }
         }

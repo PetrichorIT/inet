@@ -225,12 +225,7 @@ impl IOContext {
             // any interface
             let mut addrs = Vec::new();
             for (ifid, iface) in &self.ifaces {
-                for addr in iface
-                    .addrs
-                    .ipv6_addrs()
-                    .into_iter()
-                    .filter(|addr| !addr.is_multicast())
-                {
+                for addr in iface.addrs.v6.addrs() {
                     addrs.push(CanidateAddr {
                         addr: addr,
                         ifid: *ifid,
@@ -247,9 +242,8 @@ impl IOContext {
             let iface = self.ifaces.get(&preferred_iface).unwrap();
             iface
                 .addrs
-                .ipv6_addrs()
-                .into_iter()
-                .filter(|addr| !addr.is_multicast())
+                .v6
+                .addrs()
                 .map(|v| CanidateAddr {
                     addr: v,
                     ifid: preferred_iface,

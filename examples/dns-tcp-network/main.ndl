@@ -1,7 +1,6 @@
 module NodeLike {
     gates {
-        in @input,
-        out @output,
+        port
     }
 }
 
@@ -11,21 +10,15 @@ module Server: NodeLike {}
 
 module Switch {
     gates {
-        in[5] @input,
-        out[5] @output,
-
-        gwin @input,
-        gwout @output,
+        port[5],
+        gw,
     }
 }
 
 module Router {
     gates {
-        lan_in @input,
-        lan_out @output,
-
-        in[5] @input,
-        out[5] @output,
+        port[5],
+        lan
     }
 }
 
@@ -37,8 +30,7 @@ link LANLink {
 
 module LAN {
     gates {
-        in[5],
-        out[5],
+        port[5]
     }
 
     submodules {
@@ -48,14 +40,9 @@ module LAN {
     }
 
     connections {
-        router/out --> out,
-        router/in <-- in,
-
-        node/out --> LANLink --> switch/in,
-        node/in <-- LANLink <-- switch/out,
-
-        router/lan_out --> LANLink --> switch/gwin,
-        router/lan_in <-- LANLink <-- switch/gwout,
+        router/port <--> port,
+        node/port <-- LANLink --> switch/port,
+        router/lan <-- LANLink --> switch/gw
     }
 }
 
@@ -80,29 +67,14 @@ module Main {
     }
 
     connections {
-        a1/out[0] --> WANLink --> a2/in[0],
-        a1/in[0] <-- WANLink <-- a2/out[0],
-
-        a1/out[1] --> WANLink --> a3/in[0],
-        a1/in[1] <-- WANLink <-- a3/out[0],
-
-        a2/out[1] --> WANLink --> a3/in[1],
-        a2/in[1] <-- WANLink <-- a3/out[1],
-
-        a1/out[2] --> WANLink --> b1/in[0],
-        a1/in[2] <-- WANLink <-- b1/out[0],
-
-        a3/out[2] --> WANLink --> c1/in[0],
-        a3/in[2] <-- WANLink <-- c1/out[0],
-
-        b1/out[1] --> WANLink --> d1/in[1],
-        b1/in[1] <-- WANLink <-- d1/out[1],
-
-        c1/out[1] --> WANLink --> d1/in[2],
-        c1/in[1] <-- WANLink <-- d1/out[2],
-
-        d1/out[0] --> WANLink --> d2/in[0],
-        d1/in[0] <-- WANLink <-- d2/out[0],
+        a1/port[0] <-- WANLink --> a2/port[0],
+        a1/port[1] <-- WANLink --> a3/port[0],
+        a2/port[1] <-- WANLink --> a3/port[1],
+        a1/port[2] <-- WANLink --> b1/port[0],
+        a3/port[2] <-- WANLink --> c1/port[0],
+        b1/port[1] <-- WANLink --> d1/port[1],
+        c1/port[1] <-- WANLink --> d1/port[2],
+        d1/port[0] <-- WANLink --> d2/port[0],
     }
 }
 

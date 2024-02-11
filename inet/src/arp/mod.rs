@@ -74,13 +74,12 @@ impl IOContext {
                 let valid_iaddr = iface
                     .addrs
                     .iter()
-                    .find(|iaddr| iaddr.matches_ip(requested_addr));
+                    .find(|iaddr| iaddr.matches(requested_addr));
 
                 if let Some(iaddr) = valid_iaddr {
                     let addr: IpAddr = match iaddr {
-                        InterfaceAddr::Inet { addr, .. } => (*addr).into(),
+                        InterfaceAddr::Inet(addr) => addr.addr.into(),
                         InterfaceAddr::Inet6(addr) => addr.addr.into(),
-                        _ => unreachable!(),
                     };
 
                     assert_eq!(addr, requested_addr);
@@ -430,7 +429,7 @@ impl IOContext {
                         return None;
                     };
                     let looback = iface.flags.loopback && dest.is_loopback();
-                    let self_addr = iface.addrs.iter().any(|addr| addr.matches_ip(dest));
+                    let self_addr = iface.addrs.iter().any(|addr| addr.matches(dest));
                     if looback || self_addr {
                         Some((false, iface.device.addr, iface.name.id))
                     } else {
@@ -443,7 +442,7 @@ impl IOContext {
                             continue;
                         };
                         let looback = iface.flags.loopback && dest.is_loopback();
-                        let self_addr = iface.addrs.iter().any(|addr| addr.matches_ip(dest));
+                        let self_addr = iface.addrs.iter().any(|addr| addr.matches(dest));
                         if looback || self_addr {
                             return Some((false, iface.device.addr, iface.name.id));
                         }

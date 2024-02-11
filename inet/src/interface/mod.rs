@@ -141,10 +141,10 @@ impl Interface {
             name: InterfaceName::new(name),
             device,
             flags: InterfaceFlags::en0(false),
-            addrs: InterfaceAddrs::new(vec![InterfaceAddr::Inet {
+            addrs: InterfaceAddrs::new(vec![InterfaceAddr::Inet(InterfaceAddrV4 {
                 addr: subnet,
                 netmask: mask,
-            }]),
+            })]),
             status: InterfaceStatus::Active,
             state: InterfaceBusyState::Idle,
             prio: 100,
@@ -206,10 +206,10 @@ impl Interface {
             device,
             flags: InterfaceFlags::en0(true),
             addrs: InterfaceAddrs::new(vec![
-                InterfaceAddr::Inet {
+                InterfaceAddr::Inet(InterfaceAddrV4 {
                     addr: v4.0,
                     netmask: v4.1,
-                },
+                }),
                 InterfaceAddr::Inet6(InterfaceAddrV6::new_static(v6.0, v6.1)),
             ]),
             status: InterfaceStatus::Active,
@@ -225,7 +225,7 @@ impl Interface {
             name: "lo0".into(),
             device: NetworkDevice::loopback(),
             flags: InterfaceFlags::loopback(),
-            addrs: InterfaceAddrs::new(Vec::from(InterfaceAddr::loopback())),
+            addrs: InterfaceAddrs::new(Vec::from(InterfaceAddr::LOOPBACK)),
             status: InterfaceStatus::Active,
             prio: 100,
             state: InterfaceBusyState::Idle,
@@ -241,8 +241,8 @@ impl Interface {
 
     pub fn ipv4_subnet(&self) -> Option<(Ipv4Addr, Ipv4Addr)> {
         self.addrs.iter().find_map(|a| {
-            if let InterfaceAddr::Inet { addr, netmask } = a {
-                Some((*addr, *netmask))
+            if let InterfaceAddr::Inet(binding) = a {
+                Some((binding.addr, binding.netmask))
             } else {
                 None
             }
@@ -348,12 +348,7 @@ impl Interface {
         // );
 
         // Check multicast scopes
-        if self
-            .addrs
-            .v6_multicast
-            .iter()
-            .any(|scope| MacAddress::ipv6_multicast(scope.addr) == addr)
-        {
+        if self.addrs.v6.valid_src_mac(addr) {
             return true;
         }
 

@@ -1,14 +1,12 @@
 module Client {
     gates {
-        in @input,
-        out @output
+        port
     }
 }
 
 module Server {
     gates {
-        in @input,
-        out @output
+        port
     }
 }
 
@@ -25,8 +23,7 @@ module Main {
     }
 
     connections {
-        client/out --> LAN --> server/in,
-        client/in <-- LAN <-- server/out
+        client/port <-- LAN --> server/port,
     }
 }
 

@@ -553,8 +553,8 @@ impl IOContext {
         // Message validation on unspecific IP
         let iface = self.ifaces.get(&ifid).unwrap();
         if ip.src.is_unspecified() {
-            if let Some(unicast_addr) = iface.addrs.ipv6_addrs().first() {
-                if *unicast_addr != ip.dst {
+            if let Some(unicast_addr) = iface.addrs.v6.addrs().next() {
+                if unicast_addr != ip.dst {
                     return Ok(true);
                 }
 
@@ -624,11 +624,12 @@ impl IOContext {
             ));
         };
 
-        iface.addrs.join(InterfaceAddrV6::MULTICAST_ALL_NODES);
+        iface.addrs.v6.join(Ipv6Addr::MULTICAST_ALL_NODES);
         if matches!(query, QueryType::TentativeAddressCheck(_)) {
             iface
                 .addrs
-                .join(InterfaceAddrV6::solicited_node_multicast(target));
+                .v6
+                .join(Ipv6Addr::solicied_node_multicast(target));
         }
 
         self.ipv6.solicitations.register(target, query);

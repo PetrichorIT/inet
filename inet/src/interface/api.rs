@@ -1,20 +1,19 @@
-use std::{
-    io::{Error, ErrorKind, Result},
-    net::{IpAddr, Ipv4Addr, Ipv6Addr},
-};
-
-use des::{net::module::current, time::SimTime};
-
 use super::{
-    IfId, Interface, InterfaceAddr, InterfaceBusyState, InterfaceFlags, InterfaceName,
-    InterfaceStatus, MacAddress,
+    IfId, Interface, InterfaceAddr, InterfaceAddrs, InterfaceAddrsV6, InterfaceBusyState,
+    InterfaceFlags, InterfaceName, InterfaceStatus, MacAddress,
 };
 use crate::{
     arp::ArpEntryInternal,
-    interface::InterfaceAddrV6,
+    interface::{InterfaceAddrV4, InterfaceAddrV6},
     ipv6::ndp::QueryType,
     routing::{FwdEntryV4, Ipv4Gateway, Ipv6Gateway, RoutingTableId},
     IOContext,
+};
+use des::{net::module::current, time::SimTime};
+use inet_types::ip::Ipv6AddrExt;
+use std::{
+    io::{Error, ErrorKind, Result},
+    net::{IpAddr, Ipv4Addr, Ipv6Addr},
 };
 
 /// Declares and activiates an new network interface on the current module
@@ -37,8 +36,7 @@ pub fn interface_status_by_ifid(ifid: IfId) -> Result<InterfaceState> {
 pub struct InterfaceState {
     pub name: InterfaceName,
     pub flags: InterfaceFlags,
-    pub addrs: Vec<InterfaceAddr>,
-    pub mutlicast_scopes: Vec<Ipv6Addr>,
+    pub addrs: InterfaceAddrs,
     pub status: InterfaceStatus,
     pub busy: InterfaceBusyState,
     pub queuelen: usize,
@@ -100,13 +98,13 @@ impl IOContext {
         }
 
         // (1) Add all interface addrs to ARP
-        for addr in &*iface.addrs {
+        for addr in iface.addrs.iter() {
             match addr {
-                InterfaceAddr::Inet { addr, .. } => {
+                InterfaceAddr::Inet(binding) => {
                     let _ = self.arp.update(ArpEntryInternal {
                         negated: false,
                         hostname: Some(current().name()),
-                        ip: IpAddr::V4(*addr),
+                        ip: IpAddr::V4(binding.addr),
                         mac: iface.device.addr,
                         iface: iface.name.id,
                         expires: SimTime::MAX,
@@ -122,7 +120,6 @@ impl IOContext {
                         expires: SimTime::MAX,
                     });
                 }
-                _ => todo!(),
             }
         }
 
@@ -158,11 +155,8 @@ impl IOContext {
         let loopback = iface.flags.loopback;
         let mac = iface.device.addr;
 
-        let mut addrs = iface.addrs.clone();
-        addrs
-            .addrs
-            .retain(|binding| !matches!(binding, InterfaceAddr::Inet6(_)));
-        std::mem::swap(&mut addrs, &mut iface.addrs);
+        let mut addrs = InterfaceAddrsV6::default();
+        std::mem::swap(&mut addrs, &mut iface.addrs.v6);
 
         self.ifaces.insert(iface.name.id, iface);
 
@@ -170,7 +164,7 @@ impl IOContext {
             self.ipv6_register_host_interface(ifid)?;
 
             // Autocfg a link local address;
-            if addrs.ipv6_addrs().is_empty() {
+            if addrs.unicast.is_empty() {
                 // Link-local address generation
                 // RFC 4862 says that this addr should be generated, when
                 // - interface starts up
@@ -182,17 +176,13 @@ impl IOContext {
                 self.interface_add_addr_v6(ifid, binding, false)?;
             } else {
                 // TODO: legacy impl improve
-                for binding in addrs.addrs {
-                    if let InterfaceAddr::Inet6(binding) = binding {
-                        self.interface_add_addr_v6(ifid, binding, true)?;
-                    }
+                for binding in addrs.unicast {
+                    self.interface_add_addr_v6(ifid, binding, true)?;
                 }
             }
         } else {
-            for binding in addrs.addrs {
-                if let InterfaceAddr::Inet6(binding) = binding {
-                    self.interface_add_addr_v6(ifid, binding, true)?;
-                }
+            for binding in addrs.unicast {
+                self.interface_add_addr_v6(ifid, binding, true)?;
             }
         }
 
@@ -211,10 +201,10 @@ impl IOContext {
                 };
 
                 tracing::debug!(IFACE = %ifid, "assigning blind address {addr}");
-                iface.addrs.add(InterfaceAddr::Inet {
+                iface.addrs.add(InterfaceAddr::Inet(InterfaceAddrV4 {
                     addr,
                     netmask: Ipv4Addr::BROADCAST,
-                });
+                }));
                 Ok(())
             }
             IpAddr::V6(addr) => {
@@ -251,13 +241,14 @@ impl IOContext {
         } else {
             tracing::debug!(IFACE = %ifid, "assigning address '{binding}'");
 
-            iface.addrs.join(InterfaceAddrV6::MULTICAST_ALL_NODES);
+            iface.addrs.v6.join(Ipv6Addr::MULTICAST_ALL_NODES);
             if iface.flags.router {
-                iface.addrs.join(InterfaceAddrV6::MULTICAST_ALL_ROUTERS);
+                iface.addrs.v6.join(Ipv6Addr::MULTICAST_ALL_ROUTERS);
             }
             iface
                 .addrs
-                .join(InterfaceAddrV6::solicited_node_multicast(binding.addr));
+                .v6
+                .join(Ipv6Addr::solicied_node_multicast(binding.addr));
 
             iface.addrs.add(InterfaceAddr::Inet6(binding));
 
@@ -279,13 +270,7 @@ impl IOContext {
         Ok(InterfaceState {
             name: iface.name.clone(),
             flags: iface.flags,
-            addrs: iface.addrs.addrs.clone(),
-            mutlicast_scopes: iface
-                .addrs
-                .v6_multicast
-                .iter()
-                .map(|binding| binding.addr)
-                .collect(),
+            addrs: iface.addrs.clone(),
             status: iface.status,
             busy: iface.state.clone(),
             queuelen: iface.buffer.len(),
@@ -302,13 +287,7 @@ impl IOContext {
         Ok(InterfaceState {
             name: iface.name.clone(),
             flags: iface.flags,
-            addrs: iface.addrs.addrs.clone(),
-            mutlicast_scopes: iface
-                .addrs
-                .v6_multicast
-                .iter()
-                .map(|binding| binding.addr)
-                .collect(),
+            addrs: iface.addrs.clone(),
             status: iface.status,
             busy: iface.state.clone(),
             queuelen: iface.buffer.len(),

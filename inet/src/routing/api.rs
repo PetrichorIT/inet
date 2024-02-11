@@ -105,7 +105,7 @@ impl IOContext {
         let Some(iface) = self
             .ifaces
             .values()
-            .find(|iface| iface.addrs.iter().any(|addr| addr.matches_ip_subnet(ip)))
+            .find(|iface| iface.addrs.iter().any(|addr| addr.matches_subnet(ip)))
         else {
             return Err(Error::new(
                 ErrorKind::Other,

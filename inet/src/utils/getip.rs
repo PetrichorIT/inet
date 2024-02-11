@@ -37,11 +37,10 @@ impl IOContext {
     /// Returns ethernet mac address for a given IOContext
     pub(crate) fn get_mac_address(&self) -> Result<Option<MacAddress>> {
         for (_, interface) in &self.ifaces {
-            for addr in &*interface.addrs {
-                if let InterfaceAddr::Ether { addr } = addr {
-                    return Ok(Some(*addr));
-                }
+            if interface.device.addr == MacAddress::NULL {
+                continue;
             }
+            return Ok(Some(interface.device.addr));
         }
 
         Ok(None)
@@ -49,9 +48,9 @@ impl IOContext {
 
     pub(crate) fn get_ip(&self) -> Option<IpAddr> {
         for (_, interface) in &self.ifaces {
-            for addr in &*interface.addrs {
-                if let InterfaceAddr::Inet { addr, .. } = addr {
-                    return Some(IpAddr::V4(*addr));
+            for addr in interface.addrs.iter() {
+                if let InterfaceAddr::Inet(addr) = addr {
+                    return Some(IpAddr::V4(addr.addr));
                 }
                 if let InterfaceAddr::Inet6(addr) = addr {
                     return Some(IpAddr::V6(addr.addr));
@@ -64,10 +63,9 @@ impl IOContext {
     pub(crate) fn getaddrinfo(&self) -> AddrInfo {
         let mut info = AddrInfo::new();
         for (_, iface) in &self.ifaces {
-            for addr in &*iface.addrs {
+            for addr in iface.addrs.iter() {
                 match addr {
-                    InterfaceAddr::Ether { .. } => {}
-                    InterfaceAddr::Inet { addr, .. } => info.push(IpAddr::V4(*addr)),
+                    InterfaceAddr::Inet(binding) => info.push(IpAddr::V4(binding.addr)),
                     InterfaceAddr::Inet6(binding) => info.push(IpAddr::V6(binding.addr)),
                 }
             }

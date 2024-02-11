@@ -91,10 +91,9 @@ impl RipRoutingDeamon {
             if port != new_port {
                 // test if gate chain has channel else invalid
                 let mut chan = new_port.output.channel().is_some();
-                let mut cur = new_port.output.clone();
-                while let Some(next) = cur.next_gate() {
-                    cur = next;
-                    chan |= cur.channel().is_some();
+
+                for next in new_port.output.path_iter() {
+                    chan |= next.channel.is_some();
                 }
 
                 if chan {

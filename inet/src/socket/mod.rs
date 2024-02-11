@@ -185,7 +185,10 @@ impl IOContext {
 
     pub(super) fn dup_socket(&mut self, fd: Fd) -> Result<Fd> {
         let Some(socket) = self.sockets.get(&fd) else {
-            return Err(Error::new(ErrorKind::InvalidInput, "invalid fd - socket dropped"))
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                "invalid fd - socket dropped",
+            ));
         };
 
         let mut new = socket.clone();
@@ -317,7 +320,7 @@ impl IOContext {
             if let Some(_) = interface
                 .addrs
                 .iter()
-                .find(|iaddr| iaddr.matches_ip_subnet(addr.ip()))
+                .find(|iaddr| iaddr.matches_subnet(addr.ip()))
             {
                 // Found the right interface
                 if interface.status == InterfaceStatus::Inactive {
@@ -376,7 +379,10 @@ impl IOContext {
 
     pub(super) fn bind_peer(&mut self, fd: Fd, peer: SocketAddr) -> Result<()> {
         let Some(socket) = self.sockets.get_mut(&fd) else {
-            return Err(Error::new(ErrorKind::InvalidInput, "invalid fd - socket dropped"))
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                "invalid fd - socket dropped",
+            ));
         };
         socket.peer = peer;
         Ok(())
@@ -384,14 +390,20 @@ impl IOContext {
 
     pub(super) fn get_socket_addr(&self, fd: Fd) -> Result<SocketAddr> {
         let Some(socket) = self.sockets.get(&fd) else {
-            return Err(Error::new(ErrorKind::InvalidInput, "invalid fd - socket dropped"))
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                "invalid fd - socket dropped",
+            ));
         };
         Ok(socket.addr)
     }
 
     pub(super) fn get_socket_peer(&self, fd: Fd) -> Result<SocketAddr> {
         let Some(socket) = self.sockets.get(&fd) else {
-            return Err(Error::new(ErrorKind::InvalidInput, "invalid fd - socket dropped"))
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                "invalid fd - socket dropped",
+            ));
         };
         if socket.peer.ip().is_unspecified() {
             Err(Error::new(ErrorKind::Other, "invalid peer addr - no peer"))
@@ -411,7 +423,7 @@ impl IOContext {
         match (socket.domain, socket.typ) {
             (AF_INET, SOCK_DGRAM) | (AF_INET6, SOCK_DGRAM) => {
                 let Some(udp) = self.udp.binds.get_mut(&fd) else {
-                    return
+                    return;
                 };
 
                 if let Some(interest) = &udp.interest {
@@ -430,14 +442,17 @@ impl IOContext {
 
     pub(super) fn socket_device(&mut self, fd: Fd) -> Result<Option<InterfaceName>> {
         let Some(socket) = self.sockets.get(&fd) else {
-            return Err(Error::new(ErrorKind::InvalidInput, "invalid fd - socket dropped"))
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                "invalid fd - socket dropped",
+            ));
         };
 
         match &socket.interface {
             SocketIfaceBinding::NotBound => Ok(None),
             SocketIfaceBinding::Bound(ifid) => {
                 let Some(interface) = self.ifaces.get(&ifid) else {
-                    return Err(Error::new(ErrorKind::Other, "interface down"))
+                    return Err(Error::new(ErrorKind::Other, "interface down"));
                 };
 
                 Ok(Some(interface.name.clone()))
@@ -446,7 +461,7 @@ impl IOContext {
                 // SAFTEY: list is never empty
                 let ifid = ifids[0];
                 let Some(interface) = self.ifaces.get(&ifid) else {
-                    return Err(Error::new(ErrorKind::Other, "interface down"))
+                    return Err(Error::new(ErrorKind::Other, "interface down"));
                 };
 
                 Ok(Some(interface.name.clone()))

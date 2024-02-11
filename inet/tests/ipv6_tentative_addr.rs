@@ -31,14 +31,14 @@ impl AsyncModule for WithChecks {
         add_interface(Interface::empty("en0", NetworkDevice::eth())).unwrap();
 
         let state = interface_status("en0").unwrap();
-        assert_eq!(state.addrs.len(), 0);
-        assert_eq!(state.mutlicast_scopes.len(), 2); // sol-multicast + all nodes multicast
+        assert_eq!(state.addrs.iter().count(), 0);
+        assert_eq!(state.addrs.multicast_scopes().len(), 2); // sol-multicast + all nodes multicast
     }
 
     async fn at_sim_end(&mut self) {
         let state = interface_status("en0").unwrap();
-        assert_eq!(state.addrs.len(), 1);
-        assert_eq!(state.mutlicast_scopes.len(), 2); // sol-multicast + all nodes multicast
+        assert_eq!(state.addrs.iter().count(), 1);
+        assert_eq!(state.addrs.multicast_scopes().len(), 2); // sol-multicast + all nodes multicast
     }
 }
 
@@ -59,14 +59,14 @@ impl AsyncModule for WithoutChecks {
 
         add_interface(Interface::empty("en0", NetworkDevice::eth())).unwrap();
         let state = interface_status("en0").unwrap();
-        assert_eq!(state.addrs.len(), 1);
-        assert_eq!(state.mutlicast_scopes.len(), 2); // sol-multicast + all nodes multicast
+        assert_eq!(state.addrs.iter().count(), 1);
+        assert_eq!(state.addrs.multicast_scopes().len(), 2); // sol-multicast + all nodes multicast
     }
 
     async fn at_sim_end(&mut self) {
         let state = interface_status("en0").unwrap();
-        assert_eq!(state.addrs.len(), 1);
-        assert_eq!(state.mutlicast_scopes.len(), 2); // sol-multicast + all nodes multicast
+        assert_eq!(state.addrs.iter().count(), 1);
+        assert_eq!(state.addrs.multicast_scopes().len(), 2); // sol-multicast + all nodes multicast
     }
 }
 
@@ -86,14 +86,14 @@ impl AsyncModule for ManualAssignWithoutDedup {
         .unwrap();
 
         let state = interface_status("en0").unwrap();
-        assert_eq!(state.addrs.len(), 1);
-        assert_eq!(state.mutlicast_scopes.len(), 2); // sol-multicast + all nodes multicast
+        assert_eq!(state.addrs.iter().count(), 1);
+        assert_eq!(state.addrs.multicast_scopes().len(), 2); // sol-multicast + all nodes multicast
     }
 
     async fn at_sim_end(&mut self) {
         let state = interface_status("en0").unwrap();
-        assert_eq!(state.addrs.len(), 1);
-        assert_eq!(state.mutlicast_scopes.len(), 2); // sol-multicast + all nodes multicast
+        assert_eq!(state.addrs.iter().count(), 1);
+        assert_eq!(state.addrs.multicast_scopes().len(), 2); // sol-multicast + all nodes multicast
     }
 }
 

@@ -191,11 +191,9 @@ impl IOContext {
                 let iface = self.ifaces.get(&ifid).unwrap();
 
                 // (0) Check whether the received ip packet is addressed for the local machine
-                let local_dest = ip.dest == Ipv4Addr::BROADCAST
-                    || iface
-                        .addrs
-                        .iter()
-                        .any(|addr| addr.matches_ip(IpAddr::V4(ip.dest)));
+                let local_dest = ip.dest == Ipv4Addr::BROADCAST || iface.addrs.v4.matches(ip.dest);
+                // .iter()
+                // .any(|addr| addr.matches(IpAddr::V4(ip.dest)));
 
                 if !local_dest {
                     // (0) Check TTL
@@ -271,11 +269,7 @@ impl IOContext {
                 let iface = self.get_iface(ifid).unwrap();
 
                 // (0) Check whether the received ip packet is addressed for the local machine
-                let local_dest = /*ip.dest ==  Ipv6Addr::BROADCAST
-                    || */iface
-                        .addrs
-                        .iter()
-                        .any(|addr| addr.matches_ip(IpAddr::V6(ip.dst))) || (ip.src == ip.dst && iface.flags.loopback);
+                let local_dest = iface.addrs.v6.matches(ip.dst);
 
                 let multicast = ip.dst.is_multicast();
 
@@ -316,9 +310,9 @@ impl IOContext {
                         Ipv6Addr::MULTICAST_ALL_NODES => {}
                         ip if iface
                             .addrs
-                            .ipv6_addrs()
-                            .iter()
-                            .any(|addr| ip == Ipv6Addr::solicied_node_multicast(*addr)) =>
+                            .v6
+                            .addrs()
+                            .any(|addr| ip == Ipv6Addr::solicied_node_multicast(addr)) =>
                         { /* SOLCITED MULTICAST */ }
                         _ => panic!("Unknown multicast: {} {ip:?}", ip.dst),
                     }
