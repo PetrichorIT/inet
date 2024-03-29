@@ -14,23 +14,19 @@ struct Connector {
     freq: f64,   // the number of bytes in the last second
     freq_g: f64, // the gradient,
     t: SimTime,  // time of the last calc
-
-                 // debug: OutVec,
-                 // debug_p: OutVec,
-                 // debug_g: OutVec,
 }
-impl Module for Connector {
-    fn new() -> Self {
+
+impl Default for Connector {
+    fn default() -> Self {
         Self {
             freq: 0.0,
             freq_g: 0.0,
             t: SimTime::ZERO,
-            // debug_p: OutVec::new("drop".to_string(), Some(module_path())),
-            // debug: OutVec::new("traffic".to_string(), Some(module_path())),
-            // debug_g: OutVec::new("traffic_g".to_string(), Some(module_path())),
         }
     }
+}
 
+impl Module for Connector {
     fn handle_message(&mut self, msg: Message) {
         let dur = (SimTime::now() - self.t).as_secs_f64();
         if dur > 1.0 {
@@ -65,17 +61,12 @@ impl Module for Connector {
     }
 }
 
+#[derive(Default)]
 struct Client {
     handles: Vec<JoinHandle<()>>,
 }
 
 impl AsyncModule for Client {
-    fn new() -> Self {
-        Self {
-            handles: Vec::new(),
-        }
-    }
-
     async fn at_sim_start(&mut self, _: usize) {
         add_interface(Interface::ethv4(
             NetworkDevice::eth(),
@@ -123,13 +114,10 @@ impl AsyncModule for Client {
     }
 }
 
+#[derive(Default)]
 struct Server {}
 
 impl AsyncModule for Server {
-    fn new() -> Self {
-        Self {}
-    }
-
     async fn at_sim_start(&mut self, _: usize) {
         add_interface(Interface::ethv4(
             NetworkDevice::eth(),
@@ -178,26 +166,17 @@ impl AsyncModule for Server {
     }
 }
 
-struct Main;
-impl Module for Main {
-    fn new() -> Main {
-        Main
-    }
-}
-
 fn main() {
     inet::init();
     des::tracing::init();
 
-    let mut app = NetworkApplication::new(
-        NdlApplication::new(
-            "inet/src/bin/tcp.ndl",
-            registry![Client, Server, Main, Connector],
-        )
-        .map_err(|e| println!("{e}"))
-        .unwrap(),
-    );
-    app.include_par_file("inet/src/bin/tcp.par");
+    let mut app = Sim::ndl(
+        "inet/src/bin/tcp.ndl",
+        registry![Client, Server, Connector, else _],
+    )
+    .map_err(|e| println!("{e}"))
+    .unwrap();
+    app.include_par_file("inet/src/bin/tcp.par").unwrap();
 
     let rt = Builder::seeded(123).build(app);
     let _ = rt.run().unwrap();

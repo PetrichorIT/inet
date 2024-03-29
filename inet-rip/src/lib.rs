@@ -92,7 +92,11 @@ impl RipRoutingDeamon {
                 // test if gate chain has channel else invalid
                 let mut chan = new_port.output.channel().is_some();
 
-                for next in new_port.output.path_iter() {
+                for next in new_port
+                    .output
+                    .path_iter()
+                    .expect("cannot use transit gate")
+                {
                     chan |= next.channel.is_some();
                 }
 

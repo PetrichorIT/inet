@@ -1,5 +1,6 @@
 use std::{io, net::Ipv6Addr, time::Duration};
 
+use des::time::SimTime;
 use inet_types::ip::{Ipv6AddrExt, Ipv6Prefix};
 
 use crate::{
@@ -94,7 +95,12 @@ impl IOContext {
     ) -> io::Result<()> {
         let ifid = self.ipv6_ifid_for_src_addr(via);
         self.ipv6.neighbors.add_static(next_hop, ifid, true);
-        self.ipv6.router.add(prefix, next_hop, ifid);
+        self.ipv6.router.add(
+            prefix,
+            next_hop,
+            ifid,
+            SimTime::now() + Duration::from_secs(60),
+        );
         Ok(())
     }
 
@@ -104,7 +110,7 @@ impl IOContext {
             cfg.adv_prefix_list.push(RouterPrefix {
                 on_link: true,
                 prefix,
-                preferred_lifetime: Duration::from_secs(500),
+                preferred_lifetime: Duration::from_secs(1000),
                 valid_lifetime: Duration::from_secs(1000),
                 autonomous: true,
             });
@@ -114,7 +120,7 @@ impl IOContext {
             cfg.adv_prefix_list.push(RouterPrefix {
                 on_link: true,
                 prefix,
-                preferred_lifetime: Duration::from_secs(500),
+                preferred_lifetime: Duration::from_secs(1000),
                 valid_lifetime: Duration::from_secs(1000),
                 autonomous: true,
             });

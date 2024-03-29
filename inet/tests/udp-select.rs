@@ -14,14 +14,11 @@ const EXPECTED: [u8; 10] = [1, 2, 1, 2, 2, 1, 2, 1, 1, 2];
 
 // A B A B B A B A A B
 
+#[derive(Default)]
 struct A {
     handle: Option<JoinHandle<()>>,
 }
 impl AsyncModule for A {
-    fn new() -> A {
-        A { handle: None }
-    }
-
     async fn at_sim_start(&mut self, _: usize) {
         let c = match &current().name()[..] {
             "a" => 1,
@@ -63,15 +60,12 @@ impl AsyncModule for A {
 
 type B = A;
 
+#[derive(Default)]
 struct C {
     handle: Option<JoinHandle<()>>,
 }
 
 impl AsyncModule for C {
-    fn new() -> C {
-        C { handle: None }
-    }
-
     async fn at_sim_start(&mut self, _: usize) {
         add_interface(Interface::ethv4_named(
             "en0",
@@ -127,11 +121,9 @@ fn udp_select() {
     // .interal_max_log_level(tracing::LevelFilter::Info)
     // .set_logger();
 
-    let app = NetworkApplication::new(
-        NdlApplication::new("tests/triangle.ndl", registry![A, B, C, Main])
-            .map_err(|e| println!("{e}"))
-            .unwrap(),
-    );
+    let app = Sim::ndl("tests/triangle.ndl", registry![A, B, C, Main])
+        .map_err(|e| println!("{e}"))
+        .unwrap();
     let rt = Builder::seeded(123).max_time(100.0.into()).build(app);
     let _ = rt.run().unwrap();
 }

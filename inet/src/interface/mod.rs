@@ -5,6 +5,7 @@
 use std::{
     collections::VecDeque,
     io::{self, Error, ErrorKind, Result},
+    result,
 };
 
 use crate::socket::Fd;
@@ -13,16 +14,6 @@ use des::prelude::*;
 use inet_types::arp::KIND_ARP;
 use inet_types::iface::MacAddress;
 use inet_types::{arp::ArpPacket, ip::Ipv6AddrExt};
-
-macro_rules! hash {
-    ($v:expr) => {{
-        use std::hash::Hash;
-        use std::hash::Hasher;
-        let mut s = ::std::collections::hash_map::DefaultHasher::new();
-        ($v).hash(&mut s);
-        s.finish()
-    }};
-}
 
 mod api;
 pub use self::api::*;
@@ -65,6 +56,7 @@ pub struct Interface {
 
     pub(crate) prio: usize,
     pub(crate) buffer: VecDeque<Message>,
+    pub(crate) send_q: usize,
 }
 
 /// A result forwarded after linklayer processing
@@ -94,6 +86,7 @@ impl Interface {
             state: InterfaceBusyState::Idle,
             prio: 0,
             buffer: VecDeque::new(),
+            send_q: 0,
         }
     }
 
@@ -108,6 +101,7 @@ impl Interface {
             state: InterfaceBusyState::Idle,
             prio: 200,
             buffer: VecDeque::new(),
+            send_q: 0,
         }
     }
 
@@ -149,6 +143,7 @@ impl Interface {
             state: InterfaceBusyState::Idle,
             prio: 100,
             buffer: VecDeque::new(),
+            send_q: 0,
         }
     }
 
@@ -167,6 +162,7 @@ impl Interface {
             state: InterfaceBusyState::Idle,
             prio: 200,
             buffer: VecDeque::new(),
+            send_q: 0,
         }
     }
 
@@ -191,6 +187,7 @@ impl Interface {
             state: InterfaceBusyState::Idle,
             prio: 200,
             buffer: VecDeque::new(),
+            send_q: 0,
         }
     }
 
@@ -216,6 +213,7 @@ impl Interface {
             state: InterfaceBusyState::Idle,
             prio: 100,
             buffer: VecDeque::new(),
+            send_q: 0,
         }
     }
 
@@ -230,6 +228,7 @@ impl Interface {
             prio: 100,
             state: InterfaceBusyState::Idle,
             buffer: VecDeque::new(),
+            send_q: 0,
         }
     }
 
@@ -264,11 +263,16 @@ impl Interface {
             // if self.buffer.len() >= 16 {
             //     return Err(Error::new(ErrorKind::Other, "interface busy, buffer fullö"));
             // }
-
             self.buffer.push_back(msg);
             Ok(())
         } else {
-            self.send(msg)
+            match self.send_raw(msg) {
+                Ok(()) => Ok(()),
+                Err(msg) => {
+                    self.buffer.push_back(msg);
+                    Ok(())
+                }
+            }
         }
     }
 
@@ -280,14 +284,37 @@ impl Interface {
             ));
         }
 
-        #[cfg(feature = "libpcap")]
-        crate::libpcap::capture(crate::libpcap::PcapEnvelope {
-            capture: crate::libpcap::PcapCapturePoint::Egress,
-            message: &msg,
-            iface: &self,
-        });
+        match self.send_raw(msg) {
+            Ok(()) => Ok(()),
+            Err(_) => Err(Error::new(
+                ErrorKind::WouldBlock,
+                "interface is busy - would block",
+            )),
+        }
+    }
 
-        self.state = self.device.send(msg);
+    fn send_raw(&mut self, msg: Message) -> result::Result<(), Message> {
+        match self.device.ready() {
+            NetworkDeviceReadiness::Ready => {
+                #[cfg(feature = "libpcap")]
+                crate::libpcap::capture(crate::libpcap::PcapEnvelope {
+                    capture: crate::libpcap::PcapCapturePoint::Egress,
+                    message: &msg,
+                    iface: &self,
+                });
+            }
+            NetworkDeviceReadiness::Busy(until) => {
+                self.state.merge_new(InterfaceBusyState::Busy {
+                    until,
+                    interests: Vec::new(),
+                });
+                self.schedule_link_update();
+                return Err(msg);
+            }
+        }
+
+        self.state.merge_new(self.device.send(msg).into());
+        self.send_q += 1;
         self.schedule_link_update();
 
         Ok(())
@@ -295,25 +322,19 @@ impl Interface {
 
     pub(crate) fn schedule_link_update(&self) {
         if let InterfaceBusyState::Busy { until, .. } = &self.state {
-            schedule_at(Message::from(LinkUpdate(self.name.id)), *until);
+            schedule_at(Message::from(LinkUpdate(self.name.id())), *until);
         }
     }
 
     pub(crate) fn recv_link_update(&mut self) -> Vec<Fd> {
-        assert!(!self.device.is_busy(), "Link notif send invalid message");
         if let Some(msg) = self.buffer.pop_front() {
-            // still busy with link layer events.
-            #[cfg(feature = "libpcap")]
-            crate::libpcap::capture(crate::libpcap::PcapEnvelope {
-                capture: crate::libpcap::PcapCapturePoint::Egress,
-                message: &msg,
-                iface: &self,
-            });
-
-            self.state.merge_new(self.device.send(msg));
-            self.schedule_link_update();
-
-            Vec::new()
+            match self.send_raw(msg) {
+                Ok(()) => Vec::new(),
+                Err(msg) => {
+                    self.buffer.push_front(msg);
+                    Vec::new()
+                }
+            }
         } else {
             // finally unbusy, so networking layer can continue to work.
             let mut swap = InterfaceBusyState::Idle;
@@ -338,15 +359,6 @@ impl Interface {
             return true;
         }
 
-        // tracing::info!(
-        //     "{addr} in {:#?}",
-        //     self.addrs
-        //         .v6_multicast
-        //         .iter()
-        //         .map(|b| MacAddress::ipv6_multicast(b.addr).to_string() + &b.to_string())
-        //         .collect::<Vec<_>>()
-        // );
-
         // Check multicast scopes
         if self.addrs.v6.valid_src_mac(addr) {
             return true;
@@ -363,7 +375,7 @@ impl IOContext {
 
         // Precheck for link layer updates
         if msg.header().kind == KIND_LINK_UPDATE {
-            let Some(&update) = msg.try_content::<LinkUpdate>() else {
+            let Some(update) = msg.try_content::<LinkUpdate>() else {
                 tracing::error!(
                     "found message with kind KIND_LINK_UPDATE, did not contain link updates"
                 );
@@ -390,7 +402,7 @@ impl IOContext {
         };
 
         // Capture all packets that can be addressed to a interface, event not targeted
-        let ifid = *ifid;
+        let ifid = ifid.clone();
 
         #[cfg(feature = "libpcap")]
         crate::libpcap::capture(crate::libpcap::PcapEnvelope {
@@ -424,15 +436,15 @@ impl IOContext {
         NetworkingPacket(msg, ifid)
     }
 
-    fn recv_linklayer_update(&mut self, update: LinkUpdate) {
+    fn recv_linklayer_update(&mut self, update: &LinkUpdate) {
         let Some(iface) = self.ifaces.get_mut(&update.0) else {
             return;
         };
 
-        let ifid = iface.name.id;
+        let ifid = iface.name.id();
         let fds = iface.recv_link_update();
         for fd in fds {
-            self.socket_link_update(fd, ifid);
+            self.socket_link_update(fd, ifid.clone());
         }
     }
 

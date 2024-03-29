@@ -68,7 +68,7 @@ impl IOContext {
                 ifid,
                 RouterInterfaceConfiguration {
                     is_router: true,
-                    adv_send_advertisments: true,
+                    adv_send_advertisments: cfg.adv,
                     min_rtr_adv_interval: Duration::from_secs(3),
                     max_rtr_adv_interval: Duration::from_secs(3),
                     adv_managed_flag: cfg.managed,
@@ -85,8 +85,8 @@ impl IOContext {
                             prefix: *p,
                             on_link: true,
                             autonomous: true,
-                            valid_lifetime: Duration::from_secs(300),
-                            preferred_lifetime: Duration::from_secs(300),
+                            valid_lifetime: Duration::from_secs(9000),
+                            preferred_lifetime: Duration::from_secs(5000),
                         })
                         .collect(),
                     allow_solicited_advertisments_unicast: false,

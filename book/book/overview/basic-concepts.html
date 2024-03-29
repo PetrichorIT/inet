@@ -1,0 +1,310 @@
+<!DOCTYPE HTML>
+<html lang="en" class="light" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Basic concepts - INET documentation</title>
+
+
+        <!-- Custom HTML head -->
+        
+        <meta name="description" content="">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="../favicon.svg">
+        <link rel="shortcut icon" href="../favicon.png">
+        <link rel="stylesheet" href="../css/variables.css">
+        <link rel="stylesheet" href="../css/general.css">
+        <link rel="stylesheet" href="../css/chrome.css">
+        <link rel="stylesheet" href="../css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="../FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="../fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" href="../highlight.css">
+        <link rel="stylesheet" href="../tomorrow-night.css">
+        <link rel="stylesheet" href="../ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+
+    </head>
+    <body class="sidebar-visible no-js">
+    <div id="body-container">
+        <!-- Provide site root to javascript -->
+        <script>
+            var path_to_root = "../";
+            var default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "navy" : "light";
+        </script>
+
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                var theme = localStorage.getItem('mdbook-theme');
+                var sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            var theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            var html = document.querySelector('html');
+            html.classList.remove('light')
+            html.classList.add(theme);
+            var body = document.querySelector('body');
+            body.classList.remove('no-js')
+            body.classList.add('js');
+        </script>
+
+        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            var body = document.querySelector('body');
+            var sidebar = null;
+            var sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+            }
+            sidebar_toggle.checked = sidebar === 'visible';
+            body.classList.remove('sidebar-visible');
+            body.classList.add("sidebar-" + sidebar);
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <div class="sidebar-scrollbox">
+                <ol class="chapter"><li class="chapter-item expanded "><a href="../overview.html"><strong aria-hidden="true">1.</strong> Overview</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="../overview/setup.html"><strong aria-hidden="true">1.1.</strong> Project Setup</a></li><li class="chapter-item expanded "><a href="../overview/basic-concepts.html" class="active"><strong aria-hidden="true">1.2.</strong> Basic concepts</a></li></ol></li><li class="chapter-item expanded "><a href="../core.html"><strong aria-hidden="true">2.</strong> Core functions</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="../core/interface_mngmt.html"><strong aria-hidden="true">2.1.</strong> Interface managment</a></li><li class="chapter-item expanded "><a href="../core/sending_algorithm.html"><strong aria-hidden="true">2.2.</strong> Conceptual sending algorithm</a></li><li class="chapter-item expanded "><a href="../core/address_resolution.html"><strong aria-hidden="true">2.3.</strong> Address resolution</a></li></ol></li></ol>
+            </div>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <!-- Track and set sidebar scroll position -->
+        <script>
+            var sidebarScrollbox = document.querySelector('#sidebar .sidebar-scrollbox');
+            sidebarScrollbox.addEventListener('click', function(e) {
+                if (e.target.tagName === 'A') {
+                    sessionStorage.setItem('sidebar-scroll', sidebarScrollbox.scrollTop);
+                }
+            }, { passive: true });
+            var sidebarScrollTop = sessionStorage.getItem('sidebar-scroll');
+            sessionStorage.removeItem('sidebar-scroll');
+            if (sidebarScrollTop) {
+                // preserve sidebar scroll position when navigating via links within sidebar
+                sidebarScrollbox.scrollTop = sidebarScrollTop;
+            } else {
+                // scroll sidebar to current active section when navigating via "next/previous chapter" buttons
+                var activeSection = document.querySelector('#sidebar .active');
+                if (activeSection) {
+                    activeSection.scrollIntoView({ block: 'center' });
+                }
+            }
+        </script>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </label>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search. (Shortkey: s)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="S" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">INET documentation</h1>
+
+                    <div class="right-buttons">
+                        <a href="../print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <h1 id="basic-concepts"><a class="header" href="#basic-concepts">Basic concepts</a></h1>
+<p>As the previous chapter explained, an IO plugin without further configuration does almost nothing.
+This is intended. A network node without any network connection or any semblance of connectivity
+is useless. Additionally INET does not automatically use any gates of a module, without explicitly
+being told so. This enables user to restrict INET generated traffic to a select few gates.</p>
+<p>This chapter will discuss the basic concepts and configuration options from the perspective of a
+simple host.</p>
+<blockquote>
+<p>All references in this chapter refer to the API of the core crate <code>inet</code>. So interpret <code>a::b</code> as <code>inet::a::b</code>.</p>
+</blockquote>
+<h2 id="interfaces"><a class="header" href="#interfaces">Interfaces</a></h2>
+<p>Any INET traffic is received and send by an <code>Interface</code>. An interface represents the logical binding
+between an <code>NetworkDevice</code>, capable of receiving or sending messages, and some assigned addresses.
+Network devices can either use a set of gates to receive and send messages, or just use <code>schedule_in</code>
+to send messages to itself, implementing a loopback interface. Addresses can be assigned to interfaces
+to act as both source addresses for outgoing packets, as well as target addresses incoming addresses.
+As soon as an address is assigned, INET will process packets address to the binding.</p>
+<p>Interfaces can be created in various ways, but the most basic case uses <code>interfaces::add_interface</code>.
+Various constructors allow for the creation if interfaces with preassigned address either for IPv4
+or IPv6. If user are ok with IPv6 only interfaces, <code>interfaces::Interface::empty</code> is the easiest
+solution, without a need to assign an address (IPv6 autoconfigures link local addresses + stateless autocfg).</p>
+<p>The only component allways required to create an interface is a network device. These devices should almost
+allways be created using the same gate as both input and output (use <code>interfaces::NetworkDevice::gate</code>). Providing
+different gates is technically supported, but partically very hard to handle if both gates do not exactly behave
+equivalent to a single-gate solution. Additionally a network device expects the attached gate chain to contain
+at least one channel (must not be on the first chain link, but somewhere). Non-delayed devices are also
+allowed but emit warnings, since instantaneous networking is not expected by the current standards.</p>
+<blockquote>
+<p>A network device will only send onto non-busy channels, independently of any channel buffers. If a burst of packets
+needs to be send the IO plugin will rather buffer them internally. Also sending manual messages to a gate-chain
+administed by INET may lead to unexpected side effects in the IO plugin.</p>
+</blockquote>
+<h2 id="ethernet"><a class="header" href="#ethernet">Ethernet</a></h2>
+<p>INET simulates ethernet traffic. This means that every message send by INET is either:</p>
+<ul>
+<li>a self scheduled message, either a <code>KIND_LINK_UPDATE</code> or a <code>KIND_IO_TIMEOUT</code></li>
+<li>or a networking packet representing an ethernet datagram</li>
+</ul>
+<p>The ethernet header is encoded directly into the <code>Message</code> struct itself, using the
+<code>src</code> and <code>dest</code> fields respectivly. The <code>MessageKind</code> is used as the ETHERTYP field.
+Other link layer effects such as packet collision or bit errors
+are not supported, and likely never will be. The content of the message is any ethernet encapsualed
+payload INET can send. Currently that includes:</p>
+<ul>
+<li>An <code>Ipv4Packet</code></li>
+<li>An <code>ArpPacket</code></li>
+<li>An <code>Ipv6Packet</code></li>
+</ul>
+<p>Note that all these packets are stored as is, rather then being serialized into bytevectors.
+For now this is done, to improve performance and increase debuggabilty. Anything within a
+IP packet is however serialized.</p>
+<h2 id="async-socket-api"><a class="header" href="#async-socket-api">Async Socket API</a></h2>
+<p>The primary "product" of the core crate are the async socket implementations, mirroring <code>tokio::net</code>.
+These sockets can be used just like their tokio counterparts, assuming an interface is adequatly configured
+The IO plugin will then consume any UDP or TCP packets and reroute their contents into the async API,
+finally being forwarded to the user as the result of read/write calls to the socket object. Both
+the UDP and TCP implementation are RFC compliant and fully featured, however without OS specific
+optimizations.</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use inet::TcpStream;
+// in `at_sim_start`
+tokio::spawn(async move {
+    let sock = TcpStream::connect("192.168.0.103:8000").await?;
+    sock.write(b"Hello world").await?;
+
+    let mut buf = [0; 128];
+    sock.read(&amp;mut buf).await?;
+    assert_eq!(String::from_utf8_lossy(&amp;buf), "Hello back");
+});
+<span class="boring">}</span></code></pre></pre>
+<h2 id="configuration-functions"><a class="header" href="#configuration-functions">Configuration functions</a></h2>
+<p>Almost all components of the networking stack have associated configurations, that
+can be changed using the appropiate function in the API. The implications of changing
+a config mid-flight is discussed seperatedly for each component.</p>
+<h2 id="debugging"><a class="header" href="#debugging">Debugging</a></h2>
+<p>INET fully supports <code>tracing</code> and with a scope aware logger, provided by <code>des::tracing</code>, also scope
+aware traces of internal computations. As a general rule, INET does not emit INFO level events, only
+DEBUG and TRACE level events. Should an error occure internally INET may also emit WARN and ERROR level
+events, but this only includes major failures, that may be of interest to the user, not minor failures
+like a failed address resolution.</p>
+<p>Should tracing not suffice, INET also enables packet captures with the feature flag <code>libpcap</code> and the
+<code>inet-pcap</code> crate. See [TODO] for more infomation.</p>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="../overview/setup.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
+
+                            <a rel="next prefetch" href="../core.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <i class="fa fa-angle-right"></i>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="../overview/setup.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
+
+                    <a rel="next prefetch" href="../core.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <i class="fa fa-angle-right"></i>
+                    </a>
+            </nav>
+
+        </div>
+
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="../elasticlunr.min.js"></script>
+        <script src="../mark.min.js"></script>
+        <script src="../searcher.js"></script>
+
+        <script src="../clipboard.min.js"></script>
+        <script src="../highlight.js"></script>
+        <script src="../book.js"></script>
+
+        <!-- Custom JS scripts -->
+
+
+    </div>
+    </body>
+</html>

@@ -83,6 +83,11 @@ pub struct Marker {
 }
 
 impl BytestreamWriter<'_> {
+    /// Reserves at least `additional` many bytes in the underlying buffer.
+    pub fn reserve(&mut self, additional: usize) {
+        self.buf.reserve(additional);
+    }
+
     /// Allocates and writes a `Marker` on the bytestream of the given `len`.
     ///
     /// # Errors

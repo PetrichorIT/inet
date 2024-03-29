@@ -8,15 +8,12 @@ use inet::{
 };
 use tokio::{spawn, task::JoinHandle};
 
+#[derive(Default)]
 struct Client {
     handle: Option<JoinHandle<()>>,
 }
 
 impl AsyncModule for Client {
-    fn new() -> Self {
-        Self { handle: None }
-    }
-
     async fn at_sim_start(&mut self, _: usize) {
         add_interface(Interface::ethv4(
             NetworkDevice::eth(),
@@ -39,15 +36,12 @@ impl AsyncModule for Client {
     }
 }
 
+#[derive(Default)]
 struct Server {
     handle: Option<JoinHandle<()>>,
 }
 
 impl AsyncModule for Server {
-    fn new() -> Self {
-        Self { handle: None }
-    }
-
     async fn at_sim_start(&mut self, _: usize) {
         add_interface(Interface::ethv4(
             NetworkDevice::eth(),
@@ -75,27 +69,18 @@ impl AsyncModule for Server {
     }
 }
 
-struct Main;
-impl Module for Main {
-    fn new() -> Main {
-        Main
-    }
-}
-
 #[test]
 fn tcp_listen_backlog() {
     inet::init();
 
     // Logger::new().set_logger();
 
-    let app = NetworkApplication::new(
-        NdlApplication::new(
-            "tests/tcp-multi-accept.ndl",
-            registry![Server, Main, Client],
-        )
-        .map_err(|e| println!("{e}"))
-        .unwrap(),
-    );
+    let app = Sim::ndl(
+        "tests/tcp-multi-accept.ndl",
+        registry![Server, Client, else _],
+    )
+    .map_err(|e| println!("{e}"))
+    .unwrap();
     let rt = Builder::seeded(123).build(app);
     let (_, t, _) = rt.run().unwrap();
     assert!(t > 3.0.into());

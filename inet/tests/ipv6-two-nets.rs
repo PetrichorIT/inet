@@ -1,51 +1,47 @@
-use std::{
-    error::Error,
-    io,
-    net::{Ipv6Addr, SocketAddr},
-    time::Duration,
-};
+use std::{error::Error, io, net::Ipv6Addr, time::Duration};
 
 use des::{
-    ndl::NdlApplication,
     net::{
-        module::{current, AsyncModule, Module},
-        par, par_for,
+        module::{current, AsyncModule},
+        par, par_for, Sim,
     },
     registry,
     runtime::Builder,
 };
 use inet::{
-    interface::{add_interface, Interface, NetworkDevice},
+    interface::{add_interface, interface_status, Interface, NetworkDevice},
     ipv6::router,
     utils, UdpSocket,
 };
 use inet_types::ip::{Ipv6AddrExt, Ipv6Prefix};
 
-#[macro_use]
-mod common;
-
+#[derive(Default)]
 struct Host;
-impl_build_named!(Host);
-impl AsyncModule for Host {
-    fn new() -> Self {
-        Self
-    }
 
+impl AsyncModule for Host {
     async fn at_sim_start(&mut self, _stage: usize) {
         add_interface(Interface::ethv6_autocfg(NetworkDevice::eth())).unwrap();
         tokio::spawn(async move {
-            des::time::sleep(Duration::from_secs(1)).await;
+            des::time::sleep(Duration::from_secs(2)).await;
+            interface_status("en0").unwrap().write_to_par().unwrap();
+
             if current().path().as_str() == "net[0].host[0]" {
-                let trg: SocketAddr = "[2003:1234:4242:0:24d9:f8ff:fe7c:4130]:8000"
+                des::time::sleep(Duration::from_secs(1)).await;
+
+                let trg: Ipv6Addr = par_for("en0:addrs", "net[1].host[1]")
+                    .unwrap()
+                    .split(',')
+                    .collect::<Vec<_>>()[1]
+                    .trim()
                     .parse()
                     .unwrap();
 
-                tracing::info!("inital query");
+                tracing::info!("inital query to {trg}");
                 let conn = UdpSocket::bind(":::0").await?;
-                conn.send_to(b"Hello world!", trg).await?;
+                conn.send_to(b"Hello world!", (trg, 8000)).await?;
                 let mut buf = [0; 128];
                 let (n, src) = conn.recv_from(&mut buf).await?;
-                assert_eq!(src, trg);
+                assert_eq!(src.ip(), trg);
                 assert_eq!("Hello back!", String::from_utf8_lossy(&buf[..n]));
                 tracing::info!("done");
             }
@@ -68,13 +64,10 @@ impl AsyncModule for Host {
     }
 }
 
+#[derive(Default)]
 struct Router;
-impl_build_named!(Router);
-impl AsyncModule for Router {
-    fn new() -> Self {
-        Self
-    }
 
+impl AsyncModule for Router {
     async fn at_sim_start(&mut self, _stage: usize) {
         let prefix: Ipv6Prefix = par("prefix").unwrap().parse().unwrap();
         let peering_addr: Ipv6Addr = par("peering_addr").unwrap().parse().unwrap();
@@ -116,35 +109,18 @@ impl AsyncModule for Router {
     }
 }
 
-struct LAN;
-impl_build_named!(LAN);
-impl Module for LAN {
-    fn new() -> Self {
-        Self
-    }
-}
-
 type Switch = utils::LinkLayerSwitch;
-
-struct Main;
-impl_build_named!(Main);
-impl Module for Main {
-    fn new() -> Self {
-        Self
-    }
-}
 
 #[test]
 fn ipv6_two_nets() -> Result<(), Box<dyn Error>> {
     inet::init();
-    // des::tracing::Subscriber::default().init().unwrap();
+    // des::tracing::init();
 
-    let mut app = NdlApplication::new(
+    let mut app = Sim::ndl(
         "tests/ipv6_two_nets.ndl",
-        registry![Host, Switch, Router, LAN, Main],
-    )?
-    .into_app();
-    app.include_par_file("tests/ipv6_two_nets.par");
+        registry![Host, Switch, Router, else _],
+    )?;
+    app.include_par_file("tests/ipv6_two_nets.par").unwrap();
     let rt = Builder::seeded(123).max_time(10.0.into()).build(app);
     let _ = rt.run();
 

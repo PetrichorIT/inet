@@ -224,7 +224,6 @@ impl IOContext {
             return self.ipv6_send(pkt, ifid.unwrap_ifid());
         }
 
-        tracing::warn!("OLD CALL");
         // (0) Routing table destintation lookup
 
         let (route, rifid, pkt): (IpGateway, IfId, IpPacket) = match pkt {

@@ -1,8 +1,8 @@
 use std::{fs::File, net::Ipv6Addr, time::Duration};
 
+use bytepack::ToBytestream;
 use des::{
-    ndl::NdlApplication,
-    net::module::{AsyncModule, Module},
+    net::{module::AsyncModule, Sim},
     registry,
     runtime::Builder,
 };
@@ -10,21 +10,19 @@ use inet::{
     interface::{add_interface, Interface, NetworkDevice},
     ipv6::{icmp::ping::ping, util::setup_router},
     routing::RoutingPort,
+    socket::RawIpSocket,
     utils, UdpSocket,
 };
 use inet_pcap::{pcap, PcapCapturePoints, PcapConfig, PcapFilters};
+use inet_types::{
+    icmpv6::{IcmpV6MulticastListenerMessage, IcmpV6Packet},
+    ip::{IpPacket, Ipv6AddrExt, Ipv6Packet},
+};
 
-#[macro_use]
-mod common;
-
+#[derive(Default)]
 struct HostAlice;
-impl_build_named!(HostAlice);
 
 impl AsyncModule for HostAlice {
-    fn new() -> Self {
-        Self
-    }
-
     async fn at_sim_start(&mut self, _stage: usize) {
         pcap(PcapConfig {
             filters: PcapFilters::default(),
@@ -36,12 +34,12 @@ impl AsyncModule for HostAlice {
         add_interface(Interface::ethv6_autocfg(NetworkDevice::eth())).unwrap();
 
         tokio::spawn(async move {
-            des::time::sleep(Duration::from_secs(1)).await;
-
+            des::time::sleep(Duration::from_secs(2)).await;
+            tracing::info!("lets go");
             let udp = UdpSocket::bind("2003:c1:e719:1234:ac1c:f4ff:fe85:879a:2000")
                 .await
                 .unwrap();
-            udp.send_to(b"Hello world", "2003:c1:e719:1234:fc85:8aff:fed5:1c9d:4000")
+            udp.send_to(b"Hello world", "2003:c1:e719:1234:88d5:1cff:fe9d:43e2:4000")
                 .await
                 .unwrap();
 
@@ -53,7 +51,7 @@ impl AsyncModule for HostAlice {
             );
 
             let p = ping(
-                "2003:c1:e719:1234:fc85:8aff:fed5:1c9d"
+                "2003:c1:e719:1234:88d5:1cff:fe9d:43e2"
                     .parse::<Ipv6Addr>()
                     .unwrap(),
             )
@@ -64,14 +62,10 @@ impl AsyncModule for HostAlice {
     }
 }
 
+#[derive(Default)]
 struct HostBob;
-impl_build_named!(HostBob);
 
 impl AsyncModule for HostBob {
-    fn new() -> Self {
-        Self
-    }
-
     async fn at_sim_start(&mut self, _stage: usize) {
         pcap(PcapConfig {
             filters: PcapFilters::default(),
@@ -91,18 +85,34 @@ impl AsyncModule for HostBob {
                 String::from_utf8_lossy(&buf[..n]),
             );
             udp.send_to(b"Hello back", from).await.unwrap();
+
+            let ipsock = RawIpSocket::new_v6().unwrap();
+            ipsock
+                .try_send(IpPacket::V6(Ipv6Packet {
+                    traffic_class: 0,
+                    flow_label: 0,
+                    next_header: 58,
+                    hop_limit: 255,
+                    src: Ipv6Addr::UNSPECIFIED,
+                    dst: Ipv6Addr::MULTICAST_ALL_NODES,
+                    content: {
+                        let msg =
+                            IcmpV6Packet::MulticastListenerQuery(IcmpV6MulticastListenerMessage {
+                                maximum_response_delay: Duration::from_secs(1),
+                                multicast_addr: Ipv6Addr::UNSPECIFIED,
+                            });
+                        msg.to_vec().unwrap()
+                    },
+                }))
+                .unwrap();
         });
     }
 }
 
+#[derive(Default)]
 struct Router;
-impl_build_named!(Router);
 
 impl AsyncModule for Router {
-    fn new() -> Self {
-        Self
-    }
-
     async fn at_sim_start(&mut self, _stage: usize) {
         pcap(PcapConfig {
             filters: PcapFilters::default(),
@@ -135,28 +145,20 @@ impl AsyncModule for Router {
 
 type Switch = utils::LinkLayerSwitch;
 
-struct Main;
-impl_build_named!(Main);
-impl Module for Main {
-    fn new() -> Self {
-        Main
-    }
-}
-
 #[test]
 fn ipv6_autcfg() {
     inet::init();
-    // des::tracing::Subscriber::default().init().unwrap();
+    des::tracing::init();
 
-    let app = NdlApplication::new(
+    let app = Sim::ndl(
         "tests/ipv6.ndl",
-        registry![Main, HostAlice, HostBob, Router, Switch],
+        registry![HostAlice, HostBob, Router, Switch, else _],
     )
     .unwrap();
 
     let rt = Builder::seeded(123)
         // .max_itr(30)
         .max_time(10.0.into())
-        .build(app.into_app());
+        .build(app);
     let _ = rt.run();
 }

@@ -26,6 +26,7 @@ pub fn setup_router(
     }
 
     declare_ipv6_router(Ipv6RouterConfig {
+        adv: true,
         current_hop_limit: 255,
         managed: false,
         other_cfg: false,

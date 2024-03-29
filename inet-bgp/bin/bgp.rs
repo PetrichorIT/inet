@@ -11,20 +11,10 @@ use inet_pcap::{pcap, PcapCapturePoints, PcapConfig, PcapFilters};
 use inet_rip::RipRoutingDeamon;
 use tokio::spawn;
 
-struct NetA;
-impl Module for NetA {
-    fn new() -> Self {
-        Self
-    }
-}
-
+#[derive(Default)]
 struct BgpA;
 
 impl AsyncModule for BgpA {
-    fn new() -> Self {
-        Self
-    }
-
     async fn at_sim_start(&mut self, _: usize) {
         add_interface(Interface::ethv4_named(
             "en0",
@@ -70,13 +60,10 @@ impl AsyncModule for BgpA {
 // ffffffffffffffffffffffffffffffff 00 1d 0104 fe09 00b4c 0a8006500
 // ffffffffffffffffffffffffffffffff 00 1d 0104 fe09 00b4c 0a8000f00
 
+#[derive(Default)]
 struct B;
 
 impl AsyncModule for B {
-    fn new() -> Self {
-        Self
-    }
-
     async fn at_sim_start(&mut self, _: usize) {
         add_interface(Interface::ethv4_named(
             "link-a",
@@ -110,13 +97,10 @@ impl AsyncModule for B {
     }
 }
 
+#[derive(Default)]
 struct C;
 
 impl AsyncModule for C {
-    fn new() -> Self {
-        Self
-    }
-
     async fn at_sim_start(&mut self, _: usize) {
         add_interface(Interface::ethv4_named(
             "link-b",
@@ -160,13 +144,10 @@ impl AsyncModule for C {
     }
 }
 
+#[derive(Default)]
 struct D;
 
 impl AsyncModule for D {
-    fn new() -> Self {
-        Self
-    }
-
     async fn at_sim_start(&mut self, _: usize) {
         add_interface(Interface::ethv4(
             NetworkDevice::eth(),
@@ -190,20 +171,10 @@ impl AsyncModule for D {
     }
 }
 
-struct Main;
-impl Module for Main {
-    fn new() -> Self {
-        Self
-    }
-}
-
+#[derive(Default)]
 struct Node;
 
 impl AsyncModule for Node {
-    fn new() -> Self {
-        Self
-    }
-
     async fn at_sim_start(&mut self, _: usize) {
         add_interface(Interface::ethv4(
             NetworkDevice::eth(),
@@ -226,13 +197,10 @@ impl AsyncModule for Node {
     }
 }
 
+#[derive(Default)]
 struct Router;
 
 impl AsyncModule for Router {
-    fn new() -> Self {
-        Self
-    }
-
     async fn at_sim_start(&mut self, _: usize) {
         let addr = par("addr").unwrap().parse::<Ipv4Addr>().unwrap();
         let mask = par("mask").unwrap().parse::<Ipv4Addr>().unwrap();
@@ -269,18 +237,16 @@ impl AsyncModule for Router {
 
 fn main() {
     inet::init();
-    des::tracing::init();
+    // des::tracing::init();
 
     type Switch = LinkLayerSwitch;
 
-    let mut app = NetworkApplication::new(
-        NdlApplication::new(
-            "bin/bgp.ndl",
-            registry![BgpA, NetA, Switch, Node, Router, B, C, D, Main],
-        )
-        .unwrap(),
-    );
-    app.include_par_file("bin/bgp.par");
+    let mut app = Sim::ndl(
+        "bin/bgp.ndl",
+        registry![BgpA, Switch, Node, Router, B, C, D, else _],
+    )
+    .unwrap();
+    app.include_par_file("bin/bgp.par").unwrap();
     let rt = Builder::seeded(123)
         .max_time(1000.0.into())
         .max_itr(100)

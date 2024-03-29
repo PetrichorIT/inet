@@ -1,7 +1,10 @@
 use std::{
-    error, fmt,
+    cmp::Ordering,
+    error,
+    fmt::{self, Debug},
     net::{AddrParseError, Ipv6Addr},
     num::ParseIntError,
+    ops,
     str::FromStr,
 };
 
@@ -112,6 +115,13 @@ impl Ipv6AddrExt for Ipv6Addr {
     fn scope(&self) -> Ipv6AddrScope {
         Ipv6AddrScope::new(*self)
     }
+
+    const LINK_LOCAL: Ipv6Addr = Ipv6Prefix::LINK_LOCAL.addr();
+    const MULTICAST_ALL_NODES: Ipv6Addr = Ipv6Addr::new(0xff02, 0, 0, 0, 0, 0, 0, 1);
+    const MULTICAST_ALL_ROUTERS: Ipv6Addr = Ipv6Addr::new(0xff02, 0, 0, 0, 0, 0, 0, 2);
+    const ONES: Ipv6Addr = Ipv6Addr::new(
+        0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff,
+    );
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
@@ -212,36 +222,88 @@ impl FromStr for Ipv6Prefix {
     }
 }
 
+impl PartialOrd for Ipv6Prefix {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Ipv6Prefix {
+    fn cmp(&self, other: &Self) -> Ordering {
+        match self.len().cmp(&other.len()) {
+            Ordering::Equal => self.addr.cmp(&other.addr),
+            other => other,
+        }
+    }
+}
+
 pub struct Ipv6LongestPrefixTable<E> {
-    inner: Vec<(Ipv6Prefix, E)>,
+    keys: Vec<Ipv6Prefix>,
+    values: Vec<E>,
 }
 
 impl<E> Ipv6LongestPrefixTable<E> {
     pub fn new() -> Self {
-        Self { inner: Vec::new() }
+        Self {
+            keys: Vec::new(),
+            values: Vec::new(),
+        }
     }
 
     pub fn insert(&mut self, prefix: Ipv6Prefix, entry: E) {
-        match self
-            .inner
-            .binary_search_by(|v| prefix.len().cmp(&v.0.len()))
-        {
-            Ok(i) | Err(i) => self.inner.insert(i, (prefix, entry)),
+        match self.keys.binary_search_by(|v| prefix.cmp(v)) {
+            Ok(i) => {
+                self.values[i] = entry;
+            }
+            Err(i) => {
+                self.keys.insert(i, prefix);
+                self.values.insert(i, entry);
+            }
         }
     }
 
     pub fn remove(&mut self, prefix: Ipv6Prefix) {
-        self.inner.retain(|(key, _)| *key == prefix)
+        let Some(pos) = self.keys.iter().position(|p| *p == prefix) else {
+            return;
+        };
+        self.keys.remove(pos);
+        self.values.remove(pos);
+    }
+
+    pub fn retain<F>(&mut self, mut f: F)
+    where
+        F: FnMut(&Ipv6Prefix, &E) -> bool,
+    {
+        let mut pos = 0;
+        while pos < self.keys.len() {
+            let keep = f(&self.keys[pos], &self.values[pos]);
+            if keep {
+                pos += 1;
+            } else {
+                self.keys.remove(pos);
+                self.values.remove(pos);
+            }
+        }
     }
 
     pub fn lookup(&self, addr: Ipv6Addr) -> Option<&E> {
-        self.inner.iter().find_map(|(prefix, entry)| {
-            if prefix.contains(addr) {
-                Some(entry)
-            } else {
-                None
-            }
-        })
+        let pos = self.keys.iter().position(|prefix| prefix.contains(addr))?;
+        Some(&self.values[pos])
+    }
+}
+
+impl<E> ops::Deref for Ipv6LongestPrefixTable<E> {
+    type Target = [E];
+    fn deref(&self) -> &Self::Target {
+        &self.values
+    }
+}
+
+impl<E: Debug> Debug for Ipv6LongestPrefixTable<E> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_map()
+            .entries((0..self.keys.len()).map(|i| (&self.keys[i], &self.values[i])))
+            .finish()
     }
 }
 
@@ -357,6 +419,6 @@ mod tests {
             3,
         );
 
-        assert_eq!(tbl.inner.iter().map(|v| v.1).collect::<Vec<_>>(), [3, 1, 2])
+        assert_eq!(tbl.iter().copied().collect::<Vec<_>>(), [3, 1, 2])
     }
 }

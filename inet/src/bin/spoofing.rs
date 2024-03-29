@@ -11,13 +11,10 @@ use inet_types::{
 };
 use tokio::spawn;
 
+#[derive(Default)]
 struct Spoofer {}
 
 impl AsyncModule for Spoofer {
-    fn new() -> Spoofer {
-        Self {}
-    }
-
     async fn at_sim_start(&mut self, _: usize) {
         add_interface(Interface::ethv4(
             NetworkDevice::eth(),
@@ -62,13 +59,10 @@ impl AsyncModule for Spoofer {
     }
 }
 
+#[derive(Default)]
 struct Reader {}
 
 impl AsyncModule for Reader {
-    fn new() -> Reader {
-        Self {}
-    }
-
     async fn at_sim_start(&mut self, _stage: usize) {
         add_interface(Interface::ethv4(
             NetworkDevice::eth(),
@@ -95,25 +89,16 @@ impl AsyncModule for Reader {
     }
 }
 
-struct Main {}
-impl Module for Main {
-    fn new() -> Main {
-        Self {}
-    }
-}
-
 fn main() {
     inet::init();
     des::tracing::init();
 
-    let app = NetworkApplication::new(
-        NdlApplication::new(
-            "inet/src/bin/spoofing.ndl",
-            registry![Spoofer, Reader, Main],
-        )
-        .map_err(|e| println!("{e}"))
-        .unwrap(),
-    );
+    let app = Sim::ndl(
+        "inet/src/bin/spoofing.ndl",
+        registry![Spoofer, Reader, else _],
+    )
+    .map_err(|e| println!("{e}"))
+    .unwrap();
     let rt = Builder::seeded(123).build(app);
     let _ = rt.run().unwrap();
 }

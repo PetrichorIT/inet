@@ -1,8 +1,9 @@
 use std::{net::Ipv6Addr, time::Duration};
 
 use des::net::{
-    module::{current, AsyncModule, Module},
-    par, par_for, Topology,
+    module::{current, AsyncModule},
+    par, par_for,
+    topology::Topology,
 };
 use inet::{
     interface::{add_interface, Interface, InterfaceAddr, NetworkDevice},
@@ -15,16 +16,10 @@ use inet_types::{
     ip::{Ipv6AddrExt, Ipv6Prefix},
 };
 
-#[macro_use]
-mod common;
-
+#[derive(Default)]
 struct Host;
-impl_build_named!(Host);
-impl AsyncModule for Host {
-    fn new() -> Self {
-        Self
-    }
 
+impl AsyncModule for Host {
     async fn at_sim_start(&mut self, _stage: usize) {
         tokio::spawn(async move {
             let secs = des::runtime::random::<f64>();
@@ -48,18 +43,16 @@ impl AsyncModule for Host {
     }
 }
 
+#[derive(Default)]
 struct Router;
-impl_build_named!(Router);
-impl AsyncModule for Router {
-    fn new() -> Self {
-        Self
-    }
 
+impl AsyncModule for Router {
     async fn at_sim_start(&mut self, _stage: usize) {
         let addr: Ipv6Addr = par("addr").unwrap().parse().unwrap();
         let prefix: Ipv6Prefix = par("prefix").unwrap().parse().unwrap();
 
         declare_ipv6_router(Ipv6RouterConfig {
+            adv: true,
             current_hop_limit: 255,
             managed: false,
             other_cfg: false,
@@ -84,13 +77,13 @@ impl AsyncModule for Router {
 
         // WAN route probing
         let mut top = Topology::current();
-        top.filter_nodes(|n| n.module.name() == "router");
+        top.filter_nodes(|n| n.module().name() == "router");
         let map = top.dijkstra(current().path());
 
         let mut allready_assigned = Vec::new();
         for (k, v) in map {
-            let local_idx = v.pos() as u128;
-            let remote = v.path_end().unwrap();
+            let local_idx = v.from.gate().pos() as u128;
+            let remote = v.to.gate();
             let remote_idx = remote.pos() as u128;
             let remote_prefix: Ipv6Prefix = par_for("prefix", remote.owner().path())
                 .unwrap()
@@ -99,7 +92,7 @@ impl AsyncModule for Router {
 
             if !allready_assigned.contains(&local_idx) {
                 // create local iface with predicatable addrr
-                let mut device = NetworkDevice::custom(v.clone(), v.clone());
+                let mut device = NetworkDevice::custom(v.from.gate(), v.from.gate());
                 device.addr =
                     MacAddress::from([0, 0, 0, prefix.addr().octets()[5], 0, local_idx as u8]);
 
@@ -138,22 +131,6 @@ impl AsyncModule for Router {
 
 // type Switch = utils::LinkLayerSwitch;
 
-struct LAN;
-impl_build_named!(LAN);
-impl Module for LAN {
-    fn new() -> Self {
-        Self
-    }
-}
-
-struct Main;
-impl_build_named!(Main);
-impl Module for Main {
-    fn new() -> Self {
-        Self
-    }
-}
-
 // #[test]
 // fn traceroute_success() -> Result<(), Box<dyn Error>> {
 //     inet::init();
@@ -161,7 +138,7 @@ impl Module for Main {
 
 //     let ndl = NdlApplication::new(
 //         "tests/icmpv6_traceroute.ndl",
-//         registry![Host, Switch, Router, LAN, Main],
+//         registry![Host, Switch, Router, else _],
 //     )?;
 //     let mut app = ndl.into_app();
 //     app.include_par_file("tests/icmpv6_traceroute.par");

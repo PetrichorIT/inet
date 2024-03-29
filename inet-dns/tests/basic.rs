@@ -15,15 +15,12 @@ DNS2 = www
 */
 // # CLIENT
 
+#[derive(Default)]
 struct Client {
     suc: bool,
 }
 
 impl AsyncModule for Client {
-    fn new() -> Self {
-        Self { suc: false }
-    }
-
     async fn at_sim_start(&mut self, _stage: usize) {
         let ip = par("addr").unwrap().parse::<Ipv4Addr>().unwrap();
         add_interface(Interface::ethv4_named(
@@ -99,25 +96,10 @@ impl AsyncModule for Client {
 }
 
 // # SERVER
-
-struct DNSServer0 {
-    server: Option<DNSNameserver>,
-}
+#[derive(Default)]
+struct DNSServer0;
 
 impl AsyncModule for DNSServer0 {
-    fn new() -> Self {
-        Self {
-            server: Some(
-                DNSNameserver::from_zonefile(
-                    "org",
-                    "tests/dns-basic/zonefiles/",
-                    "ns0.namservers.org.",
-                )
-                .unwrap(),
-            ),
-        }
-    }
-
     async fn at_sim_start(&mut self, _stage: usize) {
         let ip = par("addr").unwrap().parse::<Ipv4Addr>().unwrap();
         add_interface(Interface::ethv4_named(
@@ -136,35 +118,22 @@ impl AsyncModule for DNSServer0 {
         if msg.header().kind != 1111 {
             return;
         }
-        let mut server = self.server.take().unwrap();
+        let mut server = DNSNameserver::from_zonefile(
+            "org",
+            "tests/dns-basic/zonefiles/",
+            "ns0.nameservers.org.",
+        )
+        .unwrap();
         tokio::spawn(async move {
             server.launch().await.unwrap();
         });
     }
 }
 
-struct DNSServer1 {
-    server: Option<DNSNameserver>,
-}
+#[derive(Default)]
+struct DNSServer1;
 
 impl AsyncModule for DNSServer1 {
-    fn new() -> Self {
-        Self {
-            server: Some(
-                DNSNameserver::from_zonefile(
-                    "example.org.",
-                    "tests/dns-basic/zonefiles/",
-                    if current().name() == "dns1" {
-                        "ns1.example.org."
-                    } else {
-                        "ns2.example.org."
-                    },
-                )
-                .unwrap(),
-            ),
-        }
-    }
-
     async fn at_sim_start(&mut self, _stage: usize) {
         let ip = par("addr").unwrap().parse::<Ipv4Addr>().unwrap();
         add_interface(Interface::ethv4_named(
@@ -182,31 +151,26 @@ impl AsyncModule for DNSServer1 {
         if msg.header().kind != 1111 {
             return;
         }
-        let mut server = self.server.take().unwrap();
+        let mut server = DNSNameserver::from_zonefile(
+            "example.org.",
+            "tests/dns-basic/zonefiles/",
+            if current().name() == "dns1" {
+                "ns1.example.org."
+            } else {
+                "ns2.example.org."
+            },
+        )
+        .unwrap();
         tokio::spawn(async move {
             server.launch().await.unwrap();
         });
     }
 }
 
-struct DNSServer2 {
-    server: Option<DNSNameserver>,
-}
+#[derive(Default)]
+struct DNSServer2;
 
 impl AsyncModule for DNSServer2 {
-    fn new() -> Self {
-        Self {
-            server: Some(
-                DNSNameserver::from_zonefile(
-                    ".",
-                    "tests/dns-basic/zonefiles/",
-                    "a.root-servers.net.",
-                )
-                .unwrap(),
-            ),
-        }
-    }
-
     async fn at_sim_start(&mut self, _stage: usize) {
         let ip = par("addr").unwrap().parse::<Ipv4Addr>().unwrap();
         add_interface(Interface::ethv4_named(
@@ -225,7 +189,9 @@ impl AsyncModule for DNSServer2 {
         if msg.header().kind != 7912 {
             return;
         }
-        let mut server = self.server.take().unwrap();
+        let mut server =
+            DNSNameserver::from_zonefile(".", "tests/dns-basic/zonefiles/", "a.root-servers.net.")
+                .unwrap();
         tokio::spawn(async move {
             server.declare_root_ns();
             server.launch().await.unwrap();
@@ -235,12 +201,10 @@ impl AsyncModule for DNSServer2 {
 
 type Switch = inet::utils::LinkLayerSwitch;
 
+#[derive(Default)]
 struct Router;
-impl Module for Router {
-    fn new() -> Self {
-        Router
-    }
 
+impl Module for Router {
     fn at_sim_start(&mut self, _stage: usize) {
         let ip = par("addr").unwrap().parse().unwrap();
         add_interface(Interface::ethv4(NetworkDevice::bidirectional("lan"), ip)).unwrap();
@@ -263,31 +227,17 @@ impl Module for Router {
     }
 }
 
-struct Main;
-impl Module for Main {
-    fn new() -> Main {
-        Main
-    }
-}
-
 #[test]
 fn dns_basic() {
     inet::init();
 
-    // Logger::new()
-    //     .interal_max_log_level(tracing::LevelFilter::Warn)
-    //     .try_set_logger()
-    //     .unwrap();
-
-    let mut rt = NetworkApplication::new(
-        NdlApplication::new(
-            "tests/dns-basic/main.ndl",
-            registry![Main, Switch, DNSServer0, DNSServer1, DNSServer2, Client, Router],
-        )
-        .map_err(|e| println!("{e}"))
-        .unwrap(),
-    );
-    rt.include_par_file("tests/dns-basic/main.par");
+    let mut rt = Sim::ndl(
+        "tests/dns-basic/main.ndl",
+        registry![Switch, DNSServer0, DNSServer1, DNSServer2, Client, Router, else _],
+    )
+    .map_err(|e| println!("{e}"))
+    .unwrap();
+    rt.include_par_file("tests/dns-basic/main.par").unwrap();
     let rt = Builder::seeded(123).build(rt);
     let _ = rt.run();
 }

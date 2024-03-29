@@ -12,12 +12,9 @@ use std::{
 use des::prelude::*;
 use inet::{interface::*, socket::AsRawFd, TcpSocket};
 
+#[derive(Default)]
 struct Link {}
 impl Module for Link {
-    fn new() -> Self {
-        Self {}
-    }
-
     fn handle_message(&mut self, msg: Message) {
         // random packet drop 10 %
         if (random::<usize>() % 10) == 7 {
@@ -46,19 +43,13 @@ impl Module for Link {
     }
 }
 
+#[derive(Default)]
 struct TcpServer {
     done: Arc<AtomicBool>,
     fd: Arc<AtomicU32>,
 }
 
 impl AsyncModule for TcpServer {
-    fn new() -> Self {
-        Self {
-            done: Arc::new(AtomicBool::new(false)),
-            fd: Arc::new(AtomicU32::new(0)),
-        }
-    }
-
     async fn at_sim_start(&mut self, _: usize) {
         add_interface(Interface::ethv4(
             NetworkDevice::eth(),
@@ -141,19 +132,13 @@ impl AsyncModule for TcpServer {
     }
 }
 
+#[derive(Default)]
 struct TcpClient {
     done: Arc<AtomicBool>,
     fd: Arc<AtomicU32>,
 }
 
 impl AsyncModule for TcpClient {
-    fn new() -> Self {
-        Self {
-            done: Arc::new(AtomicBool::new(false)),
-            fd: Arc::new(AtomicU32::new(0)),
-        }
-    }
-
     async fn at_sim_start(&mut self, _: usize) {
         add_interface(Interface::ethv4(
             NetworkDevice::eth(),
@@ -208,13 +193,6 @@ impl AsyncModule for TcpClient {
     }
 }
 
-struct Main;
-impl Module for Main {
-    fn new() -> Main {
-        Main
-    }
-}
-
 #[test]
 #[serial_test::serial]
 fn tcp_missing_data_at_close() {
@@ -225,11 +203,12 @@ fn tcp_missing_data_at_close() {
     //     .init()
     //     .unwrap();
 
-    let app = NetworkApplication::new(
-        NdlApplication::new("tests/tcp.ndl", registry![Link, TcpServer, TcpClient, Main])
-            .map_err(|e| println!("{e}"))
-            .unwrap(),
-    );
+    let app = Sim::ndl(
+        "tests/tcp.ndl",
+        registry![Link, TcpServer, TcpClient, else _],
+    )
+    .map_err(|e| println!("{e}"))
+    .unwrap();
     let rt = Builder::seeded(1263431312323)
         .max_time(10.0.into())
         .build(app);

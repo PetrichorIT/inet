@@ -5,17 +5,12 @@ use inet::{
 };
 use tokio::{spawn, task::JoinHandle};
 
+#[derive(Default)]
 struct OneAttemptClient {
     handles: Vec<JoinHandle<()>>,
 }
 
 impl AsyncModule for OneAttemptClient {
-    fn new() -> Self {
-        Self {
-            handles: Vec::new(),
-        }
-    }
-
     async fn at_sim_start(&mut self, _: usize) {
         add_interface(Interface::ethv4(
             NetworkDevice::eth(),
@@ -37,17 +32,12 @@ impl AsyncModule for OneAttemptClient {
     }
 }
 
+#[derive(Default)]
 struct MultipleAttemptClient<const EXPECT: bool> {
     handles: Vec<JoinHandle<()>>,
 }
 
 impl<const EXPECT: bool> AsyncModule for MultipleAttemptClient<EXPECT> {
-    fn new() -> Self {
-        Self {
-            handles: Vec::new(),
-        }
-    }
-
     async fn at_sim_start(&mut self, _: usize) {
         add_interface(Interface::ethv4(
             NetworkDevice::eth(),
@@ -74,13 +64,10 @@ impl<const EXPECT: bool> AsyncModule for MultipleAttemptClient<EXPECT> {
     }
 }
 
+#[derive(Default)]
 struct EmptyServer {}
 
 impl AsyncModule for EmptyServer {
-    fn new() -> Self {
-        Self {}
-    }
-
     async fn at_sim_start(&mut self, _: usize) {
         add_interface(Interface::ethv4(
             NetworkDevice::eth(),
@@ -90,13 +77,10 @@ impl AsyncModule for EmptyServer {
     }
 }
 
+#[derive(Default)]
 struct BoundServer {}
 
 impl AsyncModule for BoundServer {
-    fn new() -> Self {
-        Self {}
-    }
-
     async fn at_sim_start(&mut self, _: usize) {
         add_interface(Interface::ethv4(
             NetworkDevice::eth(),
@@ -115,13 +99,6 @@ impl AsyncModule for BoundServer {
     }
 }
 
-struct Main;
-impl Module for Main {
-    fn new() -> Self {
-        Self
-    }
-}
-
 #[test]
 #[serial_test::serial]
 fn tcp_rst_for_closed_port() {
@@ -132,10 +109,9 @@ fn tcp_rst_for_closed_port() {
 
     // Logger::new().set_logger();
 
-    let app = NdlApplication::new("tests/tcp2.ndl", registry![Client, Server, Main])
+    let app = Sim::ndl("tests/tcp2.ndl", registry![Client, Server, else _])
         .map_err(|e| println!("{e}"))
         .unwrap();
-    let app = NetworkApplication::new(app);
     let rt = Builder::seeded(233).build(app);
 
     let _ = rt.run().unwrap();
@@ -151,10 +127,9 @@ fn tcp_rst_on_multiple_tries() {
 
     // Logger::new().set_logger();
 
-    let app = NdlApplication::new("tests/tcp2.ndl", registry![Client, Server, Main])
+    let app = Sim::ndl("tests/tcp2.ndl", registry![Client, Server, else _])
         .map_err(|e| println!("{e}"))
         .unwrap();
-    let app = NetworkApplication::new(app);
     let rt = Builder::seeded(233).build(app);
 
     let _ = rt.run().unwrap();
@@ -170,10 +145,9 @@ fn tcp_rst_on_multiple_tries_with_success() {
 
     // Logger::new().set_logger();
 
-    let app = NdlApplication::new("tests/tcp2.ndl", registry![Client, Server, Main])
+    let app = Sim::ndl("tests/tcp2.ndl", registry![Client, Server, else _])
         .map_err(|e| println!("{e}"))
         .unwrap();
-    let app = NetworkApplication::new(app);
     let rt = Builder::seeded(233).build(app);
 
     let _ = rt.run().unwrap();

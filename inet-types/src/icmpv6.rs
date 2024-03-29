@@ -6,7 +6,7 @@ use std::{
 
 use bytepack::{raw_enum, FromBytestream, ReadBytesExt, ToBytestream, WriteBytesExt, BE};
 
-use crate::iface::MacAddress;
+use crate::{iface::MacAddress, ip::Ipv6Prefix};
 
 pub const PROTO_ICMPV6: u8 = 58;
 
@@ -22,6 +22,11 @@ pub enum IcmpV6Packet {
 
     EchoRequest(IcmpV6Echo) = 128,
     EchoReply(IcmpV6Echo) = 129,
+
+    // MDL
+    MulticastListenerQuery(IcmpV6MulticastListenerMessage) = 130,
+    MulticastListenerReport(IcmpV6MulticastListenerMessage) = 131,
+    MulticastListenerDone(IcmpV6MulticastListenerMessage) = 132,
 
     // NDP
     RouterSolicitation(IcmpV6RouterSolicitation) = 133,
@@ -57,6 +62,10 @@ impl ToBytestream for IcmpV6Packet {
             ParameterProblem = 4,
             EchoRequest = 128,
             EchoReply = 129,
+            /* MDL */
+            MulticastListenerQuery = 130,
+            MulticastListenerReport = 131,
+            MulticastListenerDone = 132,
             /* NDP */
             RouterSolicitation = 133,
             RouterAdvertisment = 134,
@@ -92,6 +101,10 @@ impl FromBytestream for IcmpV6Packet {
             ParameterProblem(IcmpV6ParameterProblem) = 4,
             EchoRequest(IcmpV6Echo) = 128,
             EchoReply(IcmpV6Echo) = 129,
+            /* MDL */
+            MulticastListenerQuery(IcmpV6MulticastListenerMessage) = 130,
+            MulticastListenerReport(IcmpV6MulticastListenerMessage) = 131,
+            MulticastListenerDone(IcmpV6MulticastListenerMessage) = 132,
             /* NDP */
             RouterSolicitation(IcmpV6RouterSolicitation) = 133,
             RouterAdvertisment(IcmpV6RouterAdvertisement) = 134,
@@ -690,6 +703,12 @@ pub struct IcmpV6PrefixInformation {
     pub prefix: Ipv6Addr,
 }
 
+impl IcmpV6PrefixInformation {
+    pub fn prefix(&self) -> Ipv6Prefix {
+        Ipv6Prefix::new(self.prefix, self.prefix_len)
+    }
+}
+
 impl ToBytestream for IcmpV6PrefixInformation {
     type Error = io::Error;
     fn to_bytestream(&self, stream: &mut bytepack::BytestreamWriter) -> Result<(), Self::Error> {
@@ -758,6 +777,38 @@ impl FromBytestream for IcmpV6MtuOption {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct IcmpV6MulticastListenerMessage {
+    pub maximum_response_delay: Duration,
+    pub multicast_addr: Ipv6Addr,
+}
+
+impl ToBytestream for IcmpV6MulticastListenerMessage {
+    type Error = io::Error;
+
+    fn to_bytestream(&self, stream: &mut bytepack::BytestreamWriter) -> Result<(), Self::Error> {
+        stream.write_u8(0)?;
+        stream.write_u16::<BE>(0)?;
+        stream.write_u16::<BE>(self.maximum_response_delay.as_millis() as u16)?;
+        stream.write_u16::<BE>(0)?;
+        stream.write_u128::<BE>(u128::from(self.multicast_addr))
+    }
+}
+
+impl FromBytestream for IcmpV6MulticastListenerMessage {
+    type Error = io::Error;
+    fn from_bytestream(stream: &mut bytepack::BytestreamReader) -> Result<Self, Self::Error> {
+        assert_eq!(0, stream.read_u8()?);
+        assert_eq!(0, stream.read_u16::<BE>()?);
+        let maximum_response_delay = Duration::from_millis(stream.read_u16::<BE>()? as u64);
+        assert_eq!(0, stream.read_u16::<BE>()?);
+        let multicast_addr = Ipv6Addr::from(stream.read_u128::<BE>()?);
+        Ok(Self {
+            maximum_response_delay,
+            multicast_addr,
+        })
+    }
+}
 // # RFC 4861 constants
 
 // ## Router constants
@@ -765,7 +816,8 @@ impl FromBytestream for IcmpV6MtuOption {
 pub const NDP_MAX_INITIAL_RTR_ADVERT_INTERVAL: Duration = Duration::from_secs(16);
 pub const NDP_MAX_INITIAL_RTR_ADVERTISEMENTS: usize = 3;
 pub const NDP_MAX_FINAL_RTR_ADVERTISEMENTS: usize = 3;
-pub const NDP_MIN_DELAY_BETWEEN_RAS: Duration = Duration::from_secs(3);
+pub const NDP_MIN_DELAY_BETWEEN_RAS: Duration = Duration::from_secs(5);
+pub const NDP_MAX_DELAY_BETWEEN_RAS: Duration = Duration::from_secs(1000);
 pub const NDP_MAX_RA_DELAY_TIME: Duration = Duration::from_millis(500);
 
 // ## Host constants

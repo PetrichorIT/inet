@@ -16,13 +16,10 @@ const PROTO: u8 = 83;
 static V4: AtomicUsize = AtomicUsize::new(0);
 static V6: AtomicUsize = AtomicUsize::new(0);
 
+#[derive(Default)]
 struct Emitter;
 
 impl AsyncModule for Emitter {
-    fn new() -> Self {
-        Self
-    }
-
     async fn at_sim_start(&mut self, _stage: usize) {
         add_interface(Interface::eth_mixed(
             "en0",
@@ -90,13 +87,10 @@ impl AsyncModule for Emitter {
     }
 }
 
+#[derive(Default)]
 struct Receiver;
 
 impl AsyncModule for Receiver {
-    fn new() -> Self {
-        Self
-    }
-
     async fn at_sim_start(&mut self, _: usize) {
         add_interface(Interface::eth_mixed(
             "en0",
@@ -129,13 +123,6 @@ impl AsyncModule for Receiver {
     }
 }
 
-struct Main;
-impl Module for Main {
-    fn new() -> Self {
-        Self
-    }
-}
-
 #[test]
 fn raw_ip_socket() {
     inet::init();
@@ -144,11 +131,9 @@ fn raw_ip_socket() {
     // .interal_max_log_level(tracing::LevelFilter::Trace)
     // .set_logger();
 
-    let rt = NetworkApplication::new(
-        NdlApplication::new("tests/emit.ndl", registry![Main, Emitter, Receiver])
-            .map_err(|e| println!("{e}"))
-            .unwrap(),
-    );
+    let rt: Sim<_> = Sim::ndl("tests/emit.ndl", registry![Emitter, Receiver, else _])
+        .map_err(|e| println!("{e}"))
+        .unwrap();
     let rt = Builder::seeded(123).build(rt);
     let _ = rt.run();
 }

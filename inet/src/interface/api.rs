@@ -5,34 +5,39 @@ use super::{
 use crate::{
     arp::ArpEntryInternal,
     interface::{InterfaceAddrV4, InterfaceAddrV6},
-    ipv6::ndp::QueryType,
+    ipv6::{mld, ndp::QueryType},
     routing::{FwdEntryV4, Ipv4Gateway, Ipv6Gateway, RoutingTableId},
     IOContext,
 };
-use des::{net::module::current, time::SimTime};
+use des::{
+    net::{module::current, par, ParError},
+    time::SimTime,
+};
 use inet_types::ip::Ipv6AddrExt;
 use std::{
-    io::{Error, ErrorKind, Result},
+    io::{self, Error, ErrorKind},
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
 };
+use tracing::Level;
 
 /// Declares and activiates an new network interface on the current module
-pub fn add_interface(iface: Interface) -> Result<()> {
+pub fn add_interface(iface: Interface) -> io::Result<()> {
     IOContext::failable_api(|ctx| ctx.add_interface(iface))
 }
 
-pub fn interface_add_addr(iface: impl AsRef<str>, addr: IpAddr) -> Result<()> {
+pub fn interface_add_addr(iface: impl AsRef<str>, addr: IpAddr) -> io::Result<()> {
     IOContext::failable_api(|ctx| ctx.interface_add_addr(iface.as_ref(), addr))
 }
 
-pub fn interface_status(iface: impl AsRef<str>) -> Result<InterfaceState> {
+pub fn interface_status(iface: impl AsRef<str>) -> io::Result<InterfaceState> {
     IOContext::failable_api(|ctx| ctx.interface_status(iface.as_ref()))
 }
 
-pub fn interface_status_by_ifid(ifid: IfId) -> Result<InterfaceState> {
+pub fn interface_status_by_ifid(ifid: IfId) -> io::Result<InterfaceState> {
     IOContext::failable_api(|ctx| ctx.interface_status_by_ifid(ifid))
 }
 
+#[derive(Debug, Clone)]
 pub struct InterfaceState {
     pub name: InterfaceName,
     pub flags: InterfaceFlags,
@@ -42,8 +47,23 @@ pub struct InterfaceState {
     pub queuelen: usize,
 }
 
+impl InterfaceState {
+    pub fn write_to_par(&self) -> Result<(), ParError> {
+        let base_key = self.name.to_string();
+        par(base_key.clone() + ":flags").set(self.flags)?;
+        par(base_key + ":addrs").set(
+            self.addrs
+                .iter()
+                .map(|binding| binding.to_ip().to_string())
+                .collect::<Vec<_>>()
+                .join(", "),
+        )?;
+        Ok(())
+    }
+}
+
 impl IOContext {
-    pub fn add_interface(&mut self, mut iface: Interface) -> Result<()> {
+    pub fn add_interface(&mut self, mut iface: Interface) -> io::Result<()> {
         if self.ifaces.get(&iface.name.id).is_some() {
             return Err(Error::new(
                 ErrorKind::Other,
@@ -65,7 +85,7 @@ impl IOContext {
                     hostname: None,
                     ip: IpAddr::V4(Ipv4Addr::BROADCAST),
                     mac: MacAddress::BROADCAST,
-                    iface: iface.name.id,
+                    iface: iface.name.id(),
                     expires: SimTime::MAX,
                 });
 
@@ -81,7 +101,7 @@ impl IOContext {
                     hostname: None,
                     ip: IpAddr::V6(Ipv6Addr::new(0xf801, 0, 0, 0, 0, 0, 0, 1)),
                     mac: MacAddress::BROADCAST,
-                    iface: iface.name.id,
+                    iface: iface.name.id(),
                     expires: SimTime::MAX,
                 });
 
@@ -91,7 +111,7 @@ impl IOContext {
                         0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff,
                     ),
                     Ipv6Gateway::Broadcast,
-                    iface.name.id,
+                    iface.name.id(),
                     usize::MAX,
                 );
             }
@@ -106,7 +126,7 @@ impl IOContext {
                         hostname: Some(current().name()),
                         ip: IpAddr::V4(binding.addr),
                         mac: iface.device.addr,
-                        iface: iface.name.id,
+                        iface: iface.name.id(),
                         expires: SimTime::MAX,
                     });
                 }
@@ -116,7 +136,7 @@ impl IOContext {
                         hostname: Some(current().name()),
                         ip: IpAddr::V6(addr.addr),
                         mac: iface.device.addr,
-                        iface: iface.name.id,
+                        iface: iface.name.id(),
                         expires: SimTime::MAX,
                     });
                 }
@@ -145,12 +165,12 @@ impl IOContext {
                 addr,
                 mask,
                 Ipv6Gateway::Local,
-                iface.name.id,
+                iface.name.id(),
                 usize::MAX / 4,
             )
         }
 
-        let ifid = iface.name.id;
+        let ifid = iface.name.id();
         let router = iface.flags.router;
         let loopback = iface.flags.loopback;
         let mac = iface.device.addr;
@@ -158,11 +178,9 @@ impl IOContext {
         let mut addrs = InterfaceAddrsV6::default();
         std::mem::swap(&mut addrs, &mut iface.addrs.v6);
 
-        self.ifaces.insert(iface.name.id, iface);
+        self.ifaces.insert(iface.name.id(), iface);
 
         if v6 && !router && !loopback {
-            self.ipv6_register_host_interface(ifid)?;
-
             // Autocfg a link local address;
             if addrs.unicast.is_empty() {
                 // Link-local address generation
@@ -172,24 +190,29 @@ impl IOContext {
                 // - enabled after disabled (assuming that addr is not allready bound)
 
                 let binding = InterfaceAddrV6::new_link_local(mac);
-                tracing::debug!("autoassigning link local addr '{binding}'");
-                self.interface_add_addr_v6(ifid, binding, false)?;
+                self.interface_add_addr_v6(ifid.clone(), binding, false)?;
             } else {
                 // TODO: legacy impl improve
                 for binding in addrs.unicast {
-                    self.interface_add_addr_v6(ifid, binding, true)?;
+                    self.interface_add_addr_v6(ifid.clone(), binding, true)?;
                 }
             }
+
+            self.ipv6_register_host_interface(ifid.clone())?;
         } else {
             for binding in addrs.unicast {
-                self.interface_add_addr_v6(ifid, binding, true)?;
+                self.interface_add_addr_v6(ifid.clone(), binding, true)?;
             }
+        }
+
+        if v6 && router {
+            self.ipv6_schedule_unsolicited_router_adv(ifid)?;
         }
 
         Ok(())
     }
 
-    pub fn interface_add_addr(&mut self, name: &str, addr: IpAddr) -> Result<()> {
+    pub fn interface_add_addr(&mut self, name: &str, addr: IpAddr) -> io::Result<()> {
         match addr {
             IpAddr::V4(addr) => {
                 let Some((ifid, iface)) = self
@@ -200,7 +223,9 @@ impl IOContext {
                     todo!()
                 };
 
-                tracing::debug!(IFACE = %ifid, "assigning blind address {addr}");
+                let _guard = tracing::span!(Level::INFO, "iface", id = %ifid).entered();
+
+                tracing::debug!("assigning blind address {addr}");
                 iface.addrs.add(InterfaceAddr::Inet(InterfaceAddrV4 {
                     addr,
                     netmask: Ipv4Addr::BROADCAST,
@@ -209,8 +234,13 @@ impl IOContext {
             }
             IpAddr::V6(addr) => {
                 let binding = InterfaceAddrV6::new_static(addr, 64);
-                let ifid = self.ifaces.keys().find(|key| key.matches(name)).unwrap();
-                self.interface_add_addr_v6(*ifid, binding, false)
+                let ifid = self
+                    .ifaces
+                    .keys()
+                    .find(|key| key.matches(name))
+                    .cloned()
+                    .unwrap();
+                self.interface_add_addr_v6(ifid, binding, false)
             }
         }
     }
@@ -220,43 +250,45 @@ impl IOContext {
         ifid: IfId,
         binding: InterfaceAddrV6,
         no_dedup: bool,
-    ) -> Result<()> {
+    ) -> io::Result<()> {
         let Some(iface) = self.ifaces.get_mut(&ifid) else {
             todo!()
         };
 
+        let _guard = tracing::span!(Level::INFO, "iface", id=%ifid).entered();
+
         if !iface.flags.multicast {
-            tracing::debug!(IFACE = %ifid, "assigning blind address '{binding}'");
+            tracing::debug!("assigning blind address '{binding}'");
             iface.addrs.add(InterfaceAddr::Inet6(binding));
             return Ok(());
         }
 
         if self.ipv6.cfg.dup_addr_detect_transmits > 0 && !no_dedup {
-            tracing::debug!(IFACE = %ifid, "initiating tentative address checks for '{binding}'");
+            tracing::debug!("initiating tentative address checks for '{binding}'");
             self.ipv6_icmp_send_neighbor_solicitation(
                 binding.addr,
                 ifid,
                 QueryType::TentativeAddressCheck(binding),
             )
         } else {
-            tracing::debug!(IFACE = %ifid, "assigning address '{binding}'");
-
             iface.addrs.v6.join(Ipv6Addr::MULTICAST_ALL_NODES);
             if iface.flags.router {
                 iface.addrs.v6.join(Ipv6Addr::MULTICAST_ALL_ROUTERS);
             }
-            iface
-                .addrs
-                .v6
-                .join(Ipv6Addr::solicied_node_multicast(binding.addr));
 
+            let multicast = Ipv6Addr::solicied_node_multicast(binding.addr);
+
+            let needs_mld_report = iface.addrs.v6.join(multicast);
             iface.addrs.add(InterfaceAddr::Inet6(binding));
 
+            if needs_mld_report {
+                self.mld_on_event(ifid, mld::Event::StartListening, multicast)?;
+            }
             Ok(())
         }
     }
 
-    fn interface_status(&mut self, iface_name: &str) -> Result<InterfaceState> {
+    fn interface_status(&mut self, iface_name: &str) -> io::Result<InterfaceState> {
         let Some((_, iface)) = self
             .ifaces
             .iter()
@@ -277,7 +309,7 @@ impl IOContext {
         })
     }
 
-    fn interface_status_by_ifid(&mut self, ifid: IfId) -> Result<InterfaceState> {
+    fn interface_status_by_ifid(&mut self, ifid: IfId) -> io::Result<InterfaceState> {
         let Some(iface) = self.ifaces.get(&ifid) else {
             return Err(Error::new(
                 ErrorKind::InvalidInput,

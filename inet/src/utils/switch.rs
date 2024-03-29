@@ -21,9 +21,6 @@ pub const KIND_SWITCH_WAKEUP: MessageKind = 0x0600;
 /// By virtue of using ARP, all ajacent nodes will identifiy themselves using either
 /// ARP responses or ARP requests (broadcast) before any data is send, so
 /// the switch will have learned all nessecary data.
-///
-/// This type represents a fully functional module, thus can be used as a drop-in
-/// in i.e. [`AsyncBuilder`](des::net::AsyncBuilder).
 pub struct LinkLayerSwitch {
     info: RoutingInformation,
     // mac addr --> RoutingPort index
@@ -32,15 +29,17 @@ pub struct LinkLayerSwitch {
     queues: Vec<VecDeque<Message>>,
 }
 
-impl Module for LinkLayerSwitch {
-    fn new() -> Self {
+impl Default for LinkLayerSwitch {
+    fn default() -> Self {
         Self {
             info: RoutingInformation::emtpy(),
             mapping: FxHashMap::with_hasher(FxBuildHasher::default()),
             queues: Vec::new(),
         }
     }
+}
 
+impl Module for LinkLayerSwitch {
     fn at_sim_start(&mut self, _: usize) {
         self.info = RoutingInformation::collect();
         self.queues = repeat_with(|| VecDeque::new())

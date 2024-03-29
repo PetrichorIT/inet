@@ -1,0 +1,362 @@
+<!DOCTYPE HTML>
+<html lang="en" class="light" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Interface managment - INET documentation</title>
+
+
+        <!-- Custom HTML head -->
+        
+        <meta name="description" content="">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="../favicon.svg">
+        <link rel="shortcut icon" href="../favicon.png">
+        <link rel="stylesheet" href="../css/variables.css">
+        <link rel="stylesheet" href="../css/general.css">
+        <link rel="stylesheet" href="../css/chrome.css">
+        <link rel="stylesheet" href="../css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="../FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="../fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" href="../highlight.css">
+        <link rel="stylesheet" href="../tomorrow-night.css">
+        <link rel="stylesheet" href="../ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+
+    </head>
+    <body class="sidebar-visible no-js">
+    <div id="body-container">
+        <!-- Provide site root to javascript -->
+        <script>
+            var path_to_root = "../";
+            var default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "navy" : "light";
+        </script>
+
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                var theme = localStorage.getItem('mdbook-theme');
+                var sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            var theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            var html = document.querySelector('html');
+            html.classList.remove('light')
+            html.classList.add(theme);
+            var body = document.querySelector('body');
+            body.classList.remove('no-js')
+            body.classList.add('js');
+        </script>
+
+        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            var body = document.querySelector('body');
+            var sidebar = null;
+            var sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+            }
+            sidebar_toggle.checked = sidebar === 'visible';
+            body.classList.remove('sidebar-visible');
+            body.classList.add("sidebar-" + sidebar);
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <div class="sidebar-scrollbox">
+                <ol class="chapter"><li class="chapter-item expanded "><a href="../overview.html"><strong aria-hidden="true">1.</strong> Overview</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="../overview/setup.html"><strong aria-hidden="true">1.1.</strong> Project Setup</a></li><li class="chapter-item expanded "><a href="../overview/basic-concepts.html"><strong aria-hidden="true">1.2.</strong> Basic concepts</a></li></ol></li><li class="chapter-item expanded "><a href="../core.html"><strong aria-hidden="true">2.</strong> Core functions</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="../core/interface_mngmt.html" class="active"><strong aria-hidden="true">2.1.</strong> Interface managment</a></li><li class="chapter-item expanded "><a href="../core/sending_algorithm.html"><strong aria-hidden="true">2.2.</strong> Conceptual sending algorithm</a></li><li class="chapter-item expanded "><a href="../core/address_resolution.html"><strong aria-hidden="true">2.3.</strong> Address resolution</a></li></ol></li></ol>
+            </div>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <!-- Track and set sidebar scroll position -->
+        <script>
+            var sidebarScrollbox = document.querySelector('#sidebar .sidebar-scrollbox');
+            sidebarScrollbox.addEventListener('click', function(e) {
+                if (e.target.tagName === 'A') {
+                    sessionStorage.setItem('sidebar-scroll', sidebarScrollbox.scrollTop);
+                }
+            }, { passive: true });
+            var sidebarScrollTop = sessionStorage.getItem('sidebar-scroll');
+            sessionStorage.removeItem('sidebar-scroll');
+            if (sidebarScrollTop) {
+                // preserve sidebar scroll position when navigating via links within sidebar
+                sidebarScrollbox.scrollTop = sidebarScrollTop;
+            } else {
+                // scroll sidebar to current active section when navigating via "next/previous chapter" buttons
+                var activeSection = document.querySelector('#sidebar .active');
+                if (activeSection) {
+                    activeSection.scrollIntoView({ block: 'center' });
+                }
+            }
+        </script>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </label>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search. (Shortkey: s)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="S" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">INET documentation</h1>
+
+                    <div class="right-buttons">
+                        <a href="../print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <h1 id="interface-management"><a class="header" href="#interface-management">Interface Management</a></h1>
+<p>This chapter will explain all detail regarding interface management,
+configuration and the automatic procedures that may are associted to
+basic interface to interface communication.</p>
+<h2 id="parts-of-the-machine"><a class="header" href="#parts-of-the-machine">Parts of the machine</a></h2>
+<p>An interface can be roughtly described as a collection of the following datapoints:</p>
+<ul>
+<li>A host-unique interface name (such as <code>en0</code>)</li>
+<li>A set of flags, indicating the capabilites and the role of the interface
+independent of the underlying device</li>
+<li>A set of assigned IPv4 addresses</li>
+<li>A set of assigned IPv6 addresses as well as some multicast groups</li>
+<li>A network device, with an associated MAC addresss</li>
+</ul>
+<p>All these components define how a interface will behave if it deals
+with both outgoing and incoming traffic. At runtime, an interface
+also directly manages:</p>
+<ul>
+<li>Buffers to queue packages, to prevent the overloading of underlying channels</li>
+<li>Status information about the current sending process</li>
+<li>Statistics about the traffic send to this interface</li>
+</ul>
+<p>Additionaly some other processes are associted to interface management and
+link-local connectivity. This includes:</p>
+<ul>
+<li>Link layer address resolution (via ARP for IPv4 or NDP for IPv6)</li>
+<li>Stateless address autoconfiguration for IPv6</li>
+<li>Multicast listener discovery for IPv6</li>
+</ul>
+<h2 id="network-devices"><a class="header" href="#network-devices">Network devices</a></h2>
+<p>A network device connects the IO plugin to some kind of connectivity, provided by the simulation.
+There are two kinds of network devices:</p>
+<ul>
+<li><code>Loopback</code> devices, use the <code>schedule_in</code>/<code>schedule_at</code> API to allow a node to send messages to itself. Loopback links
+are never delayed, so the effective latency is <code>0ms</code> and the bitrate is infinite.</li>
+<li><code>Ethernet</code> devices, use a pair of gates as both input and output to send and receive messages. Incoming messages are
+assigned to the ethernet device that matches the <code>last_gate</code> header in the incoming message. The output gate
+is used to send out message. If a channel is attached to the output link (directly or indirectly) the interface
+will only send messages as long as the channel is not busy. Note that a ethenert device will not send the next
+packet immieditatly after the last, but rather introduces a <code>1ns</code> delay to prevent event collisions.</li>
+</ul>
+<p>Each network device is assigned a MAC address. MAC addresses are randomly generated by <code>des</code>, so their uniqueness is
+not guaranteed, but highly likely. The <code>addr</code> field of a network device can also be changed, to create devices with
+fixed MAC addresses.</p>
+<p>Each interface only accepts ethernet datagrams addressed to one of the following addresses:</p>
+<ul>
+<li>The exact MAC address of the receiving device</li>
+<li>The broadcast address <code>ff:ff:ff:ff:ff:ff</code></li>
+<li>A matching multicast address for an existing multicast binding on the interface (<code>33:33:xx:xx:xx:xx</code>)</li>
+</ul>
+<h2 id="interface-flags"><a class="header" href="#interface-flags">Interface flags</a></h2>
+<p>The interface flags indicate the capabilites and role of a interface. Since underlying device
+can neither enforce nor describe diverging usage patters such as p2p only links or simplex connections,
+flags can be used to enforce compliant behaviour to these operations.</p>
+<p>Currently only a few flags are activly supported:</p>
+<ul>
+<li><code>multicast</code> indicates that a interface is multicast capable. Most interface functions require a multicast capable interface
+so no setting this flag can break many things.</li>
+<li><code>broadcast</code> indicates the of the attached link to propagate broadcast packets. This can be a minimally viable solution for
+IPv4 networks without multicast capabilites.</li>
+<li><code>router</code> indicates that the node should act as a router in regards to this interface. This includes not only routing incoming
+packets, but also responding to NDP router solicitations, as well as acting as a MLD Querier.</li>
+<li><code>v6</code> indicates that the interface is IPv6 capable. If this flag is not set, the interface only supports IPv4 traffic.
+(Impl not yet complete)</li>
+</ul>
+<h2 id="assigning-ipv4-addresses"><a class="header" href="#assigning-ipv4-addresses">Assigning IPv4 addresses</a></h2>
+<p>Any binding of an IPv4 address requires both a address and a netmask to bind the interface to
+a local network segment. IPv4 bindings will be valid without any lookups into the local network
+since no dedup is currently implemented for IPv4 bindings.</p>
+<h2 id="assigning-ipv6-addresss"><a class="header" href="#assigning-ipv6-addresss">Assigning IPv6 addresss</a></h2>
+<p>Each IPv6 capable interface guarantees the existence of a link-local IPv6 address, derived from the
+network device's MAC address (direct derive, not updated to secure generation). Additionally
+the user can provide other binding either directly as part of the <code>Interface</code> when calling
+<code>intefaces::add_interface</code> or using <code>intefaces::interface_add_addr</code>. Any newly assigned address
+will not be assigned immediatly, but rather be checked for duplicates in the local network segment.
+After this deduplication succeeds the address will be assigned, including the apporpiate multicast
+bindings.</p>
+<p>Address deduplication can take up to <code>NDP_MAX_RTR_SOLICITATION_DELAY</code> seconds. Address deduplication can be
+deactivated by setting the host configuration variable <code>dup_addr_detect_transmits</code> to <code>0</code>. Use the configuration
+API at <code>ipv6::api::set_node_cfg</code> to change the host configuration.</p>
+<p>Should the deduplication fail, the address will not be assigned. An error is not yet emitteded (TODO), but a
+log is created.</p>
+<p>Besides manually assigninga addresses, a IPv6 capable interface will also use stateless address autoconfiguration
+to discover the local network prefixes and assign addresses accordingly. This requires the presence of a IPv6
+capable router in the local network segement. Address deduplication is also performed for these addresses.</p>
+<h2 id="buffering"><a class="header" href="#buffering">Buffering</a></h2>
+<p>When an interface sends packet bursts, packets may be buffered in the interface, so not overload the
+channel. An interface will buffer up to a fixed amount of packets, no more. If no more packets
+can be stored the interface will:</p>
+<p>a) Assert backpressure to slow down the sending component
+b) Drop any packets still queued for sending after that</p>
+<p>Not all components are able to react to backpressure, but the TCP implementation can.
+Other sockets like like <code>UdpSocket</code> or <code>RawIpSocket</code> cannot directly react to backpressure,
+but interface sending errors may be propagated to the send call.</p>
+<h2 id="api"><a class="header" href="#api">API</a></h2>
+<p>These are the components of the interface API:</p>
+<ul>
+<li>
+<p><code>Interface</code> is the base struct, to create new interfaces</p>
+<ul>
+<li>it contains <code>InterfaceFlags</code> as described aboth</li>
+<li>it contains <code>InterfaceAddrs</code> to manage address assigments</li>
+<li>it contains an <code>InterfaceName</code> to uniquly identifiy the interface for the current host</li>
+<li>it contains a <code>NetworkDevice</code> to manage the underlying connectivity</li>
+</ul>
+</li>
+<li>
+<p><code>add_interface</code> adds an interface to the node</p>
+<ul>
+<li>it only requires an instance of <code>Interface</code> to allocate a new IO binding</li>
+<li>if this function returns with <code>Ok(())</code>, this only indicates that the interface has been created
+and the configuration was plausible. It may be the case that addresses are not yet assigned since
+they are not yet deduplicated.</li>
+</ul>
+</li>
+<li>
+<p><code>interface_add_addr</code> assigns a new address binding to an interface</p>
+<ul>
+<li>similarly <code>Ok(())</code> does not indicate that dedup succeeded, only that the
+assigment process has begun</li>
+</ul>
+</li>
+<li>
+<p><code>interface_status{, _by_id}</code> returns the simplified state of an interface</p>
+<ul>
+<li>this state can be exported as simulation parameters (see <code>des::net::par</code>) to
+propagate interface configuration results over node bounds</li>
+</ul>
+</li>
+<li>
+<p>configuration functions for NDP, MLD and the general host configuration are also relevant
+to interface managment, since these protocols are used as port of the automatic configuration
+process</p>
+</li>
+</ul>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="../core.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
+
+                            <a rel="next prefetch" href="../core/sending_algorithm.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <i class="fa fa-angle-right"></i>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="../core.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
+
+                    <a rel="next prefetch" href="../core/sending_algorithm.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <i class="fa fa-angle-right"></i>
+                    </a>
+            </nav>
+
+        </div>
+
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="../elasticlunr.min.js"></script>
+        <script src="../mark.min.js"></script>
+        <script src="../searcher.js"></script>
+
+        <script src="../clipboard.min.js"></script>
+        <script src="../highlight.js"></script>
+        <script src="../book.js"></script>
+
+        <!-- Custom JS scripts -->
+
+
+    </div>
+    </body>
+</html>

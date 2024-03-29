@@ -19,15 +19,17 @@ struct Connector {
     drops: Arc<AtomicUsize>,
 }
 
-impl AsyncModule for Connector {
-    fn new() -> Self {
+impl Default for Connector {
+    fn default() -> Self {
         Self {
             freq: 0.0,
             t: SimTime::ZERO,
             drops: Arc::new(AtomicUsize::new(0)),
         }
     }
+}
 
+impl AsyncModule for Connector {
     async fn at_sim_start(&mut self, _: usize) {
         // let drops = self.drops.clone();
         // spawn(async move {
@@ -79,17 +81,12 @@ impl AsyncModule for Connector {
     }
 }
 
+#[derive(Default)]
 struct Client {
     handles: Vec<JoinHandle<()>>,
 }
 
 impl AsyncModule for Client {
-    fn new() -> Self {
-        Self {
-            handles: Vec::new(),
-        }
-    }
-
     async fn at_sim_start(&mut self, _: usize) {
         add_interface(Interface::ethv4(
             NetworkDevice::eth(),
@@ -129,13 +126,10 @@ impl AsyncModule for Client {
     }
 }
 
+#[derive(Default)]
 struct Server {}
 
 impl AsyncModule for Server {
-    fn new() -> Self {
-        Self {}
-    }
-
     async fn at_sim_start(&mut self, _: usize) {
         add_interface(Interface::ethv4(
             NetworkDevice::eth(),
@@ -177,27 +171,19 @@ impl AsyncModule for Server {
     }
 }
 
-struct Main;
-impl Module for Main {
-    fn new() -> Main {
-        Main
-    }
-}
-
 fn main() {
     inet::init();
     // des::tracing::Subscriber::default().init().unwrap();
     // Logger::new().policy(Policy).set_logger();
 
-    let mut app = NetworkApplication::new(
-        NdlApplication::new(
-            "inet/src/bin/tcp.ndl",
-            registry![Client, Server, Main, Connector],
-        )
-        .map_err(|e| println!("{e}"))
-        .unwrap(),
-    );
-    app.include_par_file("inet/src/bin/tcp.par");
+    let mut app = Sim::ndl(
+        "inet/src/bin/tcp.ndl",
+        registry![Client, Server, Connector, else _],
+    )
+    .map_err(|e| println!("{e}"))
+    .unwrap();
+
+    app.include_par_file("inet/src/bin/tcp.par").unwrap();
 
     let rt = Builder::seeded(123).build(app);
     let _ = rt.run().unwrap();

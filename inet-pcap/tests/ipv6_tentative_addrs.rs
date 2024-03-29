@@ -1,8 +1,7 @@
 use std::fs::File;
 
 use des::{
-    ndl::NdlApplication,
-    net::module::{AsyncModule, Module},
+    net::{module::AsyncModule, Sim},
     registry,
     runtime::Builder,
 };
@@ -14,17 +13,10 @@ use inet::{
 };
 use inet_pcap::{pcap, PcapCapturePoints, PcapConfig, PcapFilters};
 
-#[macro_use]
-mod common;
-
+#[derive(Default)]
 struct HostAlice;
-impl_build_named!(HostAlice);
 
 impl AsyncModule for HostAlice {
-    fn new() -> Self {
-        Self
-    }
-
     async fn at_sim_start(&mut self, _stage: usize) {
         pcap(PcapConfig {
             filters: PcapFilters::default(),
@@ -42,14 +34,10 @@ impl AsyncModule for HostAlice {
     }
 }
 
+#[derive(Default)]
 struct HostBob;
-impl_build_named!(HostBob);
 
 impl AsyncModule for HostBob {
-    fn new() -> Self {
-        Self
-    }
-
     async fn at_sim_start(&mut self, _stage: usize) {
         pcap(PcapConfig {
             filters: PcapFilters::default(),
@@ -67,14 +55,10 @@ impl AsyncModule for HostBob {
     }
 }
 
+#[derive(Default)]
 struct Router;
-impl_build_named!(Router);
 
 impl AsyncModule for Router {
-    fn new() -> Self {
-        Self
-    }
-
     async fn at_sim_start(&mut self, _stage: usize) {
         pcap(PcapConfig {
             filters: PcapFilters::default(),
@@ -97,28 +81,20 @@ impl AsyncModule for Router {
 
 type Switch = utils::LinkLayerSwitch;
 
-struct Main;
-impl_build_named!(Main);
-impl Module for Main {
-    fn new() -> Self {
-        Main
-    }
-}
-
 #[test]
 fn ipv6_tentative_addrs() {
     inet::init();
-    des::tracing::init();
+    // des::tracing::init();
 
-    let app = NdlApplication::new(
+    let app = Sim::ndl(
         "tests/ipv6.ndl",
-        registry![Main, HostAlice, HostBob, Router, Switch],
+        registry![HostAlice, HostBob, Router, Switch, else _],
     )
     .unwrap();
 
     let rt = Builder::seeded(123)
         // .max_itr(30)
         .max_time(10.0.into())
-        .build(app.into_app());
+        .build(app);
     let _ = rt.run();
 }

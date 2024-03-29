@@ -315,12 +315,13 @@ impl IOContext {
         if self.sockets.values().any(|socket| socket.addr == addr) {
             return Err(Error::new(ErrorKind::AddrInUse, "Address allready in use"));
         }
+
         // Find right interface
         for (ifid, interface) in self.ifaces.iter() {
             if let Some(_) = interface
                 .addrs
                 .iter()
-                .find(|iaddr| iaddr.matches_subnet(addr.ip()))
+                .find(|iaddr| iaddr.matches(addr.ip()))
             {
                 // Found the right interface
                 if interface.status == InterfaceStatus::Inactive {

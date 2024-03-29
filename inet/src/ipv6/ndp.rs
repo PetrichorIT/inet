@@ -370,6 +370,13 @@ impl PrefixList {
         }
     }
 
+    pub fn timeout_for(&self, info: &IcmpV6PrefixInformation) -> Option<SimTime> {
+        self.list
+            .iter()
+            .find(|v| v.prefix == Ipv6Prefix::new(info.prefix, info.prefix_len))
+            .map(|e| e.expires)
+    }
+
     pub fn set_static(&mut self, prefix: Ipv6Prefix) {
         self.list.push(PrefixListEntry {
             prefix,
@@ -380,8 +387,17 @@ impl PrefixList {
         self.sort();
     }
 
-    pub fn timeout(&mut self) {
-        self.list.retain(|entry| entry.expires > SimTime::now())
+    pub fn timeout(&mut self) -> Vec<PrefixListEntry> {
+        let mut removed = Vec::new();
+        let mut i = 0;
+        while i < self.list.len() {
+            if self.list[i].expires > SimTime::now() {
+                i += 1;
+            } else {
+                removed.push(self.list.remove(i));
+            }
+        }
+        removed
     }
 }
 

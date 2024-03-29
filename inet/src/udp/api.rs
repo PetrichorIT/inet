@@ -25,7 +25,6 @@ impl UdpSocket {
     /// The port allocated can be queried via the `local_addr` method.
     pub async fn bind(addr: impl ToSocketAddrs) -> Result<UdpSocket> {
         let addrs = lookup_host(addr).await?;
-
         // Get the current context
         IOContext::with_current(|ctx| {
             let mut last_err = None;

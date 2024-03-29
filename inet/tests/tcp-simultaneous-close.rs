@@ -16,12 +16,9 @@ use inet::{
 };
 use serial_test::serial;
 
+#[derive(Default)]
 struct Link {}
 impl Module for Link {
-    fn new() -> Self {
-        Self {}
-    }
-
     fn handle_message(&mut self, msg: Message) {
         match msg.header().last_gate.as_ref().map(|v| v.name()) {
             Some("lhs") => send(msg, "rhs"),
@@ -31,19 +28,13 @@ impl Module for Link {
     }
 }
 
+#[derive(Default)]
 struct TcpServer {
     done: Arc<AtomicBool>,
     fd: Arc<AtomicU32>,
 }
 
 impl AsyncModule for TcpServer {
-    fn new() -> Self {
-        Self {
-            done: Arc::new(AtomicBool::new(false)),
-            fd: Arc::new(AtomicU32::new(0)),
-        }
-    }
-
     async fn at_sim_start(&mut self, _: usize) {
         add_interface(Interface::ethv4(
             NetworkDevice::eth(),
@@ -115,19 +106,13 @@ impl AsyncModule for TcpServer {
     }
 }
 
+#[derive(Default)]
 struct TcpClient {
     done: Arc<AtomicBool>,
     fd: Arc<AtomicU32>,
 }
 
 impl AsyncModule for TcpClient {
-    fn new() -> Self {
-        Self {
-            done: Arc::new(AtomicBool::new(false)),
-            fd: Arc::new(AtomicU32::new(0)),
-        }
-    }
-
     async fn at_sim_start(&mut self, _: usize) {
         add_interface(Interface::ethv4(
             NetworkDevice::eth(),
@@ -172,13 +157,6 @@ impl AsyncModule for TcpClient {
     }
 }
 
-struct Main;
-impl Module for Main {
-    fn new() -> Main {
-        Main
-    }
-}
-
 #[test]
 #[serial]
 fn tcp_simulaneous_close() {
@@ -186,11 +164,12 @@ fn tcp_simulaneous_close() {
 
     // Logger::new().set_logger();
 
-    let app = NetworkApplication::new(
-        NdlApplication::new("tests/tcp.ndl", registry![Link, TcpServer, TcpClient, Main])
-            .map_err(|e| println!("{e}"))
-            .unwrap(),
-    );
+    let app = Sim::ndl(
+        "tests/tcp.ndl",
+        registry![Link, TcpServer, TcpClient, else _],
+    )
+    .map_err(|e| println!("{e}"))
+    .unwrap();
     let rt = Builder::seeded(123).max_time(3.0.into()).build(app);
     let (_, time, profiler) = rt.run().unwrap();
     assert_eq!(time.as_secs(), 2);

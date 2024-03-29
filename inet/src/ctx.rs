@@ -17,12 +17,12 @@ use fxhash::{FxBuildHasher, FxHashMap};
 use inet_types::{
     icmpv4::PROTO_ICMPV4,
     icmpv6::PROTO_ICMPV6,
-    ip::{IpPacket, IpPacketRef, Ipv4Packet, Ipv6AddrExt, Ipv6Packet, KIND_IPV4, KIND_IPV6},
+    ip::{IpPacket, IpPacketRef, Ipv4Packet, Ipv6Packet, KIND_IPV4, KIND_IPV6},
 };
 use std::{
     cell::RefCell,
     io::{Error, ErrorKind, Result},
-    net::{IpAddr, Ipv4Addr, Ipv6Addr},
+    net::{IpAddr, Ipv4Addr},
     panic::UnwindSafe,
 };
 
@@ -176,7 +176,7 @@ impl IOContext {
             Timeout(timeout) => return self.networking_layer_io_timeout(timeout),
         };
 
-        self.current.ifid = ifid;
+        self.current.ifid = ifid.clone();
 
         let kind = msg.header().kind;
         match kind {
@@ -208,7 +208,7 @@ impl IOContext {
 
                     // (2) Reroute packet.
                     match self.send_ip_packet(
-                        SocketIfaceBinding::Any(self.ifaces.keys().copied().collect()),
+                        SocketIfaceBinding::Any(self.ifaces.keys().cloned().collect()),
                         IpPacket::V4(pkt),
                         true,
                     ) {
@@ -286,7 +286,7 @@ impl IOContext {
 
                     // (2) Reroute packet.
                     match self.send_ip_packet(
-                        SocketIfaceBinding::Any(self.ifaces.keys().copied().collect()),
+                        SocketIfaceBinding::Any(self.ifaces.keys().cloned().collect()),
                         IpPacket::V6(pkt),
                         true,
                     ) {
@@ -299,23 +299,6 @@ impl IOContext {
                             )
                         }
                     };
-                }
-
-                if multicast {
-                    // Check whether we support this multicast option
-                    match ip.dst {
-                        Ipv6Addr::MULTICAST_ALL_ROUTERS if iface.flags.router => { /* OK */ }
-                        Ipv6Addr::MULTICAST_ALL_ROUTERS => { /* ALSO OK WE WANT NEIGHBOR UPDATES STILL */
-                        }
-                        Ipv6Addr::MULTICAST_ALL_NODES => {}
-                        ip if iface
-                            .addrs
-                            .v6
-                            .addrs()
-                            .any(|addr| ip == Ipv6Addr::solicied_node_multicast(addr)) =>
-                        { /* SOLCITED MULTICAST */ }
-                        _ => panic!("Unknown multicast: {} {ip:?}", ip.dst),
-                    }
                 }
 
                 match ip.next_header {
@@ -360,9 +343,15 @@ impl IOContext {
         }
     }
 
+    pub fn event_end(&mut self) {
+        self.ipv6.timer.schedule_wakeup();
+    }
+
     fn networking_layer_io_timeout(&mut self, msg: Message) -> Option<Message> {
         if msg.header().id == ID_IPV6_TIMEOUT {
-            self.ipv6_handle_timer(msg);
+            if let Err(e) = self.ipv6_handle_timer(msg) {
+                tracing::error!("an error occured in the timer block: {e}");
+            }
             return None;
         }
 

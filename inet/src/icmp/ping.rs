@@ -104,7 +104,7 @@ impl IOContext {
         ip.content = icmp.to_vec().expect("Failed to parse ICMP");
 
         self.send_ip_packet(
-            SocketIfaceBinding::Any(self.ifaces.keys().copied().collect::<Vec<_>>()),
+            SocketIfaceBinding::Any(self.ifaces.keys().cloned().collect::<Vec<_>>()),
             IpPacket::V4(ip),
             true,
         )

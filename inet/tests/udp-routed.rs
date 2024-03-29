@@ -7,16 +7,12 @@ use inet::{
 };
 use tokio::task::JoinHandle;
 
+#[derive(Default)]
 struct Node {
     handles: Vec<JoinHandle<()>>,
 }
-impl AsyncModule for Node {
-    fn new() -> Self {
-        Self {
-            handles: Vec::new(),
-        }
-    }
 
+impl AsyncModule for Node {
     async fn at_sim_start(&mut self, s: usize) {
         if s == 0 {
             return;
@@ -82,12 +78,10 @@ impl AsyncModule for Node {
 
 type Switch = inet::utils::LinkLayerSwitch;
 
+#[derive(Default)]
 struct Router {}
-impl Module for Router {
-    fn new() -> Self {
-        Router {}
-    }
 
+impl Module for Router {
     fn at_sim_start(&mut self, _stage: usize) {
         let ip = par("addr").unwrap().parse().unwrap();
         add_interface(Interface::ethv4(
@@ -114,12 +108,10 @@ impl Module for Router {
     }
 }
 
+#[derive(Default)]
 struct Main;
-impl Module for Main {
-    fn new() -> Main {
-        Main
-    }
 
+impl Module for Main {
     fn at_sim_start(&mut self, _stage: usize) {
         let mut targets = FxHashMap::with_hasher(FxBuildHasher::default());
 
@@ -161,14 +153,13 @@ fn udp_routed() {
 
     // des::tracing::Subscriber::default().init().unwrap();
 
-    let app = NdlApplication::new(
+    let mut app = Sim::ndl(
         "tests/udp-routed/main.ndl",
         registry![Node, Switch, Main, Router],
     )
     .map_err(|e| println!("{e}"))
     .unwrap();
-    let mut app = NetworkApplication::new(app);
-    app.include_par_file("tests/udp-routed/main.par");
+    app.include_par_file("tests/udp-routed/main.par").unwrap();
     let rt = Builder::seeded(123).build(app);
     let _ = rt.run();
 }

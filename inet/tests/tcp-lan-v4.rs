@@ -9,17 +9,12 @@ use tokio::{
     task::JoinHandle,
 };
 
+#[derive(Default)]
 struct Node {
     handles: Vec<JoinHandle<()>>,
 }
 
 impl AsyncModule for Node {
-    fn new() -> Self {
-        Self {
-            handles: Vec::new(),
-        }
-    }
-
     async fn at_sim_start(&mut self, s: usize) {
         if s == 0 {
             // add_plugin(TcpDebugPlugin, 0);
@@ -94,12 +89,9 @@ impl AsyncModule for Node {
 
 type Switch = inet::utils::LinkLayerSwitch;
 
+#[derive(Default)]
 struct Main;
 impl Module for Main {
-    fn new() -> Main {
-        Main
-    }
-
     fn at_sim_start(&mut self, _stage: usize) {
         let mut targets = Vec::new();
         for i in 0..5 {
@@ -129,11 +121,10 @@ fn tcp_lan_v4() {
     // .interal_max_log_level(tracing::LevelFilter::Trace)
     // .set_logger();
 
-    let app = NdlApplication::new("tests/tcp-lan/main.ndl", registry![Node, Switch, Main])
+    let mut app = Sim::ndl("tests/tcp-lan/main.ndl", registry![Node, Switch, Main])
         .map_err(|e| println!("{e}"))
         .unwrap();
-    let mut app = NetworkApplication::new(app);
-    app.include_par_file("tests/tcp-lan/v4.par");
+    app.include_par_file("tests/tcp-lan/v4.par").unwrap();
     let rt = Builder::seeded(123).build(app);
     let _ = rt.run();
 }

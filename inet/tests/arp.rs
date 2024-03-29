@@ -14,13 +14,15 @@ struct Node {
     ip: IpAddr,
 }
 
-impl AsyncModule for Node {
-    fn new() -> Self {
+impl Default for Node {
+    fn default() -> Self {
         Self {
             ip: IpAddr::V4(Ipv4Addr::UNSPECIFIED),
         }
     }
+}
 
+impl AsyncModule for Node {
     async fn at_sim_start(&mut self, _stage: usize) {
         let ip = par("addr").unwrap().parse().unwrap();
         add_interface(Interface::eth(NetworkDevice::eth(), ip)).unwrap();
@@ -77,25 +79,16 @@ impl AsyncModule for Node {
     }
 }
 
-struct Main;
-impl Module for Main {
-    fn new() -> Self {
-        Self
-    }
-}
-
 #[test]
 #[serial]
 fn v4() {
     inet::init();
     // Logger::new().set_logger();
 
-    let mut app = NetworkApplication::new(
-        NdlApplication::new("tests/arp/main.ndl", registry![Node, Switch, Main])
-            .map_err(|e| println!("{e}"))
-            .unwrap(),
-    );
-    app.include_par_file("tests/arp/v4.par");
+    let mut app = Sim::ndl("tests/arp/main.ndl", registry![Node, Switch, else _])
+        .map_err(|e| println!("{e}"))
+        .unwrap();
+    app.include_par_file("tests/arp/v4.par").unwrap();
 
     let rt = Builder::seeded(123).max_itr(500).build(app);
     let _ = rt.run().unwrap_premature_abort();

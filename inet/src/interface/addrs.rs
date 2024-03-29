@@ -8,7 +8,7 @@ use std::{
 use des::time::SimTime;
 use inet_types::{iface::MacAddress, ip::Ipv6AddrExt};
 
-use crate::ipv6::addrs::CanidateAddr;
+use crate::{ctx::IOContext, ipv6::addrs::CanidateAddr};
 
 use super::IfId;
 
@@ -34,8 +34,8 @@ impl InterfaceAddrs {
         let mut this = Self::default();
         for binding in addrs {
             match binding {
-                InterfaceAddr::Inet(binding) => this.v4.add(binding),
-                InterfaceAddr::Inet6(binding) => this.v6.add(binding),
+                InterfaceAddr::Inet(binding) => this.v4.bindings.push(binding),
+                InterfaceAddr::Inet6(binding) => this.v6.unicast.push(binding),
             }
         }
 
@@ -95,16 +95,41 @@ impl InterfaceAddrsV6 {
             !unicast.addr.is_multicast(),
             "cannot assign ipv6 binding '{unicast}': address is multicast scope"
         );
+        tracing::debug!(addr = %unicast, "assiging unicast address");
         self.unicast.push(unicast);
     }
 
-    pub fn join(&mut self, multicast: Ipv6Addr) {
+    pub fn remove(&mut self, addr: Ipv6Addr) -> Option<InterfaceAddrV6> {
+        for i in 0..self.unicast.len() {
+            if self.unicast[i].matches(addr) {
+                let addr = self.unicast.remove(i);
+                tracing::debug!(%addr, "unassigning unicast address");
+                return Some(addr);
+            }
+        }
+        None
+    }
+
+    /// Returns needs adv
+    pub fn join(&mut self, multicast: Ipv6Addr) -> bool {
         assert!(
             multicast.is_multicast(),
             "cannot join multicast group '{multicast}': address is not multicast"
         );
-        self.multicast
-            .push((multicast, MacAddress::ipv6_multicast(multicast)));
+        if !self.multicast.iter().any(|(addr, _)| *addr == multicast) {
+            tracing::debug!(addr = %multicast, "joining multicast scope");
+            self.multicast
+                .push((multicast, MacAddress::ipv6_multicast(multicast)));
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn leave(&mut self, multicast: Ipv6Addr) {
+        // TODO: same sol scope may attend to multile unicast -> only del after last unicast
+        tracing::debug!(addr = %multicast, "leaving multicast scope");
+        self.multicast.retain(|(addr, _)| *addr != multicast);
     }
 
     /// The bound unicast addrs
@@ -187,6 +212,13 @@ impl InterfaceAddr {
 
     pub fn ipv6_link_local(mac: MacAddress) -> Self {
         Self::Inet6(InterfaceAddrV6::new_link_local(mac))
+    }
+
+    pub fn to_ip(&self) -> IpAddr {
+        match self {
+            Self::Inet(addr) => addr.addr.into(),
+            Self::Inet6(addr) => addr.addr.into(),
+        }
     }
 
     /// Returns the addrs for a loopback interface.
@@ -390,6 +422,8 @@ impl fmt::Display for InterfaceAddrV6 {
         Ok(())
     }
 }
+
+impl IOContext {}
 
 #[cfg(test)]
 mod tests {

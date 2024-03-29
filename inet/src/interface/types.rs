@@ -1,5 +1,12 @@
 use des::prelude::*;
-use std::{fmt, ops::Deref};
+use std::{
+    collections::hash_map,
+    ffi::CStr,
+    fmt,
+    hash::{Hash, Hasher},
+    ops::Deref,
+    str::from_utf8,
+};
 
 use crate::socket::Fd;
 
@@ -8,7 +15,7 @@ pub(crate) const KIND_IO_TIMEOUT: MessageKind = 0x0128;
 
 pub(crate) const ID_IPV6_TIMEOUT: MessageId = 0x8d66;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, MessageBody)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, MessageBody)]
 pub(crate) struct LinkUpdate(pub IfId);
 
 impl From<LinkUpdate> for Message {
@@ -17,47 +24,53 @@ impl From<LinkUpdate> for Message {
     }
 }
 
-/// A numeric identifier derived from a interface name.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, MessageBody)]
-pub struct IfId(u64, #[cfg(debug_assertions)] &'static str);
+pub struct IfId {
+    // byte 0..6 prefix
+    // byte 7 hash
+    bytes: [u8; 8],
+}
 
 impl IfId {
-    /// The invalid interface address, representing Option::\<IfId\>::None
-    pub const NULL: IfId = IfId(
-        0,
-        #[cfg(debug_assertions)]
-        "null",
-    );
-    /// The broadcast interface address, an alias for all active interfaces
-    pub const BROADCAST: IfId = IfId(
-        u64::MAX,
-        #[cfg(debug_assertions)]
-        "broadcast",
-    );
+    pub const NULL: Self = Self { bytes: [0; 8] };
+    pub const BROADCAST: Self = Self { bytes: [0xff; 8] };
 
-    pub(crate) fn unchecked(s: &str) -> Self {
-        let name = InterfaceName::new(s);
-        name.id()
+    pub fn new(name: &str) -> Self {
+        let mut bytes = [0u8; 8];
+        let len = name.len().min(7);
+        bytes[..len].copy_from_slice(&name.as_bytes()[..len]);
+
+        let mut hasher = hash_map::DefaultHasher::new();
+        name.hash(&mut hasher);
+        let result = hasher.finish();
+
+        // Subtract 48 to ensure that Id::new("") is [0; 8]
+        bytes[7] = result.to_be_bytes()[0].wrapping_sub(48);
+
+        Self { bytes }
     }
 
-    pub fn matches(&self, interface_name: &str) -> bool {
-        let hash = hash!(interface_name);
-        self.0 == hash
+    pub fn matches(&self, name: &str) -> bool {
+        Self::new(name) == *self
+    }
+}
+
+impl fmt::Display for IfId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        <Self as fmt::Debug>::fmt(self, f)
     }
 }
 
 impl fmt::Debug for IfId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        <Self as fmt::Display>::fmt(self, f)
-    }
-}
-impl fmt::Display for IfId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        #[cfg(not(debug_assertions))]
-        return write!(f, "0x{:x}", self.0);
+        let bytes = &self.bytes[..7];
+        let cstr = CStr::from_bytes_until_nul(bytes);
+        let str = match cstr {
+            Ok(cstr) => cstr.to_str().unwrap(),
+            Err(_) => from_utf8(bytes).unwrap(),
+        };
 
-        #[cfg(debug_assertions)]
-        return write!(f, "{}", self.1);
+        write!(f, "{str}")
     }
 }
 
@@ -71,19 +84,14 @@ pub struct InterfaceName {
 
 impl InterfaceName {
     pub fn id(&self) -> IfId {
-        self.id
+        self.id.clone()
     }
 
     /// Creates a new interface name from a string
     pub fn new(s: impl AsRef<str>) -> Self {
         let name = s.as_ref().to_string();
-        let hash = hash!(name);
         Self {
-            id: IfId(
-                hash,
-                #[cfg(debug_assertions)]
-                name.clone().leak(),
-            ),
+            id: IfId::new(&name),
             name,
             parent: None,
         }
@@ -102,7 +110,7 @@ impl fmt::Display for InterfaceName {
         if let Some(parent) = self.parent.as_ref() {
             write!(f, "{}:{}", parent, self.name)
         } else {
-            self.name.fmt(f)
+            write!(f, "{}", self.name)
         }
     }
 }
@@ -167,5 +175,38 @@ impl InterfaceBusyState {
         } else {
             *self = new;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn iface_id_encoding() {
+        assert_eq!(IfId::new("en0").bytes[..7], b"en0\0\0\0\0"[..]);
+        assert_eq!(IfId::new("eth0").bytes[..7], b"eth0\0\0\0"[..]);
+        assert_eq!(IfId::new("abcdefg").bytes[..7], b"abcdefg"[..]);
+        assert_eq!(IfId::new("interface-delta").bytes[..7], b"interfa"[..]);
+        assert_eq!(IfId::new("").bytes[..7], b"\0\0\0\0\0\0\0"[..]);
+    }
+
+    #[test]
+    fn iface_debug() {
+        assert_eq!(IfId::new("en0").to_string(), "en0");
+        assert_eq!(IfId::new("eth0").to_string(), "eth0");
+        assert_eq!(IfId::new("").to_string(), "");
+        assert_eq!(IfId::new("exactly").to_string(), "exactly");
+        assert_eq!(IfId::new("overflow").to_string(), "overflo");
+    }
+
+    #[test]
+    fn iface_id_nonrandom_hashing() {
+        assert_eq!(IfId::new("en0"), IfId::new("en0"));
+    }
+
+    #[test]
+    fn iface_id_special_cases() {
+        assert_eq!(IfId::NULL, IfId::new(""));
     }
 }

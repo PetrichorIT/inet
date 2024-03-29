@@ -177,7 +177,7 @@ impl FromStr for CanidateAddr {
 
         for part in parts {
             if part.starts_with('#') {
-                let iface = IfId::unchecked(part.trim_start_matches('#'));
+                let iface = IfId::new(part.trim_start_matches('#'));
                 canidate.ifid = iface;
                 continue;
             }
@@ -378,7 +378,7 @@ impl SrcAddrCanidateSet {
 
                 Ordering::Equal
             })
-            .copied()
+            .cloned()
     }
 }
 
@@ -567,21 +567,21 @@ mod tests {
 
         let set = SrcAddrCanidateSet {
             dst: "2001:db8:1::1".parse()?,
-            ifid: IfId::unchecked("eth0"),
+            ifid: IfId::new("eth0"),
             addrs: vec!["2001:db8:3::1 #eth0".parse()?, ("fe80::1 #eth0".parse()?)],
         };
         assert_eq!(set.select(&table), Some("2001:db8:3::1 #eth0".parse()?));
 
         let set = SrcAddrCanidateSet {
             dst: "ff05::1".parse()?,
-            ifid: IfId::unchecked("eth0"),
+            ifid: IfId::new("eth0"),
             addrs: vec![("2001:db8:3::1 #eth0".parse()?), ("fe80::1 #eth0".parse()?)],
         };
         assert_eq!(set.select(&table), Some("2001:db8:3::1 #eth0".parse()?));
 
         let set = SrcAddrCanidateSet {
             dst: "fe80::1".parse()?,
-            ifid: IfId::unchecked("eth0"),
+            ifid: IfId::new("eth0"),
             addrs: vec![("fe80::2 #eth0".parse()?), ("2001:db8:1::1 #eth0".parse()?)],
         };
         assert_eq!(set.select(&table), Some("fe80::2 #eth0".parse()?));
@@ -595,7 +595,7 @@ mod tests {
 
         let set = SrcAddrCanidateSet {
             dst: "2001:db8:1::1".parse()?,
-            ifid: IfId::unchecked("eth0"),
+            ifid: IfId::new("eth0"),
             addrs: vec![
                 ("2001:db8:1::1 #eth0".parse()?),
                 ("2001:db8:2::1 #eth0".parse()?),
@@ -612,7 +612,7 @@ mod tests {
 
         let set = SrcAddrCanidateSet {
             dst: "2001:db8:1::1".parse()?,
-            ifid: IfId::unchecked("eth0"),
+            ifid: IfId::new("eth0"),
             addrs: vec![
                 ("2001:db8:1::2 #eth0".parse()?),
                 ("2001:db8:3::2 #eth0".parse()?),
@@ -629,7 +629,7 @@ mod tests {
 
         let set = SrcAddrCanidateSet {
             dst: "2002:c633:6401::1".parse()?,
-            ifid: IfId::unchecked("eth0"),
+            ifid: IfId::new("eth0"),
             addrs: vec![
                 ("2002:c633:6401::d5e3:7953:13eb:22e8 #eth0".parse()?),
                 ("2001:db8:1::2 #eth0".parse()?),
@@ -649,7 +649,7 @@ mod tests {
 
         let set = SrcAddrCanidateSet {
             dst: "2001:db8:1::1".parse()?,
-            ifid: IfId::unchecked("eth0"),
+            ifid: IfId::new("eth0"),
             addrs: vec![
                 ("2001:db8:1::2 #eth0 (care-of-addr)".parse()?),
                 ("2001:db8:3::2 #eth0 (care-of-addr) (home-addr)".parse()?),
@@ -669,7 +669,7 @@ mod tests {
 
         let set = SrcAddrCanidateSet {
             dst: "2001:db8:1::d5e3:0:0:1".parse()?,
-            ifid: IfId::unchecked("eth0"),
+            ifid: IfId::new("eth0"),
             addrs: vec![
                 ("2001:db8:1::2 #eth0".parse()?),
                 ("2001:db8:1::d5e3:7953:13eb:22e8 #eth0 (temporary)".parse()?),
@@ -697,12 +697,12 @@ mod tests {
                 Selection {
                     dst: "fe80::1".parse()?,
                     src: "fe80::2".parse()?,
-                    src_ifid: IfId::unchecked("en0"),
+                    src_ifid: IfId::new("en0"),
                 },
                 Selection {
                     dst: "2001:db8:1::1".parse()?,
                     src: "2001:db8:1::2".parse()?,
-                    src_ifid: IfId::unchecked("en0"),
+                    src_ifid: IfId::new("en0"),
                 },
             ]
         );
@@ -727,12 +727,12 @@ mod tests {
                 Selection {
                     dst: "2001:db8:1::1".parse()?,
                     src: "2001:db8:1::2".parse()?,
-                    src_ifid: IfId::unchecked("en0"),
+                    src_ifid: IfId::new("en0"),
                 },
                 Selection {
                     dst: "2001:db8:3ffe::1".parse()?,
                     src: "2001:db8:3f44::2".parse()?,
-                    src_ifid: IfId::unchecked("en0"),
+                    src_ifid: IfId::new("en0"),
                 }
             ]
         );
@@ -756,12 +756,12 @@ mod tests {
                 Selection {
                     dst: "2002:c633:6401::1".parse()?,
                     src: "2002:c633:6401::2".parse()?,
-                    src_ifid: IfId::unchecked("en0"),
+                    src_ifid: IfId::new("en0"),
                 },
                 Selection {
                     dst: "2001:db8:1::1".parse()?,
                     src: "2002:c633:6401::2".parse()?,
-                    src_ifid: IfId::unchecked("en0"),
+                    src_ifid: IfId::new("en0"),
                 }
             ]
         );
@@ -786,12 +786,12 @@ mod tests {
                 Selection {
                     dst: "2001:db8:1::1".parse()?,
                     src: "2001:db8:1::2".parse()?,
-                    src_ifid: IfId::unchecked("en0"),
+                    src_ifid: IfId::new("en0"),
                 },
                 Selection {
                     dst: "2002:c633:6401::1".parse()?,
                     src: "2002:c633:6401::2".parse()?,
-                    src_ifid: IfId::unchecked("en0"),
+                    src_ifid: IfId::new("en0"),
                 }
             ]
         );
@@ -814,12 +814,12 @@ mod tests {
                 Selection {
                     dst: "2001:db8:1::1".parse()?,
                     src: "2001:db8:1::2".parse()?,
-                    src_ifid: IfId::unchecked("en0"),
+                    src_ifid: IfId::new("en0"),
                 },
                 Selection {
                     dst: "10.1.2.3".parse::<Ipv4Addr>()?.to_ipv6_mapped(),
                     src: "10.1.2.4".parse::<Ipv4Addr>()?.to_ipv6_mapped(),
-                    src_ifid: IfId::unchecked("en0"),
+                    src_ifid: IfId::new("en0"),
                 }
             ]
         );
@@ -847,12 +847,12 @@ mod tests {
                 Selection {
                     dst: "2001:db8:1::1".parse()?,
                     src: "2001:db8:1::2".parse()?,
-                    src_ifid: IfId::unchecked("en0"),
+                    src_ifid: IfId::new("en0"),
                 },
                 Selection {
                     dst: "198.51.100.121".parse::<Ipv4Addr>()?.to_ipv6_mapped(),
                     src: "169.254.13.78".parse::<Ipv4Addr>()?.to_ipv6_mapped(),
-                    src_ifid: IfId::unchecked("en0"),
+                    src_ifid: IfId::new("en0"),
                 }
             ]
         );
@@ -871,12 +871,12 @@ mod tests {
                 Selection {
                     dst: "198.51.100.121".parse::<Ipv4Addr>()?.to_ipv6_mapped(),
                     src: "198.51.100.117".parse::<Ipv4Addr>()?.to_ipv6_mapped(),
-                    src_ifid: IfId::unchecked("en0"),
+                    src_ifid: IfId::new("en0"),
                 },
                 Selection {
                     dst: "2001:db8:1::1".parse()?,
                     src: "fe80::1".parse()?,
-                    src_ifid: IfId::unchecked("en0"),
+                    src_ifid: IfId::new("en0"),
                 },
             ]
         );
@@ -901,12 +901,12 @@ mod tests {
                 Selection {
                     dst: "2001:db8:1::1".parse()?,
                     src: "2001:db8:3::1".parse()?,
-                    src_ifid: IfId::unchecked("en0"),
+                    src_ifid: IfId::new("en0"),
                 },
                 Selection {
                     dst: "fe80::1".parse()?,
                     src: "fe80::2".parse()?,
-                    src_ifid: IfId::unchecked("en0"),
+                    src_ifid: IfId::new("en0"),
                 }
             ]
         );
@@ -930,12 +930,12 @@ mod tests {
                 Selection {
                     dst: "2001:db8:1::1".parse()?,
                     src: "2001:db8:1::2".parse()?,
-                    src_ifid: IfId::unchecked("en0"),
+                    src_ifid: IfId::new("en0"),
                 },
                 Selection {
                     dst: "fe80::1".parse()?,
                     src: "fe80::2".parse()?,
-                    src_ifid: IfId::unchecked("en0"),
+                    src_ifid: IfId::new("en0"),
                 }
             ]
         );

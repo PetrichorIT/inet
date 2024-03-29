@@ -17,12 +17,10 @@ use tokio::{
     spawn,
 };
 
+#[derive(Default)]
 struct Client;
 
 impl AsyncModule for Client {
-    fn new() -> Self {
-        Self
-    }
     async fn at_sim_start(&mut self, stage: usize) {
         if stage == 0 {
             return;
@@ -76,13 +74,10 @@ const DOMAINS: [&str; 15] = [
     "status.test.org",
 ];
 
+#[derive(Default)]
 struct Server;
 
 impl AsyncModule for Server {
-    fn new() -> Self {
-        Self
-    }
-
     async fn at_sim_start(&mut self, stage: usize) {
         if stage == 0 {
             return;
@@ -126,13 +121,10 @@ impl AsyncModule for Server {
     }
 }
 
+#[derive(Default)]
 struct Dns;
 
 impl AsyncModule for Dns {
-    fn new() -> Self {
-        Self
-    }
-
     async fn at_sim_start(&mut self, stage: usize) {
         if stage == 0 {
             return;
@@ -180,13 +172,10 @@ fn node_like_setup() {
     .unwrap();
 }
 
+#[derive(Default)]
 struct Router;
 
 impl AsyncModule for Router {
-    fn new() -> Self {
-        Self
-    }
-
     async fn at_sim_start(&mut self, stage: usize) {
         if stage == 0 {
             return;
@@ -222,20 +211,11 @@ impl AsyncModule for Router {
     fn num_sim_start_stages(&self) -> usize {
         2
     }
-
-    // async fn at_sim_end(&mut self) {
-    //     for line in inet::routing::route().unwrap() {
-    //         tracing::info!("{}", line);
-    //     }
-    // }
 }
 
+#[derive(Default)]
 struct LAN;
 impl Module for LAN {
-    fn new() -> Self {
-        Self
-    }
-
     fn at_sim_start(&mut self, _: usize) {
         let role = par("role").unwrap().into_inner();
         tracing::info!("Acting as {} network", role);
@@ -259,29 +239,22 @@ impl Module for LAN {
     }
 }
 
-struct Main;
-impl Module for Main {
-    fn new() -> Self {
-        Self
-    }
-}
-
 fn main() {
     inet::init();
     des::tracing::init();
 
     type Switch = LinkLayerSwitch;
 
-    let app = NdlApplication::new(
+    let mut app = Sim::ndl(
         "main.ndl",
-        registry![Dns, Client, Server, Router, Switch, LAN, Main],
+        registry![Dns, Client, Server, Router, Switch, LAN, else _],
     )
     .map_err(|e| println!("{e}"))
     .unwrap();
-    let mut app = NetworkApplication::new(app);
-    app.include_par_file("main.par");
+    app.include_par_file("main.par").unwrap();
     let rt = Builder::seeded(123).max_time(200.0.into()).build(app);
     let _app = rt.run().into_app();
+
     // app.globals()
     //     .topology
     //     .borrow()

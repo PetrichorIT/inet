@@ -8,13 +8,10 @@ use inet::{
 use inet_bgp::{pkt::Nlri, types::AsNumber, BgpDeamon};
 use inet_pcap::{PcapCapturePoints, PcapConfig, PcapFilters};
 
+#[derive(Default)]
 struct BgpNode;
 
 impl AsyncModule for BgpNode {
-    fn new() -> Self {
-        Self
-    }
-
     async fn at_sim_start(&mut self, _: usize) {
         let addr = par("addr").unwrap().parse::<Ipv4Addr>().unwrap();
         let as_num = par("as").unwrap().parse::<u16>().unwrap();
@@ -117,29 +114,14 @@ impl AsyncModule for BgpNode {
     }
 }
 
-struct Dummy;
-impl Module for Dummy {
-    fn new() -> Dummy {
-        Dummy
-    }
-}
-
 fn main() -> Result<(), Box<dyn Error>> {
     inet::init();
-    des::tracing::init();
+    // des::tracing::init();
 
     type LANSwitch = inet::utils::LinkLayerSwitch;
-    type LANNode = Dummy;
-    type LANRouter = Dummy;
-    type Main = Dummy;
-    type LAN = Dummy;
 
-    let mut app = NdlApplication::new(
-        "src/bin/bgp.ndl",
-        registry![LANNode, LANRouter, LANSwitch, LAN, BgpNode, Main],
-    )?
-    .into_app();
-    app.include_par_file("src/bin/bgp.par");
+    let mut app = Sim::ndl("src/bin/bgp.ndl", registry![LANSwitch, BgpNode, else _])?;
+    app.include_par_file("src/bin/bgp.par").unwrap();
     let _r = Builder::seeded(123)
         .max_time(500.0.into())
         .build(app)

@@ -6,16 +6,16 @@ use inet::{
     routing::{RoutingInformation, RoutingPeer},
 };
 
+#[derive(Default)]
 struct A;
+#[derive(Default)]
 struct B;
+#[derive(Default)]
 struct C;
+#[derive(Default)]
 struct Main;
 
 impl Module for A {
-    fn new() -> Self {
-        Self
-    }
-
     fn at_sim_start(&mut self, _stage: usize) {
         add_interface(Interface::ethv4(
             NetworkDevice::eth(),
@@ -25,10 +25,6 @@ impl Module for A {
     }
 }
 impl Module for B {
-    fn new() -> Self {
-        Self
-    }
-
     fn at_sim_start(&mut self, _stage: usize) {
         add_interface(Interface::ethv4(
             NetworkDevice::eth(),
@@ -37,16 +33,9 @@ impl Module for B {
         .unwrap();
     }
 }
-impl Module for C {
-    fn new() -> Self {
-        Self
-    }
-}
+impl Module for C {}
 
 impl Module for Main {
-    fn new() -> Self {
-        Self
-    }
     fn at_sim_start(&mut self, stage: usize) {
         if stage == 1 {
             let r = RoutingInformation::collect();
@@ -85,11 +74,9 @@ fn routing_info() {
     //     .interal_max_log_level(tracing::LevelFilter::Info)
     //     .set_logger();
 
-    let app = NetworkApplication::new(
-        NdlApplication::new("tests/triangle.ndl", registry![A, B, C, Main])
-            .map_err(|e| println!("{e}"))
-            .unwrap(),
-    );
+    let app = Sim::ndl("tests/triangle.ndl", registry![A, B, C, Main])
+        .map_err(|e| println!("{e}"))
+        .unwrap();
     let rt = Builder::seeded(123).max_time(100.0.into()).build(app);
     match rt.run() {
         RuntimeResult::EmptySimulation { .. } => {}

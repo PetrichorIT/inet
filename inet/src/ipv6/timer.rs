@@ -4,14 +4,38 @@ use des::{
     net::message::{schedule_at, Message},
     time::SimTime,
 };
+use inet_types::ip::Ipv6Prefix;
 
 use crate::interface::{IfId, ID_IPV6_TIMEOUT, KIND_IO_TIMEOUT};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TimerToken {
-    NeighborSolicitationRetransmitTimeout { target: Ipv6Addr, ifid: IfId },
+    PrefixTimeout {
+        ifid: IfId,
+        prefix: Ipv6Prefix,
+    },
+    RouterAdvertismentUnsolicited {
+        ifid: IfId,
+    },
+    RouterAdvertismentSolicited {
+        ifid: IfId,
+        dst: Ipv6Addr,
+    },
+    NeighborSolicitationRetransmitTimeout {
+        target: Ipv6Addr,
+        ifid: IfId,
+    },
+    DelayedJoinMulticast {
+        ifid: IfId,
+        multicast: Ipv6Addr,
+    },
+    MulticastListenerDiscoverySendReport {
+        ifid: IfId,
+        multicast_addr: Ipv6Addr,
+    },
 }
 
+#[derive(Debug)]
 pub struct TimerCtrl {
     timers: Vec<(TimerToken, SimTime)>,
     wakeups: Vec<SimTime>,
@@ -26,16 +50,45 @@ impl TimerCtrl {
     }
 
     pub fn schedule(&mut self, token: TimerToken, timeout: SimTime) {
+        assert!(
+            timeout >= SimTime::now(),
+            "cannot assign timer to the past: current={} requested_timer={timeout} token={token:?}",
+            SimTime::now()
+        );
+
         self.timers.push((token, timeout));
         self.timers.sort_by(|l, r| l.1.cmp(&r.1));
     }
 
-    pub fn active(&self, token: TimerToken) -> bool {
-        self.timers.iter().any(|t| t.0 == token)
+    pub fn reschedule(&mut self, token: &TimerToken, timeout: SimTime) {
+        assert!(
+            timeout >= SimTime::now(),
+            "cannot reassign timer to the past: current={} requested_timer={timeout} token={token:?}",
+            SimTime::now()
+        );
+        let Some((i, _)) = self
+            .timers
+            .iter()
+            .enumerate()
+            .find(|(_, (v, _))| v == token)
+        else {
+            self.schedule(token.clone(), timeout);
+            return;
+        };
+
+        let (token, _) = self.timers.remove(i);
+        self.schedule(token, timeout);
     }
 
-    pub fn cancel(&mut self, token: TimerToken) {
-        self.timers.retain(|e| e.0 != token)
+    pub fn active(&self, token: &TimerToken) -> Option<SimTime> {
+        self.timers
+            .iter()
+            .find(|t| t.0 == *token)
+            .map(|(_, deadline)| *deadline)
+    }
+
+    pub fn cancel(&mut self, token: &TimerToken) {
+        self.timers.retain(|e| e.0 != *token)
     }
 
     pub fn next(&self) -> Option<SimTime> {
@@ -43,6 +96,17 @@ impl TimerCtrl {
     }
 
     pub fn schedule_wakeup(&mut self) {
+        while let Some(first) = self.timers.first() {
+            if first.1 < SimTime::now() {
+                tracing::error!(
+                    timer=?first, "timer expired without wakeup"
+                );
+                self.timers.remove(0);
+            } else {
+                break;
+            }
+        }
+
         let Some(next) = self.next() else {
             return;
         };

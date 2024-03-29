@@ -19,6 +19,23 @@ pub struct NetworkDevice {
     inner: NetworkDeviceInner,
 }
 
+pub(super) enum NetworkDeviceReadiness {
+    Ready,
+    Busy(SimTime),
+}
+
+impl From<NetworkDeviceReadiness> for InterfaceBusyState {
+    fn from(value: NetworkDeviceReadiness) -> Self {
+        match value {
+            NetworkDeviceReadiness::Ready => InterfaceBusyState::Idle,
+            NetworkDeviceReadiness::Busy(until) => InterfaceBusyState::Busy {
+                until,
+                interests: Vec::new(),
+            },
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 enum NetworkDeviceInner {
     /// The loopback device.
@@ -38,7 +55,11 @@ impl NetworkDeviceInner {
 
     fn ethernet(output: GateRef, input: GateRef) -> Self {
         // Limit iterations to prevent endless loops
-        for conn in output.path_iter().take(16) {
+        for conn in output
+            .path_iter()
+            .expect("cannot attach to transit gate")
+            .take(16)
+        {
             if let Some(channel) = conn.channel() {
                 return Self::EthernetDevice {
                     output,
@@ -163,17 +184,38 @@ impl NetworkDevice {
         unimplemented!("{:?}", RoutingInformation::collect())
     }
 
-    pub(super) fn send(&self, mut msg: Message) -> InterfaceBusyState {
+    pub(super) fn ready(&self) -> NetworkDeviceReadiness {
+        match &self.inner {
+            NetworkDeviceInner::LoopbackDevice => NetworkDeviceReadiness::Ready,
+            NetworkDeviceInner::EthernetDevice { channel, .. } => {
+                let Some(chan) = channel else {
+                    return NetworkDeviceReadiness::Ready;
+                };
+
+                if chan.is_busy() {
+                    NetworkDeviceReadiness::Busy(
+                        chan.transmission_finish_time() + Duration::from_nanos(1),
+                    )
+                } else {
+                    NetworkDeviceReadiness::Ready
+                }
+            }
+        }
+    }
+
+    pub(super) fn send(&self, mut msg: Message) -> NetworkDeviceReadiness {
+        tracing::info!("send");
         msg.header_mut().src = self.addr.into();
         match &self.inner {
             NetworkDeviceInner::LoopbackDevice => {
                 schedule_in(msg, Duration::ZERO);
-                InterfaceBusyState::Idle
+                NetworkDeviceReadiness::Ready
             }
             NetworkDeviceInner::EthernetDevice {
                 output, channel, ..
             } => {
                 if let Some(channel) = channel {
+                    assert!(!channel.is_busy(), "busy connector");
                     // Add the additionall delay to ensure the ChannelUnbusy event
                     // was at t1 < t2
 
@@ -183,13 +225,10 @@ impl NetworkDevice {
                     let tft = channel.calculate_busy(&msg) + Duration::from_nanos(1);
                     send(msg, output);
 
-                    InterfaceBusyState::Busy {
-                        until: SimTime::now() + tft,
-                        interests: Vec::new(),
-                    }
+                    NetworkDeviceReadiness::Busy(SimTime::now() + tft)
                 } else {
                     send(msg, output);
-                    InterfaceBusyState::Idle
+                    NetworkDeviceReadiness::Ready
                 }
             }
         }
@@ -199,15 +238,6 @@ impl NetworkDevice {
         match &self.inner {
             NetworkDeviceInner::LoopbackDevice => last_gate.is_none(),
             NetworkDeviceInner::EthernetDevice { input, .. } => Some(input.clone()) == *last_gate,
-        }
-    }
-
-    pub(super) fn is_busy(&self) -> bool {
-        match &self.inner {
-            NetworkDeviceInner::LoopbackDevice => false,
-            NetworkDeviceInner::EthernetDevice { output, .. } => {
-                output.channel().map(|v| v.is_busy()).unwrap_or(false)
-            }
         }
     }
 }

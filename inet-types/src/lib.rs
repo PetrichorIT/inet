@@ -23,9 +23,7 @@ pub mod uds;
 
 #[must_use]
 pub fn split_off_front(mut buf: Vec<u8>, pos: usize) -> Vec<u8> {
-    for i in pos..buf.len() {
-        buf[i - pos] = buf[i];
-    }
+    buf.copy_within(pos.., 0);
     buf.truncate(buf.len() - pos);
     buf
 }

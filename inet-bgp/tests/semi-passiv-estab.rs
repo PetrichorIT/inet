@@ -1,7 +1,7 @@
 use std::{io::Error, net::Ipv4Addr, time::Duration};
 
 use des::{
-    net::{AsyncBuilder, NodeCfg},
+    net::{channel::Channel, AsyncFn, Sim},
     prelude::ChannelMetrics,
     runtime::Builder,
     time::sleep,
@@ -22,131 +22,139 @@ fn semi_passiv_estab() {
     inet::init();
     // des::tracing::Subscriber::default().init().unwrap();
 
-    let mut sim = AsyncBuilder::new();
-    sim.set_default_cfg(NodeCfg { join: true });
-    sim.node("as-1000", |_| async move {
-        let addr = Ipv4Addr::new(192, 168, 1, 100);
-        add_interface(Interface::ethv4(NetworkDevice::eth(), addr))?;
+    let mut sim = Sim::new(());
+    sim.node(
+        "as-1000",
+        AsyncFn::io(|_| async move {
+            let addr = Ipv4Addr::new(192, 168, 1, 100);
+            add_interface(Interface::ethv4(NetworkDevice::eth(), addr))?;
 
-        let (etx, erx) = channel(8);
-        let (itx, mut irx) = channel(8);
-        let (ttx, trx) = channel(8);
+            let (etx, erx) = channel(8);
+            let (itx, mut irx) = channel(8);
+            let (ttx, trx) = channel(8);
 
-        let deamon = NeighborDeamon::new(
-            BgpNodeInformation {
-                addr,
-                as_num: 1000,
-                iface: InterfaceName::from("en0"),
-            },
-            BgpNodeInformation {
-                addr: Ipv4Addr::new(192, 168, 1, 200),
-                as_num: 2000,
-                iface: InterfaceName::from("en0"),
-            },
-            itx,
-            erx,
-            trx,
-            BgpPeeringCfg::default(),
-        );
-        tokio::spawn(deamon.deploy());
-        tokio::spawn(async move {
-            let lis = TcpListener::bind("0.0.0.0:179").await?;
-            while let Ok((s, f)) = lis.accept().await {
-                tracing::info!("incoming connection from {}", f);
-                ttx.send(s).await.expect("failed to send")
-            }
-            Ok::<_, Error>(())
-        });
-
-        etx.send(NeighborEgressEvent::Start)
-            .await
-            .expect("Failed to send");
-
-        let next = irx.recv().await;
-        assert_eq!(
-            next,
-            Some(NeighborIngressEvent::ConnectionEstablished(
+            let deamon = NeighborDeamon::new(
+                BgpNodeInformation {
+                    addr,
+                    as_num: 1000,
+                    iface: InterfaceName::from("en0"),
+                },
                 BgpNodeInformation {
                     addr: Ipv4Addr::new(192, 168, 1, 200),
                     as_num: 2000,
                     iface: InterfaceName::from("en0"),
+                },
+                itx,
+                erx,
+                trx,
+                BgpPeeringCfg::default(),
+            );
+            tokio::spawn(deamon.deploy());
+            tokio::spawn(async move {
+                let lis = TcpListener::bind("0.0.0.0:179").await?;
+                while let Ok((s, f)) = lis.accept().await {
+                    tracing::info!("incoming connection from {}", f);
+                    ttx.send(s).await.expect("failed to send")
                 }
-            ))
-        );
+                Ok::<_, Error>(())
+            });
 
-        Ok(())
-    });
+            etx.send(NeighborEgressEvent::Start)
+                .await
+                .expect("Failed to send");
 
-    sim.node("as-2000", |_| async move {
-        let addr = Ipv4Addr::new(192, 168, 1, 200);
-        add_interface(Interface::ethv4(NetworkDevice::eth(), addr))?;
+            let next = irx.recv().await;
+            assert_eq!(
+                next,
+                Some(NeighborIngressEvent::ConnectionEstablished(
+                    BgpNodeInformation {
+                        addr: Ipv4Addr::new(192, 168, 1, 200),
+                        as_num: 2000,
+                        iface: InterfaceName::from("en0"),
+                    }
+                ))
+            );
 
-        let (etx, erx) = channel(8);
-        let (itx, mut irx) = channel(8);
-        let (ttx, trx) = channel(8);
+            Ok(())
+        })
+        .require_join(),
+    );
 
-        let mut deamon = NeighborDeamon::new(
-            BgpNodeInformation {
-                addr,
-                as_num: 2000,
-                iface: InterfaceName::from("en0"),
-            },
-            BgpNodeInformation {
-                addr: Ipv4Addr::new(192, 168, 1, 100),
-                as_num: 1000,
-                iface: InterfaceName::from("en0"),
-            },
-            itx,
-            erx,
-            trx,
-            BgpPeeringCfg::default(),
-        );
-        deamon.cfg.passiv_tcp_estab = true;
+    sim.node(
+        "as-2000",
+        AsyncFn::io(|_| async move {
+            let addr = Ipv4Addr::new(192, 168, 1, 200);
+            add_interface(Interface::ethv4(NetworkDevice::eth(), addr))?;
 
-        tokio::spawn(deamon.deploy());
-        tokio::spawn(async move {
-            let lis = TcpListener::bind("0.0.0.0:179").await?;
-            while let Ok((s, f)) = lis.accept().await {
-                tracing::info!("incoming connection from {}", f);
-                ttx.send(s).await.expect("failed to send")
-            }
-            Ok::<_, Error>(())
-        });
+            let (etx, erx) = channel(8);
+            let (itx, mut irx) = channel(8);
+            let (ttx, trx) = channel(8);
 
-        etx.send(NeighborEgressEvent::Start)
-            .await
-            .expect("Failed to send");
-
-        let next = irx.recv().await;
-        assert_eq!(
-            next,
-            Some(NeighborIngressEvent::ConnectionEstablished(
+            let mut deamon = NeighborDeamon::new(
+                BgpNodeInformation {
+                    addr,
+                    as_num: 2000,
+                    iface: InterfaceName::from("en0"),
+                },
                 BgpNodeInformation {
                     addr: Ipv4Addr::new(192, 168, 1, 100),
                     as_num: 1000,
                     iface: InterfaceName::from("en0"),
+                },
+                itx,
+                erx,
+                trx,
+                BgpPeeringCfg::default(),
+            );
+            deamon.cfg.passiv_tcp_estab = true;
+
+            tokio::spawn(deamon.deploy());
+            tokio::spawn(async move {
+                let lis = TcpListener::bind("0.0.0.0:179").await?;
+                while let Ok((s, f)) = lis.accept().await {
+                    tracing::info!("incoming connection from {}", f);
+                    ttx.send(s).await.expect("failed to send")
                 }
-            ))
-        );
+                Ok::<_, Error>(())
+            });
 
-        Ok(())
-    });
+            etx.send(NeighborEgressEvent::Start)
+                .await
+                .expect("Failed to send");
 
-    sim.connect_with(
-        "as-1000",
-        "as-2000",
-        Some(ChannelMetrics {
+            let next = irx.recv().await;
+            assert_eq!(
+                next,
+                Some(NeighborIngressEvent::ConnectionEstablished(
+                    BgpNodeInformation {
+                        addr: Ipv4Addr::new(192, 168, 1, 100),
+                        as_num: 1000,
+                        iface: InterfaceName::from("en0"),
+                    }
+                ))
+            );
+
+            Ok(())
+        })
+        .require_join(),
+    );
+
+    let tx = sim.gate("as-1000", "port");
+    let rx = sim.gate("as-2000", "port");
+    tx.connect(
+        rx,
+        Some(Channel::new(ChannelMetrics {
             bitrate: 1000000,
             latency: Duration::from_millis(5),
             jitter: Duration::ZERO,
             drop_behaviour: Default::default(),
-        }),
+        })),
     );
 
     let _ = Builder::seeded(123)
         .max_time(500.0.into())
         .max_itr(10_000)
-        .build(sim.build())
+        .build(sim)
         .run();
 }
 
@@ -160,133 +168,141 @@ fn semi_passiv_estab_delayed_client() {
     //     .init()
     //     .unwrap();
 
-    let mut sim = AsyncBuilder::new();
-    sim.set_default_cfg(NodeCfg { join: true });
-    sim.node("as-1000", |_| async move {
-        let addr = Ipv4Addr::new(192, 168, 1, 100);
-        add_interface(Interface::ethv4(NetworkDevice::eth(), addr))?;
+    let mut sim = Sim::new(());
+    sim.node(
+        "as-1000",
+        AsyncFn::io(|_| async move {
+            let addr = Ipv4Addr::new(192, 168, 1, 100);
+            add_interface(Interface::ethv4(NetworkDevice::eth(), addr))?;
 
-        let (etx, erx) = channel(8);
-        let (itx, mut irx) = channel(8);
-        let (ttx, trx) = channel(8);
+            let (etx, erx) = channel(8);
+            let (itx, mut irx) = channel(8);
+            let (ttx, trx) = channel(8);
 
-        let deamon = NeighborDeamon::new(
-            BgpNodeInformation {
-                addr,
-                as_num: 1000,
-                iface: InterfaceName::from("en0"),
-            },
-            BgpNodeInformation {
-                addr: Ipv4Addr::new(192, 168, 1, 200),
-                as_num: 2000,
-                iface: InterfaceName::from("en0"),
-            },
-            itx,
-            erx,
-            trx,
-            BgpPeeringCfg::default(),
-        );
-        tokio::spawn(deamon.deploy());
-        tokio::spawn(async move {
-            let lis = TcpListener::bind("0.0.0.0:179").await?;
-            while let Ok((s, f)) = lis.accept().await {
-                tracing::info!("incoming connection from {}", f);
-                ttx.send(s).await.expect("failed to send")
-            }
-            Ok::<_, Error>(())
-        });
-
-        sleep(Duration::from_secs(10)).await;
-
-        etx.send(NeighborEgressEvent::Start)
-            .await
-            .expect("Failed to send");
-
-        let next = irx.recv().await;
-        assert_eq!(
-            next,
-            Some(NeighborIngressEvent::ConnectionEstablished(
+            let deamon = NeighborDeamon::new(
+                BgpNodeInformation {
+                    addr,
+                    as_num: 1000,
+                    iface: InterfaceName::from("en0"),
+                },
                 BgpNodeInformation {
                     addr: Ipv4Addr::new(192, 168, 1, 200),
                     as_num: 2000,
                     iface: InterfaceName::from("en0"),
+                },
+                itx,
+                erx,
+                trx,
+                BgpPeeringCfg::default(),
+            );
+            tokio::spawn(deamon.deploy());
+            tokio::spawn(async move {
+                let lis = TcpListener::bind("0.0.0.0:179").await?;
+                while let Ok((s, f)) = lis.accept().await {
+                    tracing::info!("incoming connection from {}", f);
+                    ttx.send(s).await.expect("failed to send")
                 }
-            ))
-        );
+                Ok::<_, Error>(())
+            });
 
-        Ok(())
-    });
+            sleep(Duration::from_secs(10)).await;
 
-    sim.node("as-2000", |_| async move {
-        let addr = Ipv4Addr::new(192, 168, 1, 200);
-        add_interface(Interface::ethv4(NetworkDevice::eth(), addr))?;
+            etx.send(NeighborEgressEvent::Start)
+                .await
+                .expect("Failed to send");
 
-        let (etx, erx) = channel(8);
-        let (itx, mut irx) = channel(8);
-        let (ttx, trx) = channel(8);
+            let next = irx.recv().await;
+            assert_eq!(
+                next,
+                Some(NeighborIngressEvent::ConnectionEstablished(
+                    BgpNodeInformation {
+                        addr: Ipv4Addr::new(192, 168, 1, 200),
+                        as_num: 2000,
+                        iface: InterfaceName::from("en0"),
+                    }
+                ))
+            );
 
-        let mut deamon = NeighborDeamon::new(
-            BgpNodeInformation {
-                addr,
-                as_num: 2000,
-                iface: InterfaceName::from("en0"),
-            },
-            BgpNodeInformation {
-                addr: Ipv4Addr::new(192, 168, 1, 100),
-                as_num: 1000,
-                iface: InterfaceName::from("en0"),
-            },
-            itx,
-            erx,
-            trx,
-            BgpPeeringCfg::default(),
-        );
-        deamon.cfg.passiv_tcp_estab = true;
+            Ok(())
+        })
+        .require_join(),
+    );
 
-        tokio::spawn(deamon.deploy());
-        tokio::spawn(async move {
-            let lis = TcpListener::bind("0.0.0.0:179").await?;
-            while let Ok((s, f)) = lis.accept().await {
-                tracing::info!("incoming connection from {}", f);
-                ttx.send(s).await.expect("failed to send")
-            }
-            Ok::<_, Error>(())
-        });
+    sim.node(
+        "as-2000",
+        AsyncFn::io(|_| async move {
+            let addr = Ipv4Addr::new(192, 168, 1, 200);
+            add_interface(Interface::ethv4(NetworkDevice::eth(), addr))?;
 
-        etx.send(NeighborEgressEvent::Start)
-            .await
-            .expect("Failed to send");
+            let (etx, erx) = channel(8);
+            let (itx, mut irx) = channel(8);
+            let (ttx, trx) = channel(8);
 
-        let next = irx.recv().await;
-        assert_eq!(
-            next,
-            Some(NeighborIngressEvent::ConnectionEstablished(
+            let mut deamon = NeighborDeamon::new(
+                BgpNodeInformation {
+                    addr,
+                    as_num: 2000,
+                    iface: InterfaceName::from("en0"),
+                },
                 BgpNodeInformation {
                     addr: Ipv4Addr::new(192, 168, 1, 100),
                     as_num: 1000,
                     iface: InterfaceName::from("en0"),
+                },
+                itx,
+                erx,
+                trx,
+                BgpPeeringCfg::default(),
+            );
+            deamon.cfg.passiv_tcp_estab = true;
+
+            tokio::spawn(deamon.deploy());
+            tokio::spawn(async move {
+                let lis = TcpListener::bind("0.0.0.0:179").await?;
+                while let Ok((s, f)) = lis.accept().await {
+                    tracing::info!("incoming connection from {}", f);
+                    ttx.send(s).await.expect("failed to send")
                 }
-            ))
-        );
+                Ok::<_, Error>(())
+            });
 
-        Ok(())
-    });
+            etx.send(NeighborEgressEvent::Start)
+                .await
+                .expect("Failed to send");
 
-    sim.connect_with(
-        "as-1000",
-        "as-2000",
-        Some(ChannelMetrics {
+            let next = irx.recv().await;
+            assert_eq!(
+                next,
+                Some(NeighborIngressEvent::ConnectionEstablished(
+                    BgpNodeInformation {
+                        addr: Ipv4Addr::new(192, 168, 1, 100),
+                        as_num: 1000,
+                        iface: InterfaceName::from("en0"),
+                    }
+                ))
+            );
+
+            Ok(())
+        })
+        .require_join(),
+    );
+
+    let tx = sim.gate("as-1000", "port");
+    let rx = sim.gate("as-2000", "port");
+    tx.connect(
+        rx,
+        Some(Channel::new(ChannelMetrics {
             bitrate: 1000000,
             latency: Duration::from_millis(5),
             jitter: Duration::ZERO,
             drop_behaviour: Default::default(),
-        }),
+        })),
     );
 
     let _ = Builder::seeded(123)
         .max_time(500.0.into())
         .max_itr(10_000)
-        .build(sim.build())
+        .build(sim)
         .run();
 }
 
@@ -300,133 +316,141 @@ fn semi_passiv_estab_delayed_open() {
     //     .init()
     //     .unwrap();
 
-    let mut sim = AsyncBuilder::new();
-    sim.set_default_cfg(NodeCfg { join: true });
-    sim.node("as-1000", |_| async move {
-        let addr = Ipv4Addr::new(192, 168, 1, 100);
-        add_interface(Interface::ethv4(NetworkDevice::eth(), addr))?;
+    let mut sim = Sim::new(());
+    sim.node(
+        "as-1000",
+        AsyncFn::io(|_| async move {
+            let addr = Ipv4Addr::new(192, 168, 1, 100);
+            add_interface(Interface::ethv4(NetworkDevice::eth(), addr))?;
 
-        let (etx, erx) = channel(8);
-        let (itx, mut irx) = channel(8);
-        let (ttx, trx) = channel(8);
+            let (etx, erx) = channel(8);
+            let (itx, mut irx) = channel(8);
+            let (ttx, trx) = channel(8);
 
-        let deamon = NeighborDeamon::new(
-            BgpNodeInformation {
-                addr,
-                as_num: 1000,
-                iface: InterfaceName::from("en0"),
-            },
-            BgpNodeInformation {
-                addr: Ipv4Addr::new(192, 168, 1, 200),
-                as_num: 2000,
-                iface: InterfaceName::from("en0"),
-            },
-            itx,
-            erx,
-            trx,
-            BgpPeeringCfg::default(),
-        );
-        tokio::spawn(deamon.deploy());
-        tokio::spawn(async move {
-            let lis = TcpListener::bind("0.0.0.0:179").await?;
-            while let Ok((s, f)) = lis.accept().await {
-                tracing::info!("incoming connection from {}", f);
-                ttx.send(s).await.expect("failed to send")
-            }
-            Ok::<_, Error>(())
-        });
-
-        sleep(Duration::from_secs(10)).await;
-
-        etx.send(NeighborEgressEvent::Start)
-            .await
-            .expect("Failed to send");
-
-        let next = irx.recv().await;
-        assert_eq!(
-            next,
-            Some(NeighborIngressEvent::ConnectionEstablished(
+            let deamon = NeighborDeamon::new(
+                BgpNodeInformation {
+                    addr,
+                    as_num: 1000,
+                    iface: InterfaceName::from("en0"),
+                },
                 BgpNodeInformation {
                     addr: Ipv4Addr::new(192, 168, 1, 200),
                     as_num: 2000,
                     iface: InterfaceName::from("en0"),
+                },
+                itx,
+                erx,
+                trx,
+                BgpPeeringCfg::default(),
+            );
+            tokio::spawn(deamon.deploy());
+            tokio::spawn(async move {
+                let lis = TcpListener::bind("0.0.0.0:179").await?;
+                while let Ok((s, f)) = lis.accept().await {
+                    tracing::info!("incoming connection from {}", f);
+                    ttx.send(s).await.expect("failed to send")
                 }
-            ))
-        );
+                Ok::<_, Error>(())
+            });
 
-        Ok(())
-    });
+            sleep(Duration::from_secs(10)).await;
 
-    sim.node("as-2000", |_| async move {
-        let addr = Ipv4Addr::new(192, 168, 1, 200);
-        add_interface(Interface::ethv4(NetworkDevice::eth(), addr))?;
+            etx.send(NeighborEgressEvent::Start)
+                .await
+                .expect("Failed to send");
 
-        let (etx, erx) = channel(8);
-        let (itx, mut irx) = channel(8);
-        let (ttx, trx) = channel(8);
+            let next = irx.recv().await;
+            assert_eq!(
+                next,
+                Some(NeighborIngressEvent::ConnectionEstablished(
+                    BgpNodeInformation {
+                        addr: Ipv4Addr::new(192, 168, 1, 200),
+                        as_num: 2000,
+                        iface: InterfaceName::from("en0"),
+                    }
+                ))
+            );
 
-        let mut deamon = NeighborDeamon::new(
-            BgpNodeInformation {
-                addr,
-                as_num: 2000,
-                iface: InterfaceName::from("en0"),
-            },
-            BgpNodeInformation {
-                addr: Ipv4Addr::new(192, 168, 1, 100),
-                as_num: 1000,
-                iface: InterfaceName::from("en0"),
-            },
-            itx,
-            erx,
-            trx,
-            BgpPeeringCfg::default(),
-        );
-        deamon.cfg.passiv_tcp_estab = true;
-        deamon.cfg.delay_open = true;
+            Ok(())
+        })
+        .require_join(),
+    );
 
-        tokio::spawn(deamon.deploy());
-        tokio::spawn(async move {
-            let lis = TcpListener::bind("0.0.0.0:179").await?;
-            while let Ok((s, f)) = lis.accept().await {
-                tracing::info!("incoming connection from {}", f);
-                ttx.send(s).await.expect("failed to send")
-            }
-            Ok::<_, Error>(())
-        });
+    sim.node(
+        "as-2000",
+        AsyncFn::io(|_| async move {
+            let addr = Ipv4Addr::new(192, 168, 1, 200);
+            add_interface(Interface::ethv4(NetworkDevice::eth(), addr))?;
 
-        etx.send(NeighborEgressEvent::Start)
-            .await
-            .expect("Failed to send");
+            let (etx, erx) = channel(8);
+            let (itx, mut irx) = channel(8);
+            let (ttx, trx) = channel(8);
 
-        let next = irx.recv().await;
-        assert_eq!(
-            next,
-            Some(NeighborIngressEvent::ConnectionEstablished(
+            let mut deamon = NeighborDeamon::new(
+                BgpNodeInformation {
+                    addr,
+                    as_num: 2000,
+                    iface: InterfaceName::from("en0"),
+                },
                 BgpNodeInformation {
                     addr: Ipv4Addr::new(192, 168, 1, 100),
                     as_num: 1000,
                     iface: InterfaceName::from("en0"),
+                },
+                itx,
+                erx,
+                trx,
+                BgpPeeringCfg::default(),
+            );
+            deamon.cfg.passiv_tcp_estab = true;
+            deamon.cfg.delay_open = true;
+
+            tokio::spawn(deamon.deploy());
+            tokio::spawn(async move {
+                let lis = TcpListener::bind("0.0.0.0:179").await?;
+                while let Ok((s, f)) = lis.accept().await {
+                    tracing::info!("incoming connection from {}", f);
+                    ttx.send(s).await.expect("failed to send")
                 }
-            ))
-        );
+                Ok::<_, Error>(())
+            });
 
-        Ok(())
-    });
+            etx.send(NeighborEgressEvent::Start)
+                .await
+                .expect("Failed to send");
 
-    sim.connect_with(
-        "as-1000",
-        "as-2000",
-        Some(ChannelMetrics {
+            let next = irx.recv().await;
+            assert_eq!(
+                next,
+                Some(NeighborIngressEvent::ConnectionEstablished(
+                    BgpNodeInformation {
+                        addr: Ipv4Addr::new(192, 168, 1, 100),
+                        as_num: 1000,
+                        iface: InterfaceName::from("en0"),
+                    }
+                ))
+            );
+
+            Ok(())
+        })
+        .require_join(),
+    );
+
+    let tx = sim.gate("as-1000", "port");
+    let rx = sim.gate("as-2000", "port");
+    tx.connect(
+        rx,
+        Some(Channel::new(ChannelMetrics {
             bitrate: 1000000,
             latency: Duration::from_millis(5),
             jitter: Duration::ZERO,
             drop_behaviour: Default::default(),
-        }),
+        })),
     );
 
     let _ = Builder::seeded(123)
         .max_time(500.0.into())
         .max_itr(10_000)
-        .build(sim.build())
+        .build(sim)
         .run();
 }

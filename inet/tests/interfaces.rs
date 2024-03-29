@@ -1,23 +1,22 @@
-use std::{collections::VecDeque, str::FromStr};
+use std::{collections::VecDeque, str::FromStr, sync::atomic::AtomicBool};
 
-use des::prelude::*;
-use inet::{interface::*, *};
+use des::{net::AsyncFn, prelude::*};
+use inet::{
+    interface::*,
+    ipv6::{api::set_node_cfg, cfg::HostConfiguration},
+    socket::RawIpSocket,
+    *,
+};
 use serial_test::serial;
 use tokio::task::JoinHandle;
+use types::ip::{IpPacket, Ipv6AddrExt, Ipv6Packet};
 
-#[macro_use]
-mod common;
-
+#[derive(Default)]
 struct SocketBind {
     handle: Option<JoinHandle<()>>,
 }
-impl_build_named!(SocketBind);
 
 impl AsyncModule for SocketBind {
-    fn new() -> Self {
-        Self { handle: None }
-    }
-
     async fn at_sim_start(&mut self, _: usize) {
         add_interface(Interface::loopback()).unwrap();
 
@@ -74,26 +73,19 @@ impl AsyncModule for SocketBind {
 #[serial]
 fn udp_empty_socket_bind() {
     inet::init();
-    // ScopedLogger::new().finish().unwrap();
+    // des::tracing::init();
 
-    let mut app = NetworkApplication::new(());
-
-    let module = SocketBind::build_named(ObjectPath::from("root"), &mut app);
-    app.register_module(module);
+    let mut app = Sim::new(());
+    app.node("root", SocketBind::default());
 
     let rt = Builder::seeded(123).build(app);
-    let RuntimeResult::EmptySimulation { .. } = rt.run() else {
-        panic!("Unexpected runtime result")
-    };
+    let _ = rt.run();
 }
 
-struct UdpEcho4200 {}
-impl_build_named!(UdpEcho4200);
+#[derive(Default)]
+struct UdpEcho4200;
 
 impl AsyncModule for UdpEcho4200 {
-    fn new() -> Self {
-        Self {}
-    }
     async fn at_sim_start(&mut self, _: usize) {
         add_interface(Interface::ethv4_named(
             "en0",
@@ -125,16 +117,12 @@ impl AsyncModule for UdpEcho4200 {
     }
 }
 
+#[derive(Default)]
 struct UdpSingleEchoSender {
     handle: Option<JoinHandle<()>>,
 }
-impl_build_named!(UdpSingleEchoSender);
 
 impl AsyncModule for UdpSingleEchoSender {
-    fn new() -> Self {
-        Self { handle: None }
-    }
-
     async fn at_sim_start(&mut self, _: usize) {
         add_interface(Interface::ethv4_named(
             "en0",
@@ -176,28 +164,21 @@ fn udp_echo_single_client() {
 
     // Logger::new().set_logger();
 
-    let mut app = NetworkApplication::new(());
+    let mut app = Sim::new(());
+    app.node("server", UdpEcho4200::default());
+    app.node("client", UdpSingleEchoSender::default());
 
-    let server = UdpEcho4200::build_named(ObjectPath::from("server"), &mut app);
-    let client = UdpSingleEchoSender::build_named(ObjectPath::from("client"), &mut app);
+    let so = app.gate("server", "port");
+    let co = app.gate("client", "port");
 
-    let so = server.create_gate("port");
-    let co = client.create_gate("port");
-
-    let chan = Channel::new(
-        ObjectPath::appended_channel(&client.path(), "chan"),
-        ChannelMetrics::new(
-            100000,
-            Duration::from_millis(100),
-            Duration::ZERO,
-            Default::default(),
-        ),
-    );
+    let chan = Channel::new(ChannelMetrics::new(
+        100000,
+        Duration::from_millis(100),
+        Duration::ZERO,
+        Default::default(),
+    ));
 
     so.connect(co, Some(chan));
-
-    app.register_module(server);
-    app.register_module(client);
 
     let rt = Builder::seeded(123).build(app);
     let RuntimeResult::Finished { time, .. } = rt.run() else {
@@ -207,16 +188,12 @@ fn udp_echo_single_client() {
     assert_eq!(time.as_secs(), 31)
 }
 
+#[derive(Default)]
 struct UdpSingleClusteredSender {
     handle: Option<JoinHandle<()>>,
 }
-impl_build_named!(UdpSingleClusteredSender);
 
 impl AsyncModule for UdpSingleClusteredSender {
-    fn new() -> Self {
-        Self { handle: None }
-    }
-
     async fn at_sim_start(&mut self, _: usize) {
         add_interface(Interface::ethv4_named(
             "en0",
@@ -266,28 +243,21 @@ fn udp_echo_clustered_echo() {
     inet::init();
     // Logger::new().set_logger();
 
-    let mut app = NetworkApplication::new(());
+    let mut app = Sim::new(());
+    app.node("server", UdpEcho4200::default());
+    app.node("client", UdpSingleClusteredSender::default());
 
-    let server = UdpEcho4200::build_named(ObjectPath::from("server"), &mut app);
-    let client = UdpSingleClusteredSender::build_named(ObjectPath::from("client"), &mut app);
+    let so = app.gate("server", "port");
+    let co = app.gate("client", "port");
 
-    let so = server.create_gate("port");
-    let co = client.create_gate("port");
-
-    let chan = Channel::new(
-        ObjectPath::appended_channel(&client.path(), "chan"),
-        ChannelMetrics::new(
-            100000,
-            Duration::from_millis(100),
-            Duration::ZERO,
-            Default::default(),
-        ),
-    );
+    let chan = Channel::new(ChannelMetrics::new(
+        100000,
+        Duration::from_millis(100),
+        Duration::ZERO,
+        Default::default(),
+    ));
 
     so.connect(co, Some(chan));
-
-    app.register_module(server);
-    app.register_module(client);
 
     let rt = Builder::seeded(123).build(app);
     let RuntimeResult::Finished { time, .. } = rt.run() else {
@@ -297,16 +267,12 @@ fn udp_echo_clustered_echo() {
     assert_eq!(time.as_secs(), 8)
 }
 
+#[derive(Default)]
 struct UdpConcurrentClients {
     handle: Option<JoinHandle<()>>,
 }
-impl_build_named!(UdpConcurrentClients);
 
 impl AsyncModule for UdpConcurrentClients {
-    fn new() -> Self {
-        Self { handle: None }
-    }
-
     async fn at_sim_start(&mut self, _: usize) {
         add_interface(Interface::ethv4_named(
             "en0",
@@ -388,28 +354,21 @@ impl AsyncModule for UdpConcurrentClients {
 fn udp_echo_concurrent_clients() {
     inet::init();
 
-    let mut app = NetworkApplication::new(());
+    let mut app = Sim::new(());
+    app.node("server", UdpEcho4200::default());
+    app.node("client", UdpConcurrentClients::default());
 
-    let server = UdpEcho4200::build_named(ObjectPath::from("server"), &mut app);
-    let client = UdpConcurrentClients::build_named(ObjectPath::from("client"), &mut app);
+    let so = app.gate("server", "port");
+    let co = app.gate("client", "port");
 
-    let so = server.create_gate("port");
-    let co = client.create_gate("port");
-
-    let chan = Channel::new(
-        ObjectPath::appended_channel(&client.path(), "chhan"),
-        ChannelMetrics::new(
-            100000,
-            Duration::from_millis(100),
-            Duration::ZERO,
-            Default::default(),
-        ),
-    );
+    let chan = Channel::new(ChannelMetrics::new(
+        100000,
+        Duration::from_millis(100),
+        Duration::ZERO,
+        Default::default(),
+    ));
 
     so.connect(co, Some(chan));
-
-    app.register_module(server);
-    app.register_module(client);
 
     let rt = Builder::seeded(123).build(app);
     let RuntimeResult::Finished { time, .. } = rt.run() else {
@@ -417,4 +376,189 @@ fn udp_echo_concurrent_clients() {
     };
 
     assert_eq!(time.as_secs(), 32)
+}
+
+#[test]
+#[serial]
+fn interface_does_not_use_busy_channel() {
+    inet::init();
+    // des::tracing::init();
+
+    static DONE: AtomicBool = AtomicBool::new(false);
+
+    let mut sim = Sim::new(());
+    sim.node(
+        "sender",
+        AsyncFn::failable::<_, _, std::io::Error>(|_| async move {
+            set_node_cfg(HostConfiguration {
+                dup_addr_detect_transmits: 0,
+            })?;
+            add_interface(Interface::empty("en0", NetworkDevice::eth()))?;
+
+            // Sleep to prevent MLD messags from blocking the sender
+            des::time::sleep(Duration::from_secs(1)).await;
+
+            for i in 0..32 {
+                send(Message::new().id(i).build(), "port");
+            }
+
+            let sock = RawIpSocket::new_v6()?;
+            sock.try_send(IpPacket::V6(Ipv6Packet {
+                traffic_class: 0,
+                flow_label: 0,
+                next_header: 42,
+                hop_limit: 32,
+                src: Ipv6Addr::UNSPECIFIED,
+                dst: Ipv6Addr::MULTICAST_ALL_NODES,
+                content: Vec::new(),
+            }))?;
+
+            for i in 0..32 {
+                send(Message::new().id(32 + i).build(), "port");
+            }
+
+            Ok(())
+        }),
+    );
+
+    sim.node(
+        "receiver",
+        AsyncFn::failable::<_, _, std::io::Error>(|mut rx| async move {
+            set_node_cfg(HostConfiguration {
+                dup_addr_detect_transmits: 0,
+            })?;
+            add_interface(Interface::empty("en0", NetworkDevice::eth()))?;
+
+            let mut count = 0;
+            let mut sock = RawIpSocket::new_v6()?;
+            sock.bind_proto(42)?;
+            loop {
+                tokio::select! {
+                    pkt = sock.recv() => {
+                        let pkt = pkt.unwrap();
+                        if pkt.tos() != 58 {
+                            assert_eq!(count, 64);
+                            DONE.store(true, std::sync::atomic::Ordering::SeqCst);
+                            break;
+                        }
+                    }
+                    _ = rx.recv() => {
+                        count += 1;
+                    }
+                };
+            }
+
+            Ok(())
+        }),
+    );
+
+    let tx = sim.gate("sender", "port");
+    let rx = sim.gate("receiver", "port");
+
+    tx.connect(
+        rx,
+        Some(Channel::new(ChannelMetrics {
+            bitrate: 1000_000,
+            latency: Duration::from_millis(20),
+            jitter: Duration::ZERO,
+            drop_behaviour: ChannelDropBehaviour::Queue(None),
+        })),
+    );
+
+    let rt = Builder::seeded(123).build(sim);
+    let _ = rt.run();
+
+    assert!(DONE.load(std::sync::atomic::Ordering::SeqCst));
+}
+
+#[test]
+#[serial]
+fn interface_will_use_idle_channel_fcfs() {
+    inet::init();
+    // des::tracing::init();
+
+    static DONE: AtomicBool = AtomicBool::new(false);
+
+    let mut sim = Sim::new(());
+    sim.node(
+        "sender",
+        AsyncFn::failable::<_, _, std::io::Error>(|_| async move {
+            set_node_cfg(HostConfiguration {
+                dup_addr_detect_transmits: 0,
+            })?;
+            add_interface(Interface::empty("en0", NetworkDevice::eth()))?;
+
+            // Sleep to prevent MLD messags from blocking the sender
+            des::time::sleep(Duration::from_secs(1)).await;
+
+            let sock = RawIpSocket::new_v6()?;
+            sock.try_send(IpPacket::V6(Ipv6Packet {
+                traffic_class: 0,
+                flow_label: 0,
+                next_header: 42,
+                hop_limit: 32,
+                src: Ipv6Addr::UNSPECIFIED,
+                dst: Ipv6Addr::MULTICAST_ALL_NODES,
+                content: Vec::new(),
+            }))?;
+
+            for i in 0..32 {
+                send(Message::new().id(32 + i).build(), "port");
+            }
+
+            Ok(())
+        }),
+    );
+
+    sim.node(
+        "receiver",
+        AsyncFn::failable::<_, _, std::io::Error>(|mut rx| async move {
+            set_node_cfg(HostConfiguration {
+                dup_addr_detect_transmits: 0,
+            })?;
+            add_interface(Interface::empty("en0", NetworkDevice::eth()))?;
+
+            let mut count = 0;
+            let mut sock = RawIpSocket::new_v6()?;
+            sock.bind_proto(42)?;
+            loop {
+                tokio::select! {
+                    pkt = sock.recv() => {
+                        let pkt = pkt.unwrap();
+                        if pkt.tos() != 58 {
+                            assert_eq!(count, 0);
+
+                        }
+                    }
+                    _ = rx.recv() => {
+                        count += 1;
+                        if count == 32 {
+                            DONE.store(true, std::sync::atomic::Ordering::SeqCst);
+                            break;
+                        }
+                    }
+                };
+            }
+
+            Ok(())
+        }),
+    );
+
+    let so = sim.gate("sender", "port");
+    let co = sim.gate("receiver", "port");
+
+    so.connect(
+        co,
+        Some(Channel::new(ChannelMetrics {
+            bitrate: 1000_000,
+            latency: Duration::from_millis(20),
+            jitter: Duration::ZERO,
+            drop_behaviour: ChannelDropBehaviour::Queue(None),
+        })),
+    );
+
+    let rt = Builder::seeded(123).build(sim);
+    let _ = rt.run();
+
+    assert!(DONE.load(std::sync::atomic::Ordering::SeqCst));
 }

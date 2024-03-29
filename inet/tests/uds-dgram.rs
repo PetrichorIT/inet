@@ -6,17 +6,12 @@ use serial_test::serial;
 use std::iter::repeat_with;
 use tokio::{spawn, task::JoinHandle};
 
+#[derive(Default)]
 struct PathedDgrams {
     handles: Vec<JoinHandle<()>>,
 }
 
 impl AsyncModule for PathedDgrams {
-    fn new() -> Self {
-        Self {
-            handles: Vec::new(),
-        }
-    }
-
     async fn at_sim_start(&mut self, _: usize) {
         self.handles.push(spawn(async move {
             let sock = UnixDatagram::bind("/tmp/task1").unwrap();
@@ -85,25 +80,19 @@ fn uds_pathed_dgrams() {
 
     type Main = PathedDgrams;
 
-    let app = NdlApplication::new("tests/main.ndl", registry![Main])
+    let app = Sim::ndl("tests/main.ndl", registry![Main])
         .map_err(|e| println!("{e}"))
         .unwrap();
-    let app = NetworkApplication::new(app);
     let rt = Builder::seeded(123).max_time(100.0.into()).build(app);
     let _ = rt.run().unwrap();
 }
 
+#[derive(Default)]
 struct UnnamedPair {
     handles: Vec<JoinHandle<()>>,
 }
 
 impl AsyncModule for UnnamedPair {
-    fn new() -> Self {
-        Self {
-            handles: Vec::new(),
-        }
-    }
-
     async fn at_sim_start(&mut self, _: usize) {
         let (a, b) = UnixDatagram::pair().unwrap();
 
@@ -147,25 +136,19 @@ fn uds_pair() {
 
     type Main = UnnamedPair;
 
-    let app = NdlApplication::new("tests/main.ndl", registry![Main])
+    let app = Sim::ndl("tests/main.ndl", registry![Main])
         .map_err(|e| println!("{e}"))
         .unwrap();
-    let app = NetworkApplication::new(app);
     let rt = Builder::seeded(123).max_time(100.0.into()).build(app);
     let _ = rt.run().unwrap();
 }
 
+#[derive(Default)]
 struct FailAtDoubleBinding {
     handles: Vec<JoinHandle<()>>,
 }
 
 impl AsyncModule for FailAtDoubleBinding {
-    fn new() -> Self {
-        Self {
-            handles: Vec::new(),
-        }
-    }
-
     async fn at_sim_start(&mut self, _: usize) {
         let _a = UnixDatagram::bind("/a/b/c").unwrap();
         let b = UnixDatagram::bind("/a/b/c");
@@ -189,10 +172,9 @@ fn double_bind() {
 
     type Main = FailAtDoubleBinding;
 
-    let app = NdlApplication::new("tests/main.ndl", registry![Main])
+    let app = Sim::ndl("tests/main.ndl", registry![Main])
         .map_err(|e| println!("{e}"))
         .unwrap();
-    let app = NetworkApplication::new(app);
     let rt = Builder::seeded(123).max_time(100.0.into()).build(app);
     match rt.run() {
         RuntimeResult::EmptySimulation { .. } => {}
@@ -200,17 +182,12 @@ fn double_bind() {
     }
 }
 
+#[derive(Default)]
 struct NamedTempdir {
     handles: Vec<JoinHandle<()>>,
 }
 
 impl AsyncModule for NamedTempdir {
-    fn new() -> Self {
-        Self {
-            handles: Vec::new(),
-        }
-    }
-
     async fn at_sim_start(&mut self, _: usize) {
         let tmp = fs::tempdir().unwrap();
 
@@ -250,10 +227,9 @@ fn uds_named_tempdir() {
 
     type Main = NamedTempdir;
 
-    let app = NdlApplication::new("tests/main.ndl", registry![Main])
+    let app = Sim::ndl("tests/main.ndl", registry![Main])
         .map_err(|e| println!("{e}"))
         .unwrap();
-    let app = NetworkApplication::new(app);
     let rt = Builder::seeded(123).max_time(100.0.into()).build(app);
     match rt.run() {
         RuntimeResult::EmptySimulation { .. } => {}

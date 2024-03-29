@@ -10,17 +10,12 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::spawn;
 use tokio::task::JoinHandle;
 
+#[derive(Default)]
 struct Simplex {
     handles: Vec<JoinHandle<()>>,
 }
 
 impl AsyncModule for Simplex {
-    fn new() -> Self {
-        Self {
-            handles: Vec::new(),
-        }
-    }
-
     async fn at_sim_start(&mut self, _: usize) {
         self.handles.push(spawn(async move {
             let server = UnixListener::bind("/tmp/listener").unwrap();
@@ -68,10 +63,9 @@ fn uds_simplex() {
 
     type Main = Simplex;
 
-    let app = NdlApplication::new("tests/main.ndl", registry![Main])
+    let app = Sim::ndl("tests/main.ndl", registry![Main])
         .map_err(|e| println!("{e}"))
         .unwrap();
-    let app = NetworkApplication::new(app);
     let rt = Builder::seeded(123).max_time(100.0.into()).build(app);
     match rt.run() {
         RuntimeResult::Finished { .. } => {}
@@ -79,17 +73,12 @@ fn uds_simplex() {
     }
 }
 
+#[derive(Default)]
 struct Duplex {
     handles: Vec<JoinHandle<()>>,
 }
 
 impl AsyncModule for Duplex {
-    fn new() -> Self {
-        Self {
-            handles: Vec::new(),
-        }
-    }
-
     async fn at_sim_start(&mut self, _: usize) {
         self.handles.push(spawn(async move {
             let server = UnixListener::bind("/tmp/listener").unwrap();
@@ -138,10 +127,9 @@ fn uds_duplex() {
 
     type Main = Duplex;
 
-    let app = NdlApplication::new("tests/main.ndl", registry![Main])
+    let app = Sim::ndl("tests/main.ndl", registry![Main])
         .map_err(|e| println!("{e}"))
         .unwrap();
-    let app = NetworkApplication::new(app);
     let rt = Builder::seeded(123).max_time(100.0.into()).build(app);
     match rt.run() {
         RuntimeResult::Finished { .. } => {}
@@ -149,17 +137,12 @@ fn uds_duplex() {
     }
 }
 
+#[derive(Default)]
 struct UnnamedPair {
     handles: Vec<JoinHandle<()>>,
 }
 
 impl AsyncModule for UnnamedPair {
-    fn new() -> Self {
-        Self {
-            handles: Vec::new(),
-        }
-    }
-
     async fn at_sim_start(&mut self, _: usize) {
         let (mut client, mut server) = UnixStream::pair().unwrap();
 
@@ -202,10 +185,9 @@ fn uds_stream_unnamed_pair() {
 
     type Main = UnnamedPair;
 
-    let app = NdlApplication::new("tests/main.ndl", registry![Main])
+    let app = Sim::ndl("tests/main.ndl", registry![Main])
         .map_err(|e| println!("{e}"))
         .unwrap();
-    let app = NetworkApplication::new(app);
     let rt = Builder::seeded(123).max_time(100.0.into()).build(app);
     match rt.run() {
         RuntimeResult::Finished { .. } => {}

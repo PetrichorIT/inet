@@ -10,7 +10,7 @@ mod v4;
 pub use v4::{Ipv4Flags, Ipv4Packet};
 
 mod v6;
-pub use v6::{Ipv6AddrExt, Ipv6LongestPrefixTable, Ipv6Packet, Ipv6Prefix};
+pub use v6::{Ipv6AddrExt, Ipv6AddrScope, Ipv6LongestPrefixTable, Ipv6Packet, Ipv6Prefix};
 
 #[cfg(test)]
 mod tests;
@@ -105,6 +105,14 @@ impl IpPacket {
             IpVersion::V4
         } else {
             IpVersion::V6
+        }
+    }
+
+    #[must_use]
+    pub fn tos(&self) -> u8 {
+        match self {
+            Self::V4(v4) => v4.proto,
+            Self::V6(v6) => v6.next_header,
         }
     }
 

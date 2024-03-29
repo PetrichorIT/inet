@@ -31,6 +31,7 @@ impl ProcessingElement for IOPlugin {
     }
 
     fn event_end(&mut self) {
+        IOContext::with_current(|ctx| ctx.event_end());
         self.ctx = IOContext::swap_in(self.prev.take());
         let Some(ref mut ctx) = self.ctx else {
             panic!("Stole CTX")

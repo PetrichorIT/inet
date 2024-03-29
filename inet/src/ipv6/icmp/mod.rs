@@ -12,14 +12,16 @@ use inet_types::{
         IcmpV6MtuOption, IcmpV6NDPOption, IcmpV6NeighborAdvertisment, IcmpV6NeighborSolicitation,
         IcmpV6Packet, IcmpV6PrefixInformation, IcmpV6RouterAdvertisement, IcmpV6RouterSolicitation,
         IcmpV6TimeExceeded, IcmpV6TimeExceededCode, NDP_MAX_RANDOM_FACTOR, NDP_MAX_RA_DELAY_TIME,
-        NDP_MAX_RTR_SOLICITATIONS, NDP_MIN_RANDOM_FACTOR, NDP_RETRANS_TIMER, PROTO_ICMPV6,
+        NDP_MAX_RTR_SOLICITATIONS, NDP_MAX_RTR_SOLICITATION_DELAY, NDP_MIN_RANDOM_FACTOR,
+        NDP_RETRANS_TIMER, PROTO_ICMPV6,
     },
     ip::{IpPacket, Ipv6AddrExt, Ipv6Packet, Ipv6Prefix},
 };
 use rand::distributions::Uniform;
 use std::{io, net::Ipv6Addr, time::Duration};
+use tracing::Level;
 
-use super::ndp::QueryType;
+use super::{mld, ndp::QueryType};
 
 pub mod ping;
 pub mod tracerouter;
@@ -34,6 +36,9 @@ impl IOContext {
             );
             return Ok(false);
         };
+
+        let span = tracing::span!(Level::INFO, "iface", id=%ifid);
+        let _guard = span.entered();
 
         match msg {
             IcmpV6Packet::DestinationUnreachable(msg) => {
@@ -79,6 +84,14 @@ impl IOContext {
                 }
                 return Ok(true);
             }
+
+            IcmpV6Packet::MulticastListenerQuery(query) => {
+                return self.ipv6_icmp_recv_multicast_listener_query(ip, ifid, query);
+            }
+            IcmpV6Packet::MulticastListenerReport(report) => {
+                return self.ipv6_icmp_recv_multicast_listener_discovery_report(ip, ifid, report);
+            }
+            IcmpV6Packet::MulticastListenerDone(_) => {}
 
             IcmpV6Packet::RouterSolicitation(req) => {
                 // See RFC 4861 :: 6.1.1
@@ -251,6 +264,10 @@ impl IOContext {
     }
 
     //
+    // # MLD
+    //
+
+    //
     // # Neighbor discovery protocol
     //
 
@@ -299,21 +316,44 @@ impl IOContext {
             }
         }
 
+        let iface_cfg = self.ipv6.router_cfg.get(&ifid).unwrap();
+
+        let dst = if ip.src.is_unspecified() {
+            Ipv6Addr::MULTICAST_ALL_NODES
+        } else {
+            // RFC 4861 defines that we are allowed to just
+            // use the multicast address either way
+            if iface_cfg.allow_solicited_advertisments_unicast {
+                ip.src
+            } else {
+                Ipv6Addr::MULTICAST_ALL_NODES
+            }
+        };
+
+        // TODO:
+        // Delay advertisment response, only send singe adv to multiple solicitations
+        let delay_time = SimTime::now()
+            + Duration::from_secs_f64(sample(Uniform::new(
+                0.0,
+                NDP_MAX_RA_DELAY_TIME.as_secs_f64(),
+            )));
+
+        // TODO:
+        // Rate limit sendings to MULTICAST:ALLNODES according to NDP_MIN_DELAY_BETWEEN_RAS
+
+        let token = TimerToken::RouterAdvertismentSolicited { ifid, dst };
+
+        if self.ipv6.timer.active(&token).is_none() {
+            self.ipv6.timer.schedule(token, delay_time);
+        }
+
+        Ok(true)
+    }
+
+    pub fn ipv6_icmp_send_router_adv(&mut self, ifid: IfId, dst: Ipv6Addr) -> io::Result<()> {
         let iface = self.ifaces.get(&ifid).unwrap();
         let iface_mac = iface.device.addr;
         let iface_cfg = self.ipv6.router_cfg.get(&ifid).unwrap();
-
-        // FIXME: is this really correct ? or should we just respond with unicast ?
-
-        // let dur_since_last_update = SimTime::now()
-        //     .checked_duration_since(self.ipv6.router_state.last_adv_sent)
-        //     .unwrap_or(iface_cfg.max_rtr_adv_interval);
-
-        // if dur_since_last_update < iface_cfg.max_rtr_adv_interval {
-        //     return Ok(true);
-        // }
-        // self.ipv6.router_state.last_adv_sent = SimTime::now();
-
         let adv = IcmpV6RouterAdvertisement {
             router_lifetime: iface_cfg.adv_default_lifetime.as_secs() as u16,
             managed: iface_cfg.adv_managed_flag,
@@ -345,39 +385,19 @@ impl IOContext {
             },
         };
 
-        let dst_addr = if ip.src.is_unspecified() {
-            Ipv6Addr::MULTICAST_ALL_NODES
-        } else {
-            // RFC 4861 defines that we are allowed to just
-            // use the multicast address either way
-            if iface_cfg.allow_solicited_advertisments_unicast {
-                ip.src
-            } else {
-                Ipv6Addr::MULTICAST_ALL_NODES
-            }
-        };
-
         let msg = IcmpV6Packet::RouterAdvertisment(adv);
-        let ip = Ipv6Packet {
+        let pkt = Ipv6Packet {
             traffic_class: 0,
             flow_label: 0,
             next_header: PROTO_ICMPV6,
             hop_limit: 255,
             src: Ipv6Addr::UNSPECIFIED,
-            dst: dst_addr,
+            dst,
             content: msg.to_vec()?,
         };
 
-        // TODO:
-        // Delay advertisment response, only send singe adv to multiple solicitations
-        let _delay_time = sample(Uniform::new(0.0, NDP_MAX_RA_DELAY_TIME.as_secs_f64()));
-
-        // TODO:
-        // Rate limit sendings to MULTICAST:ALLNODES according to NDP_MIN_DELAY_BETWEEN_RAS
-
-        self.ipv6_send(ip, ifid)?;
-
-        Ok(true)
+        self.ipv6_send(pkt, ifid)?;
+        Ok(())
     }
 
     pub fn ipv6_icmp_send_router_solicitation(&mut self, ifid: IfId) -> io::Result<()> {
@@ -490,7 +510,7 @@ impl IOContext {
                         continue;
                     }
 
-                    let autocfg = self.ipv6.prefixes.update(info);
+                    let autocfg = self.ipv6.prefixes.update(&info);
                     if autocfg {
                         let iface = self.ifaces.get(&ifid).unwrap();
                         let addr = iface.device.addr.embed_into(info.prefix);
@@ -502,6 +522,17 @@ impl IOContext {
                         binding.validity = validity;
 
                         new_bindings.push((ifid, binding, info));
+                    } else {
+                        // TODO: reset prefix timeout
+                        if let Some(timeout) = self.ipv6.prefixes.timeout_for(&info) {
+                            self.ipv6.timer.reschedule(
+                                &TimerToken::PrefixTimeout {
+                                    ifid,
+                                    prefix: info.prefix(),
+                                },
+                                timeout,
+                            );
+                        }
                     }
                 }
                 _ => {}
@@ -514,6 +545,15 @@ impl IOContext {
             let addr = binding.addr;
             self.interface_add_addr_v6(ifid, binding, false)?;
             self.ipv6.prefixes.assign(info, addr); // TODO: not sure if before or after address assigning
+            if let Some(timeout) = self.ipv6.prefixes.timeout_for(&info) {
+                self.ipv6.timer.schedule(
+                    TimerToken::PrefixTimeout {
+                        ifid,
+                        prefix: info.prefix(),
+                    },
+                    timeout,
+                );
+            }
         }
 
         Ok(true)
@@ -548,8 +588,6 @@ impl IOContext {
             }
         });
 
-        // tracing::warn!(IFACE=%ifid, "recv (sol) for {} from {}->{}", req.target, ip.src, ip.dst);
-
         // Message validation on unspecific IP
         let iface = self.ifaces.get(&ifid).unwrap();
         if ip.src.is_unspecified() {
@@ -562,6 +600,32 @@ impl IOContext {
                     return Ok(true);
                 }
             }
+        }
+
+        let query_is_dedup = ip.src.is_unspecified();
+        let tentative = !iface.addrs.v6.matches(req.target);
+
+        tracing::trace!(IFACE=%ifid, tentative, "recv (sol) for {} from {}->{}", req.target, ip.src, ip.dst);
+
+        if tentative {
+            // Do not response, if the address id tentative
+
+            // TODO: check whether src of sol is self, then ignore
+            if query_is_dedup {
+                // Check whether this query asks for the same address as an active dedup assigment
+                let Some(query) = self.ipv6.solicitations.lookup(req.target) else {
+                    return Ok(true);
+                };
+
+                let QueryType::TentativeAddressCheck(binding) = query else {
+                    return Ok(true);
+                };
+
+                self.ipv6_icmp_tentative_addr_check_failed(ifid, binding)?;
+                return Ok(true);
+            }
+
+            return Ok(true);
         }
 
         if !ip.src.is_unspecified() {
@@ -625,11 +689,35 @@ impl IOContext {
         };
 
         iface.addrs.v6.join(Ipv6Addr::MULTICAST_ALL_NODES);
-        if matches!(query, QueryType::TentativeAddressCheck(_)) {
-            iface
-                .addrs
-                .v6
-                .join(Ipv6Addr::solicied_node_multicast(target));
+        let is_dedup = matches!(query, QueryType::TentativeAddressCheck(_));
+        if is_dedup {
+            let first_pkt_after_reinit = iface.send_q == 0;
+            if first_pkt_after_reinit {
+                let delay = Duration::from_secs_f64(
+                    NDP_MAX_RTR_SOLICITATION_DELAY.as_secs_f64()
+                        * des::runtime::random::<f64>()
+                        * 0.0,
+                    // TODO: RFC 4862 specifies that:
+                    // - a node should delay joining the sol node multicast of tentative addrs
+                    // - within the delay, ICMP messages to all-node or sol-node should still be handled
+                    //
+                    // This requires some mechanism to accept MACs of sol-node-mc, but still not join the multicast group ???
+                );
+                self.ipv6.timer.schedule(
+                    TimerToken::DelayedJoinMulticast {
+                        ifid,
+                        multicast: Ipv6Addr::solicied_node_multicast(target),
+                    },
+                    SimTime::now() + delay,
+                );
+            } else {
+                let multicast = Ipv6Addr::solicied_node_multicast(target);
+
+                let needs_mld_report = iface.addrs.v6.join(multicast);
+                if needs_mld_report {
+                    self.mld_on_event(ifid, mld::Event::StartListening, multicast)?;
+                }
+            }
         }
 
         self.ipv6.solicitations.register(target, query);
@@ -637,19 +725,21 @@ impl IOContext {
         if self
             .ipv6
             .timer
-            .active(TimerToken::NeighborSolicitationRetransmitTimeout { target, ifid })
+            .active(&TimerToken::NeighborSolicitationRetransmitTimeout { target, ifid })
+            .is_some()
         {
             unreachable!("any sol should be saved in ipv6.solicitations, but non was found")
         }
 
         self.ipv6.neighbors.initalize(target, ifid);
-        self.ipv6_icmp_send_neighbor_solicitation_raw(target, ifid)
+        self.ipv6_icmp_send_neighbor_solicitation_raw(target, ifid, is_dedup)
     }
 
     fn ipv6_icmp_send_neighbor_solicitation_raw(
         &mut self,
         target: Ipv6Addr,
         ifid: IfId,
+        is_dedup: bool,
     ) -> io::Result<()> {
         let iface_addr = self.ifaces.get(&ifid).unwrap().device.addr;
 
@@ -682,13 +772,16 @@ impl IOContext {
 
         // tracing::trace!(IFACE=%ifid, "send (sol) for {target} from {}->{}", pkt.src, pkt.dst);
 
-        self.ipv6_send_with_flags(pkt, ifid, Ipv6SendFlags::ALLOW_SRC_UNSPECIFIED)?;
+        let mut flags = Ipv6SendFlags::ALLOW_SRC_UNSPECIFIED;
+        if is_dedup {
+            flags |= Ipv6SendFlags::REQUIRED_SRC_UNSPECIFIED;
+        }
+        self.ipv6_send_with_flags(pkt, ifid, flags)?;
 
         self.ipv6.timer.schedule(
             TimerToken::NeighborSolicitationRetransmitTimeout { target, ifid },
             SimTime::now() + NDP_RETRANS_TIMER,
         );
-        self.ipv6.timer.schedule_wakeup();
 
         Ok(())
     }
@@ -702,6 +795,8 @@ impl IOContext {
             tracing::error!("timeout referring to unknown query {target} @{ifid}");
             return Ok(());
         };
+
+        let _guard = tracing::span!(Level::INFO, "iface", id=%ifid).entered();
 
         match query_typ {
             QueryType::NeighborSolicitation => {
@@ -725,7 +820,7 @@ impl IOContext {
             .unwrap_or(usize::MAX)
             <= NDP_MAX_RTR_SOLICITATIONS;
         if should_retry {
-            self.ipv6_icmp_send_neighbor_solicitation_raw(target, ifid)
+            self.ipv6_icmp_send_neighbor_solicitation_raw(target, ifid, false)
         } else {
             tracing::warn!(IFACE=%ifid, "could no resolve address for {target}");
 
@@ -771,11 +866,11 @@ impl IOContext {
         let should_retry = number_of_sol <= self.ipv6.cfg.dup_addr_detect_transmits;
 
         if should_retry {
-            self.ipv6_icmp_send_neighbor_solicitation_raw(binding.addr, ifid)
+            self.ipv6_icmp_send_neighbor_solicitation_raw(binding.addr, ifid, true)
         } else {
             self.ipv6.neighbors.remove(binding.addr);
             self.ipv6.solicitations.remove(binding.addr);
-            tracing::debug!(IFACE = %ifid, "assigning new tentative address {}", binding.addr);
+            tracing::debug!(addr=%binding.addr, "deduplication succeeded");
 
             let Some(iface) = self.ifaces.get_mut(&ifid) else {
                 todo!()
@@ -835,7 +930,17 @@ impl IOContext {
             }
         }
 
-        // tracing::warn!(IFACE=%ifid, "recv (adv) for {} from {}->{}", adv.target, ip.src, ip.dst);
+        let Some(query) = self.ipv6.solicitations.lookup(adv.target) else {
+            tracing::warn!("unknown query received.");
+            return Ok(true);
+        };
+
+        tracing::trace!(IFACE=%ifid, "recv (adv) for {} from {}->{}", adv.target, ip.src, ip.dst);
+
+        if let QueryType::TentativeAddressCheck(binding) = query {
+            self.ipv6_icmp_tentative_addr_check_failed(ifid, binding)?;
+            return Ok(true);
+        }
 
         let fwd_pkts = self
             .ipv6
@@ -851,7 +956,7 @@ impl IOContext {
 
             self.ipv6
                 .timer
-                .cancel(TimerToken::NeighborSolicitationRetransmitTimeout {
+                .cancel(&TimerToken::NeighborSolicitationRetransmitTimeout {
                     target: adv.target,
                     ifid,
                 });
@@ -860,5 +965,31 @@ impl IOContext {
         // TODO: router changes may need to be propagated
 
         Ok(true)
+    }
+
+    fn ipv6_icmp_tentative_addr_check_failed(
+        &mut self,
+        ifid: IfId,
+        binding: InterfaceAddrV6,
+    ) -> io::Result<()> {
+        tracing::error!(IFACE=%ifid, "address dedup failed for '{binding}'");
+        self.ipv6.solicitations.remove(binding.addr);
+        self.ipv6
+            .timer
+            .cancel(&TimerToken::NeighborSolicitationRetransmitTimeout {
+                target: binding.addr,
+                ifid,
+            });
+
+        let Some(iface) = self.ifaces.get_mut(&ifid) else {
+            todo!();
+        };
+
+        iface
+            .addrs
+            .v6
+            .leave(Ipv6Addr::solicied_node_multicast(binding.addr));
+
+        Ok(())
     }
 }

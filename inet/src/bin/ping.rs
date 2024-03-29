@@ -6,13 +6,10 @@ use inet::{
 };
 use tokio::spawn;
 
+#[derive(Default)]
 struct Alice {}
 
 impl AsyncModule for Alice {
-    fn new() -> Self {
-        Self {}
-    }
-
     async fn at_sim_start(&mut self, _: usize) {
         let addr = par("addr").unwrap().parse::<Ipv4Addr>().unwrap();
         let mask = par("mask").unwrap().parse::<Ipv4Addr>().unwrap();
@@ -30,12 +27,10 @@ impl AsyncModule for Alice {
     }
 }
 
+#[derive(Default)]
 struct Bob {}
 
 impl AsyncModule for Bob {
-    fn new() -> Self {
-        Self {}
-    }
     async fn at_sim_start(&mut self, _: usize) {
         let addr = par("addr").unwrap().parse::<Ipv4Addr>().unwrap();
         let mask = par("mask").unwrap().parse::<Ipv4Addr>().unwrap();
@@ -53,12 +48,10 @@ impl AsyncModule for Bob {
     }
 }
 
+#[derive(Default)]
 struct Eve {}
 
 impl AsyncModule for Eve {
-    fn new() -> Self {
-        Self {}
-    }
     async fn at_sim_start(&mut self, _: usize) {
         let addr = par("addr").unwrap().parse::<Ipv4Addr>().unwrap();
         let mask = par("mask").unwrap().parse::<Ipv4Addr>().unwrap();
@@ -94,13 +87,10 @@ impl AsyncModule for Eve {
     }
 }
 
+#[derive(Default)]
 struct Main {}
 
 impl AsyncModule for Main {
-    fn new() -> Self {
-        Self {}
-    }
-
     async fn at_sim_start(&mut self, _: usize) {
         for port in RoutingInformation::collect().ports {
             let peer = port.output.path_end().unwrap().owner().path();
@@ -125,11 +115,10 @@ fn main() {
     inet::init();
     des::tracing::init();
 
-    let app = NdlApplication::new("inet/src/bin/ping.ndl", registry![Alice, Bob, Eve, Main])
+    let mut app = Sim::ndl("inet/src/bin/ping.ndl", registry![Alice, Bob, Eve, Main])
         .map_err(|e| println!("{e}"))
         .unwrap();
-    let mut app = NetworkApplication::new(app);
-    app.include_par_file("inet/src/bin/ping.par");
+    app.include_par_file("inet/src/bin/ping.par").unwrap();
     let rt = Builder::seeded(123).max_itr(50).build(app);
     let _ = rt.run().unwrap();
 }

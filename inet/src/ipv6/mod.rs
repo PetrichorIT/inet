@@ -3,7 +3,8 @@ use std::{io, net::Ipv6Addr, time::Duration};
 use bitflags::bitflags;
 use des::net::message::{schedule_in, Message};
 use fxhash::{FxBuildHasher, FxHashMap};
-use inet_types::ip::{Ipv6Packet, KIND_IPV6};
+use inet_types::ip::{Ipv6AddrExt, Ipv6Packet, Ipv6Prefix, KIND_IPV6};
+use tracing::Level;
 
 use crate::{ctx::IOContext, interface::IfId};
 
@@ -11,6 +12,7 @@ use self::{
     addrs::PolicyTable,
     cfg::{HostConfiguration, RouterInterfaceConfiguration},
     icmp::{ping::PingCtrl, tracerouter::TracerouteCB},
+    mld::MulticastListenerDiscoveryCtrl,
     ndp::{
         DefaultRouterList, DestinationCache, NeighborCache, PrefixList, QueryType, Solicitations,
     },
@@ -23,6 +25,7 @@ pub mod addrs;
 pub mod api;
 pub mod cfg;
 pub mod icmp;
+pub mod mld;
 pub mod ndp;
 pub mod router;
 pub mod state;
@@ -39,6 +42,7 @@ pub struct Ipv6 {
     pub default_routers: DefaultRouterList,
 
     pub iface_state: FxHashMap<IfId, InterfaceState>,
+    pub mld: FxHashMap<IfId, MulticastListenerDiscoveryCtrl>,
 
     pub is_rooter: bool,
     pub router: Router,
@@ -65,6 +69,7 @@ impl Ipv6 {
             default_routers: DefaultRouterList::new(),
 
             iface_state: FxHashMap::with_hasher(FxBuildHasher::default()),
+            mld: FxHashMap::with_hasher(FxBuildHasher::default()),
 
             cfg: HostConfiguration::default(),
             is_rooter: false,
@@ -85,6 +90,7 @@ bitflags! {
     pub struct Ipv6SendFlags: u8 {
         const DEFAULT = 0b0000_0000;
         const ALLOW_SRC_UNSPECIFIED = 0b0000_0001;
+        const REQUIRED_SRC_UNSPECIFIED = 0b0000_0010;
     }
 }
 
@@ -108,7 +114,7 @@ impl IOContext {
         }
 
         // Assign src addr if nessecary
-        if pkt.src.is_unspecified() {
+        if pkt.src.is_unspecified() && !flags.contains(Ipv6SendFlags::REQUIRED_SRC_UNSPECIFIED) {
             // (0) Check link local
             let canidates = self.ipv6_src_addr_canidate_set(pkt.dst, ifid);
             if let Some(src) = canidates.select(&self.ipv6.policies) {
@@ -116,6 +122,12 @@ impl IOContext {
             } else if flags.contains(Ipv6SendFlags::ALLOW_SRC_UNSPECIFIED) {
                 /* Do nothing the flag allows this */
             } else {
+                tracing::error!(
+                    IFACE = %ifid,
+                    DST = ?pkt.dst,
+                    FLAGS = ?flags,
+                    "cannot send packet: no valid src addr found"
+                );
                 return Err(io::Error::new(io::ErrorKind::Other, "no valid src addr"));
             }
         }
@@ -231,20 +243,46 @@ impl IOContext {
         }
     }
 
-    pub fn ipv6_handle_timer(&mut self, msg: Message) {
+    pub fn ipv6_handle_timer(&mut self, msg: Message) -> io::Result<()> {
         use timer::TimerToken::*;
         let tokens = self.ipv6.timer.recv(&msg);
         for token in tokens {
             // tracing::debug!("timer exceeded: {token:?}");
             match token {
-                NeighborSolicitationRetransmitTimeout { target, ifid } => {
-                    self.ipv6_icmp_solicitation_retrans_timeout(target, ifid)
-                        .unwrap();
+                PrefixTimeout { ifid, prefix } => {
+                    self.ipv6_prefix_timeout(ifid, prefix)?;
                 }
+
+                RouterAdvertismentUnsolicited { ifid } => {
+                    let cfg = self.ipv6.router_cfg.get(&ifid).unwrap();
+                    if cfg.adv_send_advertisments {
+                        self.ipv6_icmp_send_router_adv(ifid, Ipv6Addr::MULTICAST_ALL_NODES)?;
+                        self.ipv6_schedule_unsolicited_router_adv(ifid)?;
+                    }
+                }
+                RouterAdvertismentSolicited { ifid, dst } => {
+                    self.ipv6_icmp_send_router_adv(ifid, dst)?;
+                }
+                NeighborSolicitationRetransmitTimeout { target, ifid } => {
+                    self.ipv6_icmp_solicitation_retrans_timeout(target, ifid)?;
+                }
+                DelayedJoinMulticast { ifid, multicast } => {
+                    let iface = self.ifaces.get_mut(&ifid).unwrap();
+                    let _guard = tracing::span!(Level::INFO, "iface", id=%ifid).entered();
+                    let needs_mld_report = iface.addrs.v6.join(multicast);
+
+                    if needs_mld_report {
+                        self.mld_on_event(ifid, mld::Event::StartListening, multicast)?;
+                    }
+                }
+                MulticastListenerDiscoverySendReport {
+                    ifid,
+                    multicast_addr,
+                } => self.mld_on_event(ifid, mld::Event::TimerExpired(token), multicast_addr)?,
             }
         }
 
-        self.ipv6.timer.schedule_wakeup();
+        Ok(())
     }
 }
 
@@ -252,7 +290,7 @@ impl IOContext {
 
 impl IOContext {
     pub fn ipv6_register_host_interface(&mut self, ifid: IfId) -> io::Result<()> {
-        tracing::debug!(IFACE = %ifid, "registered new multicast capable inet6 interface");
+        let _guard = tracing::span!(Level::INFO, "iface", id=%ifid).entered();
         self.ipv6.iface_state.insert(
             ifid,
             InterfaceState {
@@ -265,5 +303,29 @@ impl IOContext {
         );
 
         self.ipv6_icmp_send_router_solicitation(ifid)
+    }
+
+    pub fn ipv6_prefix_timeout(&mut self, ifid: IfId, prefix: Ipv6Prefix) -> io::Result<()> {
+        let _guard = tracing::span!(Level::INFO, "iface", id=%ifid).entered();
+        tracing::debug!(%prefix, "prefix timed out");
+
+        let timed_out = self.ipv6.prefixes.timeout();
+        let iface = self.get_mut_iface(ifid)?;
+
+        for timed_out in timed_out {
+            // Delete relevant addrs on ifaces if nessecary
+            let Some(assigned) = timed_out.assigned_addr else {
+                continue;
+            };
+            let Some(binding) = iface.addrs.v6.remove(assigned) else {
+                continue;
+            };
+            iface
+                .addrs
+                .v6
+                .leave(Ipv6Addr::solicied_node_multicast(binding.addr));
+        }
+
+        Ok(())
     }
 }
