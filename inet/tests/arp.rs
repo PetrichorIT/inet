@@ -22,8 +22,8 @@ impl Default for Node {
     }
 }
 
-impl AsyncModule for Node {
-    async fn at_sim_start(&mut self, _stage: usize) {
+impl Module for Node {
+    fn at_sim_start(&mut self, _stage: usize) {
         let ip = par("addr").unwrap().parse().unwrap();
         add_interface(Interface::eth(NetworkDevice::eth(), ip)).unwrap();
 
@@ -44,10 +44,13 @@ impl AsyncModule for Node {
             } else {
                 RawIpSocket::new_v6().unwrap()
             };
+
+            let mut index = random::<usize>() % 5;
             loop {
                 sleep(Duration::from_secs_f64(random())).await;
 
-                let target = valid_addrs[random::<usize>() % 5];
+                let target = valid_addrs[index];
+                index = (index + 1) % 5;
                 if target == ip {
                     continue;
                 }
@@ -59,7 +62,7 @@ impl AsyncModule for Node {
         });
     }
 
-    async fn handle_message(&mut self, msg: Message) {
+    fn handle_message(&mut self, msg: Message) {
         if msg.can_cast::<Ipv4Packet>() {
             let msg = msg.content::<Ipv4Packet>();
             assert_eq!(msg.dest, self.ip);
@@ -73,7 +76,7 @@ impl AsyncModule for Node {
         }
     }
 
-    async fn at_sim_end(&mut self) {
+    fn at_sim_end(&mut self) {
         let r = arpa().unwrap();
         assert_eq!(r.len(), 6);
     }
@@ -82,14 +85,13 @@ impl AsyncModule for Node {
 #[test]
 #[serial]
 fn v4() {
-    inet::init();
-    // Logger::new().set_logger();
-
-    let mut app = Sim::ndl("tests/arp/main.ndl", registry![Node, Switch, else _])
+    let mut app = Sim::new(())
+        .with_stack(inet::init)
+        .with_ndl("tests/arp/main.ndl", registry![Node, Switch, else _])
         .map_err(|e| println!("{e}"))
         .unwrap();
     app.include_par_file("tests/arp/v4.par").unwrap();
 
-    let rt = Builder::seeded(123).max_itr(500).build(app);
+    let rt = Builder::seeded(123).max_itr(1000).build(app);
     let _ = rt.run().unwrap_premature_abort();
 }

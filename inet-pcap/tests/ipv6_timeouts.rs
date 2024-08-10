@@ -1,5 +1,5 @@
 use des::{
-    net::{module::AsyncModule, Sim},
+    net::{module::Module, Sim},
     registry,
     runtime::Builder,
 };
@@ -16,8 +16,8 @@ use std::fs::File;
 #[derive(Default)]
 struct Expect3Addrs;
 
-impl AsyncModule for Expect3Addrs {
-    async fn at_sim_start(&mut self, _stage: usize) {
+impl Module for Expect3Addrs {
+    fn at_sim_start(&mut self, _stage: usize) {
         pcap(PcapConfig {
             filters: PcapFilters::default(),
             capture: PcapCapturePoints::All,
@@ -28,7 +28,7 @@ impl AsyncModule for Expect3Addrs {
         add_interface(Interface::empty("en0", NetworkDevice::eth())).unwrap();
     }
 
-    async fn at_sim_end(&mut self) {
+    fn at_sim_end(&mut self) {
         let addrs = getaddrinfo().unwrap();
         assert_eq!(addrs.len(), 3, "see: {addrs:?}");
     }
@@ -37,8 +37,8 @@ impl AsyncModule for Expect3Addrs {
 #[derive(Default)]
 struct Expect3Then1Addrs;
 
-impl AsyncModule for Expect3Then1Addrs {
-    async fn at_sim_start(&mut self, _stage: usize) {
+impl Module for Expect3Then1Addrs {
+    fn at_sim_start(&mut self, _stage: usize) {
         pcap(PcapConfig {
             filters: PcapFilters::default(),
             capture: PcapCapturePoints::All,
@@ -49,7 +49,7 @@ impl AsyncModule for Expect3Then1Addrs {
         add_interface(Interface::empty("en0", NetworkDevice::eth())).unwrap();
     }
 
-    async fn at_sim_end(&mut self) {
+    fn at_sim_end(&mut self) {
         let addrs = getaddrinfo().unwrap();
         assert_eq!(addrs.len(), 1);
     }
@@ -58,8 +58,8 @@ impl AsyncModule for Expect3Then1Addrs {
 #[derive(Default)]
 struct RouterWithAdv;
 
-impl AsyncModule for RouterWithAdv {
-    async fn at_sim_start(&mut self, _stage: usize) {
+impl Module for RouterWithAdv {
+    fn at_sim_start(&mut self, _stage: usize) {
         pcap(PcapConfig {
             filters: PcapFilters::default(),
             capture: PcapCapturePoints::All,
@@ -82,8 +82,8 @@ impl AsyncModule for RouterWithAdv {
 #[derive(Default)]
 struct RouterWithoutAdv;
 
-impl AsyncModule for RouterWithoutAdv {
-    async fn at_sim_start(&mut self, _stage: usize) {
+impl Module for RouterWithoutAdv {
+    fn at_sim_start(&mut self, _stage: usize) {
         pcap(PcapConfig {
             filters: PcapFilters::default(),
             capture: PcapCapturePoints::All,
@@ -120,18 +120,19 @@ type Switch = utils::LinkLayerSwitch;
 #[test]
 #[serial]
 fn ipv6_timeouts_with_ra() {
-    inet::init();
     // des::tracing::init();
 
     type Router = RouterWithAdv;
     type HostAlice = Expect3Addrs;
     type HostBob = Expect3Addrs;
 
-    let app = Sim::ndl(
-        "tests/ipv6.ndl",
-        registry![HostAlice, HostBob, Router, Switch, else _],
-    )
-    .unwrap();
+    let app = Sim::new(())
+        .with_stack(inet::init)
+        .with_ndl(
+            "tests/ipv6.ndl",
+            registry![HostAlice, HostBob, Router, Switch, else _],
+        )
+        .unwrap();
 
     let rt = Builder::seeded(123)
         // .max_itr(30)
@@ -143,17 +144,19 @@ fn ipv6_timeouts_with_ra() {
 #[test]
 #[serial]
 fn ipv6_timeouts_without_ra() {
-    inet::init();
-    des::tracing::init();
+    // des::tracing::init();
+
     type Router = RouterWithoutAdv;
     type HostAlice = Expect3Then1Addrs;
     type HostBob = Expect3Then1Addrs;
 
-    let app = Sim::ndl(
-        "tests/ipv6.ndl",
-        registry![HostAlice, HostBob, Router, Switch, else _],
-    )
-    .unwrap();
+    let app = Sim::new(())
+        .with_stack(inet::init)
+        .with_ndl(
+            "tests/ipv6.ndl",
+            registry![HostAlice, HostBob, Router, Switch, else _],
+        )
+        .unwrap();
 
     let rt = Builder::seeded(123)
         // .max_itr(30)

@@ -1,4 +1,11 @@
-use std::{collections::VecDeque, str::FromStr, sync::atomic::AtomicBool};
+use std::{
+    collections::VecDeque,
+    str::FromStr,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+};
 
 use des::{net::AsyncFn, prelude::*};
 use inet::{
@@ -8,19 +15,19 @@ use inet::{
     *,
 };
 use serial_test::serial;
-use tokio::task::JoinHandle;
 use types::ip::{IpPacket, Ipv6AddrExt, Ipv6Packet};
 
 #[derive(Default)]
 struct SocketBind {
-    handle: Option<JoinHandle<()>>,
+    done: Arc<AtomicBool>,
 }
 
-impl AsyncModule for SocketBind {
-    async fn at_sim_start(&mut self, _: usize) {
+impl Module for SocketBind {
+    fn at_sim_start(&mut self, _: usize) {
         add_interface(Interface::loopback()).unwrap();
 
-        self.handle = Some(tokio::spawn(async move {
+        let done = self.done.clone();
+        tokio::spawn(async move {
             let sock0 = UdpSocket::bind("0.0.0.0:0").await.unwrap();
             let device = sock0.device().unwrap();
             assert_eq!(device, Some(InterfaceName::new("lo0")));
@@ -60,22 +67,22 @@ impl AsyncModule for SocketBind {
             assert_eq!(addr, SocketAddr::from_str("0.0.0.0:1027").unwrap());
             let _peer = sock4.peer_addr().unwrap_err();
 
-            drop((sock1, sock3, sock4))
-        }))
+            drop((sock1, sock3, sock4));
+            done.store(true, Ordering::SeqCst)
+        });
     }
 
-    async fn at_sim_end(&mut self) {
-        self.handle.take().unwrap().await.unwrap();
+    fn at_sim_end(&mut self) {
+        assert!(self.done.load(Ordering::SeqCst));
     }
 }
 
 #[test]
 #[serial]
 fn udp_empty_socket_bind() {
-    inet::init();
     // des::tracing::init();
 
-    let mut app = Sim::new(());
+    let mut app = Sim::new(()).with_stack(inet::init);
     app.node("root", SocketBind::default());
 
     let rt = Builder::seeded(123).build(app);
@@ -85,8 +92,8 @@ fn udp_empty_socket_bind() {
 #[derive(Default)]
 struct UdpEcho4200;
 
-impl AsyncModule for UdpEcho4200 {
-    async fn at_sim_start(&mut self, _: usize) {
+impl Module for UdpEcho4200 {
+    fn at_sim_start(&mut self, _: usize) {
         add_interface(Interface::ethv4_named(
             "en0",
             NetworkDevice::eth(),
@@ -112,18 +119,18 @@ impl AsyncModule for UdpEcho4200 {
             }
         });
     }
-    async fn handle_message(&mut self, _: Message) {
+    fn handle_message(&mut self, _: Message) {
         panic!("should only direct to udp socket");
     }
 }
 
 #[derive(Default)]
 struct UdpSingleEchoSender {
-    handle: Option<JoinHandle<()>>,
+    done: Arc<AtomicBool>,
 }
 
-impl AsyncModule for UdpSingleEchoSender {
-    async fn at_sim_start(&mut self, _: usize) {
+impl Module for UdpSingleEchoSender {
+    fn at_sim_start(&mut self, _: usize) {
         add_interface(Interface::ethv4_named(
             "en0",
             NetworkDevice::eth(),
@@ -132,7 +139,8 @@ impl AsyncModule for UdpSingleEchoSender {
         ))
         .unwrap();
 
-        self.handle = Some(tokio::spawn(async move {
+        let done = self.done.clone();
+        tokio::spawn(async move {
             let sock = UdpSocket::bind("0.0.0.0:0").await.unwrap();
             sock.connect("1.1.1.42:42").await.unwrap();
 
@@ -148,23 +156,22 @@ impl AsyncModule for UdpSingleEchoSender {
                 let n = sock.recv(&mut buf).await.unwrap();
                 assert_eq!(n, size);
                 assert_eq!(&buf[..n], &msg[..]);
+                done.store(true, Ordering::SeqCst)
             }
-        }))
+        });
     }
 
-    async fn at_sim_end(&mut self) {
-        self.handle.take().unwrap().await.unwrap();
+    fn at_sim_end(&mut self) {
+        assert!(self.done.load(Ordering::SeqCst));
     }
 }
 
 #[test]
 #[serial]
 fn udp_echo_single_client() {
-    inet::init();
-
     // Logger::new().set_logger();
 
-    let mut app = Sim::new(());
+    let mut app = Sim::new(()).with_stack(inet::init);
     app.node("server", UdpEcho4200::default());
     app.node("client", UdpSingleEchoSender::default());
 
@@ -190,11 +197,11 @@ fn udp_echo_single_client() {
 
 #[derive(Default)]
 struct UdpSingleClusteredSender {
-    handle: Option<JoinHandle<()>>,
+    done: Arc<AtomicBool>,
 }
 
-impl AsyncModule for UdpSingleClusteredSender {
-    async fn at_sim_start(&mut self, _: usize) {
+impl Module for UdpSingleClusteredSender {
+    fn at_sim_start(&mut self, _: usize) {
         add_interface(Interface::ethv4_named(
             "en0",
             NetworkDevice::eth(),
@@ -203,7 +210,8 @@ impl AsyncModule for UdpSingleClusteredSender {
         ))
         .unwrap();
 
-        self.handle = Some(tokio::spawn(async move {
+        let done = self.done.clone();
+        tokio::spawn(async move {
             let sock = UdpSocket::bind("0.0.0.0:0").await.unwrap();
             sock.connect("1.1.1.42:42").await.unwrap();
 
@@ -229,21 +237,21 @@ impl AsyncModule for UdpSingleClusteredSender {
                     assert_eq!(&buf[..n], &expected[..]);
                 }
             }
-        }))
+            done.store(true, Ordering::SeqCst)
+        });
     }
 
-    async fn at_sim_end(&mut self) {
-        self.handle.take().unwrap().await.unwrap();
+    fn at_sim_end(&mut self) {
+        assert!(self.done.load(Ordering::SeqCst));
     }
 }
 
 #[test]
 #[serial]
 fn udp_echo_clustered_echo() {
-    inet::init();
     // Logger::new().set_logger();
 
-    let mut app = Sim::new(());
+    let mut app = Sim::new(()).with_stack(inet::init);
     app.node("server", UdpEcho4200::default());
     app.node("client", UdpSingleClusteredSender::default());
 
@@ -269,11 +277,11 @@ fn udp_echo_clustered_echo() {
 
 #[derive(Default)]
 struct UdpConcurrentClients {
-    handle: Option<JoinHandle<()>>,
+    done: Arc<AtomicBool>,
 }
 
-impl AsyncModule for UdpConcurrentClients {
-    async fn at_sim_start(&mut self, _: usize) {
+impl Module for UdpConcurrentClients {
+    fn at_sim_start(&mut self, _: usize) {
         add_interface(Interface::ethv4_named(
             "en0",
             NetworkDevice::eth(),
@@ -282,7 +290,8 @@ impl AsyncModule for UdpConcurrentClients {
         ))
         .unwrap();
 
-        self.handle = Some(tokio::spawn(async move {
+        let done = self.done.clone();
+        tokio::spawn(async move {
             let h1 = tokio::spawn(async move {
                 let sock = UdpSocket::bind("0.0.0.0:0").await.unwrap();
                 sock.connect("1.1.1.42:42").await.unwrap();
@@ -341,20 +350,19 @@ impl AsyncModule for UdpConcurrentClients {
             h1.await.unwrap();
             h2.await.unwrap();
             h3.await.unwrap();
-        }))
+            done.store(true, Ordering::SeqCst)
+        });
     }
 
-    async fn at_sim_end(&mut self) {
-        self.handle.take().unwrap().await.unwrap();
+    fn at_sim_end(&mut self) {
+        assert!(self.done.load(Ordering::SeqCst));
     }
 }
 
 #[test]
 #[serial]
 fn udp_echo_concurrent_clients() {
-    inet::init();
-
-    let mut app = Sim::new(());
+    let mut app = Sim::new(()).with_stack(inet::init);
     app.node("server", UdpEcho4200::default());
     app.node("client", UdpConcurrentClients::default());
 
@@ -381,12 +389,11 @@ fn udp_echo_concurrent_clients() {
 #[test]
 #[serial]
 fn interface_does_not_use_busy_channel() {
-    inet::init();
     // des::tracing::init();
 
     static DONE: AtomicBool = AtomicBool::new(false);
 
-    let mut sim = Sim::new(());
+    let mut sim = Sim::new(()).with_stack(inet::init);
     sim.node(
         "sender",
         AsyncFn::failable::<_, _, std::io::Error>(|_| async move {
@@ -474,12 +481,11 @@ fn interface_does_not_use_busy_channel() {
 #[test]
 #[serial]
 fn interface_will_use_idle_channel_fcfs() {
-    inet::init();
     // des::tracing::init();
 
     static DONE: AtomicBool = AtomicBool::new(false);
 
-    let mut sim = Sim::new(());
+    let mut sim = Sim::new(()).with_stack(inet::init);
     sim.node(
         "sender",
         AsyncFn::failable::<_, _, std::io::Error>(|_| async move {

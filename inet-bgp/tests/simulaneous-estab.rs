@@ -25,15 +25,8 @@ use tokio::sync::mpsc::channel;
 #[test]
 #[serial_test::serial]
 fn simulatneous_estab() {
-    inet::init();
-
-    // des::tracing::Subscriber::default()
-    //     .with_max_level(tracing::metadata::LevelFilter::TRACE)
-    //     .init()
-    //     .unwrap();
-
     for seed in 0..100 {
-        let mut sim = Sim::new(());
+        let mut sim = Sim::new(()).with_stack(inet::init);
         sim.node(
             "as-1000",
             AsyncFn::io(|_| async move {
@@ -179,15 +172,8 @@ fn simulatneous_estab() {
 #[test]
 #[serial_test::serial]
 fn synced_estab() {
-    inet::init();
-
-    // des::tracing::Subscriber::default()
-    //     .with_max_level(tracing::metadata::LevelFilter::TRACE)
-    //     .init()
-    //     .unwrap();
-
     for seed in 0..10 {
-        let mut sim = Sim::new(());
+        let mut sim = Sim::new(()).with_stack(inet::init);
         sim.node(
             "as-1000",
             AsyncFn::io(|_| async move {

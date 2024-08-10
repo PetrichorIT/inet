@@ -6,7 +6,7 @@ elements of all nodes. INET provides a shorthand function to do this:
 
 ```rust
 fn main() {
-    inet::init();
+    
     /* Build the simulation, run it, eat cookies */
 }
 ```
@@ -37,14 +37,14 @@ If that is not possible, you can manually deactivate the IO plugin, by calling `
 ```rust
 # use des::prelude::*;
 struct MyModule;
-impl AsyncModule for MyModule {
+impl Module for MyModule {
     # fn new() -> Self { Self }
-    async fn at_sim_start(&mut self, _: usize) {
+    fn at_sim_start(&mut self, _: usize) {
         inet::deactivate();
         schedule_in(Message::new().kind(KIND_IO_PLUGIN).build(), SimTime::ZERO);
     }
 
-    async fn handle_message(&mut self, msg: Message) {
+    fn handle_message(&mut self, msg: Message) {
         assert_eq!(msg.kind(), KIND_IO_PLUGIN);
     }
 }

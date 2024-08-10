@@ -1,7 +1,7 @@
 use std::fs::File;
 
 use des::{
-    net::{module::AsyncModule, Sim},
+    net::{module::Module, Sim},
     registry,
     runtime::Builder,
 };
@@ -16,8 +16,8 @@ use inet_pcap::{pcap, PcapCapturePoints, PcapConfig, PcapFilters};
 #[derive(Default)]
 struct HostAlice;
 
-impl AsyncModule for HostAlice {
-    async fn at_sim_start(&mut self, _stage: usize) {
+impl Module for HostAlice {
+    fn at_sim_start(&mut self, _stage: usize) {
         pcap(PcapConfig {
             filters: PcapFilters::default(),
             capture: PcapCapturePoints::All,
@@ -28,7 +28,7 @@ impl AsyncModule for HostAlice {
         add_interface(Interface::empty("en0", NetworkDevice::eth())).unwrap();
     }
 
-    async fn at_sim_end(&mut self) {
+    fn at_sim_end(&mut self) {
         let addrs = getaddrinfo().unwrap();
         assert_eq!(addrs.len(), 3);
     }
@@ -37,8 +37,8 @@ impl AsyncModule for HostAlice {
 #[derive(Default)]
 struct HostBob;
 
-impl AsyncModule for HostBob {
-    async fn at_sim_start(&mut self, _stage: usize) {
+impl Module for HostBob {
+    fn at_sim_start(&mut self, _stage: usize) {
         pcap(PcapConfig {
             filters: PcapFilters::default(),
             capture: PcapCapturePoints::All,
@@ -49,7 +49,7 @@ impl AsyncModule for HostBob {
         add_interface(Interface::empty("en0", NetworkDevice::eth())).unwrap();
     }
 
-    async fn at_sim_end(&mut self) {
+    fn at_sim_end(&mut self) {
         let addrs = getaddrinfo().unwrap();
         assert_eq!(addrs.len(), 3);
     }
@@ -58,8 +58,8 @@ impl AsyncModule for HostBob {
 #[derive(Default)]
 struct Router;
 
-impl AsyncModule for Router {
-    async fn at_sim_start(&mut self, _stage: usize) {
+impl Module for Router {
+    fn at_sim_start(&mut self, _stage: usize) {
         pcap(PcapConfig {
             filters: PcapFilters::default(),
             capture: PcapCapturePoints::All,
@@ -83,14 +83,15 @@ type Switch = utils::LinkLayerSwitch;
 
 #[test]
 fn ipv6_tentative_addrs() {
-    inet::init();
     // des::tracing::init();
 
-    let app = Sim::ndl(
-        "tests/ipv6.ndl",
-        registry![HostAlice, HostBob, Router, Switch, else _],
-    )
-    .unwrap();
+    let app = Sim::new(())
+        .with_stack(inet::init)
+        .with_ndl(
+            "tests/ipv6.ndl",
+            registry![HostAlice, HostBob, Router, Switch, else _],
+        )
+        .unwrap();
 
     let rt = Builder::seeded(123)
         // .max_itr(30)

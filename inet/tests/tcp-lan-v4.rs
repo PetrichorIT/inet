@@ -1,21 +1,23 @@
+use std::sync::{
+    atomic::{AtomicUsize, Ordering},
+    Arc,
+};
+
 use des::{prelude::*, registry, time::sleep};
 use inet::{
     interface::{add_interface, Interface, NetworkDevice},
     TcpListener, TcpStream,
 };
 use inet_types::ip::Ipv4Packet;
-use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt},
-    task::JoinHandle,
-};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 #[derive(Default)]
 struct Node {
-    handles: Vec<JoinHandle<()>>,
+    done: Arc<AtomicUsize>,
 }
 
-impl AsyncModule for Node {
-    async fn at_sim_start(&mut self, s: usize) {
+impl Module for Node {
+    fn at_sim_start(&mut self, s: usize) {
         if s == 0 {
             // add_plugin(TcpDebugPlugin, 0);
             return;
@@ -34,7 +36,8 @@ impl AsyncModule for Node {
 
         let expected: usize = par("expected").unwrap().parse().unwrap();
 
-        self.handles.push(tokio::spawn(async move {
+        let done = self.done.clone();
+        tokio::spawn(async move {
             for target in targets {
                 sleep(Duration::from_secs_f64(random())).await;
                 let buf = [42; 42];
@@ -46,9 +49,11 @@ impl AsyncModule for Node {
                     .await
                     .unwrap();
             }
-        }));
+            done.fetch_add(1, Ordering::SeqCst);
+        });
 
-        self.handles.push(tokio::spawn(async move {
+        let done = self.done.clone();
+        tokio::spawn(async move {
             if expected == 0 {
                 return;
             }
@@ -60,23 +65,19 @@ impl AsyncModule for Node {
                 let n = stream.read(&mut buf).await.unwrap();
                 tracing::info!("recieved {n} bytes from {}", from.ip());
             }
-        }));
+            done.fetch_add(1, Ordering::SeqCst);
+        });
     }
 
     fn num_sim_start_stages(&self) -> usize {
         2
     }
 
-    async fn at_sim_end(&mut self) {
-        // for entry in arpa().unwrap() {
-        //     tracing::debug!("{entry}")
-        // }
-        for h in self.handles.drain(..) {
-            h.await.unwrap();
-        }
+    fn at_sim_end(&mut self) {
+        assert_eq!(self.done.load(Ordering::SeqCst), 2);
     }
 
-    async fn handle_message(&mut self, msg: Message) {
+    fn handle_message(&mut self, msg: Message) {
         panic!(
             "msg :: {} :: {} // {:?} -> {:?}",
             msg.str(),
@@ -116,12 +117,11 @@ impl Module for Main {
 
 #[test]
 fn tcp_lan_v4() {
-    inet::init();
-    // Logger::new()
-    // .interal_max_log_level(tracing::LevelFilter::Trace)
-    // .set_logger();
+    // des::tracing::init();
 
-    let mut app = Sim::ndl("tests/tcp-lan/main.ndl", registry![Node, Switch, Main])
+    let mut app = Sim::new(())
+        .with_stack(inet::init)
+        .with_ndl("tests/tcp-lan/main.ndl", registry![Node, Switch, Main])
         .map_err(|e| println!("{e}"))
         .unwrap();
     app.include_par_file("tests/tcp-lan/v4.par").unwrap();

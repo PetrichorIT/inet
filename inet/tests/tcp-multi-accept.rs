@@ -1,55 +1,63 @@
 //! Tests whether one active TcpListener::accept blocks
 //! any progress on any other handshakes
 
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
+
 use des::{prelude::*, registry};
 use inet::{
     interface::{add_interface, Interface, NetworkDevice},
     TcpListener, TcpStream,
 };
-use tokio::{spawn, task::JoinHandle};
+use tokio::spawn;
 
 #[derive(Default)]
 struct Client {
-    handle: Option<JoinHandle<()>>,
+    done: Arc<AtomicBool>,
 }
 
-impl AsyncModule for Client {
-    async fn at_sim_start(&mut self, _: usize) {
+impl Module for Client {
+    fn at_sim_start(&mut self, _: usize) {
         add_interface(Interface::ethv4(
             NetworkDevice::eth(),
             Ipv4Addr::new(192, 168, 0, 1),
         ))
         .unwrap();
 
-        self.handle = Some(spawn(async {
+        let done = self.done.clone();
+        spawn(async move {
             for _ in 0..10 {
                 spawn(async {
                     let sock = TcpStream::connect("192.168.0.2:80").await;
                     tracing::info!("{sock:?}");
                 });
             }
-        }));
+            done.store(true, Ordering::SeqCst);
+        });
     }
 
-    async fn at_sim_end(&mut self) {
-        self.handle.take().unwrap().await.unwrap();
+    fn at_sim_end(&mut self) {
+        assert!(self.done.load(Ordering::SeqCst));
     }
 }
 
 #[derive(Default)]
 struct Server {
-    handle: Option<JoinHandle<()>>,
+    done: Arc<AtomicBool>,
 }
 
-impl AsyncModule for Server {
-    async fn at_sim_start(&mut self, _: usize) {
+impl Module for Server {
+    fn at_sim_start(&mut self, _: usize) {
         add_interface(Interface::ethv4(
             NetworkDevice::eth(),
             Ipv4Addr::new(192, 168, 0, 2),
         ))
         .unwrap();
 
-        self.handle = Some(spawn(async {
+        let done = self.done.clone();
+        spawn(async move {
             let lis = TcpListener::bind("0.0.0.0:80").await.unwrap();
             let mut c = 0;
             while let Ok(stream) = lis.accept().await {
@@ -59,26 +67,27 @@ impl AsyncModule for Server {
                     break;
                 }
             }
-        }));
+            done.store(true, Ordering::SeqCst);
+        });
     }
 
-    async fn at_sim_end(&mut self) {
-        self.handle.take().unwrap().await.unwrap();
+    fn at_sim_end(&mut self) {
+        assert!(self.done.load(Ordering::SeqCst));
     }
 }
 
 #[test]
 fn tcp_multi_accept() {
-    inet::init();
+    // des::tracing::init();
 
-    // Logger::new().set_logger();
-
-    let app = Sim::ndl(
-        "tests/tcp-multi-accept.ndl",
-        registry![Server, Client, else _],
-    )
-    .map_err(|e| println!("{e}"))
-    .unwrap();
+    let app = Sim::new(())
+        .with_stack(inet::init)
+        .with_ndl(
+            "tests/tcp-multi-accept.ndl",
+            registry![Server, Client, else _],
+        )
+        .map_err(|e| println!("{e}"))
+        .unwrap();
     let rt = Builder::seeded(123).build(app);
     let (_, t, _) = rt.run().unwrap();
     assert!(t < 3.0.into());

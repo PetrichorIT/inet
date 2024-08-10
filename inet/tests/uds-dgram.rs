@@ -3,17 +3,24 @@
 use des::{prelude::*, registry, time::sleep};
 use inet::{fs, uds::UnixDatagram};
 use serial_test::serial;
-use std::iter::repeat_with;
-use tokio::{spawn, task::JoinHandle};
+use std::{
+    iter::repeat_with,
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    },
+};
+use tokio::spawn;
 
 #[derive(Default)]
 struct PathedDgrams {
-    handles: Vec<JoinHandle<()>>,
+    done: Arc<AtomicUsize>,
 }
 
-impl AsyncModule for PathedDgrams {
-    async fn at_sim_start(&mut self, _: usize) {
-        self.handles.push(spawn(async move {
+impl Module for PathedDgrams {
+    fn at_sim_start(&mut self, _: usize) {
+        let done = self.done.clone();
+        spawn(async move {
             let sock = UnixDatagram::bind("/tmp/task1").unwrap();
             sleep(Duration::from_secs(1)).await;
 
@@ -26,9 +33,11 @@ impl AsyncModule for PathedDgrams {
                     .await
                     .unwrap();
             }
-        }));
+            done.fetch_add(1, Ordering::SeqCst);
+        });
 
-        self.handles.push(spawn(async move {
+        let done = self.done.clone();
+        spawn(async move {
             let sock = UnixDatagram::bind("/tmp/task2").unwrap();
             for _i in 0..3 {
                 let n = 200 + random::<usize>() % 200;
@@ -43,9 +52,11 @@ impl AsyncModule for PathedDgrams {
 
                 sleep(Duration::from_secs_f64(random())).await;
             }
-        }));
+            done.fetch_add(1, Ordering::SeqCst);
+        });
 
-        self.handles.push(spawn(async move {
+        let done = self.done.clone();
+        spawn(async move {
             let sock = UnixDatagram::bind("/tmp/task3").unwrap();
             for _i in 0..7 {
                 let n = 200 + random::<usize>() % 200;
@@ -60,27 +71,27 @@ impl AsyncModule for PathedDgrams {
 
                 sleep(Duration::from_secs_f64(random())).await;
             }
-        }));
+            done.fetch_add(1, Ordering::SeqCst);
+        });
     }
 
-    async fn at_sim_end(&mut self) {
-        for handle in self.handles.drain(..) {
-            handle.await.unwrap();
-        }
+    fn at_sim_end(&mut self) {
+        assert_eq!(self.done.load(Ordering::SeqCst), 3);
     }
 }
 
 #[test]
 #[serial]
 fn uds_pathed_dgrams() {
-    inet::init();
     // Logger::new()
     // .interal_max_log_level(tracing::LevelFilter::Trace)
     // .set_logger();
 
     type Main = PathedDgrams;
 
-    let app = Sim::ndl("tests/main.ndl", registry![Main])
+    let app = Sim::new(())
+        .with_stack(inet::init)
+        .with_ndl("tests/main.ndl", registry![Main])
         .map_err(|e| println!("{e}"))
         .unwrap();
     let rt = Builder::seeded(123).max_time(100.0.into()).build(app);
@@ -89,14 +100,15 @@ fn uds_pathed_dgrams() {
 
 #[derive(Default)]
 struct UnnamedPair {
-    handles: Vec<JoinHandle<()>>,
+    done: Arc<AtomicUsize>,
 }
 
-impl AsyncModule for UnnamedPair {
-    async fn at_sim_start(&mut self, _: usize) {
+impl Module for UnnamedPair {
+    fn at_sim_start(&mut self, _: usize) {
         let (a, b) = UnixDatagram::pair().unwrap();
 
-        self.handles.push(spawn(async move {
+        let done = self.done.clone();
+        spawn(async move {
             for _i in 0..10 {
                 a.send(&[1, 2, 3]).await.unwrap();
                 sleep(Duration::from_secs_f64(random())).await;
@@ -105,9 +117,11 @@ impl AsyncModule for UnnamedPair {
             for _i in 0..10 {
                 a.recv(&mut [0; 500]).await.unwrap();
             }
-        }));
+            done.fetch_add(1, Ordering::SeqCst);
+        });
 
-        self.handles.push(spawn(async move {
+        let done = self.done.clone();
+        spawn(async move {
             for _i in 0..10 {
                 b.send(&[1, 2, 3]).await.unwrap();
                 sleep(Duration::from_secs_f64(random())).await;
@@ -116,27 +130,27 @@ impl AsyncModule for UnnamedPair {
             for _i in 0..10 {
                 b.recv(&mut [0; 500]).await.unwrap();
             }
-        }));
+            done.fetch_add(1, Ordering::SeqCst);
+        });
     }
 
-    async fn at_sim_end(&mut self) {
-        for handle in self.handles.drain(..) {
-            handle.await.unwrap();
-        }
+    fn at_sim_end(&mut self) {
+        assert_eq!(self.done.load(Ordering::SeqCst), 2);
     }
 }
 
 #[test]
 #[serial]
 fn uds_pair() {
-    inet::init();
     // Logger::new()
     // .interal_max_log_level(tracing::LevelFilter::Trace)
     // .set_logger();
 
     type Main = UnnamedPair;
 
-    let app = Sim::ndl("tests/main.ndl", registry![Main])
+    let app = Sim::new(())
+        .with_stack(inet::init)
+        .with_ndl("tests/main.ndl", registry![Main])
         .map_err(|e| println!("{e}"))
         .unwrap();
     let rt = Builder::seeded(123).max_time(100.0.into()).build(app);
@@ -144,35 +158,28 @@ fn uds_pair() {
 }
 
 #[derive(Default)]
-struct FailAtDoubleBinding {
-    handles: Vec<JoinHandle<()>>,
-}
+struct FailAtDoubleBinding {}
 
-impl AsyncModule for FailAtDoubleBinding {
-    async fn at_sim_start(&mut self, _: usize) {
+impl Module for FailAtDoubleBinding {
+    fn at_sim_start(&mut self, _: usize) {
         let _a = UnixDatagram::bind("/a/b/c").unwrap();
         let b = UnixDatagram::bind("/a/b/c");
         assert!(b.is_err());
-    }
-
-    async fn at_sim_end(&mut self) {
-        for handle in self.handles.drain(..) {
-            handle.await.unwrap();
-        }
     }
 }
 
 #[test]
 #[serial]
 fn double_bind() {
-    inet::init();
     // Logger::new()
     // .interal_max_log_level(tracing::LevelFilter::Trace)
     // .set_logger();
 
     type Main = FailAtDoubleBinding;
 
-    let app = Sim::ndl("tests/main.ndl", registry![Main])
+    let app = Sim::new(())
+        .with_stack(inet::init)
+        .with_ndl("tests/main.ndl", registry![Main])
         .map_err(|e| println!("{e}"))
         .unwrap();
     let rt = Builder::seeded(123).max_time(100.0.into()).build(app);
@@ -183,51 +190,46 @@ fn double_bind() {
 }
 
 #[derive(Default)]
-struct NamedTempdir {
-    handles: Vec<JoinHandle<()>>,
-}
+struct NamedTempdir {}
 
-impl AsyncModule for NamedTempdir {
-    async fn at_sim_start(&mut self, _: usize) {
-        let tmp = fs::tempdir().unwrap();
+impl Module for NamedTempdir {
+    fn at_sim_start(&mut self, _: usize) {
+        tokio::spawn(async move {
+            let tmp = fs::tempdir().unwrap();
 
-        // Bind each socket to a filesystem path
-        let tx_path = tmp.path().join("tx");
-        let tx = UnixDatagram::bind(&tx_path).unwrap();
-        let rx_path = tmp.path().join("rx");
-        let rx = UnixDatagram::bind(&rx_path).unwrap();
+            // Bind each socket to a filesystem path
+            let tx_path = tmp.path().join("tx");
+            let tx = UnixDatagram::bind(&tx_path).unwrap();
+            let rx_path = tmp.path().join("rx");
+            let rx = UnixDatagram::bind(&rx_path).unwrap();
 
-        tracing::info!("tx: {tx_path:?} rx: {rx_path:?}");
+            tracing::info!("tx: {tx_path:?} rx: {rx_path:?}");
 
-        let bytes = b"hello world";
-        tx.send_to(bytes, &rx_path).await.unwrap();
+            let bytes = b"hello world";
+            tx.send_to(bytes, &rx_path).await.unwrap();
 
-        let mut buf = vec![0u8; 24];
-        let (size, addr) = rx.recv_from(&mut buf).await.unwrap();
+            let mut buf = vec![0u8; 24];
+            let (size, addr) = rx.recv_from(&mut buf).await.unwrap();
 
-        let dgram = &buf[..size];
-        assert_eq!(dgram, bytes);
-        assert_eq!(addr.as_pathname().unwrap(), &tx_path);
-    }
-
-    async fn at_sim_end(&mut self) {
-        for handle in self.handles.drain(..) {
-            handle.await.unwrap();
-        }
+            let dgram = &buf[..size];
+            assert_eq!(dgram, bytes);
+            assert_eq!(addr.as_pathname().unwrap(), &tx_path);
+        });
     }
 }
 
 #[test]
 #[serial]
 fn uds_named_tempdir() {
-    inet::init();
     // Logger::new()
     // .interal_max_log_level(tracing::LevelFilter::Trace)
     // .set_logger();
 
     type Main = NamedTempdir;
 
-    let app = Sim::ndl("tests/main.ndl", registry![Main])
+    let app = Sim::new(())
+        .with_stack(inet::init)
+        .with_ndl("tests/main.ndl", registry![Main])
         .map_err(|e| println!("{e}"))
         .unwrap();
     let rt = Builder::seeded(123).max_time(100.0.into()).build(app);

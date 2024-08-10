@@ -2,7 +2,7 @@ use std::{error::Error, io, net::Ipv6Addr, time::Duration};
 
 use des::{
     net::{
-        module::{current, AsyncModule},
+        module::{current, Module},
         par, par_for, Sim,
     },
     registry,
@@ -18,8 +18,8 @@ use inet_types::ip::{Ipv6AddrExt, Ipv6Prefix};
 #[derive(Default)]
 struct Host;
 
-impl AsyncModule for Host {
-    async fn at_sim_start(&mut self, _stage: usize) {
+impl Module for Host {
+    fn at_sim_start(&mut self, _stage: usize) {
         add_interface(Interface::ethv6_autocfg(NetworkDevice::eth())).unwrap();
         tokio::spawn(async move {
             des::time::sleep(Duration::from_secs(2)).await;
@@ -67,8 +67,8 @@ impl AsyncModule for Host {
 #[derive(Default)]
 struct Router;
 
-impl AsyncModule for Router {
-    async fn at_sim_start(&mut self, _stage: usize) {
+impl Module for Router {
+    fn at_sim_start(&mut self, _stage: usize) {
         let prefix: Ipv6Prefix = par("prefix").unwrap().parse().unwrap();
         let peering_addr: Ipv6Addr = par("peering_addr").unwrap().parse().unwrap();
         router::declare_router().unwrap();
@@ -113,10 +113,9 @@ type Switch = utils::LinkLayerSwitch;
 
 #[test]
 fn ipv6_two_nets() -> Result<(), Box<dyn Error>> {
-    inet::init();
     // des::tracing::init();
 
-    let mut app = Sim::ndl(
+    let mut app = Sim::new(()).with_stack(inet::init).with_ndl(
         "tests/ipv6_two_nets.ndl",
         registry![Host, Switch, Router, else _],
     )?;

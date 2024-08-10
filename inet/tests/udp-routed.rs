@@ -1,3 +1,8 @@
+use std::sync::{
+    atomic::{AtomicUsize, Ordering},
+    Arc,
+};
+
 use des::{prelude::*, registry, time::sleep};
 use fxhash::{FxBuildHasher, FxHashMap};
 use inet::{
@@ -5,15 +10,14 @@ use inet::{
     routing::{add_routing_entry, set_default_gateway},
     UdpSocket,
 };
-use tokio::task::JoinHandle;
 
 #[derive(Default)]
 struct Node {
-    handles: Vec<JoinHandle<()>>,
+    done: Arc<AtomicUsize>,
 }
 
-impl AsyncModule for Node {
-    async fn at_sim_start(&mut self, s: usize) {
+impl Module for Node {
+    fn at_sim_start(&mut self, s: usize) {
         if s == 0 {
             return;
         }
@@ -30,8 +34,10 @@ impl AsyncModule for Node {
             .map(|v| v.trim().parse::<Ipv4Addr>().unwrap())
             .collect::<Vec<_>>();
 
-        self.handles.push(tokio::spawn(async move {
+        let done = self.done.clone();
+        tokio::spawn(async move {
             if targets.is_empty() {
+                done.fetch_add(1, Ordering::SeqCst);
                 return;
             }
 
@@ -45,11 +51,14 @@ impl AsyncModule for Node {
                     .await
                     .unwrap();
             }
-        }));
+            done.fetch_add(1, Ordering::SeqCst);
+        });
 
         let expected: usize = par("expected").unwrap().parse().unwrap();
-        self.handles.push(tokio::spawn(async move {
+        let done = self.done.clone();
+        tokio::spawn(async move {
             if expected == 0 {
+                done.fetch_add(1, Ordering::SeqCst);
                 return;
             }
             let sock = UdpSocket::bind("0.0.0.0:100").await.unwrap();
@@ -58,20 +67,19 @@ impl AsyncModule for Node {
                 let (n, from) = sock.recv_from(&mut buf).await.unwrap();
                 tracing::info!("recieved {n} bytes from {}", from.ip());
             }
-        }));
+            done.fetch_add(1, Ordering::SeqCst);
+        });
     }
 
     fn num_sim_start_stages(&self) -> usize {
         2
     }
 
-    async fn at_sim_end(&mut self) {
-        for h in self.handles.drain(..) {
-            h.await.unwrap();
-        }
+    fn at_sim_end(&mut self) {
+        assert_eq!(self.done.load(Ordering::SeqCst), 2);
     }
 
-    async fn handle_message(&mut self, msg: Message) {
+    fn handle_message(&mut self, msg: Message) {
         panic!("msg :: {} :: {}", msg.str(), current().name())
     }
 }
@@ -149,16 +157,16 @@ impl Module for Main {
 
 #[test]
 fn udp_routed() {
-    inet::init();
-
     // des::tracing::Subscriber::default().init().unwrap();
 
-    let mut app = Sim::ndl(
-        "tests/udp-routed/main.ndl",
-        registry![Node, Switch, Main, Router],
-    )
-    .map_err(|e| println!("{e}"))
-    .unwrap();
+    let mut app = Sim::new(())
+        .with_stack(inet::init)
+        .with_ndl(
+            "tests/udp-routed/main.ndl",
+            registry![Node, Switch, Main, Router],
+        )
+        .map_err(|e| println!("{e}"))
+        .unwrap();
     app.include_par_file("tests/udp-routed/main.par").unwrap();
     let rt = Builder::seeded(123).build(app);
     let _ = rt.run();

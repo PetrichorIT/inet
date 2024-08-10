@@ -36,8 +36,8 @@ struct TcpServer {
     fd: Arc<AtomicU32>,
 }
 
-impl AsyncModule for TcpServer {
-    async fn at_sim_start(&mut self, _: usize) {
+impl Module for TcpServer {
+    fn at_sim_start(&mut self, _: usize) {
         add_interface(Interface::ethv4(
             NetworkDevice::eth(),
             Ipv4Addr::new(69, 0, 0, 100),
@@ -80,11 +80,11 @@ impl AsyncModule for TcpServer {
         });
     }
 
-    async fn handle_message(&mut self, _: Message) {
+    fn handle_message(&mut self, _: Message) {
         tracing::error!("All packet should have been caught by the plugins");
     }
 
-    async fn at_sim_end(&mut self) {
+    fn at_sim_end(&mut self) {
         assert!(self.done.load(SeqCst));
 
         let fd: Fd = self.fd.load(SeqCst);
@@ -99,8 +99,8 @@ struct TcpClient {
     fd: Arc<AtomicU32>,
 }
 
-impl AsyncModule for TcpClient {
-    async fn at_sim_start(&mut self, _: usize) {
+impl Module for TcpClient {
+    fn at_sim_start(&mut self, _: usize) {
         add_interface(Interface::ethv4(
             NetworkDevice::eth(),
             Ipv4Addr::new(69, 0, 0, 200),
@@ -139,11 +139,11 @@ impl AsyncModule for TcpClient {
         });
     }
 
-    async fn handle_message(&mut self, _: Message) {
+    fn handle_message(&mut self, _: Message) {
         panic!("All packet should have been caught by the plugins")
     }
 
-    async fn at_sim_end(&mut self) {
+    fn at_sim_end(&mut self) {
         assert!(self.done.load(SeqCst));
 
         let fd: Fd = self.fd.load(SeqCst);
@@ -155,16 +155,16 @@ impl AsyncModule for TcpClient {
 #[test]
 #[serial]
 fn tcp_echo_100k() {
-    inet::init();
-
-    let app = Sim::ndl(
-        "tests/tcp.ndl",
-        registry![Link, TcpServer, TcpClient, else _],
-    )
-    .map_err(|e| println!("{e}"))
-    .unwrap();
+    let app = Sim::new(())
+        .with_stack(inet::init)
+        .with_ndl(
+            "tests/tcp.ndl",
+            registry![Link, TcpServer, TcpClient, else _],
+        )
+        .map_err(|e| println!("{e}"))
+        .unwrap();
     let rt = Builder::seeded(123).build(app);
     let (_, time, profiler) = rt.run().unwrap();
-    assert_eq!(time.as_secs(), 7); // there is something wrong here
+    assert_eq!(time.as_secs(), 6); // there is something wrong here
     assert!(profiler.event_count < 8000);
 }

@@ -10,6 +10,7 @@ use std::{collections::VecDeque, fmt, net::Ipv6Addr, ops, time::Duration};
 
 use crate::interface::{IfId, InterfaceAddrV6};
 
+#[derive(Debug)]
 pub struct Solicitations {
     queries: FxHashMap<Ipv6Addr, QueryType>,
 }
@@ -136,6 +137,11 @@ impl NeighborCache {
         entry.state = NeighborCacheEntryState::Reachable;
     }
 
+    pub fn set_stale(&mut self, ip: Ipv6Addr) {
+        let entry = self.mapping.get_mut(&ip).unwrap();
+        entry.state = NeighborCacheEntryState::Stale;
+    }
+
     /// returns whether another request should be send
     pub fn record_timeout(&mut self, addr: Ipv6Addr) -> Option<usize> {
         let entry = self.mapping.get_mut(&addr)?;
@@ -197,6 +203,7 @@ impl NeighborCache {
                 if state == NeighborCacheEntryState::Reachable {
                     entry.state = NeighborCacheEntryState::Stale;
                 }
+                tracing::warn!("want to process, some override stuff");
                 false
             }
             _state if adv.overide => {
@@ -221,7 +228,10 @@ impl NeighborCache {
 
                 true
             }
-            _ => false,
+            _ => {
+                tracing::warn!("want to process, def else");
+                false
+            }
         }
     }
 

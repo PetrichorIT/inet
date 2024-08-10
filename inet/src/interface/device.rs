@@ -204,7 +204,6 @@ impl NetworkDevice {
     }
 
     pub(super) fn send(&self, mut msg: Message) -> NetworkDeviceReadiness {
-        tracing::info!("send");
         msg.header_mut().src = self.addr.into();
         match &self.inner {
             NetworkDeviceInner::LoopbackDevice => {

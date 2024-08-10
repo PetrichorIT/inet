@@ -14,8 +14,8 @@ use tokio::spawn;
 #[derive(Default)]
 struct Spoofer {}
 
-impl AsyncModule for Spoofer {
-    async fn at_sim_start(&mut self, _: usize) {
+impl Module for Spoofer {
+    fn at_sim_start(&mut self, _: usize) {
         add_interface(Interface::ethv4(
             NetworkDevice::eth(),
             Ipv4Addr::new(192, 168, 0, 100),
@@ -62,8 +62,8 @@ impl AsyncModule for Spoofer {
 #[derive(Default)]
 struct Reader {}
 
-impl AsyncModule for Reader {
-    async fn at_sim_start(&mut self, _stage: usize) {
+impl Module for Reader {
+    fn at_sim_start(&mut self, _stage: usize) {
         add_interface(Interface::ethv4(
             NetworkDevice::eth(),
             Ipv4Addr::new(192, 168, 0, 1),
@@ -90,15 +90,16 @@ impl AsyncModule for Reader {
 }
 
 fn main() {
-    inet::init();
     des::tracing::init();
 
-    let app = Sim::ndl(
-        "inet/src/bin/spoofing.ndl",
-        registry![Spoofer, Reader, else _],
-    )
-    .map_err(|e| println!("{e}"))
-    .unwrap();
+    let app = Sim::new(())
+        .with_stack(inet::init)
+        .with_ndl(
+            "inet/src/bin/spoofing.ndl",
+            registry![Spoofer, Reader, else _],
+        )
+        .map_err(|e| println!("{e}"))
+        .unwrap();
     let rt = Builder::seeded(123).build(app);
     let _ = rt.run().unwrap();
 }

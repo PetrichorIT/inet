@@ -1,51 +1,57 @@
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
+
 use des::{prelude::*, registry, time::sleep};
 use inet::{
     interface::{add_interface, Interface, NetworkDevice},
     *,
 };
-use tokio::{spawn, task::JoinHandle};
+use tokio::spawn;
 
 #[derive(Default)]
 struct OneAttemptClient {
-    handles: Vec<JoinHandle<()>>,
+    done: Arc<AtomicBool>,
 }
 
-impl AsyncModule for OneAttemptClient {
-    async fn at_sim_start(&mut self, _: usize) {
+impl Module for OneAttemptClient {
+    fn at_sim_start(&mut self, _: usize) {
         add_interface(Interface::ethv4(
             NetworkDevice::eth(),
             Ipv4Addr::new(69, 0, 0, 100),
         ))
         .unwrap();
 
-        self.handles.push(spawn(async move {
+        let done = self.done.clone();
+        spawn(async move {
             let sock = TcpStream::connect("69.0.0.69:8000").await;
             tracing::info!("{:?}", sock);
             assert!(sock.is_err());
-        }));
+            done.store(true, Ordering::SeqCst);
+        });
     }
 
-    async fn at_sim_end(&mut self) {
-        for h in self.handles.drain(..) {
-            h.await.unwrap();
-        }
+    fn at_sim_end(&mut self) {
+        assert!(self.done.load(Ordering::SeqCst));
     }
 }
 
 #[derive(Default)]
 struct MultipleAttemptClient<const EXPECT: bool> {
-    handles: Vec<JoinHandle<()>>,
+    done: Arc<AtomicBool>,
 }
 
-impl<const EXPECT: bool> AsyncModule for MultipleAttemptClient<EXPECT> {
-    async fn at_sim_start(&mut self, _: usize) {
+impl<const EXPECT: bool> Module for MultipleAttemptClient<EXPECT> {
+    fn at_sim_start(&mut self, _: usize) {
         add_interface(Interface::ethv4(
             NetworkDevice::eth(),
             Ipv4Addr::new(69, 0, 0, 100),
         ))
         .unwrap();
 
-        self.handles.push(spawn(async move {
+        let done = self.done.clone();
+        spawn(async move {
             let addrs: [SocketAddr; 3] = [
                 "69.0.0.69:8000".parse().unwrap(),
                 "69.0.0.69:9000".parse().unwrap(),
@@ -54,21 +60,20 @@ impl<const EXPECT: bool> AsyncModule for MultipleAttemptClient<EXPECT> {
             let sock = TcpStream::connect(&addrs[..]).await;
             tracing::info!("{:?}", sock);
             assert_eq!(sock.is_ok(), EXPECT);
-        }));
+            done.store(true, Ordering::SeqCst);
+        });
     }
 
-    async fn at_sim_end(&mut self) {
-        for h in self.handles.drain(..) {
-            h.await.unwrap();
-        }
+    fn at_sim_end(&mut self) {
+        assert!(self.done.load(Ordering::SeqCst));
     }
 }
 
 #[derive(Default)]
 struct EmptyServer {}
 
-impl AsyncModule for EmptyServer {
-    async fn at_sim_start(&mut self, _: usize) {
+impl Module for EmptyServer {
+    fn at_sim_start(&mut self, _: usize) {
         add_interface(Interface::ethv4(
             NetworkDevice::eth(),
             Ipv4Addr::new(69, 0, 0, 69),
@@ -80,8 +85,8 @@ impl AsyncModule for EmptyServer {
 #[derive(Default)]
 struct BoundServer {}
 
-impl AsyncModule for BoundServer {
-    async fn at_sim_start(&mut self, _: usize) {
+impl Module for BoundServer {
+    fn at_sim_start(&mut self, _: usize) {
         add_interface(Interface::ethv4(
             NetworkDevice::eth(),
             Ipv4Addr::new(69, 0, 0, 69),
@@ -102,14 +107,14 @@ impl AsyncModule for BoundServer {
 #[test]
 #[serial_test::serial]
 fn tcp_rst_for_closed_port() {
-    inet::init();
-
     type Server = EmptyServer;
     type Client = OneAttemptClient;
 
     // Logger::new().set_logger();
 
-    let app = Sim::ndl("tests/tcp2.ndl", registry![Client, Server, else _])
+    let app = Sim::new(())
+        .with_stack(inet::init)
+        .with_ndl("tests/tcp2.ndl", registry![Client, Server, else _])
         .map_err(|e| println!("{e}"))
         .unwrap();
     let rt = Builder::seeded(233).build(app);
@@ -120,14 +125,14 @@ fn tcp_rst_for_closed_port() {
 #[test]
 #[serial_test::serial]
 fn tcp_rst_on_multiple_tries() {
-    inet::init();
-
     type Server = EmptyServer;
     type Client = MultipleAttemptClient<false>;
 
     // Logger::new().set_logger();
 
-    let app = Sim::ndl("tests/tcp2.ndl", registry![Client, Server, else _])
+    let app = Sim::new(())
+        .with_stack(inet::init)
+        .with_ndl("tests/tcp2.ndl", registry![Client, Server, else _])
         .map_err(|e| println!("{e}"))
         .unwrap();
     let rt = Builder::seeded(233).build(app);
@@ -138,14 +143,14 @@ fn tcp_rst_on_multiple_tries() {
 #[test]
 #[serial_test::serial]
 fn tcp_rst_on_multiple_tries_with_success() {
-    inet::init();
-
     type Server = BoundServer;
     type Client = MultipleAttemptClient<true>;
 
     // Logger::new().set_logger();
 
-    let app = Sim::ndl("tests/tcp2.ndl", registry![Client, Server, else _])
+    let app = Sim::new(())
+        .with_stack(inet::init)
+        .with_ndl("tests/tcp2.ndl", registry![Client, Server, else _])
         .map_err(|e| println!("{e}"))
         .unwrap();
     let rt = Builder::seeded(233).build(app);

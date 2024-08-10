@@ -66,8 +66,8 @@ struct Client {
     handles: Vec<JoinHandle<()>>,
 }
 
-impl AsyncModule for Client {
-    async fn at_sim_start(&mut self, _: usize) {
+impl Module for Client {
+    fn at_sim_start(&mut self, _: usize) {
         add_interface(Interface::ethv4(
             NetworkDevice::eth(),
             Ipv4Addr::new(69, 0, 0, 100),
@@ -106,19 +106,13 @@ impl AsyncModule for Client {
             }));
         }
     }
-
-    async fn at_sim_end(&mut self) {
-        for h in self.handles.drain(..) {
-            h.await.unwrap();
-        }
-    }
 }
 
 #[derive(Default)]
 struct Server {}
 
-impl AsyncModule for Server {
-    async fn at_sim_start(&mut self, _: usize) {
+impl Module for Server {
+    fn at_sim_start(&mut self, _: usize) {
         add_interface(Interface::ethv4(
             NetworkDevice::eth(),
             Ipv4Addr::new(69, 0, 0, 69),
@@ -167,15 +161,16 @@ impl AsyncModule for Server {
 }
 
 fn main() {
-    inet::init();
     des::tracing::init();
 
-    let mut app = Sim::ndl(
-        "inet/src/bin/tcp.ndl",
-        registry![Client, Server, Connector, else _],
-    )
-    .map_err(|e| println!("{e}"))
-    .unwrap();
+    let mut app = Sim::new(())
+        .with_stack(inet::init)
+        .with_ndl(
+            "inet/src/bin/tcp.ndl",
+            registry![Client, Server, Connector, else _],
+        )
+        .map_err(|e| println!("{e}"))
+        .unwrap();
     app.include_par_file("inet/src/bin/tcp.par").unwrap();
 
     let rt = Builder::seeded(123).build(app);

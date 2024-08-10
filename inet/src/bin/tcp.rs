@@ -29,8 +29,8 @@ impl Default for Connector {
     }
 }
 
-impl AsyncModule for Connector {
-    async fn at_sim_start(&mut self, _: usize) {
+impl Module for Connector {
+    fn at_sim_start(&mut self, _: usize) {
         // let drops = self.drops.clone();
         // spawn(async move {
         //     let mut recorder = OutVec::new("drops_per_sec".to_string(), Some(module_path()));
@@ -43,7 +43,7 @@ impl AsyncModule for Connector {
         // });
     }
 
-    async fn handle_message(&mut self, msg: Message) {
+    fn handle_message(&mut self, msg: Message) {
         let dur = (SimTime::now() - self.t).as_secs_f64();
         if dur > 1.0 {
             self.freq = msg.header().length as f64;
@@ -75,7 +75,7 @@ impl AsyncModule for Connector {
         }
     }
 
-    async fn at_sim_end(&mut self) {
+    fn at_sim_end(&mut self) {
         // self.debug.finish();
         // self.debug_p.finish();
     }
@@ -86,8 +86,8 @@ struct Client {
     handles: Vec<JoinHandle<()>>,
 }
 
-impl AsyncModule for Client {
-    async fn at_sim_start(&mut self, _: usize) {
+impl Module for Client {
+    fn at_sim_start(&mut self, _: usize) {
         add_interface(Interface::ethv4(
             NetworkDevice::eth(),
             Ipv4Addr::new(69, 0, 0, 100),
@@ -118,19 +118,13 @@ impl AsyncModule for Client {
             }));
         }
     }
-
-    async fn at_sim_end(&mut self) {
-        for h in self.handles.drain(..) {
-            h.await.unwrap();
-        }
-    }
 }
 
 #[derive(Default)]
 struct Server {}
 
-impl AsyncModule for Server {
-    async fn at_sim_start(&mut self, _: usize) {
+impl Module for Server {
+    fn at_sim_start(&mut self, _: usize) {
         add_interface(Interface::ethv4(
             NetworkDevice::eth(),
             Ipv4Addr::new(69, 0, 0, 69),
@@ -172,16 +166,17 @@ impl AsyncModule for Server {
 }
 
 fn main() {
-    inet::init();
     // des::tracing::Subscriber::default().init().unwrap();
     // Logger::new().policy(Policy).set_logger();
 
-    let mut app = Sim::ndl(
-        "inet/src/bin/tcp.ndl",
-        registry![Client, Server, Connector, else _],
-    )
-    .map_err(|e| println!("{e}"))
-    .unwrap();
+    let mut app = Sim::new(())
+        .with_stack(inet::init)
+        .with_ndl(
+            "inet/src/bin/tcp.ndl",
+            registry![Client, Server, Connector, else _],
+        )
+        .map_err(|e| println!("{e}"))
+        .unwrap();
 
     app.include_par_file("inet/src/bin/tcp.par").unwrap();
 

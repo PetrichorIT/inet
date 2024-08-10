@@ -4,7 +4,7 @@ use bytepack::FromBytestream;
 use des::{
     net::{
         channel::{Channel, ChannelDropBehaviour, ChannelMetrics},
-        module::{AsyncModule, Module},
+        module::Module,
         Sim,
     },
     runtime::Builder,
@@ -19,8 +19,8 @@ use serial_test::serial;
 #[derive(Default)]
 struct WithChecks;
 
-impl AsyncModule for WithChecks {
-    async fn at_sim_start(&mut self, _stage: usize) {
+impl Module for WithChecks {
+    fn at_sim_start(&mut self, _stage: usize) {
         add_interface(Interface::empty("en0", NetworkDevice::eth())).unwrap();
 
         let state = interface_status("en0").unwrap();
@@ -28,7 +28,7 @@ impl AsyncModule for WithChecks {
         assert_eq!(state.addrs.multicast_scopes().len(), 1); // sol-multicast (delayed) + all nodes multicast
     }
 
-    async fn at_sim_end(&mut self) {
+    fn at_sim_end(&mut self) {
         let state = interface_status("en0").unwrap();
         assert_eq!(state.addrs.iter().count(), 1);
         assert_eq!(state.addrs.multicast_scopes().len(), 2); // sol-multicast (delayed) + all nodes multicast
@@ -38,8 +38,8 @@ impl AsyncModule for WithChecks {
 #[derive(Default)]
 struct WithoutChecks;
 
-impl AsyncModule for WithoutChecks {
-    async fn at_sim_start(&mut self, _stage: usize) {
+impl Module for WithoutChecks {
+    fn at_sim_start(&mut self, _stage: usize) {
         set_node_cfg(HostConfiguration {
             dup_addr_detect_transmits: 0,
             ..Default::default()
@@ -52,7 +52,7 @@ impl AsyncModule for WithoutChecks {
         assert_eq!(state.addrs.multicast_scopes().len(), 2); // sol-multicast + all nodes multicast
     }
 
-    async fn at_sim_end(&mut self) {
+    fn at_sim_end(&mut self) {
         let state = interface_status("en0").unwrap();
         assert_eq!(state.addrs.iter().count(), 1);
         assert_eq!(state.addrs.multicast_scopes().len(), 2); // sol-multicast + all nodes multicast
@@ -62,8 +62,8 @@ impl AsyncModule for WithoutChecks {
 #[derive(Default)]
 struct ManualAssignWithoutDedup;
 
-impl AsyncModule for ManualAssignWithoutDedup {
-    async fn at_sim_start(&mut self, _stage: usize) {
+impl Module for ManualAssignWithoutDedup {
+    fn at_sim_start(&mut self, _stage: usize) {
         add_interface(Interface::ethv6_named_linklocal(
             "en0",
             NetworkDevice::eth(),
@@ -75,7 +75,7 @@ impl AsyncModule for ManualAssignWithoutDedup {
         assert_eq!(state.addrs.multicast_scopes().len(), 2); // sol-multicast + all nodes multicast
     }
 
-    async fn at_sim_end(&mut self) {
+    fn at_sim_end(&mut self) {
         let state = interface_status("en0").unwrap();
         assert_eq!(state.addrs.iter().count(), 1);
         assert_eq!(state.addrs.multicast_scopes().len(), 2); // sol-multicast + all nodes multicast
@@ -99,8 +99,8 @@ impl Module for OnlyRouterSolOrMDL {
 #[derive(Default)]
 struct AssignSameAddr;
 
-impl AsyncModule for AssignSameAddr {
-    async fn at_sim_start(&mut self, _: usize) {
+impl Module for AssignSameAddr {
+    fn at_sim_start(&mut self, _: usize) {
         let mut device = NetworkDevice::eth();
         let mac = MacAddress::from([1, 2, 3, 4, 5, 6]);
         assert!(!mac.is_multicast());
@@ -108,7 +108,7 @@ impl AsyncModule for AssignSameAddr {
         add_interface(Interface::empty("en0", device)).unwrap();
     }
 
-    async fn at_sim_end(&mut self) {
+    fn at_sim_end(&mut self) {
         assert!(interface_status("en0")
             .unwrap()
             .addrs
@@ -121,10 +121,9 @@ impl AsyncModule for AssignSameAddr {
 #[test]
 #[serial]
 fn tentative_addr_with_checks() {
-    inet::init();
     // des::tracing::init();
 
-    let mut app = Sim::new(());
+    let mut app = Sim::new(()).with_stack(inet::init);
     app.node("a", WithChecks::default());
     app.node("b", WithChecks::default());
 
@@ -146,10 +145,9 @@ fn tentative_addr_with_checks() {
 #[test]
 #[serial]
 fn tentative_addr_without_checks() {
-    inet::init();
     // des::tracing::init();
 
-    let mut app = Sim::new(());
+    let mut app = Sim::new(()).with_stack(inet::init);
     app.node("a", WithoutChecks::default());
     app.node("b", WithoutChecks::default());
 
@@ -171,10 +169,9 @@ fn tentative_addr_without_checks() {
 #[test]
 #[serial]
 fn tentative_addr_no_checks_on_manual_no_dedup() {
-    inet::init();
     // des::tracing::init();
 
-    let mut app = Sim::new(());
+    let mut app = Sim::new(()).with_stack(inet::init);
     app.node("a", ManualAssignWithoutDedup::default());
     app.node("b", OnlyRouterSolOrMDL::default());
 
@@ -196,10 +193,9 @@ fn tentative_addr_no_checks_on_manual_no_dedup() {
 #[test]
 #[serial]
 fn tentative_addr_collision() {
-    inet::init();
     // des::tracing::init();
 
-    let mut app = Sim::new(());
+    let mut app = Sim::new(()).with_stack(inet::init);
     app.node("a", AssignSameAddr::default());
     app.node("b", AssignSameAddr::default());
 

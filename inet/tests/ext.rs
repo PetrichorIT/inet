@@ -9,13 +9,11 @@ use inet::extensions::{load_ext, with_ext};
 
 #[test]
 fn basic_extension() {
-    inet::init();
-
     struct MyExt {
         value: usize,
     }
 
-    let mut sim = Sim::new(());
+    let mut sim = Sim::new(()).with_stack(inet::init);
     sim.node(
         "mynode",
         AsyncFn::new(|_| async move {

@@ -19,10 +19,7 @@ use tokio::sync::mpsc::channel;
 #[test]
 #[serial_test::serial]
 fn semi_passiv_estab() {
-    inet::init();
-    // des::tracing::Subscriber::default().init().unwrap();
-
-    let mut sim = Sim::new(());
+    let mut sim = Sim::new(()).with_stack(inet::init);
     sim.node(
         "as-1000",
         AsyncFn::io(|_| async move {
@@ -161,14 +158,7 @@ fn semi_passiv_estab() {
 #[test]
 #[serial_test::serial]
 fn semi_passiv_estab_delayed_client() {
-    inet::init();
-
-    // Subscriber::default()
-    //     .with_max_level(LevelFilter::TRACE)
-    //     .init()
-    //     .unwrap();
-
-    let mut sim = Sim::new(());
+    let mut sim = Sim::new(()).with_stack(inet::init);
     sim.node(
         "as-1000",
         AsyncFn::io(|_| async move {
@@ -309,14 +299,7 @@ fn semi_passiv_estab_delayed_client() {
 #[test]
 #[serial_test::serial]
 fn semi_passiv_estab_delayed_open() {
-    inet::init();
-
-    // des::tracing::Subscriber::default()
-    //     .with_max_level(tracing::metadata::LevelFilter::TRACE)
-    //     .init()
-    //     .unwrap();
-
-    let mut sim = Sim::new(());
+    let mut sim = Sim::new(()).with_stack(inet::init);
     sim.node(
         "as-1000",
         AsyncFn::io(|_| async move {

@@ -19,8 +19,8 @@ static V6: AtomicUsize = AtomicUsize::new(0);
 #[derive(Default)]
 struct Emitter;
 
-impl AsyncModule for Emitter {
-    async fn at_sim_start(&mut self, _stage: usize) {
+impl Module for Emitter {
+    fn at_sim_start(&mut self, _stage: usize) {
         add_interface(Interface::eth_mixed(
             "en0",
             NetworkDevice::eth(),
@@ -81,7 +81,7 @@ impl AsyncModule for Emitter {
         });
     }
 
-    async fn at_sim_end(&mut self) {
+    fn at_sim_end(&mut self) {
         assert_eq!(V4.load(Ordering::SeqCst), 0);
         assert_eq!(V6.load(Ordering::SeqCst), 0);
     }
@@ -90,8 +90,8 @@ impl AsyncModule for Emitter {
 #[derive(Default)]
 struct Receiver;
 
-impl AsyncModule for Receiver {
-    async fn at_sim_start(&mut self, _: usize) {
+impl Module for Receiver {
+    fn at_sim_start(&mut self, _: usize) {
         add_interface(Interface::eth_mixed(
             "en0",
             NetworkDevice::eth(),
@@ -125,13 +125,13 @@ impl AsyncModule for Receiver {
 
 #[test]
 fn raw_ip_socket() {
-    inet::init();
-
     // Logger::new()
     // .interal_max_log_level(tracing::LevelFilter::Trace)
     // .set_logger();
 
-    let rt: Sim<_> = Sim::ndl("tests/emit.ndl", registry![Emitter, Receiver, else _])
+    let rt: Sim<_> = Sim::new(())
+        .with_stack(inet::init)
+        .with_ndl("tests/emit.ndl", registry![Emitter, Receiver, else _])
         .map_err(|e| println!("{e}"))
         .unwrap();
     let rt = Builder::seeded(123).build(rt);

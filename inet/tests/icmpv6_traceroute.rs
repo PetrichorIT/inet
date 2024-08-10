@@ -1,7 +1,7 @@
 use std::{net::Ipv6Addr, time::Duration};
 
 use des::net::{
-    module::{current, AsyncModule},
+    module::{current, Module},
     par, par_for,
     topology::Topology,
 };
@@ -19,8 +19,8 @@ use inet_types::{
 #[derive(Default)]
 struct Host;
 
-impl AsyncModule for Host {
-    async fn at_sim_start(&mut self, _stage: usize) {
+impl Module for Host {
+    fn at_sim_start(&mut self, _stage: usize) {
         tokio::spawn(async move {
             let secs = des::runtime::random::<f64>();
             des::time::sleep(Duration::from_secs_f64(secs)).await;
@@ -46,8 +46,8 @@ impl AsyncModule for Host {
 #[derive(Default)]
 struct Router;
 
-impl AsyncModule for Router {
-    async fn at_sim_start(&mut self, _stage: usize) {
+impl Module for Router {
+    fn at_sim_start(&mut self, _stage: usize) {
         let addr: Ipv6Addr = par("addr").unwrap().parse().unwrap();
         let prefix: Ipv6Prefix = par("prefix").unwrap().parse().unwrap();
 
@@ -133,7 +133,7 @@ impl AsyncModule for Router {
 
 // #[test]
 // fn traceroute_success() -> Result<(), Box<dyn Error>> {
-//     inet::init();
+//
 //     des::tracing::Subscriber::default().init().unwrap();
 
 //     let ndl = NdlApplication::new(

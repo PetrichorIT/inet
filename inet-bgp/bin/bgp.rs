@@ -14,8 +14,8 @@ use tokio::spawn;
 #[derive(Default)]
 struct BgpA;
 
-impl AsyncModule for BgpA {
-    async fn at_sim_start(&mut self, _: usize) {
+impl Module for BgpA {
+    fn at_sim_start(&mut self, _: usize) {
         add_interface(Interface::ethv4_named(
             "en0",
             NetworkDevice::eth(),
@@ -63,8 +63,8 @@ impl AsyncModule for BgpA {
 #[derive(Default)]
 struct B;
 
-impl AsyncModule for B {
-    async fn at_sim_start(&mut self, _: usize) {
+impl Module for B {
+    fn at_sim_start(&mut self, _: usize) {
         add_interface(Interface::ethv4_named(
             "link-a",
             NetworkDevice::eth_select(|p| p.input.name().starts_with("a")),
@@ -100,8 +100,8 @@ impl AsyncModule for B {
 #[derive(Default)]
 struct C;
 
-impl AsyncModule for C {
-    async fn at_sim_start(&mut self, _: usize) {
+impl Module for C {
+    fn at_sim_start(&mut self, _: usize) {
         add_interface(Interface::ethv4_named(
             "link-b",
             NetworkDevice::eth_select(|p| p.input.name().starts_with("b")),
@@ -147,8 +147,8 @@ impl AsyncModule for C {
 #[derive(Default)]
 struct D;
 
-impl AsyncModule for D {
-    async fn at_sim_start(&mut self, _: usize) {
+impl Module for D {
+    fn at_sim_start(&mut self, _: usize) {
         add_interface(Interface::ethv4(
             NetworkDevice::eth(),
             Ipv4Addr::new(192, 168, 0, 104),
@@ -174,8 +174,8 @@ impl AsyncModule for D {
 #[derive(Default)]
 struct Node;
 
-impl AsyncModule for Node {
-    async fn at_sim_start(&mut self, _: usize) {
+impl Module for Node {
+    fn at_sim_start(&mut self, _: usize) {
         add_interface(Interface::ethv4(
             NetworkDevice::eth(),
             par("addr").unwrap().parse().unwrap(),
@@ -200,8 +200,8 @@ impl AsyncModule for Node {
 #[derive(Default)]
 struct Router;
 
-impl AsyncModule for Router {
-    async fn at_sim_start(&mut self, _: usize) {
+impl Module for Router {
+    fn at_sim_start(&mut self, _: usize) {
         let addr = par("addr").unwrap().parse::<Ipv4Addr>().unwrap();
         let mask = par("mask").unwrap().parse::<Ipv4Addr>().unwrap();
 
@@ -236,16 +236,17 @@ impl AsyncModule for Router {
 }
 
 fn main() {
-    inet::init();
     // des::tracing::init();
 
     type Switch = LinkLayerSwitch;
 
-    let mut app = Sim::ndl(
-        "bin/bgp.ndl",
-        registry![BgpA, Switch, Node, Router, B, C, D, else _],
-    )
-    .unwrap();
+    let mut app = Sim::new(())
+        .with_stack(inet::init)
+        .with_ndl(
+            "bin/bgp.ndl",
+            registry![BgpA, Switch, Node, Router, B, C, D, else _],
+        )
+        .unwrap();
     app.include_par_file("bin/bgp.par").unwrap();
     let rt = Builder::seeded(123)
         .max_time(1000.0.into())

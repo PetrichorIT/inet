@@ -1,10 +1,15 @@
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
+
 use des::{prelude::*, registry, time::sleep};
 use inet::{
     interface::{add_interface, Interface, NetworkDevice},
     utils::{get_ip, netstat},
     *,
 };
-use tokio::{spawn, task::JoinHandle};
+use tokio::spawn;
 
 const SCHED: [&'static [f64; 5]; 2] = [&SCHED_A, &SCHED_B];
 const SCHED_A: [f64; 5] = [1., 3., 6., 7., 10.];
@@ -16,10 +21,10 @@ const EXPECTED: [u8; 10] = [1, 2, 1, 2, 2, 1, 2, 1, 1, 2];
 
 #[derive(Default)]
 struct A {
-    handle: Option<JoinHandle<()>>,
+    done: Arc<AtomicBool>,
 }
-impl AsyncModule for A {
-    async fn at_sim_start(&mut self, _: usize) {
+impl Module for A {
+    fn at_sim_start(&mut self, _: usize) {
         let c = match &current().name()[..] {
             "a" => 1,
             "b" => 2,
@@ -33,7 +38,8 @@ impl AsyncModule for A {
         ))
         .unwrap();
 
-        self.handle = Some(spawn(async move {
+        let done = self.done.clone();
+        spawn(async move {
             sleep(Duration::from_secs(1)).await;
             let sched = SCHED[(c - 1) as usize];
             let mut i = 0;
@@ -50,11 +56,12 @@ impl AsyncModule for A {
                 tracing::info!("sending from {}", get_ip().unwrap());
                 sock.send(text.as_bytes()).await.unwrap();
             }
-        }));
+            done.store(true, Ordering::SeqCst);
+        });
     }
 
-    async fn at_sim_end(&mut self) {
-        self.handle.take().unwrap().await.unwrap();
+    fn at_sim_end(&mut self) {
+        assert!(self.done.load(Ordering::SeqCst));
     }
 }
 
@@ -62,11 +69,11 @@ type B = A;
 
 #[derive(Default)]
 struct C {
-    handle: Option<JoinHandle<()>>,
+    done: Arc<AtomicBool>,
 }
 
-impl AsyncModule for C {
-    async fn at_sim_start(&mut self, _: usize) {
+impl Module for C {
+    fn at_sim_start(&mut self, _: usize) {
         add_interface(Interface::ethv4_named(
             "en0",
             NetworkDevice::eth(),
@@ -75,7 +82,8 @@ impl AsyncModule for C {
         ))
         .unwrap();
 
-        self.handle = Some(spawn(async move {
+        let done = self.done.clone();
+        spawn(async move {
             sleep(Duration::from_secs(1)).await;
 
             let mut i = 0;
@@ -104,11 +112,12 @@ impl AsyncModule for C {
             }
 
             println!("{:#?}", netstat());
-        }));
+            done.store(true, Ordering::SeqCst);
+        });
     }
 
-    async fn at_sim_end(&mut self) {
-        self.handle.take().unwrap().await.unwrap();
+    fn at_sim_end(&mut self) {
+        assert!(self.done.load(Ordering::SeqCst));
     }
 }
 
@@ -116,12 +125,13 @@ type Main = inet::utils::LinkLayerSwitch;
 
 #[test]
 fn udp_select() {
-    inet::init();
     // Logger::new()
     // .interal_max_log_level(tracing::LevelFilter::Info)
     // .set_logger();
 
-    let app = Sim::ndl("tests/triangle.ndl", registry![A, B, C, Main])
+    let app = Sim::new(())
+        .with_stack(inet::init)
+        .with_ndl("tests/triangle.ndl", registry![A, B, C, Main])
         .map_err(|e| println!("{e}"))
         .unwrap();
     let rt = Builder::seeded(123).max_time(100.0.into()).build(app);

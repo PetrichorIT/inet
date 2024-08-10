@@ -49,8 +49,8 @@ struct TcpServer {
     fd: Arc<AtomicU32>,
 }
 
-impl AsyncModule for TcpServer {
-    async fn at_sim_start(&mut self, _: usize) {
+impl Module for TcpServer {
+    fn at_sim_start(&mut self, _: usize) {
         add_interface(Interface::ethv4(
             NetworkDevice::eth(),
             Ipv4Addr::new(69, 0, 0, 100),
@@ -120,11 +120,11 @@ impl AsyncModule for TcpServer {
         });
     }
 
-    async fn handle_message(&mut self, _: Message) {
+    fn handle_message(&mut self, _: Message) {
         tracing::error!("HM?");
     }
 
-    async fn at_sim_end(&mut self) {
+    fn at_sim_end(&mut self) {
         use inet::socket::bsd_socket_info;
 
         assert!(self.done.load(SeqCst));
@@ -138,8 +138,8 @@ struct TcpClient {
     fd: Arc<AtomicU32>,
 }
 
-impl AsyncModule for TcpClient {
-    async fn at_sim_start(&mut self, _: usize) {
+impl Module for TcpClient {
+    fn at_sim_start(&mut self, _: usize) {
         add_interface(Interface::ethv4(
             NetworkDevice::eth(),
             Ipv4Addr::new(69, 0, 0, 200),
@@ -181,11 +181,11 @@ impl AsyncModule for TcpClient {
         });
     }
 
-    async fn handle_message(&mut self, _: Message) {
+    fn handle_message(&mut self, _: Message) {
         panic!()
     }
 
-    async fn at_sim_end(&mut self) {
+    fn at_sim_end(&mut self) {
         use inet::socket::bsd_socket_info;
 
         assert!(self.done.load(SeqCst));
@@ -196,19 +196,19 @@ impl AsyncModule for TcpClient {
 #[test]
 #[serial_test::serial]
 fn tcp_missing_data_at_close() {
-    inet::init();
-
     // Subscriber::default()
     //     .with_max_level(LevelFilter::TRACE)
     //     .init()
     //     .unwrap();
 
-    let app = Sim::ndl(
-        "tests/tcp.ndl",
-        registry![Link, TcpServer, TcpClient, else _],
-    )
-    .map_err(|e| println!("{e}"))
-    .unwrap();
+    let app = Sim::new(())
+        .with_stack(inet::init)
+        .with_ndl(
+            "tests/tcp.ndl",
+            registry![Link, TcpServer, TcpClient, else _],
+        )
+        .map_err(|e| println!("{e}"))
+        .unwrap();
     let rt = Builder::seeded(1263431312323)
         .max_time(10.0.into())
         .build(app);

@@ -7,11 +7,9 @@ use inet::{
 #[test]
 #[serial_test::serial]
 fn udp_ping_pong() {
-    inet::init();
-
     // des::tracing::Subscriber::default().init().unwrap();
 
-    let mut sim = Sim::new(());
+    let mut sim = Sim::new(()).with_stack(inet::init);
     sim.node(
         "ping",
         AsyncFn::io(|mut rx| async move {

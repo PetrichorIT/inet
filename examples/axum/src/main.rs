@@ -18,8 +18,8 @@ use tokio::spawn;
 #[derive(Default)]
 struct Client;
 
-impl AsyncModule for Client {
-    async fn at_sim_start(&mut self, _: usize) {
+impl Module for Client {
+    fn at_sim_start(&mut self, _: usize) {
         add_interface(Interface::eth(
             NetworkDevice::eth(),
             Ipv4Addr::new(192, 168, 2, 101).into(),
@@ -52,8 +52,8 @@ impl AsyncModule for Client {
 #[derive(Default)]
 struct Server;
 
-impl AsyncModule for Server {
-    async fn at_sim_start(&mut self, _: usize) {
+impl Module for Server {
+    fn at_sim_start(&mut self, _: usize) {
         add_interface(Interface::eth(
             NetworkDevice::eth(),
             Ipv4Addr::new(192, 168, 2, 10).into(),
@@ -149,10 +149,11 @@ mod connector {
 }
 
 fn main() {
-    inet::init();
     des::tracing::init();
 
-    let app = Sim::ndl("main.ndl", registry![Client, Server, else _])
+    let app = Sim::new(())
+        .with_stack(inet::init)
+        .with_ndl("main.ndl", registry![Client, Server, else _])
         .map_err(|e| println!("{e}"))
         .unwrap();
     let rt = Builder::seeded(123).max_time(50.0.into()).build(app);

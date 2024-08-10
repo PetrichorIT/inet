@@ -9,8 +9,8 @@ use tokio::spawn;
 #[derive(Default)]
 struct Alice {}
 
-impl AsyncModule for Alice {
-    async fn at_sim_start(&mut self, _: usize) {
+impl Module for Alice {
+    fn at_sim_start(&mut self, _: usize) {
         let addr = par("addr").unwrap().parse::<Ipv4Addr>().unwrap();
         let mask = par("mask").unwrap().parse::<Ipv4Addr>().unwrap();
         let gw = par("gateway").unwrap().parse::<Ipv4Addr>().unwrap();
@@ -30,8 +30,8 @@ impl AsyncModule for Alice {
 #[derive(Default)]
 struct Bob {}
 
-impl AsyncModule for Bob {
-    async fn at_sim_start(&mut self, _: usize) {
+impl Module for Bob {
+    fn at_sim_start(&mut self, _: usize) {
         let addr = par("addr").unwrap().parse::<Ipv4Addr>().unwrap();
         let mask = par("mask").unwrap().parse::<Ipv4Addr>().unwrap();
         let gw = par("gateway").unwrap().parse::<Ipv4Addr>().unwrap();
@@ -51,8 +51,8 @@ impl AsyncModule for Bob {
 #[derive(Default)]
 struct Eve {}
 
-impl AsyncModule for Eve {
-    async fn at_sim_start(&mut self, _: usize) {
+impl Module for Eve {
+    fn at_sim_start(&mut self, _: usize) {
         let addr = par("addr").unwrap().parse::<Ipv4Addr>().unwrap();
         let mask = par("mask").unwrap().parse::<Ipv4Addr>().unwrap();
         let gw = par("gateway").unwrap().parse::<Ipv4Addr>().unwrap();
@@ -90,8 +90,8 @@ impl AsyncModule for Eve {
 #[derive(Default)]
 struct Main {}
 
-impl AsyncModule for Main {
-    async fn at_sim_start(&mut self, _: usize) {
+impl Module for Main {
+    fn at_sim_start(&mut self, _: usize) {
         for port in RoutingInformation::collect().ports {
             let peer = port.output.path_end().unwrap().owner().path();
             let gw = par_for("gateway", &peer)
@@ -112,10 +112,11 @@ impl AsyncModule for Main {
 }
 
 fn main() {
-    inet::init();
     des::tracing::init();
 
-    let mut app = Sim::ndl("inet/src/bin/ping.ndl", registry![Alice, Bob, Eve, Main])
+    let mut app = Sim::new(())
+        .with_stack(inet::init)
+        .with_ndl("inet/src/bin/ping.ndl", registry![Alice, Bob, Eve, Main])
         .map_err(|e| println!("{e}"))
         .unwrap();
     app.include_par_file("inet/src/bin/ping.par").unwrap();

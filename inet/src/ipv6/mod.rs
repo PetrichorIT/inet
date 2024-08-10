@@ -87,6 +87,7 @@ impl Ipv6 {
 }
 
 bitflags! {
+    #[derive(Debug)]
     pub struct Ipv6SendFlags: u8 {
         const DEFAULT = 0b0000_0000;
         const ALLOW_SRC_UNSPECIFIED = 0b0000_0001;
@@ -146,7 +147,7 @@ impl IOContext {
                 return Ok(());
             } else {
                 // FIXME: dangerous since this execut4e directly
-                println!("DANGER");
+                tracing::warn!("DANGER");
                 let iface = self.ifaces.get(&ifid).unwrap();
                 schedule_in(
                     Message::new()
@@ -181,6 +182,8 @@ impl IOContext {
 
         // (3) Begin LL address resoloution
         let Some((mac, new_ifid)) = self.ipv6.neighbors.lookup(next_hop) else {
+            // Link-Layer resolution is not directly available
+            // -> start solicitation procedure and queue packet
             self.ipv6_icmp_send_neighbor_solicitation(
                 next_hop,
                 ifid,

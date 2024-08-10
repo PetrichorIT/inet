@@ -1,17 +1,21 @@
+use std::sync::{
+    atomic::{AtomicUsize, Ordering},
+    Arc,
+};
+
 use des::{prelude::*, registry, time::sleep};
 use inet::{
     interface::{add_interface, Interface, NetworkDevice},
     UdpSocket,
 };
-use tokio::task::JoinHandle;
 
 #[derive(Default)]
 struct Node {
-    handles: Vec<JoinHandle<()>>,
+    done: Arc<AtomicUsize>,
 }
 
-impl AsyncModule for Node {
-    async fn at_sim_start(&mut self, s: usize) {
+impl Module for Node {
+    fn at_sim_start(&mut self, s: usize) {
         if s == 0 {
             return;
         }
@@ -30,8 +34,10 @@ impl AsyncModule for Node {
 
         let expected: usize = par("expected").unwrap().parse().unwrap();
 
-        self.handles.push(tokio::spawn(async move {
+        let done = self.done.clone();
+        tokio::spawn(async move {
             if targets.is_empty() {
+                done.fetch_add(1, Ordering::SeqCst);
                 return;
             }
             let sock = UdpSocket::bind((ip, 0)).await.unwrap();
@@ -54,11 +60,13 @@ impl AsyncModule for Node {
                 }
             }
 
-            // tracing::debug!("<fin> sending");
-        }));
+            done.fetch_add(1, Ordering::SeqCst);
+        });
 
-        self.handles.push(tokio::spawn(async move {
+        let done = self.done.clone();
+        tokio::spawn(async move {
             if expected == 0 {
+                done.fetch_add(1, Ordering::SeqCst);
                 return;
             }
             let sock = UdpSocket::bind("0.0.0.0:100").await.unwrap();
@@ -68,21 +76,19 @@ impl AsyncModule for Node {
                 tracing::info!("recieved {n}({}) bytes from {}", buf[0], from.ip());
             }
 
-            // tracing::debug!("<fin> receiving");
-        }));
+            done.fetch_add(1, Ordering::SeqCst);
+        });
     }
 
     fn num_sim_start_stages(&self) -> usize {
         2
     }
 
-    async fn at_sim_end(&mut self) {
-        for h in self.handles.drain(..) {
-            h.await.unwrap();
-        }
+    fn at_sim_end(&mut self) {
+        assert_eq!(self.done.load(Ordering::SeqCst), 2);
     }
 
-    async fn handle_message(&mut self, _: Message) {
+    fn handle_message(&mut self, _: Message) {
         panic!()
     }
 }
@@ -119,12 +125,13 @@ impl Module for Main {
 
 #[test]
 fn udp_zerobind() {
-    inet::init();
     // Logger::new()
     // .interal_max_log_level(tracing::LevelFilter::Trace)
     // .set_logger();
 
-    let mut app = Sim::ndl("tests/udp-zerobind/main.ndl", registry![Node, Switch, Main])
+    let mut app = Sim::new(())
+        .with_stack(inet::init)
+        .with_ndl("tests/udp-zerobind/main.ndl", registry![Node, Switch, Main])
         .map_err(|e| println!("{e}"))
         .unwrap();
     app.include_par_file("tests/udp-zerobind/main.par").unwrap();

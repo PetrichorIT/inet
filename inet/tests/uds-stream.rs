@@ -1,6 +1,8 @@
 #![cfg(feature = "uds")]
 
 use std::iter::repeat_with;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 
 use des::time::sleep;
 use des::{prelude::*, registry};
@@ -8,16 +10,16 @@ use inet::uds::{UnixListener, UnixStream};
 use serial_test::serial;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::spawn;
-use tokio::task::JoinHandle;
 
 #[derive(Default)]
 struct Simplex {
-    handles: Vec<JoinHandle<()>>,
+    done: Arc<AtomicUsize>,
 }
 
-impl AsyncModule for Simplex {
-    async fn at_sim_start(&mut self, _: usize) {
-        self.handles.push(spawn(async move {
+impl Module for Simplex {
+    fn at_sim_start(&mut self, _: usize) {
+        let done = self.done.clone();
+        spawn(async move {
             let server = UnixListener::bind("/tmp/listener").unwrap();
             while let Ok((mut stream, from)) = server.accept().await {
                 tracing::info!("stream established from {from:?}");
@@ -35,35 +37,37 @@ impl AsyncModule for Simplex {
                 }
                 break;
             }
-        }));
+            done.fetch_add(1, Ordering::SeqCst);
+        });
 
-        self.handles.push(spawn(async move {
+        let done = self.done.clone();
+        spawn(async move {
             let mut client = UnixStream::connect("/tmp/listener").await.unwrap();
             tracing::info!("connected");
             sleep(Duration::from_secs(1)).await;
 
             client.write_all(&[42; 5000]).await.unwrap();
-        }));
+            done.fetch_add(1, Ordering::SeqCst);
+        });
     }
 
-    async fn at_sim_end(&mut self) {
-        for handle in self.handles.drain(..) {
-            handle.await.unwrap();
-        }
+    fn at_sim_end(&mut self) {
+        assert_eq!(self.done.load(Ordering::SeqCst), 2);
     }
 }
 
 #[test]
 #[serial]
 fn uds_simplex() {
-    inet::init();
     // Logger::new()
     // .interal_max_log_level(tracing::LevelFilter::Trace)
     // .set_logger();
 
     type Main = Simplex;
 
-    let app = Sim::ndl("tests/main.ndl", registry![Main])
+    let app = Sim::new(())
+        .with_stack(inet::init)
+        .with_ndl("tests/main.ndl", registry![Main])
         .map_err(|e| println!("{e}"))
         .unwrap();
     let rt = Builder::seeded(123).max_time(100.0.into()).build(app);
@@ -75,12 +79,13 @@ fn uds_simplex() {
 
 #[derive(Default)]
 struct Duplex {
-    handles: Vec<JoinHandle<()>>,
+    done: Arc<AtomicUsize>,
 }
 
-impl AsyncModule for Duplex {
-    async fn at_sim_start(&mut self, _: usize) {
-        self.handles.push(spawn(async move {
+impl Module for Duplex {
+    fn at_sim_start(&mut self, _: usize) {
+        let done = self.done.clone();
+        spawn(async move {
             let server = UnixListener::bind("/tmp/listener").unwrap();
             while let Ok((mut stream, from)) = server.accept().await {
                 tracing::info!("stream established from {from:?}");
@@ -93,9 +98,11 @@ impl AsyncModule for Duplex {
 
                 break;
             }
-        }));
+            done.fetch_add(1, Ordering::SeqCst);
+        });
 
-        self.handles.push(spawn(async move {
+        let done = self.done.clone();
+        spawn(async move {
             let mut client = UnixStream::connect("/tmp/listener").await.unwrap();
             tracing::info!("connected");
             sleep(Duration::from_secs(1)).await;
@@ -107,27 +114,27 @@ impl AsyncModule for Duplex {
             client.read_to_end(&mut rbuf).await.unwrap();
 
             assert_eq!(wbuf, rbuf);
-        }));
+            done.fetch_add(1, Ordering::SeqCst);
+        });
     }
 
-    async fn at_sim_end(&mut self) {
-        for handle in self.handles.drain(..) {
-            handle.await.unwrap();
-        }
+    fn at_sim_end(&mut self) {
+        assert_eq!(self.done.load(Ordering::SeqCst), 2);
     }
 }
 
 #[test]
 #[serial]
 fn uds_duplex() {
-    inet::init();
     // Logger::new()
     // .interal_max_log_level(tracing::LevelFilter::Trace)
     // .set_logger();
 
     type Main = Duplex;
 
-    let app = Sim::ndl("tests/main.ndl", registry![Main])
+    let app = Sim::new(())
+        .with_stack(inet::init)
+        .with_ndl("tests/main.ndl", registry![Main])
         .map_err(|e| println!("{e}"))
         .unwrap();
     let rt = Builder::seeded(123).max_time(100.0.into()).build(app);
@@ -139,23 +146,26 @@ fn uds_duplex() {
 
 #[derive(Default)]
 struct UnnamedPair {
-    handles: Vec<JoinHandle<()>>,
+    done: Arc<AtomicUsize>,
 }
 
-impl AsyncModule for UnnamedPair {
-    async fn at_sim_start(&mut self, _: usize) {
+impl Module for UnnamedPair {
+    fn at_sim_start(&mut self, _: usize) {
         let (mut client, mut server) = UnixStream::pair().unwrap();
 
-        self.handles.push(spawn(async move {
+        let done = self.done.clone();
+        spawn(async move {
             sleep(Duration::from_secs(1)).await;
 
             let mut buf = vec![0; 5000];
             server.read_exact(&mut buf).await.unwrap();
             server.write_all(&buf).await.unwrap();
             tracing::info!("stream closed");
-        }));
+            done.fetch_add(1, Ordering::SeqCst);
+        });
 
-        self.handles.push(spawn(async move {
+        let done = self.done.clone();
+        spawn(async move {
             sleep(Duration::from_secs(1)).await;
 
             let wbuf = repeat_with(|| random()).take(5000).collect::<Vec<_>>();
@@ -165,27 +175,27 @@ impl AsyncModule for UnnamedPair {
             client.read_to_end(&mut rbuf).await.unwrap();
 
             assert_eq!(wbuf, rbuf);
-        }));
+            done.fetch_add(1, Ordering::SeqCst);
+        });
     }
 
-    async fn at_sim_end(&mut self) {
-        for handle in self.handles.drain(..) {
-            handle.await.unwrap();
-        }
+    fn at_sim_end(&mut self) {
+        assert_eq!(self.done.load(Ordering::SeqCst), 2);
     }
 }
 
 #[test]
 #[serial]
 fn uds_stream_unnamed_pair() {
-    inet::init();
     // Logger::new()
     // .interal_max_log_level(tracing::LevelFilter::Trace)
     // .set_logger();
 
     type Main = UnnamedPair;
 
-    let app = Sim::ndl("tests/main.ndl", registry![Main])
+    let app = Sim::new(())
+        .with_stack(inet::init)
+        .with_ndl("tests/main.ndl", registry![Main])
         .map_err(|e| println!("{e}"))
         .unwrap();
     let rt = Builder::seeded(123).max_time(100.0.into()).build(app);

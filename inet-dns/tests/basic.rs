@@ -1,3 +1,8 @@
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
+
 use des::{prelude::*, registry};
 use inet::{
     dns::lookup_host,
@@ -17,11 +22,11 @@ DNS2 = www
 
 #[derive(Default)]
 struct Client {
-    suc: bool,
+    suc: Arc<AtomicBool>,
 }
 
-impl AsyncModule for Client {
-    async fn at_sim_start(&mut self, _stage: usize) {
+impl Module for Client {
+    fn at_sim_start(&mut self, _stage: usize) {
         let ip = par("addr").unwrap().parse::<Ipv4Addr>().unwrap();
         add_interface(Interface::ethv4_named(
             "en0",
@@ -61,37 +66,43 @@ impl AsyncModule for Client {
         });
     }
 
-    async fn handle_message(&mut self, msg: Message) {
-        let kind = msg.header().kind;
-        match kind {
-            2334 => {
-                tracing::info!("[lookup]");
-                let lookup = lookup_host("www.example.org:80").await;
-                match lookup {
-                    Ok(iter) => {
-                        tracing::info!("[result]");
-                        for addr in iter {
-                            tracing::info!(">>> {}", addr)
+    fn handle_message(&mut self, msg: Message) {
+        let suc = self.suc.clone();
+        tokio::spawn(async move {
+            let kind = msg.header().kind;
+            match kind {
+                2334 => {
+                    tracing::info!("[lookup]");
+                    let lookup = lookup_host("www.example.org:80").await;
+                    match lookup {
+                        Ok(iter) => {
+                            tracing::info!("[result]");
+                            for addr in iter {
+                                tracing::info!(">>> {}", addr)
+                            }
+                            suc.store(true, Ordering::SeqCst);
                         }
-                        self.suc = true
+                        Err(e) => panic!("{e}"),
                     }
-                    Err(e) => panic!("{e}"),
+                }
+                _ => {
+                    tracing::error!("{:?}", msg.content::<Ipv4Packet>());
+                    // let content = msg.cast::<Vec<u8>>().0;
+                    // let msg = DNSMessage::from_buffer(content).unwrap();
+                    // // tracing::info!("{:?}", msg)
+                    // for record in msg.response() {
+                    //     tracing::info!("> {}", record);
+                    // }
                 }
             }
-            _ => {
-                tracing::error!("{:?}", msg.content::<Ipv4Packet>());
-                // let content = msg.cast::<Vec<u8>>().0;
-                // let msg = DNSMessage::from_buffer(content).unwrap();
-                // // tracing::info!("{:?}", msg)
-                // for record in msg.response() {
-                //     tracing::info!("> {}", record);
-                // }
-            }
-        }
+        });
     }
 
-    async fn at_sim_end(&mut self) {
-        assert!(self.suc, "Did not finish succesfully")
+    fn at_sim_end(&mut self) {
+        assert!(
+            self.suc.load(Ordering::SeqCst),
+            "Did not finish succesfully"
+        )
     }
 }
 
@@ -99,8 +110,8 @@ impl AsyncModule for Client {
 #[derive(Default)]
 struct DNSServer0;
 
-impl AsyncModule for DNSServer0 {
-    async fn at_sim_start(&mut self, _stage: usize) {
+impl Module for DNSServer0 {
+    fn at_sim_start(&mut self, _stage: usize) {
         let ip = par("addr").unwrap().parse::<Ipv4Addr>().unwrap();
         add_interface(Interface::ethv4_named(
             "en0",
@@ -114,7 +125,7 @@ impl AsyncModule for DNSServer0 {
         schedule_in(Message::new().kind(1111).build(), Duration::ZERO);
     }
 
-    async fn handle_message(&mut self, msg: Message) {
+    fn handle_message(&mut self, msg: Message) {
         if msg.header().kind != 1111 {
             return;
         }
@@ -133,8 +144,8 @@ impl AsyncModule for DNSServer0 {
 #[derive(Default)]
 struct DNSServer1;
 
-impl AsyncModule for DNSServer1 {
-    async fn at_sim_start(&mut self, _stage: usize) {
+impl Module for DNSServer1 {
+    fn at_sim_start(&mut self, _stage: usize) {
         let ip = par("addr").unwrap().parse::<Ipv4Addr>().unwrap();
         add_interface(Interface::ethv4_named(
             "en0",
@@ -147,7 +158,7 @@ impl AsyncModule for DNSServer1 {
         set_default_gateway([ip.octets()[0], 0, 0, 1]).unwrap();
     }
 
-    async fn handle_message(&mut self, msg: Message) {
+    fn handle_message(&mut self, msg: Message) {
         if msg.header().kind != 1111 {
             return;
         }
@@ -170,8 +181,8 @@ impl AsyncModule for DNSServer1 {
 #[derive(Default)]
 struct DNSServer2;
 
-impl AsyncModule for DNSServer2 {
-    async fn at_sim_start(&mut self, _stage: usize) {
+impl Module for DNSServer2 {
+    fn at_sim_start(&mut self, _stage: usize) {
         let ip = par("addr").unwrap().parse::<Ipv4Addr>().unwrap();
         add_interface(Interface::ethv4_named(
             "en0",
@@ -185,7 +196,7 @@ impl AsyncModule for DNSServer2 {
         schedule_in(Message::new().kind(7912).build(), Duration::from_secs(5));
     }
 
-    async fn handle_message(&mut self, msg: Message) {
+    fn handle_message(&mut self, msg: Message) {
         if msg.header().kind != 7912 {
             return;
         }
@@ -229,14 +240,14 @@ impl Module for Router {
 
 #[test]
 fn dns_basic() {
-    inet::init();
-
-    let mut rt = Sim::ndl(
-        "tests/dns-basic/main.ndl",
-        registry![Switch, DNSServer0, DNSServer1, DNSServer2, Client, Router, else _],
-    )
-    .map_err(|e| println!("{e}"))
-    .unwrap();
+    let mut rt = Sim::new(())
+        .with_stack(inet::init)
+        .with_ndl(
+            "tests/dns-basic/main.ndl",
+            registry![Switch, DNSServer0, DNSServer1, DNSServer2, Client, Router, else _],
+        )
+        .map_err(|e| println!("{e}"))
+        .unwrap();
     rt.include_par_file("tests/dns-basic/main.par").unwrap();
     let rt = Builder::seeded(123).build(rt);
     let _ = rt.run();

@@ -11,8 +11,8 @@ use inet_pcap::{PcapCapturePoints, PcapConfig, PcapFilters};
 #[derive(Default)]
 struct BgpNode;
 
-impl AsyncModule for BgpNode {
-    async fn at_sim_start(&mut self, _: usize) {
+impl Module for BgpNode {
+    fn at_sim_start(&mut self, _: usize) {
         let addr = par("addr").unwrap().parse::<Ipv4Addr>().unwrap();
         let as_num = par("as").unwrap().parse::<u16>().unwrap();
         let nets = par("nets")
@@ -107,7 +107,7 @@ impl AsyncModule for BgpNode {
         });
     }
 
-    async fn at_sim_end(&mut self) {
+    fn at_sim_end(&mut self) {
         for route in route().unwrap() {
             tracing::debug!("{route}")
         }
@@ -115,12 +115,13 @@ impl AsyncModule for BgpNode {
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
-    inet::init();
     // des::tracing::init();
 
     type LANSwitch = inet::utils::LinkLayerSwitch;
 
-    let mut app = Sim::ndl("src/bin/bgp.ndl", registry![LANSwitch, BgpNode, else _])?;
+    let mut app = Sim::new(())
+        .with_stack(inet::init)
+        .with_ndl("src/bin/bgp.ndl", registry![LANSwitch, BgpNode, else _])?;
     app.include_par_file("src/bin/bgp.par").unwrap();
     let _r = Builder::seeded(123)
         .max_time(500.0.into())

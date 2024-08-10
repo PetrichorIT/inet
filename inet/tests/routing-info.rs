@@ -69,12 +69,13 @@ impl Module for Main {
 
 #[test]
 fn routing_info() {
-    inet::init();
     // Logger::new()
     //     .interal_max_log_level(tracing::LevelFilter::Info)
     //     .set_logger();
 
-    let app = Sim::ndl("tests/triangle.ndl", registry![A, B, C, Main])
+    let app = Sim::new(())
+        .with_stack(inet::init)
+        .with_ndl("tests/triangle.ndl", registry![A, B, C, Main])
         .map_err(|e| println!("{e}"))
         .unwrap();
     let rt = Builder::seeded(123).max_time(100.0.into()).build(app);

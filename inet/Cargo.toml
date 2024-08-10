@@ -15,7 +15,7 @@ libpcap = []
 async-trait = "*"
 fxhash = "0.2.1"
 des = { version = "*", features = ["full"] }
-tokio = "*"
+tokio = "1.37.0"
 tracing = { version = "*" }
 bytes = "1.4.0"
 rand = "0.8.5"

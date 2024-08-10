@@ -272,6 +272,21 @@ macro_rules! raw_enum {
             )+
         }
 
+        impl ::std::str::FromStr for $ident {
+            type Err = ::std::io::Error;
+            fn from_str(s: &str) -> Result<Self, Self::Err> {
+                match s {
+                    $(
+                        stringify!($variant) => Ok(Self::$variant),
+                    )+
+                    _ => Err(::std::io::Error::new(
+                        ::std::io::ErrorKind::InvalidInput,
+                        "unknown string"
+                    ))
+                }
+            }
+        }
+
         impl $ident {
             $vis fn from_raw_repr(repr: $repr) -> ::std::io::Result<Self> {
                 match repr {
@@ -291,6 +306,38 @@ macro_rules! raw_enum {
         }
     };
 }
+
+macro_rules! impl_number {
+    ($($t:ty, $fn_read:ident, $fn_write:ident);+) => {
+        $(
+            impl FromBytestream for $t {
+                type Error = std::io::Error;
+                fn from_bytestream(bytestream: &mut BytestreamReader) -> Result<Self, Self::Error> {
+                    Ok(bytestream.$fn_read::<BE>()?)
+                }
+            }
+        )*
+        $(
+            impl ToBytestream for $t {
+                type Error = std::io::Error;
+                fn to_bytestream(&self, bytestream: &mut BytestreamWriter) -> Result<(), Self::Error> {
+                    bytestream.$fn_write::<BE>(*self)
+                }
+            }
+        )*
+    };
+}
+
+impl_number!(
+    u16, read_u16, write_u16;
+    u32, read_u32, write_u32;
+    u64, read_u64, write_u64;
+    u128, read_u128, write_u128;
+    i16, read_i16, write_i16;
+    i32, read_i32, write_i32;
+    i64, read_i64, write_i64;
+    i128, read_i128, write_i128
+);
 
 impl ToBytestream for Ipv4Addr {
     type Error = std::io::Error;

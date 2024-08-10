@@ -1,7 +1,7 @@
 use std::{fs::File, time::Duration};
 
 use des::{
-    net::{module::AsyncModule, Sim},
+    net::{module::Module, Sim},
     registry,
     runtime::Builder,
 };
@@ -17,8 +17,8 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 #[derive(Default)]
 struct HostAlice;
 
-impl AsyncModule for HostAlice {
-    async fn at_sim_start(&mut self, _stage: usize) {
+impl Module for HostAlice {
+    fn at_sim_start(&mut self, _stage: usize) {
         pcap(PcapConfig {
             filters: PcapFilters::default(),
             capture: PcapCapturePoints::All,
@@ -42,8 +42,8 @@ impl AsyncModule for HostAlice {
 #[derive(Default)]
 struct HostBob;
 
-impl AsyncModule for HostBob {
-    async fn at_sim_start(&mut self, _stage: usize) {
+impl Module for HostBob {
+    fn at_sim_start(&mut self, _stage: usize) {
         pcap(PcapConfig {
             filters: PcapFilters::default(),
             capture: PcapCapturePoints::All,
@@ -68,8 +68,8 @@ impl AsyncModule for HostBob {
 #[derive(Default)]
 struct Router;
 
-impl AsyncModule for Router {
-    async fn at_sim_start(&mut self, _stage: usize) {
+impl Module for Router {
+    fn at_sim_start(&mut self, _stage: usize) {
         pcap(PcapConfig {
             filters: PcapFilters::default(),
             capture: PcapCapturePoints::All,
@@ -93,14 +93,15 @@ type Switch = utils::LinkLayerSwitch;
 
 #[test]
 fn ipv6_tcp() {
-    inet::init();
     // des::tracing::init();
 
-    let app = Sim::ndl(
-        "tests/ipv6.ndl",
-        registry![HostAlice, HostBob, Router, Switch, else _],
-    )
-    .unwrap();
+    let app = Sim::new(())
+        .with_stack(inet::init)
+        .with_ndl(
+            "tests/ipv6.ndl",
+            registry![HostAlice, HostBob, Router, Switch, else _],
+        )
+        .unwrap();
 
     let rt = Builder::seeded(123)
         // .max_itr(30)

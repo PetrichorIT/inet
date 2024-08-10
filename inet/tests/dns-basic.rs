@@ -22,12 +22,12 @@
 //     suc: bool,
 // }
 //
-// impl AsyncModule for Client {
+// impl Module for Client {
 //     fn new() -> Self {
 //         Self { suc: false }
 //     }
 
-//     async fn at_sim_start(&mut self, _stage: usize) {
+//     fn at_sim_start(&mut self, _stage: usize) {
 //         let ip = par("addr").unwrap().parse::<Ipv4Addr>().unwrap();
 //         add_interface(Interface::ethv4_named(
 //             "en0",
@@ -67,7 +67,7 @@
 //         });
 //     }
 
-//     async fn handle_message(&mut self, msg: Message) {
+//     fn handle_message(&mut self, msg: Message) {
 //         let kind = msg.header().kind;
 //         match kind {
 //             2334 => {
@@ -96,7 +96,7 @@
 //         }
 //     }
 
-//     async fn at_sim_end(&mut self) {
+//     fn at_sim_end(&mut self) {
 //         assert!(self.suc, "Did not finish succesfully")
 //     }
 // }
@@ -107,7 +107,7 @@
 //     server: Option<DNSNameserver>,
 // }
 //
-// impl AsyncModule for DNSServer0 {
+// impl Module for DNSServer0 {
 //     fn new() -> Self {
 //         Self {
 //             server: Some(
@@ -121,7 +121,7 @@
 //         }
 //     }
 
-//     async fn at_sim_start(&mut self, _stage: usize) {
+//     fn at_sim_start(&mut self, _stage: usize) {
 //         let ip = par("addr").unwrap().parse::<Ipv4Addr>().unwrap();
 //         add_interface(Interface::ethv4_named(
 //             "en0",
@@ -135,7 +135,7 @@
 //         schedule_in(Message::new().kind(1111).build(), Duration::ZERO);
 //     }
 
-//     async fn handle_message(&mut self, msg: Message) {
+//     fn handle_message(&mut self, msg: Message) {
 //         if msg.header().kind != 1111 {
 //             return;
 //         }
@@ -150,7 +150,7 @@
 //     server: Option<DNSNameserver>,
 // }
 //
-// impl AsyncModule for DNSServer1 {
+// impl Module for DNSServer1 {
 //     fn new() -> Self {
 //         Self {
 //             server: Some(
@@ -168,7 +168,7 @@
 //         }
 //     }
 
-//     async fn at_sim_start(&mut self, _stage: usize) {
+//     fn at_sim_start(&mut self, _stage: usize) {
 //         let ip = par("addr").unwrap().parse::<Ipv4Addr>().unwrap();
 //         add_interface(Interface::ethv4_named(
 //             "en0",
@@ -181,7 +181,7 @@
 //         set_default_gateway([ip.octets()[0], 0, 0, 1]).unwrap();
 //     }
 
-//     async fn handle_message(&mut self, msg: Message) {
+//     fn handle_message(&mut self, msg: Message) {
 //         if msg.header().kind != 1111 {
 //             return;
 //         }
@@ -196,7 +196,7 @@
 //     server: Option<DNSNameserver>,
 // }
 //
-// impl AsyncModule for DNSServer2 {
+// impl Module for DNSServer2 {
 //     fn new() -> Self {
 //         Self {
 //             server: Some(
@@ -210,7 +210,7 @@
 //         }
 //     }
 
-//     async fn at_sim_start(&mut self, _stage: usize) {
+//     fn at_sim_start(&mut self, _stage: usize) {
 //         let ip = par("addr").unwrap().parse::<Ipv4Addr>().unwrap();
 //         add_interface(Interface::ethv4_named(
 //             "en0",
@@ -224,7 +224,7 @@
 //         schedule_in(Message::new().kind(7912).build(), Duration::from_secs(5));
 //     }
 
-//     async fn handle_message(&mut self, msg: Message) {
+//     fn handle_message(&mut self, msg: Message) {
 //         if msg.header().kind != 7912 {
 //             return;
 //         }
@@ -279,7 +279,7 @@
 
 // #[test]
 // fn dns_basic() {
-//     inet::init();
+//
 
 //     // Logger::new()
 //     //     .interal_max_log_level(tracing::LevelFilter::Warn)

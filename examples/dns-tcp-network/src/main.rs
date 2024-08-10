@@ -20,8 +20,8 @@ use tokio::{
 #[derive(Default)]
 struct Client;
 
-impl AsyncModule for Client {
-    async fn at_sim_start(&mut self, stage: usize) {
+impl Module for Client {
+    fn at_sim_start(&mut self, stage: usize) {
         if stage == 0 {
             return;
         }
@@ -77,8 +77,8 @@ const DOMAINS: [&str; 15] = [
 #[derive(Default)]
 struct Server;
 
-impl AsyncModule for Server {
-    async fn at_sim_start(&mut self, stage: usize) {
+impl Module for Server {
+    fn at_sim_start(&mut self, stage: usize) {
         if stage == 0 {
             return;
         }
@@ -124,8 +124,8 @@ impl AsyncModule for Server {
 #[derive(Default)]
 struct Dns;
 
-impl AsyncModule for Dns {
-    async fn at_sim_start(&mut self, stage: usize) {
+impl Module for Dns {
+    fn at_sim_start(&mut self, stage: usize) {
         if stage == 0 {
             return;
         }
@@ -175,8 +175,8 @@ fn node_like_setup() {
 #[derive(Default)]
 struct Router;
 
-impl AsyncModule for Router {
-    async fn at_sim_start(&mut self, stage: usize) {
+impl Module for Router {
+    fn at_sim_start(&mut self, stage: usize) {
         if stage == 0 {
             return;
         }
@@ -240,17 +240,18 @@ impl Module for LAN {
 }
 
 fn main() {
-    inet::init();
     des::tracing::init();
 
     type Switch = LinkLayerSwitch;
 
-    let mut app = Sim::ndl(
-        "main.ndl",
-        registry![Dns, Client, Server, Router, Switch, LAN, else _],
-    )
-    .map_err(|e| println!("{e}"))
-    .unwrap();
+    let mut app = Sim::new(())
+        .with_stack(inet::init)
+        .with_ndl(
+            "main.ndl",
+            registry![Dns, Client, Server, Router, Switch, LAN, else _],
+        )
+        .map_err(|e| println!("{e}"))
+        .unwrap();
     app.include_par_file("main.par").unwrap();
     let rt = Builder::seeded(123).max_time(200.0.into()).build(app);
     let _app = rt.run().into_app();
