@@ -18,7 +18,7 @@ impl TryFrom<ZonefileLineRecord> for NsResourceRecord {
             domain: raw.name.clone(),
             ttl: raw.ttl as u32,
             class: raw.class,
-            nameserver: DnsString::new(raw.rdata),
+            nameserver: DnsString::from_zonefile_definition(&raw.rdata, &raw.origin),
         })
     }
 }

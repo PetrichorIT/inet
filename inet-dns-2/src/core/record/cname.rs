@@ -6,10 +6,10 @@ use bytepack::{FromBytestream, ToBytestream};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CNameResourceRecord {
-    name: DnsString,
-    ttl: u32,
-    class: ResourceRecordClass,
-    target: DnsString,
+    pub name: DnsString,
+    pub ttl: u32,
+    pub class: ResourceRecordClass,
+    pub target: DnsString,
 }
 
 impl TryFrom<ZonefileLineRecord> for CNameResourceRecord {
@@ -19,7 +19,7 @@ impl TryFrom<ZonefileLineRecord> for CNameResourceRecord {
             name: raw.name.clone(),
             ttl: raw.ttl,
             class: raw.class,
-            target: DnsString::new(raw.rdata),
+            target: DnsString::from_zonefile_definition(&raw.rdata, &raw.origin),
         })
     }
 }

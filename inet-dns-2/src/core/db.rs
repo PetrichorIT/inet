@@ -1,11 +1,9 @@
-use std::{cell::Cell, collections::HashMap};
-
-use crate::core::QuestionTyp;
-
 use super::{
     record::{DnsResourceRecord, ResourceRecordTyp, SoaResourceRecord},
     DnsQuestion, DnsString, ResourceRecordClass,
 };
+use crate::core::QuestionTyp;
+use std::{cell::Cell, collections::HashMap};
 
 #[derive(Debug)]
 pub struct RecordMap {
@@ -124,45 +122,114 @@ impl FromIterator<DnsResourceRecord> for RecordMap {
 
 #[cfg(test)]
 mod tests {
-    use std::{io, str::FromStr};
-
-    use crate::core::{ResourceRecordTyp, Zonefile};
-
     use super::*;
+    use crate::core::{
+        AAAAResourceRecord, AResourceRecord, CNameResourceRecord, NsResourceRecord, QuestionClass,
+        ResourceRecordTyp, Zonefile,
+    };
+    use std::{
+        io,
+        net::{Ipv4Addr, Ipv6Addr},
+        str::FromStr,
+    };
 
-    const RAW_A: &str = r#"
-$ORIGIN example.com.     ; designates the start of this zone file in the namespace
-$TTL 3600                ; default expiration time (in seconds) of all RRs without their own TTL value
+    fn db_example_org() -> io::Result<RecordMap> {
+        const RAW: &str = r#"
+$ORIGIN example.com.
+$TTL 3600
 example.com.  IN  SOA   ns.example.com. username.example.com. ( 2020091025 7200 3600 1209600 3600 )
-example.com.  IN  NS    ns                    ; ns.example.com is a nameserver for example.com
-example.com.  IN  NS    ns.somewhere.example. ; ns.somewhere.example is a backup nameserver for example.com
-example.com.  IN  MX    10 mail.example.com.  ; mail.example.com is the mailserver for example.com
-@             IN  MX    20 mail2.example.com. ; equivalent to above line, "@" represents zone origin
-@             IN  MX    50 mail3              ; equivalent to above line, but using a relative host name
-example.com.  IN  A     192.0.2.1             ; IPv4 address for example.com
-              IN  AAAA  2001:db8:10::1        ; IPv6 address for example.com
-ns            IN  A     192.0.2.2             ; IPv4 address for ns.example.com
-              IN  AAAA  2001:db8:10::2        ; IPv6 address for ns.example.com
-www           IN  CNAME example.com.          ; www.example.com is an alias for example.com
-wwwtest       IN  CNAME www                   ; wwwtest.example.com is another alias for www.example.com
-mail          IN  A     192.0.2.3             ; IPv4 address for mail.example.com
-mail2         IN  A     192.0.2.4             ; IPv4 address for mail2.example.com
-mail3         IN  A     192.0.2.5             ; IPv4 address for mail3.example.com
-    "#;
-
-    #[test]
-    fn multi_entry_query() -> io::Result<()> {
-        let zf = Zonefile::from_str(RAW_A)?;
-        let map = zf
+example.com.  IN  NS    ns
+example.com.  IN  NS    ns.somewhere.example.org.
+example.com.  IN  MX    10 mail.example.com.
+@             IN  MX    20 mail2.example.com.
+@             IN  MX    50 mail3
+example.com.  IN  A     192.0.2.1
+              IN  AAAA  2001:db8:10::1
+ns            IN  A     192.0.2.2
+              IN  AAAA  2001:db8:10::2
+www           IN  CNAME example.com.
+wwwtest       IN  CNAME www
+mail          IN  A     192.0.2.3
+mail2         IN  A     192.0.2.4
+mail3         IN  A     192.0.2.5
+        "#;
+        Ok(Zonefile::from_str(RAW)?
             .records
             .into_iter()
-            .flat_map(|r| DnsResourceRecord::try_from(r))
-            .collect::<RecordMap>();
+            .collect::<RecordMap>())
+    }
 
-        let result = map.get(&DnsString::new("example.com."), ResourceRecordTyp::NS);
-        dbg!(result);
-        assert_eq!(result.len(), 2);
+    #[test]
+    fn request_only_entries_of_typ() -> io::Result<()> {
+        let db = db_example_org()?;
+        assert_eq!(
+            db.get(&DnsString::new("example.com."), ResourceRecordTyp::NS),
+            [
+                NsResourceRecord {
+                    domain: DnsString::new("example.com."),
+                    ttl: 3600,
+                    class: ResourceRecordClass::IN,
+                    nameserver: DnsString::new("ns.example.com."),
+                }
+                .into(),
+                NsResourceRecord {
+                    domain: DnsString::new("example.com."),
+                    ttl: 3600,
+                    class: ResourceRecordClass::IN,
+                    nameserver: DnsString::new("ns.somewhere.example.org."),
+                }
+                .into(),
+            ]
+        );
+        Ok(())
+    }
 
+    #[test]
+    fn cname_entries() -> io::Result<()> {
+        let db = db_example_org()?;
+        assert_eq!(
+            db.get(
+                &DnsString::new("wwwtest.example.com."),
+                ResourceRecordTyp::CNAME
+            ),
+            [CNameResourceRecord {
+                name: DnsString::new("wwwtest.example.com."),
+                ttl: 3600,
+                class: ResourceRecordClass::IN,
+                target: DnsString::new("www.example.com."),
+            }
+            .into()]
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn request_all_entries_of_domain() -> io::Result<()> {
+        let db = db_example_org()?;
+
+        assert_eq!(
+            db.query(&DnsQuestion {
+                qname: DnsString::new("ns.example.com."),
+                qclass: QuestionClass::IN,
+                qtyp: QuestionTyp::ANY
+            }),
+            [
+                AResourceRecord {
+                    name: DnsString::new("ns.example.com."),
+                    ttl: 3600,
+                    class: ResourceRecordClass::IN,
+                    addr: Ipv4Addr::new(192, 0, 2, 2)
+                }
+                .into(),
+                AAAAResourceRecord {
+                    name: DnsString::new("ns.example.com."),
+                    ttl: 3600,
+                    class: ResourceRecordClass::IN,
+                    addr: Ipv6Addr::new(0x2001, 0x0db8, 0x0010, 0, 0, 0, 0, 2)
+                }
+                .into()
+            ]
+        );
         Ok(())
     }
 }

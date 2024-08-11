@@ -11,6 +11,19 @@ pub struct DnsString {
 }
 
 impl DnsString {
+    pub fn from_zonefile_definition(raw: &str, origin: &DnsString) -> Self {
+        if raw == "@" {
+            origin.clone()
+        } else {
+            let path = DnsString::new(raw);
+            if path.is_relative() {
+                path.with_root(origin)
+            } else {
+                path
+            }
+        }
+    }
+
     /// Converts a string into a dns encoded string.
     ///
     /// Node that this constructor removes port specifications
@@ -121,12 +134,28 @@ impl DnsString {
     }
 
     #[must_use]
+    pub fn prefix(&self, i: usize) -> &str {
+        let label_end = if i == 0 { 0 } else { self.labels[i - 1] + 1 };
+        &self.string[..label_end]
+    }
+
+    #[must_use]
     pub fn into_inner(self) -> String {
         self.string
     }
 
     pub fn with_root(&self, root: &DnsString) -> DnsString {
         assert!(self.is_relative());
+
+        // Find applicable suffix
+        for k in (1..root.labels() + 1).rev() {
+            let suffix = root.prefix(k);
+            dbg!(&self.string, suffix.trim_end_matches('.'));
+            if self.string.ends_with(suffix.trim_end_matches('.')) {
+                return DnsString::new(self.as_str().to_string() + "." + root.suffix(k));
+            }
+        }
+
         // TODO: this can be done easier
         DnsString::new(self.as_str().to_string() + "." + root.as_str())
     }
@@ -217,6 +246,33 @@ impl FromStr for DnsString {
 mod tests {
     use super::DnsString;
     use bytepack::{FromBytestream, ToBytestream};
+
+    #[test]
+    fn with_root() {
+        let root = DnsString::new("example.com.");
+
+        // Paths with matching suffixes are not changed, even if realtive
+        assert_eq!(
+            DnsString::new("www.example.com").with_root(&root),
+            DnsString::new("www.example.com.")
+        );
+        assert_eq!(
+            DnsString::new("www.example").with_root(&root),
+            DnsString::new("www.example.com.")
+        );
+
+        // No match mean full addition
+        assert_eq!(
+            DnsString::new("www").with_root(&root),
+            DnsString::new("www.example.com.")
+        );
+
+        // Pseudo match
+        assert_eq!(
+            DnsString::new("com").with_root(&root),
+            DnsString::new("com.example.com.")
+        );
+    }
 
     #[test]
     fn dns_string_from_str() {

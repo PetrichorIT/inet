@@ -7,10 +7,10 @@ use std::{
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AResourceRecord {
-    name: DnsString,
-    ttl: u32,
-    class: ResourceRecordClass,
-    addr: Ipv4Addr,
+    pub name: DnsString,
+    pub ttl: u32,
+    pub class: ResourceRecordClass,
+    pub addr: Ipv4Addr,
 }
 
 impl TryFrom<ZonefileLineRecord> for AResourceRecord {
@@ -29,7 +29,6 @@ impl TryFrom<RawResourceRecord> for AResourceRecord {
     type Error = io::Error;
     fn try_from(raw: RawResourceRecord) -> Result<Self, Self::Error> {
         if raw.rdata.len() != 4 {
-            dbg!(raw);
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
                 "expected rdata with 4 bytes to form an A record",
@@ -72,10 +71,10 @@ impl ResourceRecord for AResourceRecord {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AAAAResourceRecord {
-    name: DnsString,
-    ttl: u32,
-    class: ResourceRecordClass,
-    addr: Ipv6Addr,
+    pub name: DnsString,
+    pub ttl: u32,
+    pub class: ResourceRecordClass,
+    pub addr: Ipv6Addr,
 }
 
 impl TryFrom<ZonefileLineRecord> for AAAAResourceRecord {

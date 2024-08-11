@@ -281,7 +281,7 @@ macro_rules! raw_enum {
                     )+
                     _ => Err(::std::io::Error::new(
                         ::std::io::ErrorKind::InvalidInput,
-                        "unknown string"
+                        "unknown string: ".to_string() + s
                     ))
                 }
             }

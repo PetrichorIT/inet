@@ -1,13 +1,14 @@
-use std::{io, str::FromStr};
+use std::{io, rc::Rc, str::FromStr};
 
-use super::{DnsString, ResourceRecordClass, ResourceRecordTyp};
+use super::{DnsResourceRecord, DnsString, ResourceRecordClass, ResourceRecordTyp};
 
 pub struct Zonefile {
-    pub records: Vec<ZonefileLineRecord>,
+    pub records: Vec<DnsResourceRecord>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ZonefileLineRecord {
+pub(crate) struct ZonefileLineRecord {
+    pub origin: Rc<DnsString>,
     pub name: DnsString,
     pub ttl: u32,
     pub class: ResourceRecordClass,
@@ -17,7 +18,7 @@ pub struct ZonefileLineRecord {
 
 #[derive(Debug)]
 struct Reader {
-    origin: DnsString,
+    origin: Rc<DnsString>,
 
     last_ttl: Option<u32>,
     default_ttl: Option<u32>,
@@ -42,7 +43,7 @@ impl FromStr for Zonefile {
             .map(|l| l.split_once(';').map(|(lhs, _)| lhs).unwrap_or(l));
 
         let mut reader = Reader {
-            origin: DnsString::new(""),
+            origin: Rc::new(DnsString::new("")),
 
             last_ttl: None,
             default_ttl: None,
@@ -79,16 +80,7 @@ impl FromStr for Zonefile {
                 reader.name()
             } else {
                 let raw = parts.remove(0);
-                if raw.as_str() == "@" {
-                    reader.origin.clone()
-                } else {
-                    let path = DnsString::new(raw);
-                    if path.is_relative() {
-                        path.with_root(&reader.origin)
-                    } else {
-                        path
-                    }
-                }
+                DnsString::from_zonefile_definition(&raw, &*reader.origin)
             };
 
             reader.last_name = Some(name.clone());
@@ -130,6 +122,7 @@ impl FromStr for Zonefile {
             rdata.remove(0);
 
             records.push(ZonefileLineRecord {
+                origin: reader.origin.clone(),
                 name,
                 typ,
                 ttl,
@@ -137,7 +130,12 @@ impl FromStr for Zonefile {
                 rdata,
             });
         }
-        Ok(Self { records })
+        Ok(Self {
+            records: records
+                .into_iter()
+                .map(DnsResourceRecord::try_from)
+                .collect::<Result<_, _>>()?,
+        })
     }
 }
 
@@ -156,7 +154,7 @@ fn read_directive(line: String, reader: &mut Reader) -> io::Result<()> {
 
     match *&parts[0] {
         "$TTL" => reader.default_ttl = Some(parts[1].parse().map_err(io::Error::other)?),
-        "$ORIGIN" => reader.origin = DnsString::from(parts[1]),
+        "$ORIGIN" => reader.origin = Rc::new(DnsString::from(parts[1])),
         _ => {}
     }
 
