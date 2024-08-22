@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use super::{
     DnsResourceRecord, DnsString, DnsZoneResolver, QueryResponseKind, QuestionClass, QuestionTyp,
     ResourceRecordTyp,
@@ -16,8 +18,9 @@ pub struct DnsQuestion {
 }
 
 impl DnsQuestion {
-    pub fn mutate_query(mut self, ctx: &DnsZoneResolver) -> DnsQuestion {
+    pub fn mutate_query(&self, ctx: &DnsZoneResolver) -> DnsQuestion {
         use QuestionTyp::*;
+        let mut this = self.clone();
         match self.qtyp {
             A | AAAA => {
                 let mut name = &self.qname;
@@ -31,31 +34,35 @@ impl DnsQuestion {
                     i += 1;
                     if i > 32 {
                         // TODO: ERR
-                        return self;
+                        return this;
                     }
                 }
 
-                self.qname = name.clone();
-                self
+                this.qname = name.clone();
+                this
             }
-            _ => self,
+            _ => this,
         }
     }
 
     pub fn on_unanwsered(&self, ctx: &DnsZoneResolver) -> Vec<(DnsQuestion, QueryResponseKind)> {
         use QuestionTyp::*;
         match self.qtyp {
-            A | AAAA => vec![(
-                DnsQuestion {
-                    qname: DnsString::new(
-                        self.qname
-                            .suffix(self.qname.labels() - ctx.zone.labels() - 1),
-                    ),
-                    qclass: self.qclass,
-                    qtyp: QuestionTyp::NS,
-                },
-                QueryResponseKind::Auth,
-            )],
+            A | AAAA => {
+                let mut buf = Vec::new();
+                for k in (ctx.zone.labels().len() + 1)..self.qname.labels().len() {
+                    let qname = self.qname.truncated(k);
+                    buf.push((
+                        DnsQuestion {
+                            qname,
+                            qclass: self.qclass,
+                            qtyp: QuestionTyp::NS,
+                        },
+                        QueryResponseKind::Auth,
+                    ));
+                }
+                buf
+            }
             _ => Vec::new(),
         }
     }
@@ -66,6 +73,24 @@ impl DnsQuestion {
     ) -> Vec<(DnsQuestion, QueryResponseKind)> {
         use QuestionTyp::*;
         match self.qtyp {
+            A => vec![(
+                DnsQuestion {
+                    qname: self.qname.clone(),
+                    qtyp: AAAA,
+                    qclass: self.qclass,
+                },
+                QueryResponseKind::Additional,
+            )],
+
+            AAAA => vec![(
+                DnsQuestion {
+                    qname: self.qname.clone(),
+                    qtyp: A,
+                    qclass: self.qclass,
+                },
+                QueryResponseKind::Additional,
+            )],
+
             NS => anwsers
                 .iter()
                 .flat_map(|r| {
@@ -121,21 +146,27 @@ impl FromBytestream for DnsQuestion {
     }
 }
 
+impl Display for DnsQuestion {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?} {:?} {}", self.qtyp, self.qclass, self.qname)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::core::{AResourceRecord, RecordMap, ResourceRecordClass};
-    use std::{io, net::Ipv4Addr};
+    use std::{io, net::Ipv4Addr, str::FromStr};
 
     #[test]
     fn on_unanwsered_default() {
         let zone = DnsZoneResolver {
             db: RecordMap::from_iter(std::iter::empty()),
-            zone: DnsString::new("com."),
+            zone: "com.".parse().unwrap(),
         };
         let question = DnsQuestion {
             qtyp: QuestionTyp::NS,
-            qname: DnsString::new("www.example.com."),
+            qname: "www.example.com.".parse().unwrap(),
             qclass: QuestionClass::IN,
         };
 
@@ -146,11 +177,11 @@ mod tests {
     fn on_unanwsered_for_quetion_a_aaaa() {
         let zone = DnsZoneResolver {
             db: RecordMap::from_iter(std::iter::empty()),
-            zone: DnsString::new("com."),
+            zone: "com.".parse().unwrap(),
         };
         let question = DnsQuestion {
             qtyp: QuestionTyp::A,
-            qname: DnsString::new("www.example.com."),
+            qname: "www.example.com.".parse().unwrap(),
             qclass: QuestionClass::IN,
         };
 
@@ -159,7 +190,7 @@ mod tests {
             [(
                 DnsQuestion {
                     qtyp: QuestionTyp::NS,
-                    qname: DnsString::new("example.com."),
+                    qname: "example.com.".parse().unwrap(),
                     qclass: QuestionClass::IN
                 },
                 QueryResponseKind::Auth
@@ -171,32 +202,42 @@ mod tests {
     fn on_anwsered_default() {
         let question = DnsQuestion {
             qtyp: QuestionTyp::A,
-            qname: DnsString::new("www.example.com."),
+            qname: "www.example.com.".parse().unwrap(),
             qclass: QuestionClass::IN,
         };
         let anwser = [AResourceRecord {
-            name: DnsString::new("www.example.com"),
+            name: "www.example.com".parse().unwrap(),
             class: ResourceRecordClass::IN,
             ttl: 0,
             addr: Ipv4Addr::new(10, 1, 3, 1),
         }
         .into()];
 
-        assert_eq!(question.on_anwsered(&anwser), []);
+        assert_eq!(
+            question.on_anwsered(&anwser),
+            [(
+                DnsQuestion {
+                    qname: DnsString::from_str("www.example.com.").unwrap(),
+                    qclass: QuestionClass::IN,
+                    qtyp: QuestionTyp::AAAA
+                },
+                QueryResponseKind::Additional
+            )]
+        );
     }
 
     #[test]
     fn on_anwsered_for_ns_record() {
         let question = DnsQuestion {
             qtyp: QuestionTyp::NS,
-            qname: DnsString::new("example.com."),
+            qname: "example.com.".parse().unwrap(),
             qclass: QuestionClass::IN,
         };
         let anwser = [NsResourceRecord {
-            domain: DnsString::new("example.com."),
+            domain: "example.com.".parse().unwrap(),
             class: ResourceRecordClass::IN,
             ttl: 0,
-            nameserver: DnsString::new("ns0.example.com."),
+            nameserver: "ns0.example.com.".parse().unwrap(),
         }
         .into()];
 
@@ -206,7 +247,7 @@ mod tests {
                 (
                     DnsQuestion {
                         qtyp: QuestionTyp::A,
-                        qname: DnsString::new("ns0.example.com."),
+                        qname: "ns0.example.com.".parse().unwrap(),
                         qclass: QuestionClass::IN
                     },
                     QueryResponseKind::Additional
@@ -214,7 +255,7 @@ mod tests {
                 (
                     DnsQuestion {
                         qtyp: QuestionTyp::AAAA,
-                        qname: DnsString::new("ns0.example.com."),
+                        qname: "ns0.example.com.".parse().unwrap(),
                         qclass: QuestionClass::IN
                     },
                     QueryResponseKind::Additional
@@ -228,17 +269,17 @@ mod tests {
         let examples = [
             DnsQuestion {
                 qtyp: QuestionTyp::A,
-                qname: DnsString::new("example.org."),
+                qname: "example.org.".parse().unwrap(),
                 qclass: QuestionClass::IN,
             },
             DnsQuestion {
                 qtyp: QuestionTyp::NS,
-                qname: DnsString::new("www.example.org."),
+                qname: "www.example.org.".parse().unwrap(),
                 qclass: QuestionClass::IN,
             },
             DnsQuestion {
                 qtyp: QuestionTyp::CNAME,
-                qname: DnsString::new("org."),
+                qname: "org.".parse().unwrap(),
                 qclass: QuestionClass::CH,
             },
         ];

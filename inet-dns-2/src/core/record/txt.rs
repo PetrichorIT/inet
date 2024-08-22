@@ -1,42 +1,41 @@
-use std::io;
-
 use super::{RawResourceRecord, ResourceRecord, ResourceRecordClass};
 use crate::core::{DnsString, ZonefileLineRecord};
 use bytepack::{FromBytestream, ToBytestream};
+use std::io;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CNameResourceRecord {
+pub struct TxtResourceRecord {
     pub name: DnsString,
     pub ttl: u32,
     pub class: ResourceRecordClass,
-    pub target: DnsString,
+    pub text: String,
 }
 
-impl TryFrom<ZonefileLineRecord> for CNameResourceRecord {
+impl TryFrom<ZonefileLineRecord> for TxtResourceRecord {
     type Error = io::Error;
     fn try_from(raw: ZonefileLineRecord) -> Result<Self, Self::Error> {
-        Ok(Self {
-            name: raw.name.clone(),
-            ttl: raw.ttl,
-            class: raw.class,
-            target: DnsString::from_zonefile(&raw.rdata, &raw.origin)?,
-        })
-    }
-}
-
-impl TryFrom<RawResourceRecord> for CNameResourceRecord {
-    type Error = io::Error;
-    fn try_from(raw: RawResourceRecord) -> Result<Self, Self::Error> {
-        Ok(Self {
+        Ok(TxtResourceRecord {
             name: raw.name,
             ttl: raw.ttl,
             class: raw.class,
-            target: DnsString::from_slice(&raw.rdata)?,
+            text: raw.rdata.clone(),
         })
     }
 }
 
-impl ResourceRecord for CNameResourceRecord {
+impl TryFrom<RawResourceRecord> for TxtResourceRecord {
+    type Error = io::Error;
+    fn try_from(raw: RawResourceRecord) -> Result<Self, Self::Error> {
+        Ok(TxtResourceRecord {
+            name: raw.name,
+            ttl: raw.ttl,
+            class: raw.class,
+            text: String::from_utf8_lossy(&raw.rdata).to_string(),
+        })
+    }
+}
+
+impl ResourceRecord for TxtResourceRecord {
     fn name(&self) -> &DnsString {
         &self.name
     }
@@ -44,16 +43,16 @@ impl ResourceRecord for CNameResourceRecord {
         Some(self.ttl)
     }
     fn typ(&self) -> super::ResourceRecordTyp {
-        super::ResourceRecordTyp::CNAME
+        super::ResourceRecordTyp::PTR
     }
     fn class(&self) -> Option<ResourceRecordClass> {
         Some(self.class)
     }
     fn rdata(&self) -> Vec<u8> {
-        self.target.to_vec().expect("invalid parsing failure")
+        self.text.as_bytes().to_vec()
     }
     fn rdata_fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.target)
+        write!(f, "{}", self.text)
     }
     fn as_any(&self) -> &dyn std::any::Any {
         self

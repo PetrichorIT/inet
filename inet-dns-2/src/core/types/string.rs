@@ -1,200 +1,215 @@
-#![allow(clippy::cast_possible_wrap)]
+use std::{
+    fmt::{Debug, Display},
+    io::{self, Read, Write},
+    str::FromStr,
+};
 
-use bytepack::{BytestreamReader, BytestreamWriter, FromBytestream, ReadBytesExt, ToBytestream};
-use std::{fmt::Display, io::Write, ops::Deref, str::FromStr};
+use bytepack::{
+    BytestreamReader, BytestreamWriter, FromBytestream, ReadBytesExt, ToBytestream, WriteBytesExt,
+};
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub struct DnsString {
-    string: String,
-    labels: Vec<usize>,
+    labels: Vec<String>,
     relative: bool,
 }
 
 impl DnsString {
-    pub fn from_zonefile_definition(raw: &str, origin: &DnsString) -> Self {
-        if raw == "@" {
-            origin.clone()
-        } else {
-            let path = DnsString::new(raw);
-            if path.is_relative() {
-                path.with_root(origin)
-            } else {
-                path
-            }
+    pub fn empty() -> Self {
+        Self {
+            labels: Vec::new(),
+            relative: false,
         }
     }
 
-    /// Converts a string into a dns encoded string.
-    ///
-    /// Node that this constructor removes port specifications
-    /// and adds trailing dots if nessecary
-    ///
-    /// # Panics
-    ///
-    /// If the provided string is not dns encodable (ASCII + max u8 chars per element)
-    #[must_use]
-    pub fn new(string: impl AsRef<str>) -> Self {
-        let string = string.as_ref();
-
-        let split = string.split(':').collect::<Vec<_>>();
-        let string = match split.len() {
-            1 | 2 => split[0],
-            _ => panic!("Invalid network name for DNSString encoding"),
-        };
-
-        let string = string.to_string().to_ascii_lowercase();
-        if string.is_empty() {
-            return Self {
-                string,
-                labels: Vec::new(),
-                relative: true,
-            };
-        }
-
-        let relative = !string.ends_with('.');
-
-        // Empty stirng
-        if string.len() == 1 {
-            return Self {
-                string,
-                labels: Vec::new(),
-                relative,
-            };
-        }
-
-        assert!(string.is_ascii());
-        assert!(
-            string
-                .chars()
-                .all(|c| c.is_alphanumeric() || c == '.' || c == '-' || c == '@'),
-            "Failed to encoding DNSString: '{string}' contains invalid characters"
-        );
-
-        let mut labels = Vec::with_capacity(string.len() + string.len() / 4);
-        let mut chars = string.chars();
-        for i in 0..(string.len() + if relative { 1 } else { 0 }) {
-            let c = chars.next();
-            if c == Some('.') || c.is_none() {
-                // current dot - first char of last label
-                let label_len = i - labels.last().map_or(0, |v| *v + 1);
-                assert!(label_len != 0, "Invalid empty label for DNSString encoding");
-                labels.push(i);
+    pub fn from_zonefile(raw: &str, origin: &DnsString) -> io::Result<Self> {
+        if raw == "@" {
+            Ok(origin.clone())
+        } else {
+            let path = DnsString::from_str(raw)?;
+            if path.is_relative() {
+                Ok(path.with_root(origin))
+            } else {
+                Ok(path)
             }
         }
-
-        let this = Self {
-            string,
-            labels,
-            relative,
-        };
-        for i in 0..this.labels() {
-            let label = this.label(i);
-            assert!(!label.ends_with('-') && !label.starts_with('-'));
-        }
-
-        this
     }
 
     pub fn is_relative(&self) -> bool {
         self.relative
     }
 
-    #[must_use]
-    pub fn labels(&self) -> usize {
-        self.labels.len()
+    pub fn labels(&self) -> &[String] {
+        &self.labels
     }
 
-    #[must_use]
-    pub fn label(&self, i: usize) -> &str {
-        let label_end = self.labels[i];
-        let label_start = if i == 0 { 0 } else { self.labels[i - 1] + 1 };
-        &self.string[label_start..label_end]
+    pub fn as_string(&self) -> String {
+        format!("{self}")
     }
 
-    #[must_use]
-    pub fn suffix_match_len(lhs: &Self, rhs: &Self) -> usize {
-        let mut l = lhs.labels() as isize - 1;
-        let mut r = rhs.labels() as isize - 1;
-        let mut c = 0;
-        while l >= 0 && r >= 0 {
-            if lhs.label(l as usize) != rhs.label(r as usize) {
-                break;
-            }
-            c += 1;
-            l -= 1;
-            r -= 1;
+    pub fn has_parent(&self, parent: &DnsString) -> bool {
+        assert!(self.labels().len() >= parent.labels().len());
+        let len = parent.labels().len();
+        &self.labels[(self.labels().len() - len)..] == &parent.labels
+    }
+
+    pub fn truncated(&self, new_len: usize) -> DnsString {
+        assert!(new_len <= self.labels().len());
+        let start_index = self.labels().len() - new_len;
+        DnsString {
+            labels: Vec::from(&self.labels[start_index..]),
+            relative: self.relative,
         }
-        c
     }
 
-    #[must_use]
-    pub fn suffix(&self, i: usize) -> &str {
-        let label_start = if i == 0 { 0 } else { self.labels[i - 1] + 1 };
-        &self.string[label_start..]
-    }
-
-    #[must_use]
-    pub fn prefix(&self, i: usize) -> &str {
-        let label_end = if i == 0 { 0 } else { self.labels[i - 1] + 1 };
-        &self.string[..label_end]
-    }
-
-    #[must_use]
-    pub fn into_inner(self) -> String {
-        self.string
+    pub fn suffix_match_len(&self, other: &DnsString) -> usize {
+        let zipped = self.labels.iter().rev().zip(other.labels.iter().rev());
+        for (i, (lhs, rhs)) in zipped.enumerate() {
+            if lhs != rhs {
+                return i;
+            }
+        }
+        self.labels().len().min(other.labels().len())
     }
 
     pub fn with_root(&self, root: &DnsString) -> DnsString {
-        assert!(self.is_relative());
+        assert!(
+            self.is_relative(),
+            "with_root can only be called on relative dns strings"
+        );
+        assert!(!root.is_relative(), "Roots must be absolute '{root}'");
 
-        // Find applicable suffix
-        for k in (1..root.labels() + 1).rev() {
-            let suffix = root.prefix(k);
-            dbg!(&self.string, suffix.trim_end_matches('.'));
-            if self.string.ends_with(suffix.trim_end_matches('.')) {
-                return DnsString::new(self.as_str().to_string() + "." + root.suffix(k));
+        for cmp_size in (1..=root.labels().len()).rev() {
+            let suffix_index = self.labels().len().saturating_sub(cmp_size);
+            let is_match = &self.labels[suffix_index..] == &root.labels[..cmp_size];
+            if is_match {
+                return DnsString {
+                    labels: self
+                        .labels
+                        .iter()
+                        .chain(root.labels[cmp_size..].iter())
+                        .cloned()
+                        .collect(),
+                    relative: false,
+                };
             }
         }
 
-        // TODO: this can be done easier
-        DnsString::new(self.as_str().to_string() + "." + root.as_str())
+        DnsString {
+            labels: self
+                .labels
+                .iter()
+                .chain(root.labels.iter())
+                .cloned()
+                .collect(),
+            relative: false,
+        }
+    }
+}
+
+impl FromStr for DnsString {
+    type Err = io::Error;
+    fn from_str(string: &str) -> Result<Self, Self::Err> {
+        let split = string.split(':').collect::<Vec<_>>();
+        let string = match split.len() {
+            1 | 2 => split[0],
+            _ => {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "Non compliant DNS String",
+                ))
+            }
+        };
+
+        let string = string.to_string().to_ascii_lowercase();
+        if string.is_empty() {
+            return Ok(Self {
+                labels: Vec::new(),
+                relative: true,
+            });
+        }
+
+        // Empty stirng
+        if string == "." {
+            return Ok(Self {
+                labels: Vec::new(),
+                relative: false,
+            });
+        }
+
+        let relative = !string.ends_with('.');
+        let trunc_len = if relative { 0 } else { 1 };
+        let string_without_last_dot = &string[..(string.len() - trunc_len)];
+
+        let labels = string_without_last_dot
+            .split('.')
+            .map(|s| {
+                if !s.is_ascii()
+                    || !string
+                        .chars()
+                        .all(|c| c.is_alphanumeric() || c == '.' || c == '-' || c == '@')
+                {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        format!(
+                            "Failed to encoding DNSString: '{string}' contains invalid characters"
+                        ),
+                    ));
+                }
+                if s.ends_with('-') || s.starts_with('|') {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        format!(
+                            "Failed to encoding DNSString: '{string}' contains labels delimited by '-'"
+                        ),
+                    ));
+                }
+
+                Ok(s.to_string())
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(Self { labels, relative })
+    }
+}
+
+impl Debug for DnsString {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "\"{}\"", self)
     }
 }
 
 impl Display for DnsString {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.string.fmt(f)
-    }
-}
-
-impl Deref for DnsString {
-    type Target = String;
-    fn deref(&self) -> &Self::Target {
-        &self.string
+        write!(
+            f,
+            "{}{}",
+            self.labels.join("."),
+            if self.relative { "" } else { "." }
+        )
     }
 }
 
 impl PartialOrd for DnsString {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        self.string.partial_cmp(&other.string)
+        self.to_string().partial_cmp(&other.to_string())
     }
 }
 
 impl Ord for DnsString {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.string.cmp(&other.string)
+        self.to_string().cmp(&other.to_string())
     }
 }
 
 impl ToBytestream for DnsString {
     type Error = std::io::Error;
     fn to_bytestream(&self, bytestream: &mut BytestreamWriter) -> Result<(), Self::Error> {
-        for i in 0..self.labels() {
-            let label_str = self.label(i);
-            bytestream.write_all(&[label_str.len() as u8])?;
-            bytestream.write_all(label_str.as_bytes())?;
+        for label in self.labels() {
+            bytestream.write_u8(label.len() as u8)?;
+            bytestream.write_all(label.as_bytes())?;
         }
-        bytestream.write_all(&[0])?;
+        bytestream.write_u8(0)?;
         Ok(())
     }
 }
@@ -202,197 +217,55 @@ impl ToBytestream for DnsString {
 impl FromBytestream for DnsString {
     type Error = std::io::Error;
     fn from_bytestream(stream: &mut BytestreamReader) -> Result<Self, Self::Error> {
-        let mut string = String::new();
         let mut labels = Vec::new();
         loop {
-            let label = stream.read_u8()?;
-            if label == 0 {
+            let label_len = stream.read_u8()?;
+            if label_len == 0 {
                 break;
             }
-            for _ in 0..label {
-                string.push(stream.read_u8()? as char);
-            }
-            string.push('.');
-            labels.push(string.len() - 1);
-        }
-
-        if string.is_empty() {
-            string.push('.');
-            labels.push(1);
+            let mut bytes = vec![0; label_len as usize];
+            stream.read_exact(&mut bytes)?;
+            labels.push(String::from_utf8(bytes).map_err(io::Error::other)?);
         }
 
         Ok(Self {
-            string,
             labels,
             relative: false,
         })
     }
 }
 
-impl<T: AsRef<str>> From<T> for DnsString {
-    fn from(value: T) -> Self {
-        Self::new(value)
-    }
-}
-
-impl FromStr for DnsString {
-    type Err = ();
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(Self::new(s))
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use super::DnsString;
-    use bytepack::{FromBytestream, ToBytestream};
+    use super::*;
 
     #[test]
-    fn with_root() {
-        let root = DnsString::new("example.com.");
+    fn truncate() {
+        let mut value: DnsString = "www.example.org.".parse().unwrap();
+        assert_eq!(value.truncated(3), "www.example.org.".parse().unwrap());
+        assert_eq!(value.truncated(2), "example.org.".parse().unwrap());
+        assert_eq!(value.truncated(1), "org.".parse().unwrap());
+    }
 
-        // Paths with matching suffixes are not changed, even if realtive
-        assert_eq!(
-            DnsString::new("www.example.com").with_root(&root),
-            DnsString::new("www.example.com.")
-        );
-        assert_eq!(
-            DnsString::new("www.example").with_root(&root),
-            DnsString::new("www.example.com.")
-        );
+    #[test]
+    fn with_roota() {
+        let value: DnsString = "ns.www.example.org".parse().unwrap();
+        let root: DnsString = "www.example.org.".parse().unwrap();
 
-        // No match mean full addition
         assert_eq!(
-            DnsString::new("www").with_root(&root),
-            DnsString::new("www.example.com.")
-        );
-
-        // Pseudo match
-        assert_eq!(
-            DnsString::new("com").with_root(&root),
-            DnsString::new("com.example.com.")
+            value.with_root(&root),
+            "ns.www.example.org.".parse().unwrap()
         );
     }
 
     #[test]
-    fn dns_string_from_str() {
-        let dns = DnsString::new("www.example.com");
-        assert_eq!(dns.labels(), 3);
-        assert_eq!(dns.label(1), "example");
-
-        let dns = DnsString::new("www.example.com.");
-        assert_eq!(dns.labels(), 3);
-        assert_eq!(dns.label(1), "example");
-
-        let dns = DnsString::new("www.example.com".to_string());
-        assert_eq!(dns.labels(), 3);
-        assert_eq!(dns.label(1), "example");
-
-        let dns = DnsString::new("www.example.com.".to_string());
-        assert_eq!(dns.labels(), 3);
-        assert_eq!(dns.label(1), "example");
-
-        let dns = DnsString::new("mailserver.default.org.");
-        assert_eq!(dns.labels(), 3);
-        assert_eq!(dns.label(1), "default");
-
-        let dns = DnsString::new("www.a.bzgtv");
-        assert_eq!(dns.labels(), 3);
-        assert_eq!(dns.label(1), "a");
-
-        let dns = DnsString::new("a.a.uri.a.example.com.");
-        assert_eq!(dns.labels(), 6);
-        assert_eq!(dns.label(1), "a");
-
-        let dns = DnsString::new("a.a.uri.a.example.com:8000");
-        assert_eq!(dns.labels(), 6);
-        assert_eq!(dns.label(1), "a");
-
-        let dns = DnsString::new("a.a.uri.a.example.com:8000.");
-        assert_eq!(dns.labels(), 6);
-        assert_eq!(dns.label(1), "a");
-
-        let dns = DnsString::new("");
-        assert_eq!(dns.labels(), 0);
-    }
-
-    #[test]
-    #[should_panic]
-    fn dns_string_from_non_ascii() {
-        let _dns = DnsString::new("www.😀.de");
-    }
-
-    #[test]
-    #[should_panic]
-    fn dns_string_from_empty_label() {
-        let _dns = DnsString::new("www..de");
-    }
-
-    #[test]
-    #[should_panic]
-    fn dns_string_from_non_network_forbidden_char() {
-        let _dns = DnsString::new("www.a#a.de");
-    }
-
-    #[test]
-    #[should_panic]
-    fn dns_string_from_non_network_missplaced_char() {
-        let _dns = DnsString::new("www.aa-.de");
-    }
-
-    #[test]
-    fn dns_string_parsing() {
-        let inp = DnsString::new("www.example.com.");
-        let bytes = inp.to_vec().unwrap();
-        let out = DnsString::read_from_slice(&mut &bytes[..]).unwrap();
-        assert_eq!(inp, out);
-
-        let inp = DnsString::new("asg-erfurt.de.");
-        let bytes = inp.to_vec().unwrap();
-        let out = DnsString::read_from_slice(&mut &bytes[..]).unwrap();
-        assert_eq!(inp, out);
-
-        let inp = DnsString::new("a.b.c.www.example.com.:800");
-        let bytes = inp.to_vec().unwrap();
-        let out = DnsString::read_from_slice(&mut &bytes[..]).unwrap();
-        assert_eq!(inp, out);
-
-        let inp = DnsString::new("cdde.aaoa-adad.com.");
-        let bytes = inp.to_vec().unwrap();
-        let out = DnsString::read_from_slice(&mut &bytes[..]).unwrap();
-        assert_eq!(inp, out);
-
-        let inp = DnsString::new("www.out.out.out.com.:80.");
-        let bytes = inp.to_vec().unwrap();
-        let out = DnsString::read_from_slice(&mut &bytes[..]).unwrap();
-        assert_eq!(inp, out);
-
-        let inp = DnsString::new("www.example.com.");
-        let bytes = inp.to_vec().unwrap();
-        let out = DnsString::read_from_slice(&mut &bytes[..]).unwrap();
-        assert_eq!(inp, out);
-    }
-
-    #[test]
-    fn dns_string_suffix_checks() {
-        let lhs = DnsString::new("www.example.org");
-        let rhs = DnsString::new("n0.NIZ.org");
-        assert_eq!(DnsString::suffix_match_len(&lhs, &rhs), 1);
-
-        let lhs = DnsString::new("a.b.c.e.www.example.org");
-        let rhs = DnsString::new("n0.NIZ.org");
-        assert_eq!(DnsString::suffix_match_len(&lhs, &rhs), 1);
-
-        let lhs = DnsString::new("www.example.org");
-        let rhs = DnsString::new("www.example.oirg");
-        assert_eq!(DnsString::suffix_match_len(&lhs, &rhs), 0);
-
-        let lhs = DnsString::new("www.example.org");
-        let rhs = DnsString::new("n0.example.org");
-        assert_eq!(DnsString::suffix_match_len(&lhs, &rhs), 2);
-
-        let lhs = DnsString::new("www.example.org");
-        let rhs = DnsString::new("www.example.org");
-        assert_eq!(DnsString::suffix_match_len(&lhs, &rhs), 3);
+    fn byte_encoding_e2e() -> io::Result<()> {
+        let raws = ["www.example.org.", "a.b.c.www.example.org.", "org.", "."];
+        for raw in raws {
+            let initial = DnsString::from_str(raw)?;
+            let reparsed = DnsString::from_slice(&initial.to_vec()?)?;
+            assert_eq!(initial, reparsed);
+        }
+        Ok(())
     }
 }

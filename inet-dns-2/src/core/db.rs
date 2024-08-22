@@ -1,31 +1,64 @@
+use des::time::SimTime;
+
 use super::{
     record::{DnsResourceRecord, ResourceRecordTyp, SoaResourceRecord},
     DnsQuestion, DnsString, ResourceRecordClass,
 };
 use crate::core::QuestionTyp;
-use std::{cell::Cell, collections::HashMap};
+use std::{cell::Cell, collections::HashMap, time::Duration};
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Default)]
 pub struct RecordMap {
     class: ResourceRecordClass,
     entries: Vec<Entry>,
+    // TODO: Add caching mechanic
     cached_hit: Cell<usize>,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct Entry {
     name: DnsString,
+    timeouts: Vec<Option<SimTime>>,
     records: Vec<DnsResourceRecord>,
 }
 
 impl Entry {
-    fn new(kv_pair: (DnsString, Vec<DnsResourceRecord>)) -> Self {
+    fn new_non_timeout(kv_pair: (DnsString, Vec<DnsResourceRecord>)) -> Self {
         let mut records = kv_pair.1;
         records.sort_by_key(|r| r.typ().to_raw_repr());
         Self {
             name: kv_pair.0,
+            timeouts: vec![None; records.len()],
             records,
         }
+    }
+
+    fn add(&mut self, record: DnsResourceRecord, timeout: SimTime) {
+        match self
+            .records
+            .binary_search_by_key(&record.typ().to_raw_repr(), |r| r.typ().to_raw_repr())
+        {
+            Ok(i) | Err(i) => {
+                self.records.insert(i, record);
+                self.timeouts.insert(i, Some(timeout));
+            }
+        }
+    }
+
+    fn tick(&mut self, now: SimTime) -> Vec<DnsResourceRecord> {
+        let mut i = 0;
+        let mut removed = Vec::new();
+        while i < self.records.len() {
+            if let Some(timeout) = self.timeouts[i] {
+                if timeout <= now {
+                    self.timeouts.remove(i);
+                    removed.push(self.records.remove(i));
+                    continue;
+                }
+            }
+            i += 1;
+        }
+        removed
     }
 }
 
@@ -98,6 +131,33 @@ impl RecordMap {
             &[]
         }
     }
+
+    pub fn add(&mut self, record: DnsResourceRecord, now: SimTime) {
+        // FIXME: use default parameters
+        let timeout = now + Duration::from_secs(record.ttl().unwrap_or(4242) as u64);
+        match self
+            .entries
+            .binary_search_by_key(&record.name(), |r| &r.name)
+        {
+            Ok(i) => self.entries[i].add(record, timeout),
+            Err(i) => {
+                let mut entry = Entry::new_non_timeout((record.name().clone(), Vec::new()));
+                entry.add(record, timeout);
+                self.entries.insert(i, entry);
+            }
+        }
+    }
+
+    pub fn tick(&mut self, now: SimTime) -> Vec<DnsResourceRecord> {
+        self.entries
+            .iter_mut()
+            .map(|entry| entry.tick(now))
+            .reduce(|mut a, mut b| {
+                a.append(&mut b);
+                a
+            })
+            .unwrap_or(Vec::new())
+    }
 }
 
 impl FromIterator<DnsResourceRecord> for RecordMap {
@@ -109,7 +169,10 @@ impl FromIterator<DnsResourceRecord> for RecordMap {
             entry.push(value);
         }
 
-        let mut entries = map.into_iter().map(Entry::new).collect::<Vec<_>>();
+        let mut entries = map
+            .into_iter()
+            .map(Entry::new_non_timeout)
+            .collect::<Vec<_>>();
         entries.sort();
 
         Self {
@@ -163,20 +226,20 @@ mail3         IN  A     192.0.2.5
     fn request_only_entries_of_typ() -> io::Result<()> {
         let db = db_example_org()?;
         assert_eq!(
-            db.get(&DnsString::new("example.com."), ResourceRecordTyp::NS),
+            db.get(&DnsString::from_str("example.com.")?, ResourceRecordTyp::NS),
             [
                 NsResourceRecord {
-                    domain: DnsString::new("example.com."),
+                    domain: DnsString::from_str("example.com.")?,
                     ttl: 3600,
                     class: ResourceRecordClass::IN,
-                    nameserver: DnsString::new("ns.example.com."),
+                    nameserver: DnsString::from_str("ns.example.com.")?,
                 }
                 .into(),
                 NsResourceRecord {
-                    domain: DnsString::new("example.com."),
+                    domain: DnsString::from_str("example.com.")?,
                     ttl: 3600,
                     class: ResourceRecordClass::IN,
-                    nameserver: DnsString::new("ns.somewhere.example.org."),
+                    nameserver: DnsString::from_str("ns.somewhere.example.org.")?,
                 }
                 .into(),
             ]
@@ -189,14 +252,14 @@ mail3         IN  A     192.0.2.5
         let db = db_example_org()?;
         assert_eq!(
             db.get(
-                &DnsString::new("wwwtest.example.com."),
+                &DnsString::from_str("wwwtest.example.com.")?,
                 ResourceRecordTyp::CNAME
             ),
             [CNameResourceRecord {
-                name: DnsString::new("wwwtest.example.com."),
+                name: DnsString::from_str("wwwtest.example.com.")?,
                 ttl: 3600,
                 class: ResourceRecordClass::IN,
-                target: DnsString::new("www.example.com."),
+                target: DnsString::from_str("www.example.com.")?,
             }
             .into()]
         );
@@ -209,20 +272,20 @@ mail3         IN  A     192.0.2.5
 
         assert_eq!(
             db.query(&DnsQuestion {
-                qname: DnsString::new("ns.example.com."),
+                qname: DnsString::from_str("ns.example.com.")?,
                 qclass: QuestionClass::IN,
                 qtyp: QuestionTyp::ANY
             }),
             [
                 AResourceRecord {
-                    name: DnsString::new("ns.example.com."),
+                    name: DnsString::from_str("ns.example.com.")?,
                     ttl: 3600,
                     class: ResourceRecordClass::IN,
                     addr: Ipv4Addr::new(192, 0, 2, 2)
                 }
                 .into(),
                 AAAAResourceRecord {
-                    name: DnsString::new("ns.example.com."),
+                    name: DnsString::from_str("ns.example.com.")?,
                     ttl: 3600,
                     class: ResourceRecordClass::IN,
                     addr: Ipv6Addr::new(0x2001, 0x0db8, 0x0010, 0, 0, 0, 0, 2)
@@ -230,6 +293,52 @@ mail3         IN  A     192.0.2.5
                 .into()
             ]
         );
+        Ok(())
+    }
+
+    #[test]
+    fn non_zonefile_entries_time_out() -> io::Result<()> {
+        let mut map = RecordMap::default();
+        map.add(
+            AResourceRecord {
+                name: DnsString::from_str("www.example.org.")?,
+                ttl: 300,
+                class: ResourceRecordClass::IN,
+                addr: Ipv4Addr::new(8, 8, 8, 8),
+            }
+            .into(),
+            0.0.into(),
+        );
+
+        assert_eq!(
+            map.get(
+                &DnsString::from_str("www.example.org.")?,
+                ResourceRecordTyp::A
+            )
+            .len(),
+            1
+        );
+
+        map.tick(200.0.into());
+        assert_eq!(
+            map.get(
+                &DnsString::from_str("www.example.org.")?,
+                ResourceRecordTyp::A
+            )
+            .len(),
+            1
+        );
+
+        map.tick(400.0.into());
+        assert_eq!(
+            map.get(
+                &DnsString::from_str("www.example.org.")?,
+                ResourceRecordTyp::A
+            )
+            .len(),
+            0
+        );
+
         Ok(())
     }
 }

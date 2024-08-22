@@ -1,18 +1,30 @@
-use super::DnsMessage;
-use crate::core::{DnsQuestion, DnsResourceRecord};
+use crate::core::{DnsQuestion, NsResourceRecord, QueryResponse};
 use des::time::SimTime;
-use std::net::{IpAddr, SocketAddr};
+use std::net::SocketAddr;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DnsTransaction {
-    client: SocketAddr,
-    client_req: DnsMessage,
-    client_question: DnsQuestion,
-    client_transaction: u16,
+    pub client: SocketAddr,
+    pub client_transaction: u16,
+    pub local_transaction: u16,
 
-    local_transaction: u16,
-    ns: DnsResourceRecord,
-    nsip: IpAddr,
+    pub question: DnsQuestion,
+    pub remote: Option<NsResourceRecord>,
 
-    deadline: SimTime,
+    pub operation_counter: usize,
+
+    pub deadline: SimTime,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DnsFinishedTransaction {
+    pub client: SocketAddr,
+    pub question: DnsQuestion,
+    pub response: QueryResponse,
+}
+
+impl DnsTransaction {
+    pub fn id(&self) -> String {
+        format!("{}'{}", self.local_transaction, self.operation_counter)
+    }
 }

@@ -73,11 +73,13 @@ ns2.example.org. 7000 IN A 100.78.43.200
 #[test]
 fn zonefile_with_referral() {
     let db = DnsZoneResolver::new(Zonefile::from_str(ZONEFILE_ORG).unwrap()).unwrap();
-    let response = db.query(DnsQuestion {
-        qname: DnsString::new("www.example.org."),
-        qtyp: inet_dns_2::core::QuestionTyp::A,
-        qclass: inet_dns_2::core::QuestionClass::IN,
-    });
+    let response = db
+        .query(&DnsQuestion {
+            qname: DnsString::from_str("www.example.org.").unwrap(),
+            qtyp: inet_dns_2::core::QuestionTyp::A,
+            qclass: inet_dns_2::core::QuestionClass::IN,
+        })
+        .unwrap();
     assert_eq!(response.auths.len(), 2, "was {:#?}", response);
     assert_eq!(response.additional.len(), 3, "was {:#?}", response);
 }
@@ -98,17 +100,21 @@ www.example.org. 1800 IN AAAA 30ae:98dc:6ccf:595:1a0f:3680:d14e:a1f6
 #[test]
 fn zonefile_with_anweser() {
     let db = DnsZoneResolver::new(Zonefile::from_str(ZONEFILE_EXAMPLE_ORG).unwrap()).unwrap();
-    let response = db.query(DnsQuestion {
-        qname: DnsString::new("www.example.org."),
-        qtyp: inet_dns_2::core::QuestionTyp::A,
-        qclass: inet_dns_2::core::QuestionClass::IN,
-    });
+    let response = db
+        .query(&DnsQuestion {
+            qname: DnsString::from_str("www.example.org.").unwrap(),
+            qtyp: inet_dns_2::core::QuestionTyp::A,
+            qclass: inet_dns_2::core::QuestionClass::IN,
+        })
+        .unwrap();
     assert_eq!(response.anwsers.len(), 1, "was {:?}", response);
 
-    let response = db.query(DnsQuestion {
-        qname: DnsString::new("www.example.org."),
-        qtyp: inet_dns_2::core::QuestionTyp::AAAA,
-        qclass: inet_dns_2::core::QuestionClass::IN,
-    });
+    let response = db
+        .query(&DnsQuestion {
+            qname: DnsString::from_str("www.example.org.").unwrap(),
+            qtyp: inet_dns_2::core::QuestionTyp::AAAA,
+            qclass: inet_dns_2::core::QuestionClass::IN,
+        })
+        .unwrap();
     assert_eq!(response.anwsers.len(), 1, "was {:?}", response);
 }

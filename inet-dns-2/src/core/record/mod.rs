@@ -12,13 +12,17 @@ use std::{
 mod addr;
 mod cname;
 mod ns;
+mod ptr;
 mod raw;
 mod soa;
+mod txt;
 
 pub use addr::*;
 pub use cname::*;
 pub use ns::*;
+pub use ptr::*;
 pub use soa::*;
+pub use txt::*;
 
 pub(crate) use raw::*;
 
@@ -46,6 +50,8 @@ impl DnsResourceRecord {
             NS => NsResourceRecord::try_from(raw).map(DnsResourceRecord::from),
             CNAME => CNameResourceRecord::try_from(raw).map(DnsResourceRecord::from),
             SOA => SoaResourceRecord::try_from(raw).map(DnsResourceRecord::from),
+            PTR => PtrResourceRecord::try_from(raw).map(DnsResourceRecord::from),
+            TXT => TxtResourceRecord::try_from(raw).map(DnsResourceRecord::from),
 
             _ => Ok(DnsResourceRecord::from(raw)),
         }
@@ -106,6 +112,8 @@ impl TryFrom<ZonefileLineRecord> for DnsResourceRecord {
             NS => NsResourceRecord::try_from(value).map(DnsResourceRecord::from),
             CNAME => CNameResourceRecord::try_from(value).map(DnsResourceRecord::from),
             SOA => SoaResourceRecord::try_from(value).map(DnsResourceRecord::from),
+            PTR => PtrResourceRecord::try_from(value).map(DnsResourceRecord::from),
+            TXT => TxtResourceRecord::try_from(value).map(DnsResourceRecord::from),
             _ => RawResourceRecord::try_from(value).map(DnsResourceRecord::from),
         }
     }
@@ -179,9 +187,10 @@ pub trait ResourceRecord: Debug {
 }
 
 raw_enum! {
-    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+    #[derive(Debug, Default,Clone, Copy, PartialEq, Eq, Hash)]
     pub enum ResourceRecordClass {
         type Repr = u16 where BE;
+        #[default]
         IN = 1,
         CS = 2,
         CH = 3,

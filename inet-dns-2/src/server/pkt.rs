@@ -4,7 +4,8 @@ use bytepack::{
 };
 
 use crate::core::{
-    DnsQuestion, DnsResourceRecord, DnsString, QueryResponse, QuestionClass, QuestionTyp,
+    DnsQuestion, DnsResourceRecord, DnsResponseCode, DnsString, QueryResponse, QuestionClass,
+    QuestionTyp,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -217,31 +218,3 @@ raw_enum! {
 }
 
 // # DNSReponseCode
-
-raw_enum! {
-    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-    pub enum DnsResponseCode {
-        type Repr = u8 where BE;
-
-        NoError = 0,
-        FormError = 1,
-        ServFail = 2,
-        NxDomain = 3,
-        NotImpl = 4,
-        Refused = 5,
-        YXDomain = 6,
-        YXRRSet = 7,
-        NXRRSet = 8,
-        NotAuth = 9,
-        NotZone = 10,
-        DSOTypeNotImplemented = 11,
-        BadOPTVersionOrSignature = 16,
-        BadKey = 17,
-        BadTime = 18,
-        BadMode = 19,
-        BadName = 20,
-        BadAlgo = 21,
-        BadTrunc = 22,
-        BadCookie = 23,
-    }
-}

@@ -1,6 +1,8 @@
 use std::{io, rc::Rc, str::FromStr};
 
-use super::{DnsResourceRecord, DnsString, ResourceRecordClass, ResourceRecordTyp};
+use super::{
+    DnsResourceRecord, DnsString, ResourceRecordClass, ResourceRecordTyp, SoaResourceRecord,
+};
 
 pub struct Zonefile {
     pub records: Vec<DnsResourceRecord>,
@@ -28,10 +30,30 @@ struct Reader {
 
 impl Reader {
     fn name(&self) -> DnsString {
-        self.last_name.clone().unwrap_or(DnsString::new(""))
+        self.last_name.clone().unwrap_or(DnsString::empty())
     }
     fn ttl(&self) -> u32 {
         self.default_ttl.or(self.last_ttl).unwrap_or(0)
+    }
+}
+
+impl Zonefile {
+    pub fn local() -> Zonefile {
+        Zonefile {
+            records: vec![SoaResourceRecord {
+                name: DnsString::empty(),
+                class: ResourceRecordClass::IN,
+                ttl: 0,
+                mname: DnsString::empty(),
+                rname: DnsString::empty(),
+                serial: 0,
+                retry: 7000,
+                refresh: 7000,
+                expire: 7000,
+                minimum: 000,
+            }
+            .into()],
+        }
     }
 }
 
@@ -43,7 +65,7 @@ impl FromStr for Zonefile {
             .map(|l| l.split_once(';').map(|(lhs, _)| lhs).unwrap_or(l));
 
         let mut reader = Reader {
-            origin: Rc::new(DnsString::new("")),
+            origin: Rc::new(DnsString::empty()),
 
             last_ttl: None,
             default_ttl: None,
@@ -80,7 +102,7 @@ impl FromStr for Zonefile {
                 reader.name()
             } else {
                 let raw = parts.remove(0);
-                DnsString::from_zonefile_definition(&raw, &*reader.origin)
+                DnsString::from_zonefile(&raw, &*reader.origin)?
             };
 
             reader.last_name = Some(name.clone());
@@ -154,7 +176,7 @@ fn read_directive(line: String, reader: &mut Reader) -> io::Result<()> {
 
     match *&parts[0] {
         "$TTL" => reader.default_ttl = Some(parts[1].parse().map_err(io::Error::other)?),
-        "$ORIGIN" => reader.origin = Rc::new(DnsString::from(parts[1])),
+        "$ORIGIN" => reader.origin = Rc::new(DnsString::from_str(parts[1])?),
         _ => {}
     }
 

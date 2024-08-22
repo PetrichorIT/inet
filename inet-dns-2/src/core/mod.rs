@@ -1,16 +1,19 @@
 use std::io;
+use des::time::SimTime;
 
 mod db;
+mod error;
 mod question;
 mod record;
-mod respone;
+mod response;
 mod types;
 mod zonefile;
 
 pub use db::*;
+pub use error::*;
 pub use question::*;
 pub use record::*;
-pub use respone::*;
+pub use response::*;
 pub use types::*;
 pub use zonefile::*;
 
@@ -21,6 +24,17 @@ pub struct DnsZoneResolver {
 }
 
 impl DnsZoneResolver {
+    pub fn zone(&self) -> &DnsString {
+        &self.zone
+    }
+
+    pub fn cache() -> Self {
+        Self {
+            zone: DnsString::empty(),
+            db: RecordMap::from_iter([]),
+        }
+    }
+
     pub fn new(zf: Zonefile) -> io::Result<Self> {
         let db = zf.records.into_iter().collect::<RecordMap>();
 
@@ -31,16 +45,27 @@ impl DnsZoneResolver {
         })
     }
 
-    pub fn query(&self, question: DnsQuestion) -> QueryResponse {
-        if DnsString::suffix_match_len(&self.zone, &question.qname) < self.zone.labels() {
-            return QueryResponse::default();
+    pub fn accepts_query(&self, question: &DnsQuestion) -> bool {
+        question.qname.has_parent(&self.zone)
+    }
+
+    pub fn add_cached(&mut self, record: DnsResourceRecord) {
+        self.db.add(record, SimTime::now())
+    }
+
+    pub fn query(&self, question: &DnsQuestion) -> Result<QueryResponse, DnsError> {
+        if !question.qname.has_parent(&self.zone) {
+            return Err(DnsError::new(
+                DnsResponseCode::NotZone,
+                "question was directed at wrong zone".to_string(),
+            ));
         }
 
         let question = question.mutate_query(self);
         self.query_inner(question)
     }
 
-    fn query_inner(&self, question: DnsQuestion) -> QueryResponse {
+    fn query_inner(&self, question: DnsQuestion) -> Result<QueryResponse, DnsError> {
         let mut response = QueryResponse {
             questions: vec![question.clone()],
             ..Default::default()
@@ -64,7 +89,7 @@ impl DnsZoneResolver {
             }
         }
 
-        response
+        Ok(response)
     }
 }
 
@@ -88,28 +113,30 @@ ns2.example.org. 7000 IN A 100.78.43.200
     #[test]
     fn unanwsered_a_returns_ns_with_addrs() -> io::Result<()> {
         let zone = DnsZoneResolver::new(Zonefile::from_str(ZONEFILE_ORG)?)?;
-        let respone = zone.query(DnsQuestion {
-            qname: DnsString::new("www.example.org."),
-            qclass: QuestionClass::IN,
-            qtyp: QuestionTyp::A,
-        });
+        let respone = zone
+            .query(&DnsQuestion {
+                qname: DnsString::from_str("www.example.org.")?,
+                qclass: QuestionClass::IN,
+                qtyp: QuestionTyp::A,
+            })
+            .unwrap();
 
         assert_eq!(respone.anwsers, []);
         assert_eq!(
             respone.auths,
             [
                 NsResourceRecord {
-                    domain: DnsString::new("example.org."),
+                    domain: DnsString::from_str("example.org.")?,
                     ttl: 7000,
                     class: ResourceRecordClass::IN,
-                    nameserver: DnsString::new("ns1.example.org."),
+                    nameserver: DnsString::from_str("ns1.example.org.")?,
                 }
                 .into(),
                 NsResourceRecord {
-                    domain: DnsString::new("example.org."),
+                    domain: DnsString::from_str("example.org.")?,
                     ttl: 7000,
                     class: ResourceRecordClass::IN,
-                    nameserver: DnsString::new("ns2.example.org."),
+                    nameserver: DnsString::from_str("ns2.example.org.")?,
                 }
                 .into()
             ]
@@ -118,14 +145,14 @@ ns2.example.org. 7000 IN A 100.78.43.200
             respone.additional,
             [
                 AResourceRecord {
-                    name: DnsString::new("ns1.example.org."),
+                    name: DnsString::from_str("ns1.example.org.")?,
                     ttl: 7000,
                     class: ResourceRecordClass::IN,
                     addr: Ipv4Addr::new(100, 78, 43, 100)
                 }
                 .into(),
                 AResourceRecord {
-                    name: DnsString::new("ns2.example.org."),
+                    name: DnsString::from_str("ns2.example.org.")?,
                     ttl: 7000,
                     class: ResourceRecordClass::IN,
                     addr: Ipv4Addr::new(100, 78, 43, 200)
@@ -151,15 +178,17 @@ testwwwtest.example.org 1800 IN CNAME wwwtest.example.org.
     #[test]
     fn cname_resolved_to_addr() -> io::Result<()> {
         let zone = DnsZoneResolver::new(Zonefile::from_str(ZONEFILE_EXAMPLE_ORG)?)?;
-        let respone = zone.query(DnsQuestion {
-            qname: DnsString::new("wwwtest.example.org."),
-            qclass: QuestionClass::IN,
-            qtyp: QuestionTyp::A,
-        });
+        let respone = zone
+            .query(&DnsQuestion {
+                qname: DnsString::from_str("wwwtest.example.org.")?,
+                qclass: QuestionClass::IN,
+                qtyp: QuestionTyp::A,
+            })
+            .unwrap();
         assert_eq!(
             respone.anwsers,
             [AResourceRecord {
-                name: DnsString::new("www.example.org."),
+                name: DnsString::from_str("www.example.org.")?,
                 ttl: 1800,
                 class: ResourceRecordClass::IN,
                 addr: Ipv4Addr::new(9, 9, 9, 9)
@@ -173,15 +202,17 @@ testwwwtest.example.org 1800 IN CNAME wwwtest.example.org.
     #[test]
     fn cname_multi_step() -> io::Result<()> {
         let zone = DnsZoneResolver::new(Zonefile::from_str(ZONEFILE_EXAMPLE_ORG)?)?;
-        let respone = zone.query(DnsQuestion {
-            qname: DnsString::new("testwwwtest.example.org."),
-            qclass: QuestionClass::IN,
-            qtyp: QuestionTyp::A,
-        });
+        let respone = zone
+            .query(&DnsQuestion {
+                qname: DnsString::from_str("testwwwtest.example.org.")?,
+                qclass: QuestionClass::IN,
+                qtyp: QuestionTyp::A,
+            })
+            .unwrap();
         assert_eq!(
             respone.anwsers,
             [AResourceRecord {
-                name: DnsString::new("www.example.org."),
+                name: DnsString::from_str("www.example.org.")?,
                 ttl: 1800,
                 class: ResourceRecordClass::IN,
                 addr: Ipv4Addr::new(9, 9, 9, 9)
