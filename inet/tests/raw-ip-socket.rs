@@ -131,7 +131,7 @@ fn raw_ip_socket() {
 
     let rt: Sim<_> = Sim::new(())
         .with_stack(inet::init)
-        .with_ndl("tests/emit.ndl", registry![Emitter, Receiver, else _])
+        .with_ndl("tests/emit.yml", registry![Emitter, Receiver, else _])
         .map_err(|e| println!("{e}"))
         .unwrap();
     let rt = Builder::seeded(123).build(rt);

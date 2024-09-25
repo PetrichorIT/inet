@@ -1,0 +1,28 @@
+
+lrouter.addr: 100.0.0.1
+left[0].addr: 100.0.0.100
+left[1].addr: 100.0.0.101
+left[2].addr: 100.0.0.102
+left[3].addr: 100.0.0.103
+left[4].addr: 100.0.0.104
+
+rrouter.addr: 200.0.0.1
+right[0].addr: 200.0.0.100
+right[1].addr: 200.0.0.101
+right[2].addr: 200.0.0.102
+right[3].addr: 200.0.0.103
+right[4].addr: 200.0.0.104
+
+left[0].targets: 200.0.0.103 
+left[1].targets: 100.0.0.102, 100.0.0.102, 100.0.0.102 
+left[2].targets: 200.0.0.103 
+left[3].targets: 100.0.0.104, 100.0.0.104, 100.0.0.104
+left[4].targets: 
+
+right[0].targets: 100.0.0.102 
+right[1].targets: 
+right[2].targets: 200.0.0.103 
+right[3].targets: 200.0.0.103, 100.0.0.102 
+right[4].targets: 100.0.0.104
+
+

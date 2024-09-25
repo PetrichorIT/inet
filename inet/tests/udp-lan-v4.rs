@@ -114,10 +114,10 @@ impl Module for Main {
 fn udp_lan_v4() {
     let mut app = Sim::new(())
         .with_stack(inet::init)
-        .with_ndl("tests/udp-lan/main.ndl", registry![Node, Switch, Main])
+        .with_ndl("tests/udp-lan/main.yml", registry![Node, Switch, Main])
         .map_err(|e| println!("{e}"))
         .unwrap();
-    app.include_par_file("tests/udp-lan/v4.par").unwrap();
+    app.include_par_file("tests/udp-lan/v4.par.yml").unwrap();
     let rt = Builder::seeded(123).build(app);
     let _ = rt.run();
 }

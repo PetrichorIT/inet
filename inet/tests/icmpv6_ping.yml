@@ -1,0 +1,38 @@
+entry: Main
+modules:
+  Switch:
+    gates:
+    - port[3]
+  Router:
+    gates:
+    - port
+  Bob:
+    gates:
+    - port
+  Main:
+    submodules:
+      bob: Bob
+      alice: Alice
+      router: Router
+      switch: Switch
+    connections:
+    - peers:
+      - alice/port
+      - switch/port[0]
+      link: LAN
+    - peers:
+      - bob/port
+      - switch/port[1]
+      link: LAN
+    - peers:
+      - router/port
+      - switch/port[2]
+      link: LAN
+  Alice:
+    gates:
+    - port
+links:
+  LAN:
+    latency: 0.001
+    jitter: 0.0
+    bitrate: 10000000

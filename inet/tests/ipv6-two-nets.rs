@@ -116,10 +116,10 @@ fn ipv6_two_nets() -> Result<(), Box<dyn Error>> {
     // des::tracing::init();
 
     let mut app = Sim::new(()).with_stack(inet::init).with_ndl(
-        "tests/ipv6_two_nets.ndl",
+        "tests/ipv6_two_nets.yml",
         registry![Host, Switch, Router, else _],
     )?;
-    app.include_par_file("tests/ipv6_two_nets.par").unwrap();
+    app.include_par_file("tests/ipv6_two_nets.par.yml").unwrap();
     let rt = Builder::seeded(123).max_time(10.0.into()).build(app);
     let _ = rt.run();
 

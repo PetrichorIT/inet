@@ -204,7 +204,7 @@ fn tcp_missing_data_at_close() {
     let app = Sim::new(())
         .with_stack(inet::init)
         .with_ndl(
-            "tests/tcp.ndl",
+            "tests/tcp.yml",
             registry![Link, TcpServer, TcpClient, else _],
         )
         .map_err(|e| println!("{e}"))

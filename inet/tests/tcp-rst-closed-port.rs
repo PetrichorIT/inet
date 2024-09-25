@@ -114,7 +114,7 @@ fn tcp_rst_for_closed_port() {
 
     let app = Sim::new(())
         .with_stack(inet::init)
-        .with_ndl("tests/tcp2.ndl", registry![Client, Server, else _])
+        .with_ndl("tests/tcp2.yml", registry![Client, Server, else _])
         .map_err(|e| println!("{e}"))
         .unwrap();
     let rt = Builder::seeded(233).build(app);
@@ -132,7 +132,7 @@ fn tcp_rst_on_multiple_tries() {
 
     let app = Sim::new(())
         .with_stack(inet::init)
-        .with_ndl("tests/tcp2.ndl", registry![Client, Server, else _])
+        .with_ndl("tests/tcp2.yml", registry![Client, Server, else _])
         .map_err(|e| println!("{e}"))
         .unwrap();
     let rt = Builder::seeded(233).build(app);
@@ -150,7 +150,7 @@ fn tcp_rst_on_multiple_tries_with_success() {
 
     let app = Sim::new(())
         .with_stack(inet::init)
-        .with_ndl("tests/tcp2.ndl", registry![Client, Server, else _])
+        .with_ndl("tests/tcp2.yml", registry![Client, Server, else _])
         .map_err(|e| println!("{e}"))
         .unwrap();
     let rt = Builder::seeded(233).build(app);

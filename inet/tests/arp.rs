@@ -87,10 +87,10 @@ impl Module for Node {
 fn v4() {
     let mut app = Sim::new(())
         .with_stack(inet::init)
-        .with_ndl("tests/arp/main.ndl", registry![Node, Switch, else _])
+        .with_ndl("tests/arp/main.yml", registry![Node, Switch, else _])
         .map_err(|e| println!("{e}"))
         .unwrap();
-    app.include_par_file("tests/arp/v4.par").unwrap();
+    app.include_par_file("tests/arp/v4.par.yml").unwrap();
 
     let rt = Builder::seeded(123).max_itr(1000).build(app);
     let _ = rt.run().unwrap_premature_abort();

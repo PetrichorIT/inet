@@ -1,0 +1,72 @@
+entry: Main
+modules:
+  Switch:
+    gates:
+    - port[3]
+  Router:
+    gates:
+    - lan
+    - wan[3]
+  Host:
+    gates:
+    - port
+  LAN:
+    gates:
+    - wan[3]
+    submodules:
+      router: Router
+      switch: Switch
+      host[2]: Host
+    connections:
+    - peers:
+      - host[0]/port
+      - switch/port[0]
+      link: LANLink
+    - peers:
+      - host[1]/port
+      - switch/port[1]
+      link: LANLink
+    - peers:
+      - router/lan
+      - switch/port[2]
+      link: LANLink
+    - peers:
+      - wan
+      - router/wan
+  Main:
+    submodules:
+      net[5]: LAN
+    connections:
+    - peers:
+      - net[0]/wan[0]
+      - net[1]/wan[0]
+      link: WANLink
+    - peers:
+      - net[0]/wan[1]
+      - net[2]/wan[1]
+      link: WANLink
+    - peers:
+      - net[1]/wan[1]
+      - net[2]/wan[0]
+      link: WANLink
+    - peers:
+      - net[1]/wan[2]
+      - net[3]/wan[0]
+      link: WANLink
+    - peers:
+      - net[2]/wan[2]
+      - net[3]/wan[1]
+      link: WANLink
+    - peers:
+      - net[3]/wan[2]
+      - net[4]/wan[0]
+      link: WANLink
+links:
+  LANLink:
+    latency: 0.01
+    jitter: 0.0
+    bitrate: 100000000
+  WANLink:
+    latency: 0.05
+    jitter: 0.0
+    bitrate: 100000000

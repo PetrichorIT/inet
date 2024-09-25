@@ -1,0 +1,22 @@
+entry: Main
+modules:
+  Emitter:
+    gates:
+    - out
+  Main:
+    submodules:
+      tx: Emitter
+      rx: Receiver
+    connections:
+    - peers:
+      - tx/out
+      - rx/in
+      link: LAN
+  Receiver:
+    gates:
+    - in
+links:
+  LAN:
+    latency: 0.02
+    jitter: 0.0
+    bitrate: 1000000

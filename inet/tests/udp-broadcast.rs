@@ -129,12 +129,12 @@ fn udp_broadcast() {
     let mut app = Sim::new(())
         .with_stack(inet::init)
         .with_ndl(
-            "tests/udp-broadcast/main.ndl",
+            "tests/udp-broadcast/main.yml",
             registry![Node, Switch, Main],
         )
         .map_err(|e| println!("{e}"))
         .unwrap();
-    app.include_par_file("tests/udp-broadcast/main.par")
+    app.include_par_file("tests/udp-broadcast/main.par.yml")
         .unwrap();
     let rt = Builder::seeded(123).build(app);
     let _ = rt.run();

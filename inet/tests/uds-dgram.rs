@@ -91,7 +91,7 @@ fn uds_pathed_dgrams() {
 
     let app = Sim::new(())
         .with_stack(inet::init)
-        .with_ndl("tests/main.ndl", registry![Main])
+        .with_ndl("tests/main.yml", registry![Main])
         .map_err(|e| println!("{e}"))
         .unwrap();
     let rt = Builder::seeded(123).max_time(100.0.into()).build(app);
@@ -150,7 +150,7 @@ fn uds_pair() {
 
     let app = Sim::new(())
         .with_stack(inet::init)
-        .with_ndl("tests/main.ndl", registry![Main])
+        .with_ndl("tests/main.yml", registry![Main])
         .map_err(|e| println!("{e}"))
         .unwrap();
     let rt = Builder::seeded(123).max_time(100.0.into()).build(app);
@@ -179,7 +179,7 @@ fn double_bind() {
 
     let app = Sim::new(())
         .with_stack(inet::init)
-        .with_ndl("tests/main.ndl", registry![Main])
+        .with_ndl("tests/main.yml", registry![Main])
         .map_err(|e| println!("{e}"))
         .unwrap();
     let rt = Builder::seeded(123).max_time(100.0.into()).build(app);
@@ -229,7 +229,7 @@ fn uds_named_tempdir() {
 
     let app = Sim::new(())
         .with_stack(inet::init)
-        .with_ndl("tests/main.ndl", registry![Main])
+        .with_ndl("tests/main.yml", registry![Main])
         .map_err(|e| println!("{e}"))
         .unwrap();
     let rt = Builder::seeded(123).max_time(100.0.into()).build(app);

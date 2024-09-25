@@ -7,7 +7,7 @@ use std::{
 use des::runtime::Builder;
 use inet_dns_2::{
     core::{DnsQuestion, DnsString, DnsZoneResolver, QuestionClass, QuestionTyp, Zonefile},
-    server::{DnsIterativeNameserver, DnsMessage, DnsRecursiveNameservers},
+    server::{DnsIterativeNameserver, DnsMessage, DnsRecursiveNameserver},
 };
 
 const ZONEFILE_ROOT: &str = r#"
@@ -62,7 +62,7 @@ fn main() {
                 Zonefile::from_str(ZONEFILE_EXAMPLE_ORG)?,
             )?]);
 
-            let mut resolver = DnsRecursiveNameservers::new(Zonefile::local())?
+            let mut resolver = DnsRecursiveNameserver::new(Zonefile::local())?
                 .with_roots(vec![IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1))]);
 
             resolver.handle(

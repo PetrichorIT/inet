@@ -167,7 +167,7 @@ fn tcp_close_data_complete() {
     let app = Sim::new(())
         .with_stack(inet::init)
         .with_ndl(
-            "tests/tcp.ndl",
+            "tests/tcp.yml",
             registry![Link, TcpServer, TcpClient, else _],
         )
         .map_err(|e| println!("{e}"))

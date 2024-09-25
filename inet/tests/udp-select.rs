@@ -131,7 +131,7 @@ fn udp_select() {
 
     let app = Sim::new(())
         .with_stack(inet::init)
-        .with_ndl("tests/triangle.ndl", registry![A, B, C, Main])
+        .with_ndl("tests/triangle.yml", registry![A, B, C, Main])
         .map_err(|e| println!("{e}"))
         .unwrap();
     let rt = Builder::seeded(123).max_time(100.0.into()).build(app);

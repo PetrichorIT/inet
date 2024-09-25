@@ -1,0 +1,48 @@
+entry: Main
+modules:
+  Switch:
+    gates:
+    - port[3]
+  Router:
+    gates:
+    - lan
+    - wan
+  Host:
+    gates:
+    - port
+  LAN:
+    gates:
+    - wan
+    submodules:
+      router: Router
+      switch: Switch
+      host[2]: Host
+    connections:
+    - peers:
+      - host[0]/port
+      - switch/port[0]
+      link: L
+    - peers:
+      - host[1]/port
+      - switch/port[1]
+      link: L
+    - peers:
+      - router/lan
+      - switch/port[2]
+      link: L
+    - peers:
+      - router/wan
+      - wan
+  Main:
+    submodules:
+      net[2]: LAN
+    connections:
+    - peers:
+      - net[0]/wan
+      - net[1]/wan
+      link: L
+links:
+  L:
+    latency: 0.02
+    jitter: 0.0
+    bitrate: 100000000

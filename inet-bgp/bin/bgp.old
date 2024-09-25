@@ -1,0 +1,119 @@
+module Node {
+    gates {
+        in ,
+        out ,
+    }
+}
+
+module Switch {
+    gates {
+        in[5] ,
+        out[5] ,
+
+        gwin ,
+        gwout ,
+    }
+}
+
+module Router {
+    gates {
+        lan_in ,
+        lan_out ,
+
+        in[5] ,
+        out[5] ,
+    }
+}
+
+module BgpA {
+    gates {
+        in ,
+        out ,
+
+        b_in ,
+        b_out ,
+    }
+}
+
+
+module NetA {
+    gates {
+        out,
+        in,
+    }
+
+    submodules {
+        edge: BgpA,
+        router: Router,
+        switch: Switch,
+        node[5]: Node
+    }
+
+    connections {
+        edge/b_out <--> out,
+        edge/b_in <--> in,
+
+        node/out <--> L <--> switch/in,
+        node/in <--> L <--> switch/out,
+
+        switch/gwout <--> L <--> router/lan_in,
+        switch/gwin <--> L <--> router/lan_out,
+
+        router/out[0] <--> L <--> edge/in,
+        router/in[0] <--> L <--> edge/out,
+
+    }
+}
+
+
+module B {
+    gates {
+        a_in ,
+        a_out ,
+        c_in ,
+        c_out ,
+    }
+}
+
+module C {
+    gates {
+        b_in ,
+        b_out ,
+        d_in ,
+        d_out ,
+    }
+}
+
+module D {
+    gates {
+        in ,
+        out ,
+    }
+}
+
+link L {
+    latency: 0.01,
+    bitrate: 1000000,
+    jitter: 0.0
+}
+
+module Main {
+    submodules {
+        a: NetA,
+        b: B,
+        c: C,
+        d: D,
+    }
+    connections {
+        a/out <--> L <--> b/a_in,
+        a/in <--> L <--> b/a_out,
+
+        c/b_out <--> L <--> b/c_in,
+        c/b_in <--> L <--> b/c_out,
+
+        c/d_out <--> L <--> d/in,
+        c/d_in <--> L <--> d/out,
+    }
+}
+
+entry Main;

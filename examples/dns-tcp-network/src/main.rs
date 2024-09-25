@@ -247,12 +247,12 @@ fn main() {
     let mut app = Sim::new(())
         .with_stack(inet::init)
         .with_ndl(
-            "main.ndl",
+            "main.yml",
             registry![Dns, Client, Server, Router, Switch, LAN, else _],
         )
         .map_err(|e| println!("{e}"))
         .unwrap();
-    app.include_par_file("main.par").unwrap();
+    app.include_par_file("main.par.yml").unwrap();
     let rt = Builder::seeded(123).max_time(200.0.into()).build(app);
     let _app = rt.run().into_app();
 

@@ -162,12 +162,13 @@ fn udp_routed() {
     let mut app = Sim::new(())
         .with_stack(inet::init)
         .with_ndl(
-            "tests/udp-routed/main.ndl",
+            "tests/udp-routed/main.yml",
             registry![Node, Switch, Main, Router],
         )
         .map_err(|e| println!("{e}"))
         .unwrap();
-    app.include_par_file("tests/udp-routed/main.par").unwrap();
+    app.include_par_file("tests/udp-routed/main.par.yml")
+        .unwrap();
     let rt = Builder::seeded(123).build(app);
     let _ = rt.run();
 }

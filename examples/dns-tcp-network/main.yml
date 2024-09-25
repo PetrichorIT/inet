@@ -1,0 +1,95 @@
+entry: Main
+modules:
+  NodeLike:
+    gates:
+      - port
+
+  Dns:
+    inherit: NodeLike
+  Server:
+    inherit: NodeLike
+  Client:
+    inherit: NodeLike
+
+  Switch:
+    gates:
+      - port[5]
+      - gw
+
+  Router:
+    gates:
+      - port[5]
+      - lan
+
+  LAN(Node <- NodeLike):
+    gates:
+      - port[5]
+    submodules:
+      node[5]: Node
+      switch: Switch
+      router: Router
+    connections:
+      - peers:
+          - router/port
+          - port
+      - peers:
+          - node/port
+          - switch/port
+        link: LANLink
+      - peers:
+          - router/lan
+          - switch/gw
+        link: LANLink
+
+  Main:
+    submodules:
+      a1: LAN(Client)
+      a2: LAN(Client)
+      a3: LAN(Dns)
+      b1: LAN(Server)
+      c1: LAN(Server)
+      d1: LAN(Dns)
+      d2: LAN(Server)
+    connections:
+      - peers:
+          - a1/port[0]
+          - a2/port[0]
+        link: WANLink
+      - peers:
+          - a1/port[1]
+          - a3/port[0]
+        link: WANLink
+      - peers:
+          - a2/port[1]
+          - a3/port[1]
+        link: WANLink
+      - peers:
+          - a1/port[2]
+          - b1/port[0]
+        link: WANLink
+      - peers:
+          - a3/port[2]
+          - c1/port[0]
+        link: WANLink
+      - peers:
+          - b1/port[1]
+          - d1/port[1]
+        link: WANLink
+      - peers:
+          - c1/port[1]
+          - d1/port[2]
+        link: WANLink
+      - peers:
+          - d1/port[0]
+          - d2/port[0]
+        link: WANLink
+
+links:
+  LANLink:
+    latency: 0.01
+    jitter: 0.0
+    bitrate: 1000000
+  WANLink:
+    latency: 0.05
+    jitter: 0.0
+    bitrate: 1000000

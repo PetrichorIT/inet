@@ -85,7 +85,7 @@ fn tcp_listen_backlog() {
     let app = Sim::new(())
         .with_stack(inet::init)
         .with_ndl(
-            "tests/tcp-multi-accept.ndl",
+            "tests/tcp-multi-accept.yml",
             registry![Server, Client, else _],
         )
         .map_err(|e| println!("{e}"))

@@ -1,0 +1,51 @@
+entry: Main
+modules:
+  Switch:
+    gates:
+    - port[5]
+    - uplink
+  Router:
+    gates:
+    - lan
+    - wan
+  Main:
+    submodules:
+      left[5]: Node
+      right[5]: Node
+      rrouter: Router
+      left_switch: Switch
+      right_switch: Switch
+      lrouter: Router
+    connections:
+    - peers:
+      - left/port
+      - left_switch/port
+      link: LAN
+    - peers:
+      - right/port
+      - right_switch/port
+      link: LAN
+    - peers:
+      - left_switch/uplink
+      - lrouter/lan
+      link: LAN
+    - peers:
+      - right_switch/uplink
+      - rrouter/lan
+      link: LAN
+    - peers:
+      - lrouter/wan
+      - rrouter/wan
+      link: WAN
+  Node:
+    gates:
+    - port
+links:
+  WAN:
+    latency: 0.05
+    jitter: 0.0
+    bitrate: 100000000
+  LAN:
+    latency: 0.01
+    jitter: 0.0
+    bitrate: 10000000

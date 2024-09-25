@@ -131,10 +131,11 @@ fn udp_zerobind() {
 
     let mut app = Sim::new(())
         .with_stack(inet::init)
-        .with_ndl("tests/udp-zerobind/main.ndl", registry![Node, Switch, Main])
+        .with_ndl("tests/udp-zerobind/main.yml", registry![Node, Switch, Main])
         .map_err(|e| println!("{e}"))
         .unwrap();
-    app.include_par_file("tests/udp-zerobind/main.par").unwrap();
+    app.include_par_file("tests/udp-zerobind/main.par.yml")
+        .unwrap();
     let rt = Builder::seeded(123).build(app);
     let _ = rt.run();
 }

@@ -243,12 +243,12 @@ fn dns_basic() {
     let mut rt = Sim::new(())
         .with_stack(inet::init)
         .with_ndl(
-            "tests/dns-basic/main.ndl",
+            "tests/dns-basic/main.yml",
             registry![Switch, DNSServer0, DNSServer1, DNSServer2, Client, Router, else _],
         )
         .map_err(|e| println!("{e}"))
         .unwrap();
-    rt.include_par_file("tests/dns-basic/main.par").unwrap();
+    rt.include_par_file("tests/dns-basic/main.par.yml").unwrap();
     let rt = Builder::seeded(123).build(rt);
     let _ = rt.run();
 }

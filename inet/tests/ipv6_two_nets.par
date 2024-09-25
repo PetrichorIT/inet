@@ -1,4 +1,0 @@
-net[0].router.prefix = 2003:abcd:00ff::/64
-net[1].router.prefix = 2003:1234:4242::/64
-net[0].router.peering_addr = 2001::1
-net[1].router.peering_addr = 2001::2

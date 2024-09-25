@@ -243,7 +243,7 @@ fn main() {
     let mut app = Sim::new(())
         .with_stack(inet::init)
         .with_ndl(
-            "bin/bgp.ndl",
+            "bin/bgp.oldndl",
             registry![BgpA, Switch, Node, Router, B, C, D, else _],
         )
         .unwrap();

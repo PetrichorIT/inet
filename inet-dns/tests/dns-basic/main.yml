@@ -1,0 +1,68 @@
+entry: Main
+modules:
+  Client:
+    parent: Basic
+  Switch:
+    gates:
+    - port[10]
+  Router:
+    gates:
+    - wan
+    - lan
+  DNSServer0:
+    parent: Basic
+  Basic:
+    gates:
+    - port
+  DNSServer1:
+    parent: Basic
+  Main:
+    submodules:
+      dns0: DNSServer0
+      r1: Router
+      dns1alt: DNSServer1
+      r2: Router
+      dns1: DNSServer1
+      switch: Switch
+      client: Client
+      dns2alt: DNSServer2
+    connections:
+    - peers:
+      - client/port
+      - switch/port[0]
+      link: LANLink
+    - peers:
+      - dns0/port
+      - switch/port[1]
+      link: LANLink
+    - peers:
+      - dns1/port
+      - switch/port[2]
+      link: LANLink
+    - peers:
+      - dns1alt/port
+      - switch/port[4]
+      link: LANLink
+    - peers:
+      - r1/lan
+      - switch/port[5]
+      link: LANLink
+    - peers:
+      - r1/wan
+      - r2/wan
+      link: WANLink
+    - peers:
+      - r2/lan
+      - dns2alt/port
+      link: LANLink
+  DNSServer2:
+    parent: Basic
+links:
+  LANLink:
+    latency: 0.005
+    jitter: 0.0
+    bitrate: 80000000
+  WANLink:
+    latency: 0.05
+    jitter: 0.0
+    bitrate: 800000000

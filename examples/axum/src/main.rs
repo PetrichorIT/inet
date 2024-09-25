@@ -153,7 +153,7 @@ fn main() {
 
     let app = Sim::new(())
         .with_stack(inet::init)
-        .with_ndl("main.ndl", registry![Client, Server, else _])
+        .with_ndl("main.yml", registry![Client, Server, else _])
         .map_err(|e| println!("{e}"))
         .unwrap();
     let rt = Builder::seeded(123).max_time(50.0.into()).build(app);

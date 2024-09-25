@@ -129,7 +129,7 @@ fn ipv6_timeouts_with_ra() {
     let app = Sim::new(())
         .with_stack(inet::init)
         .with_ndl(
-            "tests/ipv6.ndl",
+            "tests/ipv6.yml",
             registry![HostAlice, HostBob, Router, Switch, else _],
         )
         .unwrap();
@@ -153,7 +153,7 @@ fn ipv6_timeouts_without_ra() {
     let app = Sim::new(())
         .with_stack(inet::init)
         .with_ndl(
-            "tests/ipv6.ndl",
+            "tests/ipv6.yml",
             registry![HostAlice, HostBob, Router, Switch, else _],
         )
         .unwrap();
