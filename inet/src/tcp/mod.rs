@@ -235,7 +235,7 @@ impl IOContext {
         };
 
         let src = SocketAddr::new(ip_packet.src(), tcp_pkt.src_port);
-        let dest = SocketAddr::new(ip_packet.dest(), tcp_pkt.dest_port);
+        let dest = SocketAddr::new(ip_packet.dest(), tcp_pkt.dst_port);
 
         // (0) All sockets that are bound to the correct destination (local) address
         let mut valid_sockets = self
@@ -470,7 +470,7 @@ impl IOContext {
 
         // TODO: assertion must check validity in terms of zero binds
         // assert_eq!(ip.dest(), ctrl.local_addr.ip());
-        assert_eq!(pkt.dest_port, ctrl.local_addr.port());
+        assert_eq!(pkt.dst_port, ctrl.local_addr.port());
 
         // Missing PERM
         let event = if pkt.flags.rst {
@@ -1408,7 +1408,7 @@ impl IOContext {
             // (2) Create a TCPData packet with the data embedded.
             let mut tcp = TcpPacket {
                 src_port: ctrl.local_addr.port(),
-                dest_port: ctrl.peer_addr.port(),
+                dst_port: ctrl.peer_addr.port(),
                 seq_no: ctrl.tx_next_send_seq_no,
                 ack_no: ctrl.rx_last_recv_seq_no,
                 flags: TcpFlags::new().ack(true).psh(is_last_sendable),
@@ -1695,7 +1695,7 @@ impl TransmissionControlBlock {
 
         TcpPacket {
             src_port: self.local_addr.port(),
-            dest_port: self.peer_addr.port(),
+            dst_port: self.peer_addr.port(),
             seq_no,
             ack_no: expected,
             flags: TcpFlags::new().ack(ack).syn(syn).fin(fin),

@@ -39,7 +39,7 @@ impl Module for Spoofer {
                     dest: Ipv4Addr::new(192, 168, 0, 1),
                     content: TcpPacket {
                         src_port: 1024 + i,
-                        dest_port: 1000,
+                        dst_port: 1000,
                         seq_no: 0,
                         ack_no: 0,
                         flags: TcpFlags::new().syn(true),
