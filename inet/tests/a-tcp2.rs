@@ -61,6 +61,19 @@ impl TcpTestUnit {
         Ok(())
     }
 
+    pub fn pipe_and_expect(
+        &mut self,
+        peer: &mut Self,
+        n: usize,
+        pkts: &[TcpPacket],
+    ) -> io::Result<()> {
+        for (i, pkt) in self.handle.tx_buffer.drain(..n).enumerate() {
+            assert_eq!(pkt, pkts[i]);
+            peer.incoming(pkt)?;
+        }
+        Ok(())
+    }
+
     pub fn next_timeout(&self) -> Option<SimTime> {
         self.con.as_ref().and_then(|v| v.next_timeout())
     }
@@ -90,8 +103,7 @@ impl TcpTestUnit {
 
     pub fn assert_outgoing_eq(&mut self, pkts: &[TcpPacket]) {
         self.assert_outgoing(|outgoing| {
-            assert_eq!(outgoing.len(), pkts.len());
-            assert_eq!(outgoing, pkts)
+            assert_eq!(outgoing, pkts);
         });
     }
 
@@ -151,6 +163,8 @@ impl Deref for TcpTestUnit {
     }
 }
 
+const WIN_4KB: u16 = 4096;
+
 #[test]
 fn handshake() -> io::Result<()> {
     let mut test = TcpTestUnit::new(
@@ -161,7 +175,7 @@ fn handshake() -> io::Result<()> {
     test.incoming(TcpPacket::syn(1808, 80, 4000, 1024))?;
     test.assert_connection_exists();
 
-    let mut syn_ack = TcpPacket::syn(80, 1808, 0, 4096);
+    let mut syn_ack = TcpPacket::syn(80, 1808, 0, WIN_4KB);
     syn_ack.flags = syn_ack.flags.ack(true);
     syn_ack.ack_no = 4001;
     test.assert_outgoing_eq(&[syn_ack]);
@@ -174,7 +188,7 @@ fn handshake() -> io::Result<()> {
         1024,
         vec![1, 2, 3, 4, 5, 5, 7, 8],
     ))?;
-    test.assert_outgoing_eq(&[TcpPacket::data(80, 1808, 1, 4009, 4096 - 8, Vec::new())]);
+    test.assert_outgoing_eq(&[TcpPacket::data(80, 1808, 1, 4009, WIN_4KB - 8, Vec::new())]);
 
     Ok(())
 }
@@ -188,15 +202,15 @@ fn handshake_connect() -> io::Result<()> {
 
     // -> SYN
     test.connect()?;
-    test.assert_outgoing_eq(&[TcpPacket::syn(80, 1808, 0, 4096).with_mss(536)]);
+    test.assert_outgoing_eq(&[TcpPacket::syn(80, 1808, 0, WIN_4KB).with_mss(536)]);
 
     // <- SYNACK
     // -> ACK
-    let mut syn_ack = TcpPacket::syn(1808, 80, 4000, 4096).with_mss(536);
+    let mut syn_ack = TcpPacket::syn(1808, 80, 4000, WIN_4KB).with_mss(536);
     syn_ack.ack_no = 1;
     syn_ack.flags.ack = true;
     test.incoming(syn_ack)?;
-    test.assert_outgoing_eq(&[TcpPacket::data(80, 1808, 1, 4001, 4096, Vec::new())]);
+    test.assert_outgoing_eq(&[TcpPacket::data(80, 1808, 1, 4001, WIN_4KB, Vec::new())]);
 
     Ok(())
 }
@@ -210,7 +224,7 @@ fn handshake_connect_syn_timeout() -> io::Result<()> {
 
     // -> SYN
     test.connect()?;
-    test.assert_outgoing_eq(&[TcpPacket::syn(80, 1808, 0, 4096).with_mss(536)]);
+    test.assert_outgoing_eq(&[TcpPacket::syn(80, 1808, 0, WIN_4KB).with_mss(536)]);
     assert_eq!(test.next_timeout(), Some(15.0.into()));
 
     test.tick()?;
@@ -218,17 +232,17 @@ fn handshake_connect_syn_timeout() -> io::Result<()> {
 
     test.set_time(15.0);
     test.tick()?;
-    test.assert_outgoing_eq(&[TcpPacket::syn(80, 1808, 0, 4096).with_mss(536)]);
+    test.assert_outgoing_eq(&[TcpPacket::syn(80, 1808, 0, WIN_4KB).with_mss(536)]);
 
     // <- SYNACK
     // -> ACK
-    let mut syn_ack = TcpPacket::syn(1808, 80, 4000, 4096).with_mss(536);
+    let mut syn_ack = TcpPacket::syn(1808, 80, 4000, WIN_4KB).with_mss(536);
     syn_ack.ack_no = 1;
     syn_ack.flags.ack = true;
 
     test.set_time(17.0);
     test.incoming(syn_ack)?;
-    test.assert_outgoing_eq(&[TcpPacket::data(80, 1808, 1, 4001, 4096, Vec::new())]);
+    test.assert_outgoing_eq(&[TcpPacket::data(80, 1808, 1, 4001, WIN_4KB, Vec::new())]);
 
     Ok(())
 }
@@ -242,14 +256,14 @@ fn handshake_connect_closed_after_too_many_syn_timeouts() -> io::Result<()> {
 
     // -> SYN (initial)
     test.connect()?;
-    test.assert_outgoing_eq(&[TcpPacket::syn(80, 1808, 0, 4096).with_mss(536)]);
+    test.assert_outgoing_eq(&[TcpPacket::syn(80, 1808, 0, WIN_4KB).with_mss(536)]);
     assert_eq!(test.next_timeout(), Some(15.0.into()));
 
     // repeats nr 1,2,3
     for t in [15.0, 30.0, 45.0] {
         test.set_time(t);
         test.tick()?;
-        test.assert_outgoing_eq(&[TcpPacket::syn(80, 1808, 0, 4096).with_mss(536)]);
+        test.assert_outgoing_eq(&[TcpPacket::syn(80, 1808, 0, WIN_4KB).with_mss(536)]);
         assert_eq!(test.state, State::SynSent);
     }
 
@@ -270,13 +284,15 @@ fn handshake_connect_regulated_mss() -> io::Result<()> {
     );
 
     test.connect()?;
-    test.assert_outgoing_eq(&[TcpPacket::syn(80, 1808, 0, 4096).with_mss(536)]);
+    test.assert_outgoing_eq(&[TcpPacket::syn(80, 1808, 0, WIN_4KB).with_mss(536)]);
 
-    let mut syn_ack = TcpPacket::syn(1808, 80, 4000, 4096).with_mss(400);
+    let mut syn_ack = TcpPacket::syn(1808, 80, 4000, WIN_4KB).with_mss(400);
     syn_ack.ack_no = 1;
     syn_ack.flags.ack = true;
     test.incoming(syn_ack)?;
-    test.assert_outgoing_eq(&[TcpPacket::data(80, 1808, 1, 4001, 4096, Vec::new()).with_mss(400)]);
+    test.assert_outgoing_eq(&[
+        TcpPacket::data(80, 1808, 1, 4001, WIN_4KB, Vec::new()).with_mss(400)
+    ]);
     assert_eq!(test.mss, 400);
 
     Ok(())
@@ -290,12 +306,90 @@ fn handshake_connect_rst_in_syn_sent() -> io::Result<()> {
     );
 
     test.connect()?;
-    test.assert_outgoing_eq(&[TcpPacket::syn(80, 1808, 0, 4096).with_mss(536)]);
+    test.assert_outgoing_eq(&[TcpPacket::syn(80, 1808, 0, WIN_4KB).with_mss(536)]);
 
-    let rst = TcpPacket::rst_for_syn(&TcpPacket::syn(80, 1808, 0, 4096).with_mss(536));
+    let rst = TcpPacket::rst_for_syn(&TcpPacket::syn(80, 1808, 0, WIN_4KB).with_mss(536));
     test.incoming(rst)?;
     test.assert_outgoing_eq(&[]);
     assert_eq!(test.state, State::Closed);
+
+    Ok(())
+}
+
+#[test]
+fn handshake_connect_simultaneous_open() -> io::Result<()> {
+    let mut test = TcpTestUnit::new(
+        SocketAddr::new(Ipv4Addr::new(10, 0, 1, 104).into(), 80), // local
+        SocketAddr::new(Ipv4Addr::new(20, 0, 2, 204).into(), 1808), // peer
+    );
+
+    test.connect()?;
+    test.assert_outgoing_eq(&[TcpPacket::syn(80, 1808, 0, WIN_4KB).with_mss(536)]);
+
+    let syn = TcpPacket::syn(1808, 80, 4000, WIN_4KB);
+    let syn_ack = TcpPacket::syn_ack(&syn, 1, WIN_4KB);
+
+    test.incoming(syn)?;
+    test.assert_outgoing_eq(&[syn_ack]);
+    assert_eq!(test.state, State::SynRcvd);
+
+    test.incoming(TcpPacket::data(1808, 80, 4001, 1, WIN_4KB, Vec::new()))?;
+    test.assert_connection_established();
+
+    Ok(())
+}
+
+#[test]
+fn handshake_connect_simultaneous_open_e2e() -> io::Result<()> {
+    let mut client = TcpTestUnit::new(
+        SocketAddr::new(Ipv4Addr::new(10, 0, 1, 104).into(), 80), // local
+        SocketAddr::new(Ipv4Addr::new(20, 0, 2, 204).into(), 1808), // peer
+    );
+    let mut server = TcpTestUnit::new(
+        SocketAddr::new(Ipv4Addr::new(20, 0, 2, 204).into(), 1808), // local
+        SocketAddr::new(Ipv4Addr::new(10, 0, 1, 104).into(), 80),   // peer
+    );
+
+    client.cfg.iss = Some(2000);
+    server.cfg.iss = Some(8000);
+
+    client.connect()?;
+    client.assert_connection_exists();
+
+    server.connect()?;
+    server.assert_connection_exists();
+
+    // -> SYN
+    // <- SYN
+    client.pipe_and_expect(
+        &mut server,
+        1,
+        &[TcpPacket::syn(80, 1808, 2000, WIN_4KB).with_mss(536)],
+    )?;
+    server.pipe_and_expect(
+        &mut client,
+        1,
+        &[TcpPacket::syn(1808, 80, 8000, WIN_4KB).with_mss(536)],
+    )?;
+
+    assert_eq!(client.state, State::SynRcvd);
+    assert_eq!(server.state, State::SynRcvd);
+
+    // -> SYN-ACK
+    // <- SYN-ACK
+    let syn_ack_for_client_syn =
+        TcpPacket::syn_ack(&TcpPacket::syn(80, 1808, 2000, WIN_4KB), 8001, WIN_4KB);
+    let syn_ack_for_server_syn =
+        TcpPacket::syn_ack(&TcpPacket::syn(1808, 80, 8000, WIN_4KB), 2001, WIN_4KB);
+    client.pipe_and_expect(&mut server, 1, &[syn_ack_for_server_syn])?;
+    server.pipe_and_expect(&mut client, 1, &[syn_ack_for_client_syn])?;
+
+    // NO ACK is required
+    client.assert_outgoing_eq(&[]);
+    server.assert_outgoing_eq(&[]);
+
+    client.assert_connection_established();
+    server.assert_connection_established();
 
     Ok(())
 }
@@ -346,7 +440,7 @@ fn transmitt_data_after_handshake() -> io::Result<()> {
         1808,
         1,
         4001,
-        4096,
+        WIN_4KB,
         vec![1, 2, 3, 4, 5, 6, 7, 8],
     )]);
 
@@ -357,7 +451,7 @@ fn transmitt_data_after_handshake() -> io::Result<()> {
         1808,
         1 + 8,
         4001,
-        4096,
+        WIN_4KB,
         vec![8, 7, 6, 5, 4, 3, 2, 1],
     )]);
 
@@ -500,14 +594,14 @@ fn tx_can_emit_multiple_packets() -> io::Result<()> {
 
     test.tick()?;
     test.assert_outgoing_eq(&[
-        TcpPacket::data(80, 1808, 1, 4001, 4096, data[..1400].to_vec()),
-        TcpPacket::data(80, 1808, 1 + 1400, 4001, 4096, data[1400..2800].to_vec()),
+        TcpPacket::data(80, 1808, 1, 4001, WIN_4KB, data[..1400].to_vec()),
+        TcpPacket::data(80, 1808, 1 + 1400, 4001, WIN_4KB, data[1400..2800].to_vec()),
         TcpPacket::data(
             80,
             1808,
             1 + 2 * 1400,
             4001,
-            4096,
+            WIN_4KB,
             data[2800..3000].to_vec(),
         ),
     ]);
@@ -520,7 +614,7 @@ fn tx_can_emit_multiple_packets() -> io::Result<()> {
         80,
         4001,
         3001,
-        4096 - 3000,
+        WIN_4KB - 3000,
         Vec::new(),
     ))?;
     test.tick()?;
@@ -529,7 +623,7 @@ fn tx_can_emit_multiple_packets() -> io::Result<()> {
         1808,
         3001,
         4001,
-        4096,
+        WIN_4KB,
         data[3000..].to_vec(),
     )]);
 

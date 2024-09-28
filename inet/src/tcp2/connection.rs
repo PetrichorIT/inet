@@ -77,6 +77,7 @@ pub struct Config {
     pub recv_buffer_cap: usize,
     pub syn_resent_count: usize,
     pub mss: Option<u16>,
+    pub iss: Option<u32>,
     pub clock: Arc<dyn Fn() -> SimTime>,
 }
 
@@ -122,6 +123,7 @@ impl Default for Config {
             recv_buffer_cap: 4096,
             syn_resent_count: 3,
             mss: None,
+            iss: None,
             clock: Arc::new(SimTime::now),
         }
     }
@@ -201,7 +203,7 @@ impl Connection {
     pub fn connect(nic: &mut TcpHandle, cfg: Config) -> io::Result<Self> {
         assert!(!nic.quad.dst.ip().is_unspecified());
 
-        let iss = 0;
+        let iss = cfg.iss.unwrap_or(0);
         let wnd = 1024;
 
         // Default MSS according to RFC 9293
@@ -256,8 +258,8 @@ impl Connection {
         Ok(c)
     }
 
-    pub fn accept(nic: &mut TcpHandle, tcph: TcpPacket, cfg: Config) -> io::Result<Option<Self>> {
-        if !tcph.flags.syn {
+    pub fn accept(nic: &mut TcpHandle, pkt: TcpPacket, cfg: Config) -> io::Result<Option<Self>> {
+        if !pkt.flags.syn {
             // only expected SYN packet
             return Ok(None);
         }
@@ -268,7 +270,7 @@ impl Connection {
             .mss
             .unwrap_or(if nic.quad.is_ipv4() { 536 } else { 1220 });
 
-        let iss = 0;
+        let iss = cfg.iss.unwrap_or(0);
         let wnd = 1024;
         let mut c = Connection {
             timers: Timers {
@@ -287,9 +289,9 @@ impl Connection {
                 wl2: 0,
             },
             recv: RecvSequenceSpace {
-                irs: tcph.seq_no,
-                nxt: tcph.seq_no + 1,
-                wnd: tcph.window,
+                irs: pkt.seq_no,
+                nxt: pkt.seq_no + 1,
+                wnd: pkt.window,
                 up: false,
             },
             quad: nic.quad.clone(),
@@ -618,7 +620,7 @@ impl Connection {
         // TODO: explain
         // not okay, try indicating a resend
         if !okay {
-            tracing::info!("NOT OKAY");
+            tracing::error!("NOT OKAY");
             self.send_pkt(nic, Ack, self.send.nxt, 0)?;
             return Ok(self.availability());
         }
@@ -650,13 +652,27 @@ impl Connection {
                 // got SYN part of initial handshake
                 assert!(pkt.content.is_empty());
                 self.recv.nxt = seqn.wrapping_add(1);
+
+                if let State::SynSent = self.state {
+                    // simultaneous open
+                    // send SYN ACK
+                    self.recv.irs = pkt.seq_no;
+                    self.recv.nxt = pkt.seq_no.wrapping_add(1);
+                    self.recv.wnd = pkt.window;
+                    self.recv.up = false;
+
+                    self.send_pkt(nic, SynAck, self.send.nxt, 0)?;
+                    self.state = State::SynRcvd;
+                }
             }
             return Ok(self.availability());
         }
 
         // acked some code, expecting all ack from now
         let ackn = pkt.ack_no;
+
         if let State::SynSent | State::SynRcvd = self.state {
+            tracing::info!("SYN RECV: ");
             if is_between_wrapped(
                 self.send.una.wrapping_sub(1),
                 ackn,
@@ -665,11 +681,14 @@ impl Connection {
                 // must have ACKed our SYN, since we detected at least one acked byte,
                 // and we have only sent one byte (the SYN).
                 tracing::info!("established connection from ACK");
+                // Syn sent behaviour
                 if let State::SynSent = self.state {
                     self.recv.irs = pkt.seq_no;
                     self.recv.nxt = self.recv.irs + 1;
                     self.recv.wnd = pkt.window;
                     self.send_pkt(nic, Ack, self.send.nxt, 0)?;
+
+                    self.state = State::Estab;
                 }
 
                 self.state = State::Estab;
@@ -806,14 +825,14 @@ impl Connection {
             // zero-length segment has separate rules for acceptance
             if self.recv.wnd == 0 {
                 if seqn != self.recv.nxt {
-                    tracing::info!("not okay: zero-length no window not virtual byte");
+                    tracing::warn!("not okay: zero-length no window not virtual byte");
                     false
                 } else {
                     // allowed if seq_no is not next -> to receive virtual bytes independen of window
                     true
                 }
             } else if !is_between_wrapped(self.recv.nxt.wrapping_sub(1), seqn, wend) {
-                tracing::info!("not okay: zero-length not in rnage");
+                tracing::warn!("not okay: zero-length not in rnage");
                 false
             } else {
                 // Else expect valid packet with virtual byte within next+1 ... wend
@@ -824,8 +843,9 @@ impl Connection {
             if self.state == State::SynSent && pkt.flags.syn && pkt.flags.ack {
                 true
             } else if self.recv.wnd == 0 {
-                tracing::info!("not okay: non-zero-length empty window");
-                false
+                tracing::warn!("not okay: non-zero-length empty window");
+                // Edge Case: SYN of simultaneous open
+                self.state == State::SynSent && pkt.flags.syn && !pkt.flags.ack
             } else if !is_between_wrapped(self.recv.nxt.wrapping_sub(1), seqn, wend)
                 && !is_between_wrapped(
                     self.recv.nxt.wrapping_sub(1),
@@ -836,7 +856,7 @@ impl Connection {
                 // Only allowed positions of the received seq_no and seq_no+slen are
                 // next+1 ... wend
                 // -> aka packet must fully be within receiving windo
-                tracing::info!("not okay: non-zero-length not in rnage");
+                tracing::warn!("not okay: non-zero-length not in rnage");
                 false
             } else {
                 true
