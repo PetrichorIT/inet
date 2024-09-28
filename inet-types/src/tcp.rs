@@ -14,7 +14,7 @@ pub const PROTO_TCP: u8 = 0x06;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TcpPacket {
     pub src_port: u16,
-    pub dest_port: u16,
+    pub dst_port: u16,
     pub seq_no: u32,
     pub ack_no: u32,
     pub flags: TcpFlags,
@@ -59,11 +59,54 @@ macro_rules! fimpl {
 }
 
 impl TcpPacket {
+    pub fn data(
+        src_port: u16,
+        dst_port: u16,
+        seq_no: u32,
+        ack_no: u32,
+        window: u16,
+        content: Vec<u8>,
+    ) -> TcpPacket {
+        TcpPacket {
+            src_port,
+            dst_port,
+            seq_no,
+            ack_no,
+            flags: TcpFlags::new().ack(true),
+            window,
+            urgent_ptr: 0,
+            options: Vec::new(),
+            content,
+        }
+    }
+
+    pub fn syn(src_port: u16, dst_port: u16, seq_no: u32, window: u16) -> TcpPacket {
+        TcpPacket {
+            src_port,
+            dst_port,
+            seq_no,
+            ack_no: 0,
+            flags: TcpFlags::new().syn(true),
+            window,
+            urgent_ptr: 0,
+            options: Vec::new(),
+            content: Vec::new(),
+        }
+    }
+
+    pub fn with_mss(mut self, mss: u16) -> Self {
+        self.options.insert(0, TcpOption::MaximumSegmentSize(mss));
+        if self.options.last() != Some(&TcpOption::EndOfOptionsList()) {
+            self.options.push(TcpOption::EndOfOptionsList());
+        }
+        self
+    }
+
     #[must_use]
     pub fn rst_for_syn(syn: &TcpPacket) -> TcpPacket {
         TcpPacket {
-            src_port: syn.dest_port,
-            dest_port: syn.src_port,
+            src_port: syn.dst_port,
+            dst_port: syn.src_port,
             seq_no: 0,
             ack_no: syn.seq_no,
             flags: TcpFlags::new().ack(true).rst(true),
@@ -126,7 +169,7 @@ impl ToBytestream for TcpPacket {
     type Error = std::io::Error;
     fn to_bytestream(&self, stream: &mut BytestreamWriter) -> Result<(), Self::Error> {
         stream.write_u16::<BE>(self.src_port)?;
-        stream.write_u16::<BE>(self.dest_port)?;
+        stream.write_u16::<BE>(self.dst_port)?;
 
         stream.write_u32::<BE>(self.seq_no)?;
         stream.write_u32::<BE>(self.ack_no)?;
@@ -259,7 +302,7 @@ impl FromBytestream for TcpPacket {
 
         Ok(TcpPacket {
             src_port,
-            dest_port,
+            dst_port: dest_port,
             seq_no,
             ack_no,
             flags,
