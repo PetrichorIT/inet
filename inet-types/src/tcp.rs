@@ -59,7 +59,7 @@ macro_rules! fimpl {
 }
 
 impl TcpPacket {
-    pub fn data(
+    pub fn new(
         src_port: u16,
         dst_port: u16,
         seq_no: u32,
@@ -94,11 +94,31 @@ impl TcpPacket {
         }
     }
 
+    pub fn syn_ack(syn: &TcpPacket, seq_no: u32, window: u16) -> TcpPacket {
+        assert!(syn.flags.syn);
+        TcpPacket {
+            src_port: syn.dst_port,
+            dst_port: syn.src_port,
+            seq_no,
+            ack_no: syn.seq_no.wrapping_add(1),
+            flags: TcpFlags::new().syn(true).ack(true),
+            window,
+            urgent_ptr: 0,
+            options: Vec::new(),
+            content: Vec::new(),
+        }
+    }
+
     pub fn with_mss(mut self, mss: u16) -> Self {
         self.options.insert(0, TcpOption::MaximumSegmentSize(mss));
         if self.options.last() != Some(&TcpOption::EndOfOptionsList()) {
             self.options.push(TcpOption::EndOfOptionsList());
         }
+        self
+    }
+
+    pub fn fin(mut self, value: bool) -> Self {
+        self.flags.fin = value;
         self
     }
 

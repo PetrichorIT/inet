@@ -12,3 +12,5 @@ we do NOT recv a MSS but have a non-default one.
 -> we may have a higher MSS than the peer (lower would be synced since peer takes MIN)
 
 # Path MTU discovery
+
+# Close TIMEWAIT after LINGER

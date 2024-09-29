@@ -4,12 +4,14 @@ use std::{
     cmp,
     collections::{BTreeMap, VecDeque},
     io::{self, Write},
-    sync::Arc,
     time::Duration,
 };
 use tracing::instrument;
 
 use super::{Quad, TcpHandle};
+
+mod cfg;
+pub use cfg::*;
 
 bitflags::bitflags! {
     pub struct Available: u8 {
@@ -26,6 +28,9 @@ pub enum State {
     Estab,
     FinWait1,
     FinWait2,
+    CloseWait,
+    LastAck,
+    Closing,
     TimeWait,
     Closed,
 }
@@ -34,7 +39,7 @@ impl State {
     pub fn is_synchronized(&self) -> bool {
         match *self {
             State::SynSent | State::SynRcvd | State::Closed => false,
-            State::Estab | State::FinWait1 | State::FinWait2 | State::TimeWait => true,
+            _ => true,
         }
     }
 }
@@ -71,16 +76,6 @@ pub struct Connection {
     pub cfg: Config,
 }
 
-#[derive(Clone)]
-pub struct Config {
-    pub send_buffer_cap: usize,
-    pub recv_buffer_cap: usize,
-    pub syn_resent_count: usize,
-    pub mss: Option<u16>,
-    pub iss: Option<u32>,
-    pub clock: Arc<dyn Fn() -> SimTime>,
-}
-
 struct Timers {
     send_times: BTreeMap<u32, SimTime>,
     srtt: f64,
@@ -113,19 +108,6 @@ impl Connection {
         // TODO: take into account self.state
         // TODO: set Available::WRITE
         a
-    }
-}
-
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            send_buffer_cap: 4096,
-            recv_buffer_cap: 4096,
-            syn_resent_count: 3,
-            mss: None,
-            iss: None,
-            clock: Arc::new(SimTime::now),
-        }
     }
 }
 
@@ -203,7 +185,7 @@ impl Connection {
     pub fn connect(nic: &mut TcpHandle, cfg: Config) -> io::Result<Self> {
         assert!(!nic.quad.dst.ip().is_unspecified());
 
-        let iss = cfg.iss.unwrap_or(0);
+        let iss = cfg.iss_for(&nic.quad, &[]);
         let wnd = 1024;
 
         // Default MSS according to RFC 9293
@@ -222,22 +204,8 @@ impl Connection {
                 srtt: Duration::from_secs(10).as_secs_f64(),
             },
             state: State::SynSent,
-            send: SendSequenceSpace {
-                iss,
-                una: iss,
-                nxt: iss,
-                wnd: wnd,
-                up: false,
-
-                wl1: 0,
-                wl2: 0,
-            },
-            recv: RecvSequenceSpace {
-                irs: 0,
-                nxt: 0,
-                wnd: 0,
-                up: false,
-            },
+            send: SendSequenceSpace::new(iss, wnd),
+            recv: RecvSequenceSpace::empty(),
             quad: nic.quad.clone(),
             syn_resend_counter: 0,
 
@@ -270,30 +238,16 @@ impl Connection {
             .mss
             .unwrap_or(if nic.quad.is_ipv4() { 536 } else { 1220 });
 
-        let iss = cfg.iss.unwrap_or(0);
+        let iss = cfg.iss_for(&nic.quad, &[]);
         let wnd = 1024;
         let mut c = Connection {
             timers: Timers {
                 send_times: Default::default(),
-                srtt: Duration::from_secs(1 * 60).as_secs_f64(),
+                srtt: Duration::from_secs(10).as_secs_f64(),
             },
             state: State::SynRcvd,
-            send: SendSequenceSpace {
-                iss,
-                una: iss,
-                nxt: iss,
-                wnd: wnd,
-                up: false,
-
-                wl1: 0,
-                wl2: 0,
-            },
-            recv: RecvSequenceSpace {
-                irs: pkt.seq_no,
-                nxt: pkt.seq_no + 1,
-                wnd: pkt.window,
-                up: false,
-            },
+            send: SendSequenceSpace::new(iss, wnd),
+            recv: RecvSequenceSpace::from_syn(&pkt),
             quad: nic.quad.clone(),
             syn_resend_counter: 0,
 
@@ -361,7 +315,6 @@ impl Connection {
         // Max TCP packet size
         limit = limit.min(self.mss as usize);
 
-        tracing::info!("using offset {} base {}", offset, self.send.una);
         let (mut h, mut t) = self.unacked.as_slices();
         if h.len() >= offset {
             h = &h[offset..];
@@ -418,9 +371,14 @@ impl Connection {
             // ->  3.7.1. Maximum Segment Size Option
             // TCP implementations SHOULD send an MSS Option in every SYN segment when its receive MSS differs from
             // the default 536 for IPv4 or 1220 for IPv6 (SHLD-5), and MAY send it always (MAY-3).
-            //
-            // We allways send a MSS in SYN packets
-            Syn => vec![TcpOption::MaximumSegmentSize(self.mss)],
+            Syn => {
+                let is_default = self.mss == self.quad.default_mss();
+                if !is_default {
+                    vec![TcpOption::MaximumSegmentSize(self.mss)]
+                } else {
+                    Vec::new()
+                }
+            }
             _ => Vec::new(),
         };
 
@@ -520,6 +478,8 @@ impl Connection {
 
                 self.syn_resend_counter += 1;
                 self.send_pkt(nic, Syn, self.send.una, 0)?;
+            } else if let State::SynRcvd = self.state {
+                self.send_pkt(nic, SynAck, self.send.una, 0)?;
             } else {
                 self.send_pkt(nic, Ack, self.send.una, resend as usize)?;
             }
@@ -530,7 +490,7 @@ impl Connection {
                 };
 
                 // we should send new data if we have new data and space in the window
-                if num_unsend_bytes == 0 || self.closed_at.is_some() {
+                if num_unsend_bytes == 0 && self.closed_at.is_some() {
                     return Ok(());
                 }
 
@@ -547,8 +507,17 @@ impl Connection {
                     // If there is space left in the window and we are closed without FIN
                     // attach the virtual FIN byte
                     self.closed_at = Some(self.send.una.wrapping_add(self.unacked.len() as u32));
+
+                    // RFC 9293
+                    // -> 3.6. Closing a Connection
+                    // Case 1:
+                    // Local user initiates the close In this case, a FIN segment can be constructed and placed on the outgoing segment queue.
+                    // ...
                     self.send_pkt(nic, Fin, self.send.nxt, bytes_to_be_sent as usize)?;
                 } else {
+                    if num_unsend_bytes == 0 {
+                        break;
+                    }
                     self.send_pkt(nic, Ack, self.send.nxt, bytes_to_be_sent as usize)?;
                 }
             }
@@ -653,6 +622,11 @@ impl Connection {
                 assert!(pkt.content.is_empty());
                 self.recv.nxt = seqn.wrapping_add(1);
 
+                if let State::SynRcvd = self.state {
+                    // resend SYN ACK, it seems to be lost
+                    self.send_pkt(nic, SynAck, self.send.nxt.wrapping_sub(1), 0)?;
+                }
+
                 if let State::SynSent = self.state {
                     // simultaneous open
                     // send SYN ACK
@@ -698,7 +672,9 @@ impl Connection {
         }
 
         // We already have a ack history, so start to tick of from buffers
-        if let State::Estab | State::FinWait1 | State::FinWait2 = self.state {
+        if let State::Estab | State::FinWait1 | State::FinWait2 | State::LastAck | State::Closing =
+            self.state
+        {
             // akc no must be between last_acked ... next
             // -> if not, either not valid or already known ack
             self.send.wnd = pkt.window;
@@ -756,14 +732,21 @@ impl Connection {
         }
 
         // Fin wait: I have closed, and send a FIN
-        if let State::FinWait1 = self.state {
+        if let State::FinWait1 | State::Closing | State::LastAck = self.state {
             // This should always be true
             if let Some(closed_at) = self.closed_at {
                 // we got an ack, check if it is for the FIN
                 // since una == FIN seq no (una is final since next will not move, since we are write-closed)
                 if self.send.una == closed_at.wrapping_add(1) {
                     // our FIN has been ACKed!
-                    self.state = State::FinWait2;
+                    let new_state = match self.state {
+                        State::FinWait1 => State::FinWait2,
+                        State::Closing => State::TimeWait,
+                        State::LastAck => State::Closed,
+                        _ => unreachable!(),
+                    };
+                    tracing::info!("received ACK for FIN ({:?} -> {:?})", self.state, new_state);
+                    self.state = new_state;
                 }
             }
         }
@@ -807,11 +790,26 @@ impl Connection {
         // If this is a FIN packet do something
         if pkt.flags.fin {
             match self.state {
+                State::FinWait1 => {
+                    // simultaneous close
+                    tracing::info!("closing recv-duplex due to received FIN (CLOSING)");
+                    self.recv.nxt = self.recv.nxt.wrapping_add(1);
+                    self.send_pkt(nic, Ack, self.send.nxt, 0)?;
+                    self.state = State::Closing;
+                }
                 State::FinWait2 => {
                     // we're done with the connection!
+                    tracing::info!("closing recv-simplex due to received FIN (TIME_WAIT)");
                     self.recv.nxt = self.recv.nxt.wrapping_add(1);
-                    self.send_pkt(nic, Fin, self.send.nxt, 0)?;
+                    self.send_pkt(nic, Ack, self.send.nxt, 0)?;
                     self.state = State::TimeWait;
+                }
+                State::Estab => {
+                    // peer is done with connection
+                    tracing::info!("closing recv-simplex due to received FIN (CLOSE_WAIT)");
+                    self.recv.nxt = self.recv.nxt.wrapping_add(1);
+                    self.send_pkt(nic, Ack, self.send.nxt, 0)?;
+                    self.state = State::CloseWait;
                 }
                 _ => unimplemented!(),
             }
@@ -842,6 +840,8 @@ impl Connection {
             // When the window is empty, its always invalid to receive another packet
             if self.state == State::SynSent && pkt.flags.syn && pkt.flags.ack {
                 true
+            } else if self.state == State::SynRcvd && pkt.flags.syn && !pkt.flags.ack {
+                true
             } else if self.recv.wnd == 0 {
                 tracing::warn!("not okay: non-zero-length empty window");
                 // Edge Case: SYN of simultaneous open
@@ -865,13 +865,22 @@ impl Connection {
         okay
     }
 
-    pub(crate) fn close(&mut self) -> io::Result<()> {
+    pub fn close(&mut self) -> io::Result<()> {
         self.closed = true;
         match self.state {
+            // RFC 9293
+            // ->  3.6. Closing a Connection
+            // Case 1:
+            // Local user initiates the close In this case, a FIN segment can be constructed and placed on the outgoing segment queue.
+            // No further SENDs from the user will be accepted by the TCP implementation, and it enters the FIN-WAIT-1 state.
+            // RECEIVEs are allowed in this state. All segments preceding and including FIN will be retransmitted until acknowledged.
+            // When the other TCP peer has both acknowledged the FIN and sent a FIN of its own, the first TCP peer can ACK this FIN.
+            // Note that a TCP endpoint receiving a FIN will ACK but not send its own FIN until its user has CLOSED the connection also.
             State::SynRcvd | State::Estab => {
                 self.state = State::FinWait1;
             }
             State::FinWait1 | State::FinWait2 => {}
+            State::CloseWait => self.state = State::LastAck,
             _ => {
                 return Err(io::Error::new(
                     io::ErrorKind::NotConnected,
@@ -880,6 +889,41 @@ impl Connection {
             }
         };
         Ok(())
+    }
+}
+
+impl SendSequenceSpace {
+    pub fn new(iss: u32, wnd: u16) -> Self {
+        Self {
+            iss,
+            una: iss,
+            nxt: iss,
+            wnd: wnd,
+            up: false,
+
+            wl1: 0,
+            wl2: 0,
+        }
+    }
+}
+
+impl RecvSequenceSpace {
+    pub fn from_syn(pkt: &TcpPacket) -> Self {
+        Self {
+            irs: pkt.seq_no,
+            nxt: pkt.seq_no.wrapping_add(1),
+            wnd: pkt.window,
+            up: false,
+        }
+    }
+
+    pub const fn empty() -> Self {
+        Self {
+            nxt: 0,
+            wnd: 0,
+            irs: 0,
+            up: false,
+        }
     }
 }
 
