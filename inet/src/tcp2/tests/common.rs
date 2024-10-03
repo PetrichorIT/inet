@@ -10,6 +10,8 @@ use des::time::SimTime;
 use inet_types::tcp::TcpPacket;
 use tracing::instrument;
 
+pub(super) const WIN_4KB: u16 = 4096;
+
 pub(super) struct TcpTestUnit {
     handle: TcpHandle,
     con: Option<Connection>,
@@ -112,6 +114,26 @@ impl TcpTestUnit {
             .as_mut()
             .expect("no connection exists: cannot write")
             .write(buf)
+    }
+
+    pub fn write_and_ack(&mut self, buf: &[u8]) -> io::Result<usize> {
+        let n = self.write(buf)?;
+        self.tick()?;
+
+        let last = self.handle.tx_buffer.pop().unwrap();
+        self.clear_outgoing();
+
+        // Collective ACK
+        self.incoming(TcpPacket::new(
+            self.quad.dst.port(),
+            self.quad.src.port(),
+            self.recv.nxt,
+            last.seq_no + last.content.len() as u32,
+            WIN_4KB,
+            Vec::new(),
+        ))?;
+
+        Ok(n)
     }
 
     pub fn set_time(&self, now: impl Into<SimTime>) {

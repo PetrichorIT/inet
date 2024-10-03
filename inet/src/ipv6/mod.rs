@@ -44,7 +44,7 @@ pub struct Ipv6 {
     pub iface_state: FxHashMap<IfId, InterfaceState>,
     pub mld: FxHashMap<IfId, MulticastListenerDiscoveryCtrl>,
 
-    pub is_rooter: bool,
+    pub is_router: bool,
     pub router: Router,
     pub cfg: HostConfiguration,
     pub router_cfg: FxHashMap<IfId, RouterInterfaceConfiguration>,
@@ -72,7 +72,7 @@ impl Ipv6 {
             mld: FxHashMap::with_hasher(FxBuildHasher::default()),
 
             cfg: HostConfiguration::default(),
-            is_rooter: false,
+            is_router: false,
             router: Router::new(),
             router_cfg: FxHashMap::with_hasher(FxBuildHasher::default()),
             router_cfg_default: None,
@@ -231,7 +231,7 @@ impl IOContext {
             self.ipv6.destinations.set(dst, next_hop);
             Ok((next_hop, IfId::NULL))
         } else {
-            if self.ipv6.is_rooter {
+            if self.ipv6.is_router {
                 if let Some(v) = self.ipv6.router.lookup(dst) {
                     return Ok(v);
                 } else {

@@ -1,3 +1,4 @@
+use cong::CongestionControl;
 use des::time::SimTime;
 use inet_types::tcp::{TcpFlags, TcpOption, TcpPacket};
 use std::{
@@ -9,6 +10,8 @@ use std::{
 use tracing::instrument;
 
 use super::{Quad, TcpHandle};
+
+mod cong;
 
 mod cfg;
 pub use cfg::*;
@@ -56,12 +59,11 @@ use PacketKind::*;
 
 pub struct Connection {
     pub state: State,
-    send: SendSequenceSpace,
-    recv: RecvSequenceSpace,
-    timers: Timers,
+    pub send: SendSequenceSpace,
+    pub recv: RecvSequenceSpace,
+    pub timers: Timers,
 
-    pub mss: u16,
-    pub mss_update: Option<u16>,
+    pub cong: CongestionControl,
 
     pub incoming: VecDeque<u8>,
     pub unacked: VecDeque<u8>,
@@ -76,9 +78,9 @@ pub struct Connection {
     pub cfg: Config,
 }
 
-struct Timers {
-    send_times: BTreeMap<u32, SimTime>,
-    srtt: f64,
+pub struct Timers {
+    pub send_times: BTreeMap<u32, SimTime>,
+    pub srtt: f64,
 }
 
 impl Connection {
@@ -113,7 +115,7 @@ impl Connection {
 
 /// State of the Send Sequence Space (RFC 793 S3.2 F4)
 ///
-/// ```
+/// ```text
 ///            1         2          3          4
 ///       ----------|----------|----------|----------
 ///              SND.UNA    SND.NXT    SND.UNA
@@ -124,26 +126,26 @@ impl Connection {
 /// 3 - sequence numbers allowed for new data transmission
 /// 4 - future sequence numbers which are not yet allowed
 /// ```
-struct SendSequenceSpace {
+pub struct SendSequenceSpace {
     /// send unacknowledged
-    una: u32,
+    pub una: u32,
     /// send next
-    nxt: u32,
+    pub nxt: u32,
     /// send window
-    wnd: u16,
+    pub wnd: u16,
     /// send urgent pointer
-    up: bool,
+    pub up: bool,
     /// segment sequence number used for last window update
-    wl1: usize,
+    pub wl1: usize,
     /// segment acknowledgment number used for last window update
-    wl2: usize,
+    pub wl2: usize,
     /// initial send sequence number
-    iss: u32,
+    pub iss: u32,
 }
 
 /// State of the Receive Sequence Space (RFC 793 S3.2 F5)
 ///
-/// ```
+/// ```text
 ///                1          2          3
 ///            ----------|----------|----------
 ///                   RCV.NXT    RCV.NXT
@@ -153,15 +155,15 @@ struct SendSequenceSpace {
 /// 2 - sequence numbers allowed for new reception
 /// 3 - future sequence numbers which are not yet allowed
 /// ```
-struct RecvSequenceSpace {
+pub struct RecvSequenceSpace {
     /// receive next
-    nxt: u32,
+    pub nxt: u32,
     /// receive window
-    wnd: u16,
+    pub wnd: u16,
     /// receive urgent pointer
-    up: bool,
+    pub up: bool,
     /// initial receive sequence number
-    irs: u32,
+    pub irs: u32,
 }
 
 impl Connection {
@@ -209,8 +211,7 @@ impl Connection {
             quad: nic.quad.clone(),
             syn_resend_counter: 0,
 
-            mss,
-            mss_update: None,
+            cong: CongestionControl::disabled(mss),
 
             incoming: VecDeque::with_capacity(cfg.recv_buffer_cap),
             unacked: VecDeque::with_capacity(cfg.send_buffer_cap),
@@ -251,8 +252,7 @@ impl Connection {
             quad: nic.quad.clone(),
             syn_resend_counter: 0,
 
-            mss,
-            mss_update: None,
+            cong: CongestionControl::new(cfg.enable_congestion_control, mss),
 
             incoming: VecDeque::with_capacity(cfg.recv_buffer_cap),
             unacked: VecDeque::with_capacity(cfg.send_buffer_cap),
@@ -313,7 +313,7 @@ impl Connection {
         }
 
         // Max TCP packet size
-        limit = limit.min(self.mss as usize);
+        limit = limit.min(self.cong.mss as usize);
 
         let (mut h, mut t) = self.unacked.as_slices();
         if h.len() >= offset {
@@ -372,23 +372,15 @@ impl Connection {
             // TCP implementations SHOULD send an MSS Option in every SYN segment when its receive MSS differs from
             // the default 536 for IPv4 or 1220 for IPv6 (SHLD-5), and MAY send it always (MAY-3).
             Syn => {
-                let is_default = self.mss == self.quad.default_mss();
+                let is_default = self.cong.mss == self.quad.default_mss();
                 if !is_default {
-                    vec![TcpOption::MaximumSegmentSize(self.mss)]
+                    vec![TcpOption::MaximumSegmentSize(self.cong.mss)]
                 } else {
                     Vec::new()
                 }
             }
             _ => Vec::new(),
         };
-
-        // Any MSS update will also be propagated (not required)
-        if let Some(mss_update) = self.mss_update.take() {
-            let option = TcpOption::MaximumSegmentSize(mss_update);
-            if !options.contains(&option) {
-                options.push(option);
-            }
-        }
 
         if !options.is_empty() {
             options.push(TcpOption::EndOfOptionsList())
@@ -459,6 +451,7 @@ impl Connection {
             if resend < self.send.wnd as u32 && self.closed {
                 // can we include the FIN?
                 self.closed_at = Some(self.send.una.wrapping_add(self.unacked.len() as u32));
+                self.cong.on_timeout();
                 self.send_pkt(nic, Fin, self.send.una, resend as usize)?;
             } else if let State::SynSent = self.state {
                 assert_eq!(resend, 0);
@@ -481,6 +474,7 @@ impl Connection {
             } else if let State::SynRcvd = self.state {
                 self.send_pkt(nic, SynAck, self.send.una, 0)?;
             } else {
+                self.cong.on_timeout();
                 self.send_pkt(nic, Ack, self.send.una, resend as usize)?;
             }
         } else {
@@ -494,7 +488,7 @@ impl Connection {
                     return Ok(());
                 }
 
-                let remaining_window_space = self.send.wnd as u32 - self.num_unacked_bytes();
+                let remaining_window_space = self.remaining_window_space();
                 if remaining_window_space == 0 {
                     return Ok(());
                 }
@@ -602,14 +596,13 @@ impl Connection {
                 //
                 // We update the local MSS. We also automatically send an update
                 // TODO: correct MSS computation
-                if self.mss != *mss {
+                if self.cong.mss != *mss {
                     tracing::info!(
                         "update maximum-segement-size {} -> {}",
-                        self.mss,
-                        self.mss.min(*mss)
+                        self.cong.mss,
+                        self.cong.mss.min(*mss)
                     );
-                    self.mss = self.mss.min(*mss);
-                    self.mss_update = Some(self.mss);
+                    self.cong.mss = self.cong.mss.min(*mss);
                 }
             }
             _ => {}
@@ -708,6 +701,8 @@ impl Connection {
                     let una = self.send.una;
                     let srtt = &mut self.timers.srtt;
 
+                    let now = (self.cfg.clock)();
+
                     // add new send timer, where old timers are evaluated
                     // -> if timer was for now acked bytes -> calculate rrt with it
                     // -> if timer is for yet unacked bytes -> keep it
@@ -715,12 +710,16 @@ impl Connection {
                         .send_times
                         .extend(old.into_iter().filter_map(|(seq, sent)| {
                             if is_between_wrapped(una, seq, ackn) {
-                                *srtt = 0.8 * *srtt + (1.0 - 0.8) * sent.elapsed().as_secs_f64();
+                                let elapsed = (now - sent).as_secs_f64();
+                                *srtt = 0.8 * *srtt + (1.0 - 0.8) * elapsed;
                                 None
                             } else {
                                 Some((seq, sent))
                             }
                         }));
+
+                    let n = ackn - self.send.una;
+                    self.cong.on_ack(n, self.send.wnd as u32);
                 }
 
                 // set last ack no
@@ -811,7 +810,11 @@ impl Connection {
                     self.send_pkt(nic, Ack, self.send.nxt, 0)?;
                     self.state = State::CloseWait;
                 }
-                _ => unimplemented!(),
+                State::CloseWait => {
+                    // resend FIN (ACK must be lost)
+                    self.send_pkt(nic, Ack, self.send.nxt, 0)?;
+                }
+                _ => unimplemented!("unknown state for FIN recv: {:?}", self.state),
             }
         }
 
@@ -939,5 +942,5 @@ fn wrapping_lt(lhs: u32, rhs: u32) -> bool {
 }
 
 fn is_between_wrapped(start: u32, x: u32, end: u32) -> bool {
-    wrapping_lt(start, x) && wrapping_lt(x, end)
+    wrapping_lt(start, x) && wrapping_lt(x, end) || start == x
 }

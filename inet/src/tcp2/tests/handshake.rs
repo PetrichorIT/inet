@@ -134,10 +134,8 @@ fn connect_regulated_mss() -> io::Result<()> {
     syn_ack.ack_no = 1;
     syn_ack.flags.ack = true;
     test.incoming(syn_ack)?;
-    test.assert_outgoing_eq(
-        &[TcpPacket::new(80, 1808, 1, 4001, WIN_4KB, Vec::new()).with_mss(400)],
-    );
-    assert_eq!(test.mss, 400);
+    test.assert_outgoing_eq(&[TcpPacket::new(80, 1808, 1, 4001, WIN_4KB, Vec::new())]);
+    assert_eq!(test.cong.mss, 400);
 
     Ok(())
 }

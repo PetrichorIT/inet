@@ -9,6 +9,7 @@ use des::time::SimTime;
 
 #[derive(Clone)]
 pub struct Config {
+    pub enable_congestion_control: bool,
     pub send_buffer_cap: usize,
     pub recv_buffer_cap: usize,
     pub syn_resent_count: usize,
@@ -43,6 +44,7 @@ impl Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
+            enable_congestion_control: false,
             send_buffer_cap: 4096,
             recv_buffer_cap: 4096,
             syn_resent_count: 3,

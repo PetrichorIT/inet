@@ -32,7 +32,7 @@ pub fn add_routing_prefix(prefix: Ipv6Prefix) -> io::Result<()> {
 
 impl IOContext {
     fn ipv6_router_declare_router(&mut self) -> io::Result<()> {
-        self.ipv6.is_rooter = true;
+        self.ipv6.is_router = true;
         self.ipv6.router_cfg_default = Some(RouterInterfaceConfiguration {
             is_router: true,
             adv_send_advertisments: true,

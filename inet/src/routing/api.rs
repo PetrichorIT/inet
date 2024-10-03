@@ -61,7 +61,7 @@ pub fn route() -> io::Result<Vec<FwdEntryV4>> {
 
 impl IOContext {
     fn declare_ipv6_router(&mut self, cfg: Ipv6RouterConfig) -> io::Result<()> {
-        self.ipv6.is_rooter = true;
+        self.ipv6.is_router = true;
         let ifids = self.ifaces.keys().cloned().collect::<Vec<_>>();
         for ifid in ifids {
             self.ipv6.router_cfg.insert(

@@ -278,7 +278,7 @@ impl IOContext {
         req: IcmpV6RouterSolicitation,
     ) -> io::Result<bool> {
         // See RFC 4861 :: 6.1.1
-        if !self.ipv6.is_rooter {
+        if !self.ipv6.is_router {
             return Ok(true);
         }
 
@@ -401,7 +401,7 @@ impl IOContext {
     }
 
     pub fn ipv6_icmp_send_router_solicitation(&mut self, ifid: IfId) -> io::Result<()> {
-        if self.ipv6.is_rooter {
+        if self.ipv6.is_router {
             tracing::warn!("missuse, router shall not request router adv");
             return Ok(());
         }
@@ -452,7 +452,7 @@ impl IOContext {
         ifid: IfId,
         adv: IcmpV6RouterAdvertisement,
     ) -> io::Result<bool> {
-        if self.ipv6.is_rooter {
+        if self.ipv6.is_router {
             self.ipv6_icmp_router_advertisment_inspect(ip, ifid, adv)?;
             return Ok(true);
         }
@@ -655,7 +655,7 @@ impl IOContext {
 
         let adv = IcmpV6NeighborAdvertisment {
             target: req.target,
-            router: self.ipv6.is_rooter,
+            router: self.ipv6.is_router,
             solicited: !ip.src.is_unspecified(),
             overide: false,
             options: vec![IcmpV6NDPOption::TargetLinkLayerAddress(iface_mac)],
@@ -911,7 +911,7 @@ impl IOContext {
 
         let adv = IcmpV6NeighborAdvertisment {
             target: addr,
-            router: self.ipv6.is_rooter,
+            router: self.ipv6.is_router,
             solicited: false,
             overide: true,
             options: {
