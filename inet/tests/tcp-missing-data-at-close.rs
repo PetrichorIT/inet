@@ -24,7 +24,7 @@ impl Module for Link {
             tracing::error!(
                 "DROP {} --> {} :: Tcp {{ {} seq_no = {} ack_no = {} win = {} data = {} bytes }}",
                 ippacket.src,
-                ippacket.dest,
+                ippacket.dst,
                 tcp.flags,
                 tcp.seq_no,
                 tcp.ack_no,

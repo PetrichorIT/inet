@@ -9,7 +9,7 @@ edition = "2021"
 tracing = "*"
 inet = { path = "../inet" }
 inet-types = { path = "../inet-types" }
-bytepack = { path = "../bytepack" }
+bytepack = { path = "../util/bytepack" }
 des = { version = "*", features = ["full"] }
 fxhash = "*"
 async-trait = "*"

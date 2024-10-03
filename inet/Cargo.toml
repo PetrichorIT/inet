@@ -20,7 +20,7 @@ tracing = { version = "*" }
 bytes = "1.4.0"
 rand = "0.8.5"
 inet-types = { path = "../inet-types" }
-bytepack = { path = "../bytepack" }
+bytepack = { path = "../util/bytepack" }
 bitflags = "*"
 
 [dev-dependencies]

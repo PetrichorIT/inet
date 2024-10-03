@@ -36,7 +36,7 @@ impl Module for Spoofer {
                     ttl: 2,
                     proto: PROTO_TCP,
                     src: Ipv4Addr::new(192, 168, 0, 200),
-                    dest: Ipv4Addr::new(192, 168, 0, 1),
+                    dst: Ipv4Addr::new(192, 168, 0, 1),
                     content: TcpPacket {
                         src_port: 1024 + i,
                         dst_port: 1000,

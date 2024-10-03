@@ -1,0 +1,10 @@
+[package]
+name = "pcap"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bytepack = { path = "../bytepack" }
+
+[dev-dependencies]
+inet-types = { path = "../../inet-types" }

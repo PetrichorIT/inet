@@ -55,7 +55,7 @@ impl Module for Emitter {
                         ttl: 64,
                         proto: PROTO,
                         src: Ipv4Addr::new(192, 168, 0, 103),
-                        dest: Ipv4Addr::new(192, 168, 0, 1),
+                        dst: Ipv4Addr::new(192, 168, 0, 1),
                         content: iter::repeat_with(|| random::<u8>()).take(16).collect(),
                     };
                     tracing::info!("v4::sending {:?}", pkt.content);

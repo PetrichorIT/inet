@@ -6,8 +6,8 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-inet = { path = "../inet"}
-bytepack = { path = "../bytepack"}
+inet = { path = "../inet" }
+bytepack = { path = "../util/bytepack" }
 fxhash = "*"
 des = "*"
 tracing = "*"

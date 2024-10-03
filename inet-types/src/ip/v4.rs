@@ -20,7 +20,7 @@ pub struct Ipv4Packet {
     pub proto: u8,
     // pub checksum: u16,
     pub src: Ipv4Addr,
-    pub dest: Ipv4Addr,
+    pub dst: Ipv4Addr,
 
     pub content: Vec<u8>,
 }
@@ -38,7 +38,7 @@ impl Ipv4Packet {
         ttl: 64,
         proto: 0,
         src: Ipv4Addr::UNSPECIFIED,
-        dest: Ipv4Addr::UNSPECIFIED,
+        dst: Ipv4Addr::UNSPECIFIED,
         content: Vec::new(),
     };
 
@@ -54,8 +54,8 @@ impl Ipv4Packet {
             fragment_offset: 0,
             ttl: 64,
             proto: self.proto,
-            src: self.dest,
-            dest: self.src,
+            src: self.dst,
+            dst: self.src,
             content: Vec::new(),
         }
     }
@@ -92,7 +92,7 @@ impl ToBytestream for Ipv4Packet {
         stream.write_u16::<BE>(0)?;
 
         stream.write_all(&self.src.octets())?;
-        stream.write_all(&self.dest.octets())?;
+        stream.write_all(&self.dst.octets())?;
 
         stream.write_all(&self.content)?;
         Ok(())
@@ -161,7 +161,7 @@ impl FromBytestream for Ipv4Packet {
             ttl,
             proto,
             src,
-            dest,
+            dst: dest,
             content,
         })
     }

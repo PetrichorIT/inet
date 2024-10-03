@@ -191,7 +191,7 @@ impl IOContext {
                 let iface = self.ifaces.get(&ifid).unwrap();
 
                 // (0) Check whether the received ip packet is addressed for the local machine
-                let local_dest = ip.dest == Ipv4Addr::BROADCAST || iface.addrs.v4.matches(ip.dest);
+                let local_dest = ip.dst == Ipv4Addr::BROADCAST || iface.addrs.v4.matches(ip.dst);
                 // .iter()
                 // .any(|addr| addr.matches(IpAddr::V4(ip.dest)));
 

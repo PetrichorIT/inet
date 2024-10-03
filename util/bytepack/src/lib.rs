@@ -15,6 +15,9 @@ use std::{
     net::Ipv4Addr,
 };
 
+#[cfg(test)]
+mod tests;
+
 pub use byteorder::*;
 
 /// A trait that allows types to be converted into bytestreams.
@@ -172,7 +175,7 @@ pub trait FromBytestream: Sized {
     ///
     /// See `FromBytestream::from_bytestream`.
     fn from_slice(slice: &[u8]) -> Result<Self, Self::Error> {
-        let mut reader = BytestreamReader { slice };
+        let mut reader = BytestreamReader { offset: 0, slice };
         Self::from_bytestream(&mut reader)
     }
 
@@ -185,9 +188,9 @@ pub trait FromBytestream: Sized {
     /// Note that the slice only mutates, if the parsing succeeds.
     /// On error, the slice remains unedited.
     fn read_from_slice(slice: &mut &[u8]) -> Result<Self, Self::Error> {
-        let mut reader = BytestreamReader { slice };
+        let mut reader = BytestreamReader { offset: 0, slice };
         let object = Self::from_bytestream(&mut reader)?;
-        *slice = reader.slice;
+        *slice = reader.remaining();
         Ok(object)
     }
 
@@ -197,10 +200,13 @@ pub trait FromBytestream: Sized {
     ///
     /// See `FromBytestream::from_bytestream`.
     fn read_from_vec(vec: &mut Vec<u8>) -> Result<Self, Self::Error> {
-        let mut reader = BytestreamReader { slice: vec };
-        let len = reader.slice.len();
+        let mut reader = BytestreamReader {
+            offset: 0,
+            slice: vec,
+        };
+        let len = reader.remaining().len();
         let object = Self::from_bytestream(&mut reader)?;
-        let consumed = len - reader.slice.len();
+        let consumed = len - reader.remaining().len();
         vec.drain(..consumed);
         Ok(object)
     }
@@ -212,41 +218,54 @@ pub trait FromBytestream: Sized {
 /// `byteorder::ReadBytesExt`.
 #[derive(Debug)]
 pub struct BytestreamReader<'a> {
+    offset: usize,
     slice: &'a [u8],
 }
 
-impl BytestreamReader<'_> {
+impl<'a> BytestreamReader<'a> {
+    #[inline(always)]
+    fn remaining(&self) -> &'a [u8] {
+        &self.slice[self.offset..]
+    }
+
     /// Tries to extract a substream of length `n`.
     ///
     /// # Errors
     ///
     /// This function fails, if less that `n` bytes remain in the bytestream.
     pub fn extract(&mut self, n: usize) -> io::Result<BytestreamReader<'_>> {
-        if self.slice.len() < n {
+        if self.remaining().len() < n {
             return Err(io::Error::new(
                 io::ErrorKind::Other,
                 "invalid substream length",
             ));
         }
         let stream = BytestreamReader {
-            slice: &self.slice[..n],
+            offset: 0,
+            slice: &self.remaining()[..n],
         };
-        self.slice = &self.slice[n..];
+        self.offset += n;
         Ok(stream)
+    }
+
+    /// Moves back into already read data
+    pub fn bump_back(&mut self, n: usize) {
+        assert!(self.offset >= n, "cannot bumb beyond the start point");
+        self.offset -= n;
     }
 
     /// Indicates whether a bytestream is full consumed.
     #[must_use]
     pub fn is_empty(&self) -> bool {
-        self.slice.is_empty()
+        self.remaining().is_empty()
     }
 }
 
 impl Read for BytestreamReader<'_> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        let min = buf.len().min(self.slice.len());
-        buf[..min].copy_from_slice(&self.slice[..min]);
-        self.slice = &self.slice[min..];
+        let min = buf.len().min(self.remaining().len());
+        buf[..min].copy_from_slice(&self.remaining()[..min]);
+        self.offset += min;
         Ok(min)
     }
 }
@@ -350,84 +369,5 @@ impl FromBytestream for Ipv4Addr {
     type Error = std::io::Error;
     fn from_bytestream(bytestream: &mut BytestreamReader) -> Result<Self, Self::Error> {
         Ok(Ipv4Addr::from(bytestream.read_u32::<BE>()?))
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use ::byteorder::{ReadBytesExt, WriteBytesExt, BE};
-    use std::io::Error;
-
-    #[test]
-    fn a() {
-        #[derive(Debug)]
-        struct A {
-            vals: Vec<u16>,
-            trail: u64,
-        }
-        impl ToBytestream for A {
-            type Error = Error;
-            fn to_bytestream(&self, stream: &mut BytestreamWriter) -> Result<(), Self::Error> {
-                let marker = stream.create_typed_marker::<u16>()?;
-                for val in &self.vals {
-                    stream.write_u16::<BE>(*val)?;
-                }
-                let len = stream.len_since_marker(&marker) as u16;
-                stream.update_marker(&marker).write_u16::<BE>(len)?;
-                stream.write_u64::<BE>(self.trail)?;
-                Ok(())
-            }
-        }
-
-        impl FromBytestream for A {
-            type Error = Error;
-            fn from_bytestream(stream: &mut BytestreamReader) -> Result<Self, Self::Error> {
-                let len = stream.read_u16::<BE>()?;
-                let mut substr = stream.extract(len as usize)?;
-                let mut vals = Vec::new();
-                while !substr.is_empty() {
-                    vals.push(substr.read_u16::<BE>()?);
-                }
-                let trail = stream.read_u64::<BE>()?;
-
-                Ok(Self { vals, trail })
-            }
-        }
-
-        let a = A {
-            vals: vec![1, 2, 3, 4],
-            trail: u64::MAX,
-        };
-        let mut buf = a.to_vec().unwrap();
-        let new = A::read_from_vec(&mut buf);
-
-        println!("{:?}", a);
-        println!("{:?}", buf);
-        println!("{:?}", new);
-    }
-
-    #[test]
-    fn from_mut_slice() {
-        #[derive(Debug, PartialEq, Eq)]
-        struct AB {
-            a: u32,
-            b: u32,
-        }
-        impl FromBytestream for AB {
-            type Error = std::io::Error;
-            fn from_bytestream(stream: &mut BytestreamReader) -> Result<Self, Self::Error> {
-                Ok(Self {
-                    a: stream.read_u32::<BE>()?,
-                    b: stream.read_u32::<BE>()?,
-                })
-            }
-        }
-
-        let buf = [0, 0, 0, 0, 255, 255, 255, 255, 0, 1, 2, 3];
-        let mut slice = &buf[..];
-        let ab = AB::read_from_slice(&mut slice).unwrap();
-        assert_eq!(ab, AB { a: 0, b: u32::MAX });
-        assert_eq!(slice, [0, 1, 2, 3]);
     }
 }

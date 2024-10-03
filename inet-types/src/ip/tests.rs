@@ -18,7 +18,7 @@ fn v4_empty() -> std::io::Result<()> {
         ttl: 0,
         proto: 0,
         src: Ipv4Addr::new(1, 2, 3, 4),
-        dest: Ipv4Addr::new(9, 8, 7, 6),
+        dst: Ipv4Addr::new(9, 8, 7, 6),
         content: Vec::new(),
     };
 
@@ -37,7 +37,7 @@ fn v4_empty() -> std::io::Result<()> {
         ttl: 64,
         proto: 12,
         src: Ipv4Addr::new(14, 22, 13, 24),
-        dest: Ipv4Addr::new(97, 8, 71, 61),
+        dst: Ipv4Addr::new(97, 8, 71, 61),
         content: Vec::new(),
     };
 
@@ -56,7 +56,7 @@ fn v4_empty() -> std::io::Result<()> {
         ttl: 255,
         proto: 254,
         src: Ipv4Addr::new(111, 2, 3, 4),
-        dest: Ipv4Addr::new(255, 255, 255, 255),
+        dst: Ipv4Addr::new(255, 255, 255, 255),
         content: Vec::new(),
     };
 
@@ -75,7 +75,7 @@ fn v4_empty() -> std::io::Result<()> {
         ttl: 12,
         proto: 43,
         src: Ipv4Addr::new(255, 255, 255, 255),
-        dest: Ipv4Addr::new(9, 8, 7, 6),
+        dst: Ipv4Addr::new(9, 8, 7, 6),
         content: Vec::new(),
     };
 
@@ -91,7 +91,7 @@ fn v4_empty() -> std::io::Result<()> {
         ttl: 0,
         proto: 0,
         src: Ipv4Addr::new(1, 2, 3, 4),
-        dest: Ipv4Addr::new(9, 8, 7, 6),
+        dst: Ipv4Addr::new(9, 8, 7, 6),
         content: Vec::new(),
     };
 
@@ -115,7 +115,7 @@ fn v4_with_content() -> std::io::Result<()> {
         ttl: 0,
         proto: 0,
         src: Ipv4Addr::new(1, 2, 3, 4),
-        dest: Ipv4Addr::new(9, 8, 7, 6),
+        dst: Ipv4Addr::new(9, 8, 7, 6),
         content: vec![1, 2, 3, 3, 4, 5, 6, 6, 7, 2, 7, 6, 1, 5, 5, 4, 1, 3],
     };
 
@@ -134,7 +134,7 @@ fn v4_with_content() -> std::io::Result<()> {
         ttl: 64,
         proto: 12,
         src: Ipv4Addr::new(14, 22, 13, 24),
-        dest: Ipv4Addr::new(97, 8, 71, 61),
+        dst: Ipv4Addr::new(97, 8, 71, 61),
         content: vec![1, 2, 3, 3, 4, 5, 6, 6, 7, 2, 7, 6, 1, 5, 5, 4, 1, 3],
     };
 
@@ -153,7 +153,7 @@ fn v4_with_content() -> std::io::Result<()> {
         ttl: 255,
         proto: 254,
         src: Ipv4Addr::new(111, 2, 3, 4),
-        dest: Ipv4Addr::new(255, 255, 255, 255),
+        dst: Ipv4Addr::new(255, 255, 255, 255),
         content: vec![1; 100],
     };
 
@@ -172,7 +172,7 @@ fn v4_with_content() -> std::io::Result<()> {
         ttl: 12,
         proto: 43,
         src: Ipv4Addr::new(255, 255, 255, 255),
-        dest: Ipv4Addr::new(9, 8, 7, 6),
+        dst: Ipv4Addr::new(9, 8, 7, 6),
         content: vec![1; 500],
     };
 
@@ -188,7 +188,7 @@ fn v4_with_content() -> std::io::Result<()> {
         ttl: 0,
         proto: 0,
         src: Ipv4Addr::new(1, 2, 3, 4),
-        dest: Ipv4Addr::new(9, 8, 7, 6),
+        dst: Ipv4Addr::new(9, 8, 7, 6),
         content: vec![255; 100],
     };
 

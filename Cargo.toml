@@ -7,8 +7,9 @@ members = [
     "inet-types",
     "inet-dns",
     "inet-uds",
-    "bytepack",
-    "examples/*", "inet-dns-2",
+    "util/*",
+    "examples/*",
+    "inet-dns-2",
 ]
 
 [patch.crates-io]

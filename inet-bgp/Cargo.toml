@@ -15,7 +15,7 @@ tracing = "*"
 inet = { path = "../inet" }
 inet-pcap = { path = "../inet-pcap" }
 inet-rip = { path = "../inet-rip" }
-bytepack = { path = "../bytepack" }
+bytepack = { path = "../util/bytepack" }
 des = { version = "*", features = ["full"] }
 fxhash = "*"
 async-trait = "*"

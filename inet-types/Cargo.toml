@@ -8,5 +8,5 @@ default = []
 uds = []
 
 [dependencies]
-bytepack = { path = "../bytepack" }
+bytepack = { path = "../util/bytepack" }
 des = { version = "*", features = ["full"] }

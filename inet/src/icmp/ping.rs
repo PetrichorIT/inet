@@ -91,7 +91,7 @@ impl IOContext {
             ttl: 32,
             proto: PROTO_ICMPV4,
             src: Ipv4Addr::UNSPECIFIED,
-            dest: addr,
+            dst: addr,
             content: vec![0; 36],
         };
         let icmp = IcmpV4Packet::new(

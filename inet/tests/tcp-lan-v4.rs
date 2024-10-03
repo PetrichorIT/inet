@@ -83,7 +83,7 @@ impl Module for Node {
             msg.str(),
             current().name(),
             msg.content::<Ipv4Packet>().src,
-            msg.content::<Ipv4Packet>().dest
+            msg.content::<Ipv4Packet>().dst
         )
     }
 }

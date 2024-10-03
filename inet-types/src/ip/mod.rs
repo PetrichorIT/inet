@@ -65,7 +65,7 @@ impl IpPacketRef<'_, '_> {
     #[must_use]
     pub fn dest(&self) -> IpAddr {
         match self {
-            Self::V4(v4) => IpAddr::V4(v4.dest),
+            Self::V4(v4) => IpAddr::V4(v4.dst),
             Self::V6(v6) => IpAddr::V6(v6.dst),
         }
     }
@@ -81,8 +81,8 @@ impl IpPacketRef<'_, '_> {
                 fragment_offset: pkt.fragment_offset,
                 ttl: 20,
                 proto: pkt.proto,
-                src: pkt.dest,
-                dest: pkt.src,
+                src: pkt.dst,
+                dst: pkt.src,
                 content,
             }),
             IpPacketRef::V6(pkt) => IpPacket::V6(Ipv6Packet {
@@ -137,7 +137,7 @@ impl IpPacket {
     #[must_use]
     pub fn dst(&self) -> IpAddr {
         match self {
-            Self::V4(pkt) => pkt.dest.into(),
+            Self::V4(pkt) => pkt.dst.into(),
             Self::V6(pkt) => pkt.dst.into(),
         }
     }
@@ -165,7 +165,7 @@ impl IpPacket {
                 ttl: 128,
                 proto: 0,
                 src,
-                dest,
+                dst: dest,
                 content,
             }),
             (V6(src), V6(dest)) => IpPacket::V6(Ipv6Packet {

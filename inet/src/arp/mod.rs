@@ -228,7 +228,7 @@ impl IOContext {
 
         let (route, rifid, pkt): (IpGateway, IfId, IpPacket) = match pkt {
             IpPacket::V4(pkt) => {
-                let Some((route, rifid)) = self.ipv4_fwd.lookup(pkt.dest) else {
+                let Some((route, rifid)) = self.ipv4_fwd.lookup(pkt.dst) else {
                     return Err(Error::new(
                         ErrorKind::ConnectionRefused,
                         "no gateway network reachable",

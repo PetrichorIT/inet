@@ -65,7 +65,7 @@ impl Module for Node {
     fn handle_message(&mut self, msg: Message) {
         if msg.can_cast::<Ipv4Packet>() {
             let msg = msg.content::<Ipv4Packet>();
-            assert_eq!(msg.dest, self.ip);
+            assert_eq!(msg.dst, self.ip);
             tracing::info!("received message from {}", msg.src);
         }
 

@@ -6,7 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-bytepack = { path = "../bytepack" }
+bytepack = { path = "../util/bytepack" }
 des = "*"
 inet-types = { path = "../inet-types" }
 inet = { path = "../inet", features = ["libpcap"] }

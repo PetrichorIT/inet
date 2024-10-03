@@ -1662,7 +1662,7 @@ impl TransmissionControlBlock {
                 proto: PROTO_TCP,
 
                 src: *local.ip(),
-                dest: if let IpAddr::V4(addr) = self.peer_addr.ip() {
+                dst: if let IpAddr::V4(addr) = self.peer_addr.ip() {
                     addr
                 } else {
                     unreachable!()

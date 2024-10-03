@@ -82,8 +82,8 @@ impl IOContext {
                     fragment_offset: 0,
                     ttl: 32,
                     proto: PROTO_ICMPV4,
-                    src: ip_icmp.dest,
-                    dest: ip_icmp.src,
+                    src: ip_icmp.dst,
+                    dst: ip_icmp.src,
                     content: icmp.to_vec().expect("Failed to parse ICMP"),
                 };
                 self.send_ip_packet(SocketIfaceBinding::Bound(ifid), IpPacket::V4(ip), true)
@@ -110,7 +110,7 @@ impl IOContext {
             }
             IcmpV4Type::DestinationUnreachable { next_hop_mtu, code } => {
                 let ip = pkt.contained();
-                let unreachable = ip.dest;
+                let unreachable = ip.dst;
 
                 // (0) check for recent pings
                 if let Some((ident, ping)) =
@@ -157,7 +157,7 @@ impl IOContext {
             }
             IcmpV4Type::TimeExceeded { code } => {
                 let ip = pkt.contained();
-                let unreachable = ip.dest;
+                let unreachable = ip.dst;
 
                 if let Some(trace) = self.icmp.traceroutes.get_mut(&unreachable) {
                     let dur = SimTime::now() - trace.last_send;
