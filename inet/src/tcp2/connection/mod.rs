@@ -388,7 +388,7 @@ impl Connection {
         options
     }
 
-    fn send_rst(&mut self, nic: &mut TcpHandle) -> io::Result<()> {
+    fn _send_rst(&mut self, nic: &mut TcpHandle) -> io::Result<()> {
         // TODO: fix sequence numbers here
         // If the incoming segment has an ACK field, the reset takes its
         // sequence number from the ACK field of the segment, otherwise the

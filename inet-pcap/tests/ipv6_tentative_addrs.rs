@@ -11,19 +11,14 @@ use inet::{
     routing::RoutingPort,
     utils::{self, getaddrinfo},
 };
-use inet_pcap::{pcap, PcapCapturePoints, PcapConfig, PcapFilters};
+use inet_pcap::pcap;
 
 #[derive(Default)]
 struct HostAlice;
 
 impl Module for HostAlice {
     fn at_sim_start(&mut self, _stage: usize) {
-        pcap(PcapConfig {
-            filters: PcapFilters::default(),
-            capture: PcapCapturePoints::All,
-            output: File::create("out/ipv6_tentative_alice.pcap").unwrap(),
-        })
-        .unwrap();
+        pcap(File::create("out/ipv6_tentative_alice.pcap").unwrap()).unwrap();
 
         add_interface(Interface::empty("en0", NetworkDevice::eth())).unwrap();
     }
@@ -39,12 +34,7 @@ struct HostBob;
 
 impl Module for HostBob {
     fn at_sim_start(&mut self, _stage: usize) {
-        pcap(PcapConfig {
-            filters: PcapFilters::default(),
-            capture: PcapCapturePoints::All,
-            output: File::create("out/ipv6_tentative_bob.pcap").unwrap(),
-        })
-        .unwrap();
+        pcap(File::create("out/ipv6_tentative_bob.pcap").unwrap()).unwrap();
 
         add_interface(Interface::empty("en0", NetworkDevice::eth())).unwrap();
     }
@@ -60,12 +50,7 @@ struct Router;
 
 impl Module for Router {
     fn at_sim_start(&mut self, _stage: usize) {
-        pcap(PcapConfig {
-            filters: PcapFilters::default(),
-            capture: PcapCapturePoints::All,
-            output: File::create("out/ipv6_tentative_router.pcap").unwrap(),
-        })
-        .unwrap();
+        pcap(File::create("out/ipv6_tentative_router.pcap").unwrap()).unwrap();
 
         setup_router(
             "fe80::1111:2222".parse().unwrap(),

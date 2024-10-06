@@ -13,3 +13,4 @@ inet = { path = "../inet", features = ["libpcap"] }
 tracing = "*"
 tokio = "*"
 serial_test = "*"
+pcapng = { path = "../util/pcapng" }

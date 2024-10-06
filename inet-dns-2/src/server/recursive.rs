@@ -157,7 +157,7 @@ impl DnsRecursiveNameserver {
 
                 self.active_transactions.push(tx);
             }
-            Err(e) => {}
+            Err(_e) => {}
         }
     }
 

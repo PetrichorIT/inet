@@ -13,7 +13,7 @@ use inet::{
     socket::RawIpSocket,
     utils, UdpSocket,
 };
-use inet_pcap::{pcap, PcapCapturePoints, PcapConfig, PcapFilters};
+use inet_pcap::pcap;
 use inet_types::{
     icmpv6::{IcmpV6MulticastListenerMessage, IcmpV6Packet},
     ip::{IpPacket, Ipv6AddrExt, Ipv6Packet},
@@ -24,12 +24,7 @@ struct HostAlice;
 
 impl Module for HostAlice {
     fn at_sim_start(&mut self, _stage: usize) {
-        pcap(PcapConfig {
-            filters: PcapFilters::default(),
-            capture: PcapCapturePoints::All,
-            output: File::create("out/ipv6_icmp_stack_alice.pcap").unwrap(),
-        })
-        .unwrap();
+        pcap(File::create("out/ipv6_icmp_stack_alice.pcap").unwrap()).unwrap();
 
         add_interface(Interface::ethv6_autocfg(NetworkDevice::eth())).unwrap();
 
@@ -67,12 +62,7 @@ struct HostBob;
 
 impl Module for HostBob {
     fn at_sim_start(&mut self, _stage: usize) {
-        pcap(PcapConfig {
-            filters: PcapFilters::default(),
-            capture: PcapCapturePoints::All,
-            output: File::create("out/ipv6_icmp_stack_bob.pcap").unwrap(),
-        })
-        .unwrap();
+        pcap(File::create("out/ipv6_icmp_stack_bob.pcap").unwrap()).unwrap();
 
         add_interface(Interface::ethv6_autocfg(NetworkDevice::eth())).unwrap();
 
@@ -114,12 +104,7 @@ struct Router;
 
 impl Module for Router {
     fn at_sim_start(&mut self, _stage: usize) {
-        pcap(PcapConfig {
-            filters: PcapFilters::default(),
-            capture: PcapCapturePoints::All,
-            output: File::create("out/ipv6_icmp_stack_router.pcap").unwrap(),
-        })
-        .unwrap();
+        pcap(File::create("out/ipv6_icmp_stack_router.pcap").unwrap()).unwrap();
 
         setup_router(
             "fe80::1111:2222".parse().unwrap(),

@@ -1,10 +1,11 @@
 [package]
-name = "pcap"
+name = "pcapng"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
 bytepack = { path = "../bytepack" }
+bitflags = "*"
 
 [dev-dependencies]
 inet-types = { path = "../../inet-types" }

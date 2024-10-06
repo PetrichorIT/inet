@@ -9,7 +9,7 @@ use inet::{
     routing::{declare_ipv6_router, Ipv6RouterConfig, RoutingPort},
     utils::{self, getaddrinfo},
 };
-use inet_pcap::{pcap, PcapCapturePoints, PcapConfig, PcapFilters};
+use inet_pcap::pcap;
 use serial_test::serial;
 use std::fs::File;
 
@@ -18,12 +18,7 @@ struct Expect3Addrs;
 
 impl Module for Expect3Addrs {
     fn at_sim_start(&mut self, _stage: usize) {
-        pcap(PcapConfig {
-            filters: PcapFilters::default(),
-            capture: PcapCapturePoints::All,
-            output: File::create("out/ipv6_timeout_alice.pcap").unwrap(),
-        })
-        .unwrap();
+        pcap(File::create("out/ipv6_timeout_alice.pcap").unwrap()).unwrap();
 
         add_interface(Interface::empty("en0", NetworkDevice::eth())).unwrap();
     }
@@ -39,12 +34,7 @@ struct Expect3Then1Addrs;
 
 impl Module for Expect3Then1Addrs {
     fn at_sim_start(&mut self, _stage: usize) {
-        pcap(PcapConfig {
-            filters: PcapFilters::default(),
-            capture: PcapCapturePoints::All,
-            output: File::create("out/ipv6_timeout_bob.pcap").unwrap(),
-        })
-        .unwrap();
+        pcap(File::create("out/ipv6_timeout_bob.pcap").unwrap()).unwrap();
 
         add_interface(Interface::empty("en0", NetworkDevice::eth())).unwrap();
     }
@@ -60,12 +50,7 @@ struct RouterWithAdv;
 
 impl Module for RouterWithAdv {
     fn at_sim_start(&mut self, _stage: usize) {
-        pcap(PcapConfig {
-            filters: PcapFilters::default(),
-            capture: PcapCapturePoints::All,
-            output: File::create("out/ipv6_timeout_router.pcap").unwrap(),
-        })
-        .unwrap();
+        pcap(File::create("out/ipv6_timeout_router.pcap").unwrap()).unwrap();
 
         setup_router(
             "fe80::1111:2222".parse().unwrap(),
@@ -84,12 +69,7 @@ struct RouterWithoutAdv;
 
 impl Module for RouterWithoutAdv {
     fn at_sim_start(&mut self, _stage: usize) {
-        pcap(PcapConfig {
-            filters: PcapFilters::default(),
-            capture: PcapCapturePoints::All,
-            output: File::create("out/ipv6_timeout_router.pcap").unwrap(),
-        })
-        .unwrap();
+        pcap(File::create("out/ipv6_timeout_router.pcap").unwrap()).unwrap();
 
         for port in RoutingPort::collect() {
             let mut iface = Interface::empty(

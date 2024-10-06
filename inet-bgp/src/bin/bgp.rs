@@ -6,7 +6,7 @@ use inet::{
     routing::route,
 };
 use inet_bgp::{pkt::Nlri, types::AsNumber, BgpDeamon};
-use inet_pcap::{PcapCapturePoints, PcapConfig, PcapFilters};
+use inet_pcap::pcap;
 
 #[derive(Default)]
 struct BgpNode;
@@ -43,15 +43,11 @@ impl Module for BgpNode {
             .as_option()
             .map(|s| SimTime::from(s.parse::<f64>().unwrap()));
 
-        let pcap = par("pcap").unwrap().parse::<bool>().unwrap();
-        if pcap {
-            inet_pcap::pcap(PcapConfig {
-                filters: PcapFilters::default(),
-                capture: PcapCapturePoints::All,
-                output: BufWriter::new(
-                    File::create(format!("src/bin/pcap/{}.pcap", current().path())).unwrap(),
-                ),
-            })
+        let pcap_on = par("pcap").unwrap().parse::<bool>().unwrap();
+        if pcap_on {
+            pcap(BufWriter::new(
+                File::create(format!("src/bin/pcap/{}.pcap", current().path())).unwrap(),
+            ))
             .unwrap();
         }
 

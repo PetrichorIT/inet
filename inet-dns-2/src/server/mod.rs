@@ -36,7 +36,7 @@ pub struct UdpBased<T: DnsNameserver> {
 impl<T: DnsNameserver> UdpBased<T> {
     pub async fn launch(&mut self) -> io::Result<()> {
         let addr = SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), 43);
-        let mut socket = UdpSocket::bind(addr).await?;
+        let socket = UdpSocket::bind(addr).await?;
 
         tracing::info!("created socket {} for dns requrests", socket.local_addr()?);
 

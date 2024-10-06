@@ -1,6 +1,5 @@
 use super::{RawResourceRecord, ResourceRecord, ResourceRecordClass};
 use crate::core::{DnsString, ZonefileLineRecord};
-use bytepack::{FromBytestream, ToBytestream};
 use std::io;
 
 #[derive(Debug, Clone, PartialEq, Eq)]

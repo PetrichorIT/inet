@@ -110,7 +110,7 @@ impl IOContext {
         };
 
         let src = SocketAddr::new(packet.src(), udp.src_port);
-        let dest = SocketAddr::new(packet.dest(), udp.dest_port);
+        let dest = SocketAddr::new(packet.dest(), udp.dst_port);
 
         let mut iter = self.sockets.iter_mut().filter(|(_, sock)| {
             sock.typ == SocketType::SOCK_DGRAM && is_valid_dest_for(&sock.addr, &dest)
@@ -241,7 +241,7 @@ impl IOContext {
 
         let udp_packet = UdpPacket {
             src_port: mng.local_addr.port(),
-            dest_port: target.port(),
+            dst_port: target.port(),
             checksum: 0,
             content: Vec::from(buf),
         };

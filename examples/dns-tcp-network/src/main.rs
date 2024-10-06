@@ -10,7 +10,7 @@ use inet::{
     TcpListener, TcpStream,
 };
 use inet_dns::DNSNameserver;
-use inet_pcap::{pcap, PcapCapturePoints, PcapConfig, PcapFilters};
+use inet_pcap::pcap;
 use inet_rip::RipRoutingDeamon;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
@@ -164,12 +164,7 @@ fn node_like_setup() {
     .unwrap();
     set_default_gateway(gateway).unwrap();
 
-    pcap(PcapConfig {
-        capture: PcapCapturePoints::All,
-        filters: PcapFilters::default(),
-        output: std::fs::File::create(format!("results/{}.pcap", current().path())).unwrap(),
-    })
-    .unwrap();
+    pcap(File::create(format!("results/{}.pcap", current().path())).unwrap()).unwrap();
 }
 
 #[derive(Default)]
@@ -193,12 +188,7 @@ impl Module for Router {
             .unwrap();
 
         if par("pcap").unwrap().parse::<bool>().unwrap() {
-            pcap(PcapConfig {
-                filters: PcapFilters::default(),
-                capture: PcapCapturePoints::All,
-                output: File::create(format!("results/{}.pcap", current().path())).unwrap(),
-            })
-            .unwrap();
+            pcap(File::create(format!("results/{}.pcap", current().path())).unwrap()).unwrap();
         }
 
         spawn(async move {

@@ -132,5 +132,5 @@ pub(crate) fn capture(envelope: PcapEnvelope<'_>) {
 }
 
 pub(crate) fn close(id: ModuleId) {
-    LIBPCAP.with(|pcap| pcap.borrow_mut().close(id))
+    let _ = LIBPCAP.try_with(|pcap| pcap.borrow_mut().close(id));
 }

@@ -10,9 +10,10 @@
 //!
 
 use std::{
+    convert::Infallible,
     io::{self, Read, Write},
     mem,
-    net::Ipv4Addr,
+    net::{IpAddr, Ipv4Addr, Ipv6Addr},
 };
 
 #[cfg(test)]
@@ -86,6 +87,11 @@ pub struct Marker {
 }
 
 impl BytestreamWriter<'_> {
+    /// The length of the underlying buffer.
+    pub fn len(&self) -> usize {
+        self.buf.len()
+    }
+
     /// Reserves at least `additional` many bytes in the underlying buffer.
     pub fn reserve(&mut self, additional: usize) {
         self.buf.reserve(additional);
@@ -358,6 +364,30 @@ impl_number!(
     i128, read_i128, write_i128
 );
 
+impl ToBytestream for [u8] {
+    type Error = std::io::Error;
+    fn to_bytestream(&self, stream: &mut BytestreamWriter) -> Result<(), Self::Error> {
+        stream.write_all(self)
+    }
+}
+
+impl ToBytestream for Vec<u8> {
+    type Error = std::io::Error;
+    fn to_bytestream(&self, stream: &mut BytestreamWriter) -> Result<(), Self::Error> {
+        stream.write_all(self)
+    }
+}
+
+impl ToBytestream for IpAddr {
+    type Error = std::io::Error;
+    fn to_bytestream(&self, stream: &mut BytestreamWriter) -> Result<(), Self::Error> {
+        match self {
+            Self::V4(v4) => v4.to_bytestream(stream),
+            Self::V6(v6) => v6.to_bytestream(stream),
+        }
+    }
+}
+
 impl ToBytestream for Ipv4Addr {
     type Error = std::io::Error;
     fn to_bytestream(&self, bytestream: &mut BytestreamWriter) -> Result<(), Self::Error> {
@@ -369,5 +399,19 @@ impl FromBytestream for Ipv4Addr {
     type Error = std::io::Error;
     fn from_bytestream(bytestream: &mut BytestreamReader) -> Result<Self, Self::Error> {
         Ok(Ipv4Addr::from(bytestream.read_u32::<BE>()?))
+    }
+}
+
+impl ToBytestream for Ipv6Addr {
+    type Error = std::io::Error;
+    fn to_bytestream(&self, bytestream: &mut BytestreamWriter) -> Result<(), Self::Error> {
+        bytestream.write_all(&self.octets())
+    }
+}
+
+impl FromBytestream for Ipv6Addr {
+    type Error = std::io::Error;
+    fn from_bytestream(bytestream: &mut BytestreamReader) -> Result<Self, Self::Error> {
+        Ok(Ipv6Addr::from(bytestream.read_u128::<BE>()?))
     }
 }

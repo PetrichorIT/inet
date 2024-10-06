@@ -11,7 +11,7 @@ use inet::{
     interface::{add_interface, Interface, NetworkDevice},
     TcpListener,
 };
-use inet_pcap::{pcap, PcapCapturePoints, PcapConfig, PcapFilters};
+use inet_pcap::pcap;
 use std::{convert::Infallible, fs::File};
 use tokio::spawn;
 
@@ -26,12 +26,7 @@ impl Module for Client {
         ))
         .unwrap();
 
-        pcap(PcapConfig {
-            filters: PcapFilters::default(),
-            capture: PcapCapturePoints::All,
-            output: File::create("results/client.pcap").unwrap(),
-        })
-        .unwrap();
+        pcap(File::create("results/client.pcap").unwrap()).unwrap();
 
         spawn(async move {
             let client = client::Client::builder().build(connector::connector());

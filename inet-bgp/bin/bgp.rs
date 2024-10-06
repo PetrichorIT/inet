@@ -7,7 +7,7 @@ use inet::{
     utils::LinkLayerSwitch,
 };
 use inet_bgp::{pkt::Nlri, BgpDeamon, BgpDeamonManagmentEvent};
-use inet_pcap::{pcap, PcapCapturePoints, PcapConfig, PcapFilters};
+use inet_pcap::pcap;
 use inet_rip::RipRoutingDeamon;
 use tokio::spawn;
 
@@ -40,12 +40,7 @@ impl Module for BgpA {
         ))
         .unwrap();
 
-        pcap(PcapConfig {
-            filters: PcapFilters::default(),
-            capture: PcapCapturePoints::All,
-            output: File::create("bin/a.pcap").unwrap(),
-        })
-        .unwrap();
+        pcap(File::create("bin/a.pcap").unwrap()).unwrap();
 
         spawn(
             BgpDeamon::new(1000, Ipv4Addr::new(192, 168, 0, 101))
@@ -80,12 +75,7 @@ impl Module for B {
         ))
         .unwrap();
 
-        pcap(PcapConfig {
-            filters: PcapFilters::default(),
-            capture: PcapCapturePoints::All,
-            output: File::create("bin/b.pcap").unwrap(),
-        })
-        .unwrap();
+        pcap(File::create("bin/b.pcap").unwrap()).unwrap();
 
         spawn(
             BgpDeamon::new(2000, Ipv4Addr::new(192, 168, 0, 102))
@@ -117,12 +107,7 @@ impl Module for C {
         ))
         .unwrap();
 
-        pcap(PcapConfig {
-            filters: PcapFilters::default(),
-            capture: PcapCapturePoints::All,
-            output: File::create("bin/c.pcap").unwrap(),
-        })
-        .unwrap();
+        pcap(File::create("bin/c.pcap").unwrap()).unwrap();
 
         spawn(async {
             let tx = BgpDeamon::new(3000, Ipv4Addr::new(192, 168, 0, 103))
@@ -155,12 +140,7 @@ impl Module for D {
         ))
         .unwrap();
 
-        pcap(PcapConfig {
-            filters: PcapFilters::default(),
-            capture: PcapCapturePoints::All,
-            output: File::create("bin/d.pcap").unwrap(),
-        })
-        .unwrap();
+        pcap(File::create("bin/d.pcap").unwrap()).unwrap();
 
         spawn(
             BgpDeamon::new(3000, Ipv4Addr::new(192, 168, 0, 104))
@@ -214,12 +194,7 @@ impl Module for Router {
             .unwrap();
 
         if par("pcap").unwrap().parse::<bool>().unwrap() {
-            pcap(PcapConfig {
-                filters: PcapFilters::default(),
-                capture: PcapCapturePoints::All,
-                output: File::create(format!("bin/{}.pcap", current().path())).unwrap(),
-            })
-            .unwrap();
+            pcap(File::create(format!("bin/{}.pcap", current().path())).unwrap()).unwrap();
         }
 
         spawn(async move {

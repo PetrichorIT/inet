@@ -11,7 +11,7 @@ use inet::{
     routing::RoutingPort,
     utils, TcpListener, TcpStream,
 };
-use inet_pcap::{pcap, PcapCapturePoints, PcapConfig, PcapFilters};
+use inet_pcap::pcap;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 #[derive(Default)]
@@ -19,12 +19,7 @@ struct HostAlice;
 
 impl Module for HostAlice {
     fn at_sim_start(&mut self, _stage: usize) {
-        pcap(PcapConfig {
-            filters: PcapFilters::default(),
-            capture: PcapCapturePoints::All,
-            output: File::create("out/ipv6_tcp_stack_alice.pcap").unwrap(),
-        })
-        .unwrap();
+        pcap(File::create("out/ipv6_tcp_stack_alice.pcap").unwrap()).unwrap();
 
         add_interface(Interface::ethv6_autocfg(NetworkDevice::eth())).unwrap();
 
@@ -44,12 +39,7 @@ struct HostBob;
 
 impl Module for HostBob {
     fn at_sim_start(&mut self, _stage: usize) {
-        pcap(PcapConfig {
-            filters: PcapFilters::default(),
-            capture: PcapCapturePoints::All,
-            output: File::create("out/ipv6_tcp_stack_bob.pcap").unwrap(),
-        })
-        .unwrap();
+        pcap(File::create("out/ipv6_tcp_stack_bob.pcap").unwrap()).unwrap();
 
         add_interface(Interface::ethv6_autocfg(NetworkDevice::eth())).unwrap();
 
@@ -70,12 +60,7 @@ struct Router;
 
 impl Module for Router {
     fn at_sim_start(&mut self, _stage: usize) {
-        pcap(PcapConfig {
-            filters: PcapFilters::default(),
-            capture: PcapCapturePoints::All,
-            output: File::create("out/ipv6_tcp_stack_router.pcap").unwrap(),
-        })
-        .unwrap();
+        pcap(File::create("out/ipv6_tcp_stack_router.pcap").unwrap()).unwrap();
 
         setup_router(
             "fe80::1111:2222".parse().unwrap(),
