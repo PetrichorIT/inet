@@ -3,9 +3,14 @@ name = "pcapng"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+default = ["test-util"]
+test-util = ["dep:des"]
+
 [dependencies]
 bytepack = { path = "../bytepack" }
 bitflags = "*"
+des = { version = "*", optional = true }
 
 [dev-dependencies]
 inet-types = { path = "../../inet-types" }

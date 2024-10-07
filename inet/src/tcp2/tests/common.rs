@@ -63,6 +63,23 @@ impl TcpTestUnit {
         Ok(())
     }
 
+    pub fn pipe_and_observe(
+        &mut self,
+        peer: &mut Self,
+        n: usize,
+        mut f: impl FnMut(TcpPacket) -> io::Result<()>,
+    ) -> io::Result<()> {
+        for pkt in self
+            .handle
+            .tx_buffer
+            .drain(..n.min(self.handle.tx_buffer.len()))
+        {
+            f(pkt.clone())?;
+            peer.incoming(pkt)?;
+        }
+        Ok(())
+    }
+
     pub fn pipe_and_expect(
         &mut self,
         peer: &mut Self,

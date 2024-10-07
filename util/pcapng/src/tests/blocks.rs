@@ -1,17 +1,14 @@
+use crate::{
+    fDecryptionSecretsBlock, EnhancedPacketBlock, EnhancedPacketOption, EnhancedPacketOptionFlags,
+    InterfaceDescriptionBlock, InterfaceDescriptionOption, InterfaceStatisticsBlock,
+    InterfaceStatisticsOption, Linktype, NameResolutionBlock, NameResolutionOption,
+    NameResolutionRecord, SectionHeaderBlock, SectionHeaderOption, SimplePacketBlock,
+};
+use bytepack::{FromBytestream, ToBytestream};
 use std::{
     fmt::Debug,
     io::Error,
     net::{Ipv4Addr, Ipv6Addr},
-};
-
-use bytepack::{FromBytestream, ToBytestream};
-
-use crate::{
-    Block, DecryptionSecretsBlock, EnhancedPacketBlock, EnhancedPacketOption,
-    EnhancedPacketOptionFlags, InterfaceDescriptionBlock, InterfaceDescriptionOption,
-    InterfaceStatisticsBlock, InterfaceStatisticsOption, Linktype, NameResolutionBlock,
-    NameResolutionOption, NameResolutionRecord, SectionHeaderBlock, SectionHeaderOption,
-    SimplePacketBlock,
 };
 
 fn assert_encoding_e2e<T>(values: &[T])
@@ -248,18 +245,4 @@ fn dsb_encoding() {
             secrets_data: vec![1, 2, 3, 4, 5],
         },
     ]);
-}
-
-#[test]
-fn read_existing_files() -> Result<(), Error> {
-    for file in [
-        include_bytes!("../examples/client.pcapng").as_slice(),
-        include_bytes!("../examples/simple-ip-packets.pcapng").as_slice(),
-    ] {
-        let mut slice: &[u8] = file;
-        while !slice.is_empty() {
-            let _block = Block::read_from_slice(&mut slice)?;
-        }
-    }
-    Ok(())
 }

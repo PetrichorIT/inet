@@ -8,8 +8,10 @@ use inet_types::{
     arp::{ArpPacket, KIND_ARP},
     ip::{Ipv4Packet, Ipv6Packet, KIND_IPV4, KIND_IPV6},
 };
-use pcapng::{InterfaceDescriptionOption, Linktype, Session};
-use std::io::{BufWriter, Error, ErrorKind, Result, Write};
+use pcapng::{
+    BlockWriter, DefaultBlockWriter, InterfaceDescriptionOption, Linktype, TestBlockWriter,
+};
+use std::io::{BufReader, BufWriter, Error, ErrorKind, Read, Result, Seek, Write};
 
 #[cfg(test)]
 mod tests;
@@ -21,16 +23,28 @@ where
     W: Write + 'static,
 {
     set_pcap_deamon(LibPcapDeamon {
-        session: Session::new(BufWriter::new(out), current().path().as_str())?,
+        writer: DefaultBlockWriter::new(BufWriter::new(out), current().path().as_str())?,
     });
     Ok(())
 }
 
-struct LibPcapDeamon {
-    session: Session<IfId>,
+/// Applies a new configuration to PCAP, starting a new
+/// capturing epoch.
+pub fn pcap_for_test<R>(expected: R) -> Result<()>
+where
+    R: Read + Seek + 'static,
+{
+    set_pcap_deamon(LibPcapDeamon {
+        writer: TestBlockWriter::new(BufReader::new(expected), current().path().as_str())?,
+    });
+    Ok(())
 }
 
-impl LibPcapDeamon {
+struct LibPcapDeamon<W: BlockWriter<IfId>> {
+    writer: W,
+}
+
+impl<W: BlockWriter<IfId>> LibPcapDeamon<W> {
     fn write_iface(&mut self, ifid: IfId, iface: &Interface) -> Result<()> {
         let link_type = if iface.device.is_loopback() {
             Linktype::LOOP
@@ -38,7 +52,7 @@ impl LibPcapDeamon {
             Linktype::ETHERNET
         };
 
-        self.session.add_interface(
+        self.writer.add_interface(
             &ifid,
             link_type,
             4098,
@@ -59,7 +73,7 @@ impl LibPcapDeamon {
     }
 
     fn write_packet(&mut self, ifid: IfId, msg: &Message) -> Result<()> {
-        self.session.add_packet(
+        self.writer.add_packet(
             &ifid,
             SimTime::now().as_millis() as u64,
             msg.header().src,
@@ -98,20 +112,20 @@ impl LibPcapDeamon {
     }
 }
 
-impl PcapSubscriber for LibPcapDeamon {
+impl<W: BlockWriter<IfId>> PcapSubscriber for LibPcapDeamon<W> {
     fn enable_capture(&self, _point: PcapCapturePoint) -> bool {
         true
     }
 
     fn capture(&mut self, pkt: PcapEnvelope<'_>) -> Result<()> {
         let ifid = pkt.iface.name.id();
-        if !self.session.has_interface(&ifid) {
+        if !self.writer.has_interface(&ifid) {
             self.write_iface(ifid, pkt.iface)?;
         }
         self.write_packet(ifid, pkt.message)
     }
 
     fn close(&mut self) -> Result<()> {
-        self.session.flush()
+        self.writer.flush()
     }
 }

@@ -10,7 +10,6 @@
 //!
 
 use std::{
-    convert::Infallible,
     io::{self, Read, Write},
     mem,
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
@@ -87,7 +86,14 @@ pub struct Marker {
 }
 
 impl BytestreamWriter<'_> {
+    /// Indicates if the outputstream is empty.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     /// The length of the underlying buffer.
+    #[must_use]
     pub fn len(&self) -> usize {
         self.buf.len()
     }
@@ -229,7 +235,7 @@ pub struct BytestreamReader<'a> {
 }
 
 impl<'a> BytestreamReader<'a> {
-    #[inline(always)]
+    #[inline]
     fn remaining(&self) -> &'a [u8] {
         &self.slice[self.offset..]
     }
@@ -255,6 +261,10 @@ impl<'a> BytestreamReader<'a> {
     }
 
     /// Moves back into already read data
+    ///
+    /// # Panics
+    ///
+    /// Panics if the current position if smaller than n.
     pub fn bump_back(&mut self, n: usize) {
         assert!(self.offset >= n, "cannot bumb beyond the start point");
         self.offset -= n;
@@ -338,7 +348,7 @@ macro_rules! impl_number {
             impl FromBytestream for $t {
                 type Error = std::io::Error;
                 fn from_bytestream(bytestream: &mut BytestreamReader) -> Result<Self, Self::Error> {
-                    Ok(bytestream.$fn_read::<BE>()?)
+                    bytestream.$fn_read::<BE>()
                 }
             }
         )*
