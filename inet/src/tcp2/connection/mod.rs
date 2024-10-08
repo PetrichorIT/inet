@@ -4,6 +4,7 @@ use std::{
     cmp,
     collections::{BTreeMap, VecDeque},
     io::{self, Write},
+    task::Waker,
     time::Duration,
 };
 use tracing::instrument;
@@ -75,9 +76,13 @@ pub struct Connection {
     pub closed_at: Option<u32>,
     pub closed_with: Option<io::Error>,
 
+    pub rx_wakers: Vec<Waker>,
+    pub tx_wakers: Vec<Waker>,
+
     pub cfg: Config,
 }
 
+#[derive(Clone)]
 pub struct Timers {
     pub send_times: BTreeMap<u32, SimTime>,
     pub srtt: f64,
@@ -100,6 +105,14 @@ impl Connection {
 
     pub fn is_synchronized(&self) -> bool {
         self.state.is_synchronized()
+    }
+
+    fn wake_rx(&mut self) {
+        self.rx_wakers.drain(..).for_each(|w| w.wake());
+    }
+
+    fn wake_tx(&mut self) {
+        self.rx_wakers.drain(..).for_each(|w| w.wake());
     }
 
     fn availability(&self) -> Available {
@@ -216,6 +229,9 @@ impl Connection {
             incoming: VecDeque::with_capacity(cfg.recv_buffer_cap),
             unacked: VecDeque::with_capacity(cfg.send_buffer_cap),
 
+            rx_wakers: Vec::new(),
+            tx_wakers: Vec::new(),
+
             closed: false,
             closed_at: None,
             closed_with: None,
@@ -256,6 +272,9 @@ impl Connection {
 
             incoming: VecDeque::with_capacity(cfg.recv_buffer_cap),
             unacked: VecDeque::with_capacity(cfg.send_buffer_cap),
+
+            rx_wakers: Vec::new(),
+            tx_wakers: Vec::new(),
 
             closed: false,
             closed_at: None,
@@ -780,6 +799,9 @@ impl Connection {
                  */
                 self.recv.nxt = seqn.wrapping_add(pkt.content.len() as u32);
 
+                // Since pkt.content is non empty, new data was received, rx ready
+                self.wake_rx();
+
                 // Send an acknowledgment of the form: <SEQ=SND.NXT><ACK=RCV.NXT><CTL=ACK>
                 // TODO: maybe just tick to piggyback ack on data?
                 self.send_pkt(nic, Ack, self.send.nxt, 0)?;
@@ -802,6 +824,7 @@ impl Connection {
                     self.recv.nxt = self.recv.nxt.wrapping_add(1);
                     self.send_pkt(nic, Ack, self.send.nxt, 0)?;
                     self.state = State::TimeWait;
+                    self.wake_rx(); // Wake up to read the read(_) = 0, EOF
                 }
                 State::Estab => {
                     // peer is done with connection
@@ -809,6 +832,7 @@ impl Connection {
                     self.recv.nxt = self.recv.nxt.wrapping_add(1);
                     self.send_pkt(nic, Ack, self.send.nxt, 0)?;
                     self.state = State::CloseWait;
+                    self.wake_rx(); // Wake up to read the read(_) = 0, EOF
                 }
                 State::CloseWait => {
                     // resend FIN (ACK must be lost)

@@ -1,5 +1,5 @@
 use crate::{
-    fDecryptionSecretsBlock, EnhancedPacketBlock, EnhancedPacketOption, EnhancedPacketOptionFlags,
+    DecryptionSecretsBlock, EnhancedPacketBlock, EnhancedPacketOption, EnhancedPacketOptionFlags,
     InterfaceDescriptionBlock, InterfaceDescriptionOption, InterfaceStatisticsBlock,
     InterfaceStatisticsOption, Linktype, NameResolutionBlock, NameResolutionOption,
     NameResolutionRecord, SectionHeaderBlock, SectionHeaderOption, SimplePacketBlock,

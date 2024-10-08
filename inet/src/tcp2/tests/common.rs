@@ -5,18 +5,22 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use crate::tcp2::{Config, Connection, Quad, State, TcpHandle};
+use crate::{
+    interface::IfId,
+    tcp2::{Config, Connection, Quad, State, TcpHandle},
+};
 use des::time::SimTime;
-use types::tcp::TcpPacket;
+use pcapng::BlockWriter;
 use tracing::instrument;
+use types::tcp::TcpPacket;
 
 pub(super) const WIN_4KB: u16 = 4096;
 
 pub(super) struct TcpTestUnit {
-    handle: TcpHandle,
-    con: Option<Connection>,
-    pub cfg: Config,
-    clock: Arc<Mutex<SimTime>>,
+    pub(super) handle: TcpHandle,
+    pub(super) con: Option<Connection>,
+    pub(super) cfg: Config,
+    pub(super) clock: Arc<Mutex<SimTime>>,
 }
 
 impl TcpTestUnit {
@@ -58,23 +62,6 @@ impl TcpTestUnit {
 
     pub fn pipe(&mut self, peer: &mut Self, n: usize) -> io::Result<()> {
         for pkt in self.handle.tx_buffer.drain(..n) {
-            peer.incoming(pkt)?;
-        }
-        Ok(())
-    }
-
-    pub fn pipe_and_observe(
-        &mut self,
-        peer: &mut Self,
-        n: usize,
-        mut f: impl FnMut(TcpPacket) -> io::Result<()>,
-    ) -> io::Result<()> {
-        for pkt in self
-            .handle
-            .tx_buffer
-            .drain(..n.min(self.handle.tx_buffer.len()))
-        {
-            f(pkt.clone())?;
             peer.incoming(pkt)?;
         }
         Ok(())
