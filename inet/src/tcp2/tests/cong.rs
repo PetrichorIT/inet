@@ -68,14 +68,14 @@ fn congestion_avoidance_additive_increase() -> io::Result<()> {
 
     test.handshake(4000, WIN_4KB)?;
 
-    // Slow start
+    // Slow start (+1 per ACK)
     test.write_and_ack(&[1])?;
     test.write_and_ack(&[2])?;
     test.write_and_ack(&[3])?;
 
     assert_eq!(test.cong.wnd, 4 * 536);
 
-    // Congestion avoidance
+    // Congestion avoidance (count bytes ACKEed)
     test.write_and_ack(&vec![8; 536])?;
 
     assert_eq!(test.cong.avoid_counter, 3 * 536);
@@ -83,8 +83,8 @@ fn congestion_avoidance_additive_increase() -> io::Result<()> {
 
     // Saturation over 0, AI
     test.write_and_ack(&vec![8; 3 * 536])?;
-    assert_eq!(test.cong.avoid_counter, 5 * 536);
     assert_eq!(test.cong.wnd, 5 * 536);
+    assert_eq!(test.cong.avoid_counter, 5 * 536);
 
     Ok(())
 }

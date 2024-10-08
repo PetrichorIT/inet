@@ -1,20 +1,12 @@
-use crate::{
-    interface::IfId,
-    tcp2::{
-        tests::{TcpTestUnit, WIN_4KB},
-        Config,
-    },
+use crate::tcp2::{
+    tests::{TcpTestUnit, WIN_4KB},
+    Config,
 };
-use bytepack::ToBytestream;
-use pcapng::{BlockWriter, InterfaceDescriptionOption, Linktype, TestBlockWriter};
 use std::{
-    io::{self, Cursor},
+    io,
     net::{Ipv4Addr, SocketAddr},
 };
-use types::{
-    ip::{Ipv4Flags, Ipv4Packet, KIND_IPV4},
-    tcp::{TcpPacket, PROTO_TCP},
-};
+use types::tcp::TcpPacket;
 
 #[test]
 fn transmitt_data_after_handshake() -> io::Result<()> {

@@ -51,7 +51,7 @@ use super::IOContext;
 
 pub(crate) struct Tcp {
     pub config: TcpConfig,
-    pub binds: FxHashMap<Fd, ListenerHandle>,
+    pub listeners: FxHashMap<Fd, ListenerHandle>,
     pub streams: FxHashMap<Fd, TransmissionControlBlock>,
 }
 
@@ -138,7 +138,7 @@ impl Tcp {
     pub fn new() -> Tcp {
         Tcp {
             config: TcpConfig::default(),
-            binds: FxHashMap::with_hasher(FxBuildHasher::default()),
+            listeners: FxHashMap::with_hasher(FxBuildHasher::default()),
             streams: FxHashMap::with_hasher(FxBuildHasher::default()),
         }
     }
@@ -349,7 +349,7 @@ impl IOContext {
         ip_packet: IpPacketRef,
         tcp_pkt: TcpPacket,
     ) -> bool {
-        let Some(handle) = self.tcp.binds.get_mut(&fd) else {
+        let Some(handle) = self.tcp.listeners.get_mut(&fd) else {
             tracing::error!("found tcp socket, but missing tcp listener");
             return false;
         };
@@ -370,7 +370,7 @@ impl IOContext {
         let stream = match r {
             Ok(val) => val,
             Err(e) => {
-                let handle = self.tcp.binds.get_mut(&fd).unwrap();
+                let handle = self.tcp.listeners.get_mut(&fd).unwrap();
                 handle.tx.try_send(Err(e));
                 return true;
             }
@@ -379,13 +379,13 @@ impl IOContext {
         let rx = match self.tcp_await_established(stream.0.inner.fd) {
             Ok(val) => val,
             Err(e) => {
-                let handle = self.tcp.binds.get_mut(&fd).unwrap();
+                let handle = self.tcp.listeners.get_mut(&fd).unwrap();
                 handle.tx.try_send(Err(e));
                 return true;
             }
         };
 
-        let handle = self.tcp.binds.get_mut(&fd).unwrap();
+        let handle = self.tcp.listeners.get_mut(&fd).unwrap();
         handle.tx.try_send(Ok((stream.0, rx)));
 
         true

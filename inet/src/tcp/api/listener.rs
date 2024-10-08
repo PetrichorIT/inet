@@ -129,7 +129,7 @@ impl TcpListener {
     /// For more information about this option, see [set_ttl](TcpListener::set_ttl).
     pub fn ttl(&self) -> Result<u32> {
         IOContext::with_current(|ctx| {
-            if let Some(handle) = ctx.tcp.binds.get(&self.fd) {
+            if let Some(handle) = ctx.tcp.listeners.get(&self.fd) {
                 Ok(handle.config.ttl)
             } else {
                 Err(Error::new(ErrorKind::Other, "Lost Tcp"))
@@ -142,7 +142,7 @@ impl TcpListener {
     /// This value sets the time-to-live field that is used in every packet sent from this socket.
     pub fn set_ttl(&self, ttl: u32) -> Result<()> {
         IOContext::with_current(|ctx| {
-            if let Some(handle) = ctx.tcp.binds.get_mut(&self.fd) {
+            if let Some(handle) = ctx.tcp.listeners.get_mut(&self.fd) {
                 handle.config.ttl = ttl;
                 Ok(())
             } else {
@@ -194,7 +194,7 @@ impl IOContext {
 
             config: config.unwrap_or(self.tcp.config.listener(addr)),
         };
-        self.tcp.binds.insert(fd, buf);
+        self.tcp.listeners.insert(fd, buf);
 
         return Ok(TcpListener {
             fd,
@@ -204,7 +204,7 @@ impl IOContext {
     }
 
     pub(super) fn tcp_drop_listener(&mut self, fd: Fd) {
-        self.tcp.binds.remove(&fd);
+        self.tcp.listeners.remove(&fd);
         self.close_socket(fd);
     }
 }

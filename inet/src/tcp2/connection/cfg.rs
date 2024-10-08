@@ -1,5 +1,6 @@
 use std::{
     hash::{DefaultHasher, Hash, Hasher},
+    net::SocketAddr,
     sync::Arc,
     u32,
 };
@@ -21,6 +22,10 @@ pub struct Config {
 }
 
 impl Config {
+    pub fn for_listener(&self, _addr: SocketAddr) -> Config {
+        Config { ..self.clone() }
+    }
+
     pub fn iss_for(&self, quad: &Quad, secret: &[u8]) -> u32 {
         self.iss.unwrap_or_else(|| {
             // RFC 9293

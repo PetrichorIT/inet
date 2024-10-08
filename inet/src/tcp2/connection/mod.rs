@@ -3,14 +3,15 @@ use des::time::SimTime;
 use std::{
     cmp,
     collections::{BTreeMap, VecDeque},
-    io::{self, Write},
+    io::{self, Error, Write},
     task::Waker,
     time::Duration,
 };
+use tokio::sync::oneshot;
 use tracing::instrument;
 use types::tcp::{TcpFlags, TcpOption, TcpPacket};
 
-use super::{Quad, TcpHandle};
+use super::{sender::TcpSender, Quad};
 
 mod cong;
 
@@ -78,6 +79,7 @@ pub struct Connection {
 
     pub rx_wakers: Vec<Waker>,
     pub tx_wakers: Vec<Waker>,
+    pub on_ready: Option<oneshot::Sender<Result<(), Error>>>,
 
     pub cfg: Config,
 }
@@ -197,10 +199,16 @@ impl Connection {
         (self.cfg.recv_buffer_cap - self.incoming.len()) as u16
     }
 
-    pub fn connect(nic: &mut TcpHandle, cfg: Config) -> io::Result<Self> {
-        assert!(!nic.quad.dst.ip().is_unspecified());
+    pub fn make_on_ready(&mut self) -> oneshot::Receiver<Result<(), Error>> {
+        let (tx, rx) = oneshot::channel();
+        self.on_ready = Some(tx);
+        rx
+    }
 
-        let iss = cfg.iss_for(&nic.quad, &[]);
+    pub fn connect(nic: &mut TcpSender, quad: Quad, cfg: Config) -> io::Result<Self> {
+        assert!(!quad.dst.ip().is_unspecified());
+
+        let iss = cfg.iss_for(&quad, &[]);
         let wnd = 1024;
 
         // Default MSS according to RFC 9293
@@ -209,9 +217,7 @@ impl Connection {
         // default send MSS of 536 (576 - 40) for IPv4 or 1220 (1280 - 60) for IPv6 (MUST-15).
         //
         // We just set our own MSS and always send it elsewise
-        let mss = cfg
-            .mss
-            .unwrap_or(if nic.quad.is_ipv4() { 536 } else { 1220 });
+        let mss = cfg.mss.unwrap_or(if quad.is_ipv4() { 536 } else { 1220 });
 
         let mut c = Connection {
             timers: Timers {
@@ -221,7 +227,7 @@ impl Connection {
             state: State::SynSent,
             send: SendSequenceSpace::new(iss, wnd),
             recv: RecvSequenceSpace::empty(),
-            quad: nic.quad.clone(),
+            quad,
             syn_resend_counter: 0,
 
             cong: CongestionControl::disabled(mss),
@@ -231,6 +237,7 @@ impl Connection {
 
             rx_wakers: Vec::new(),
             tx_wakers: Vec::new(),
+            on_ready: None,
 
             closed: false,
             closed_at: None,
@@ -243,7 +250,12 @@ impl Connection {
         Ok(c)
     }
 
-    pub fn accept(nic: &mut TcpHandle, pkt: TcpPacket, cfg: Config) -> io::Result<Option<Self>> {
+    pub fn accept(
+        nic: &mut TcpSender,
+        quad: Quad,
+        pkt: TcpPacket,
+        cfg: Config,
+    ) -> io::Result<Option<Self>> {
         if !pkt.flags.syn {
             // only expected SYN packet
             return Ok(None);
@@ -251,11 +263,9 @@ impl Connection {
 
         // Default MSS according to RFC 9293
         // -> 3.7.1. Maximum Segment Size Option
-        let mss = cfg
-            .mss
-            .unwrap_or(if nic.quad.is_ipv4() { 536 } else { 1220 });
+        let mss = cfg.mss.unwrap_or(if quad.is_ipv4() { 536 } else { 1220 });
 
-        let iss = cfg.iss_for(&nic.quad, &[]);
+        let iss = cfg.iss_for(&quad, &[]);
         let wnd = 1024;
         let mut c = Connection {
             timers: Timers {
@@ -265,7 +275,7 @@ impl Connection {
             state: State::SynRcvd,
             send: SendSequenceSpace::new(iss, wnd),
             recv: RecvSequenceSpace::from_syn(&pkt),
-            quad: nic.quad.clone(),
+            quad,
             syn_resend_counter: 0,
 
             cong: CongestionControl::new(cfg.enable_congestion_control, mss),
@@ -275,6 +285,7 @@ impl Connection {
 
             rx_wakers: Vec::new(),
             tx_wakers: Vec::new(),
+            on_ready: None,
 
             closed: false,
             closed_at: None,
@@ -291,7 +302,7 @@ impl Connection {
     #[instrument(skip(self, nic))]
     fn send_pkt(
         &mut self,
-        nic: &mut TcpHandle,
+        nic: &mut TcpSender,
         kind: PacketKind,
         seq: u32,
         mut limit: usize,
@@ -380,7 +391,7 @@ impl Connection {
             packet.content.iter().take(20).collect::<Vec<_>>(),
             packet.content.len(),
         );
-        nic.tx_buffer.push(packet);
+        nic.send(packet);
         Ok(payload_bytes)
     }
 
@@ -407,7 +418,7 @@ impl Connection {
         options
     }
 
-    fn _send_rst(&mut self, nic: &mut TcpHandle) -> io::Result<()> {
+    fn _send_rst(&mut self, nic: &mut TcpSender) -> io::Result<()> {
         // TODO: fix sequence numbers here
         // If the incoming segment has an ACK field, the reset takes its
         // sequence number from the ACK field of the segment, otherwise the
@@ -440,7 +451,7 @@ impl Connection {
         (self.unacked.len() as u32).checked_sub(self.num_unacked_bytes())
     }
 
-    pub fn on_tick(&mut self, nic: &mut TcpHandle) -> io::Result<()> {
+    pub fn on_tick(&mut self, nic: &mut TcpSender) -> io::Result<()> {
         if let State::FinWait2 | State::TimeWait | State::Closed = self.state {
             // we have shutdown our write side and the other side acked, no need to (re)transmit anything
             return Ok(());
@@ -539,7 +550,7 @@ impl Connection {
         Ok(())
     }
 
-    pub fn on_packet<'a>(&mut self, nic: &mut TcpHandle, pkt: TcpPacket) -> io::Result<Available> {
+    pub fn on_packet<'a>(&mut self, nic: &mut TcpSender, pkt: TcpPacket) -> io::Result<Available> {
         // first, check that sequence numbers are valid (RFC 793 S3.3)
         let seqn = pkt.seq_no;
         let mut slen = pkt.content.len() as u32;
@@ -673,11 +684,10 @@ impl Connection {
                     self.recv.nxt = self.recv.irs + 1;
                     self.recv.wnd = pkt.window;
                     self.send_pkt(nic, Ack, self.send.nxt, 0)?;
-
-                    self.state = State::Estab;
                 }
 
                 self.state = State::Estab;
+                self.on_ready.take().map(|v| v.send(Ok(())));
             } else {
                 // TODO: <SEQ=SEG.ACK><CTL=RST>
             }

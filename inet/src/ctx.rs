@@ -7,6 +7,7 @@ use crate::{
     interface::{IfId, Interface, LinkLayerResult, ID_IPV6_TIMEOUT, KIND_LINK_UPDATE},
     ipv6::Ipv6,
     routing::{FwdV4, Ipv6RoutingTable},
+    tcp2::{self, PROTO_TCP2},
     Udp,
 };
 use des::{
@@ -53,6 +54,7 @@ pub(crate) struct IOContext {
     pub(super) sockets: Sockets,
     pub(super) udp: Udp,
     pub(super) tcp: Tcp,
+    pub(super) tcp2: tcp2::Tcp,
 
     #[cfg(feature = "uds")]
     pub(super) uds: Uds,
@@ -101,6 +103,7 @@ impl IOContext {
             sockets: Sockets::new(),
             udp: Udp::new(),
             tcp: Tcp::new(),
+            tcp2: tcp2::Tcp::new(),
 
             #[cfg(feature = "uds")]
             uds: Uds::new(),
@@ -242,6 +245,14 @@ impl IOContext {
                     }
                     PROTO_TCP => {
                         let consumed = self.capture_tcp_packet(IpPacketRef::V4(ip), ifid);
+                        if consumed {
+                            None
+                        } else {
+                            Some(msg)
+                        }
+                    }
+                    PROTO_TCP2 => {
+                        let consumed = self.tcp2_on_packet(IpPacketRef::V4(ip), ifid);
                         if consumed {
                             None
                         } else {
