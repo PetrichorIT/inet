@@ -11,7 +11,7 @@ use inet::{
     routing::{declare_ipv6_router, Ipv6RouterConfig},
     UdpSocket,
 };
-use inet_types::{
+use types::{
     iface::MacAddress,
     ip::{Ipv6AddrExt, Ipv6Prefix},
 };

@@ -1,6 +1,5 @@
 use cong::CongestionControl;
 use des::time::SimTime;
-use inet_types::tcp::{TcpFlags, TcpOption, TcpPacket};
 use std::{
     cmp,
     collections::{BTreeMap, VecDeque},
@@ -8,6 +7,7 @@ use std::{
     time::Duration,
 };
 use tracing::instrument;
+use types::tcp::{TcpFlags, TcpOption, TcpPacket};
 
 use super::{Quad, TcpHandle};
 

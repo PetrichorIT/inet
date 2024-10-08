@@ -9,7 +9,6 @@ edition = "2021"
 name = "bgp-legacy"
 path = "bin/bgp.rs"
 
-
 [dependencies]
 tracing = "*"
 inet = { path = "../inet" }

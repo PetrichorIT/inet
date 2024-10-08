@@ -1,4 +1,3 @@
-use inet_types::uds::SocketAddr;
 use std::{
     io::{Error, ErrorKind, Result},
     path::Path,
@@ -7,6 +6,7 @@ use tokio::sync::{
     mpsc::{channel, Receiver, Sender},
     oneshot, Mutex,
 };
+use types::uds::SocketAddr;
 
 use super::UnixStream;
 use crate::socket::Fd;

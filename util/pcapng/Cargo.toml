@@ -13,4 +13,4 @@ bitflags = "*"
 des = { version = "*", optional = true }
 
 [dev-dependencies]
-inet-types = { path = "../../inet-types" }
+types = { path = "../types" }

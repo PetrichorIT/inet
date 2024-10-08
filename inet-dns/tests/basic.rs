@@ -10,7 +10,7 @@ use inet::{
     routing::{add_routing_entry, set_default_gateway},
 };
 use inet_dns::{types::*, DNSNameserver};
-use inet_types::ip::{IpMask, Ipv4Packet};
+use types::ip::{IpMask, Ipv4Packet};
 
 /*
 Concept

@@ -5,7 +5,7 @@ use crate::{
     socket::*,
     tcp::{
         interest::{TcpInterest, TcpInterestGuard},
-        types::{TcpEvent, TcpState, TcpSyscall},
+        util::{TcpEvent, TcpState, TcpSyscall},
         TcpSocketConfig, TransmissionControlBlock,
     },
     IOContext,
@@ -271,8 +271,8 @@ impl IOContext {
             let Some(socket) = self.sockets.get(&fd) else {
                 return Err(Error::new(
                     ErrorKind::InvalidInput,
-                    "invalid fd - socket dropped"
-                ))
+                    "invalid fd - socket dropped",
+                ));
             };
 
             let socket_bound = socket.interface != SocketIfaceBinding::NotBound;
@@ -326,7 +326,10 @@ impl IOContext {
 
     pub fn tcp_await_established(&mut self, fd: Fd) -> Result<oneshot::Receiver<Result<()>>> {
         let Some(tcp) = self.tcp.streams.get_mut(&fd) else {
-            return Err(Error::new(ErrorKind::InvalidInput, "invalid fd - socket dropped"))
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                "invalid fd - socket dropped",
+            ));
         };
         let span = tcp.span.clone();
         let _g = span.entered();
@@ -345,7 +348,10 @@ impl IOContext {
 
     pub(super) fn tcp_connected(&mut self, fd: Fd) -> Result<bool> {
         let Some(tcp) = self.tcp.streams.get(&fd) else {
-            return Err(Error::new(ErrorKind::InvalidInput, "invalid fd - socket dropped"))
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                "invalid fd - socket dropped",
+            ));
         };
 
         if tcp.syn_resend_counter >= 3 {

@@ -1,5 +1,5 @@
 [package]
-name = "inet-types"
+name = "types"
 version = "0.1.0"
 edition = "2021"
 
@@ -8,5 +8,5 @@ default = []
 uds = []
 
 [dependencies]
-bytepack = { path = "../util/bytepack" }
+bytepack = { path = "../bytepack" }
 des = { version = "*", features = ["full"] }

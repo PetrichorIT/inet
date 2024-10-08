@@ -13,7 +13,7 @@ use des::{
     net::{module::current, par, ParError},
     time::SimTime,
 };
-use inet_types::ip::Ipv6AddrExt;
+use types::ip::Ipv6AddrExt;
 use std::{
     io::{self, Error, ErrorKind},
     net::{IpAddr, Ipv4Addr, Ipv6Addr},

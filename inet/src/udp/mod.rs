@@ -3,14 +3,14 @@ use super::{socket::*, IOContext};
 use crate::interface::IfId;
 use bytepack::{FromBytestream, ToBytestream};
 use fxhash::{FxBuildHasher, FxHashMap};
-use inet_types::{
-    ip::{IpPacket, IpPacketRef, Ipv4Flags, Ipv4Packet, Ipv6Packet},
-    udp::{UdpPacket, PROTO_UDP},
-};
 use std::{
     collections::VecDeque,
     io::{Error, ErrorKind, Result},
     net::{IpAddr, SocketAddr},
+};
+use types::{
+    ip::{IpPacket, IpPacketRef, Ipv4Flags, Ipv4Packet, Ipv6Packet},
+    udp::{UdpPacket, PROTO_UDP},
 };
 
 mod api;

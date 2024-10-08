@@ -4,7 +4,7 @@ use std::{
     net::{Ipv4Addr, Ipv6Addr, SocketAddrV4, SocketAddrV6},
 };
 
-use inet_types::ip::IpPacket;
+use types::ip::IpPacket;
 use tokio::sync::mpsc::{self, Receiver, Sender};
 
 use crate::IOContext;

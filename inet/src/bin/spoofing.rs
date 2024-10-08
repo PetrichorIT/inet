@@ -5,11 +5,11 @@ use inet::{
     socket::RawIpSocket,
     TcpListener,
 };
-use inet_types::{
+use tokio::spawn;
+use types::{
     ip::{IpPacket, Ipv4Flags, Ipv4Packet},
     tcp::{TcpFlags, TcpPacket, PROTO_TCP},
 };
-use tokio::spawn;
 
 #[derive(Default)]
 struct Spoofer {}

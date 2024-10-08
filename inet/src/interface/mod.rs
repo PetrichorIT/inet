@@ -11,9 +11,9 @@ use std::{
 use crate::socket::Fd;
 use crate::IOContext;
 use des::prelude::*;
-use inet_types::arp::KIND_ARP;
-use inet_types::iface::MacAddress;
-use inet_types::{arp::ArpPacket, ip::Ipv6AddrExt};
+use types::arp::KIND_ARP;
+use types::iface::MacAddress;
+use types::{arp::ArpPacket, ip::Ipv6AddrExt};
 
 mod api;
 pub use self::api::*;
@@ -21,8 +21,8 @@ pub use self::api::*;
 mod device;
 pub use self::device::*;
 
-mod types;
-pub use self::types::*;
+mod util;
+pub use self::util::*;
 
 mod flags;
 pub use flags::*;

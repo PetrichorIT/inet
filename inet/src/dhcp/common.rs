@@ -2,7 +2,7 @@ use std::{io::Cursor, net::Ipv4Addr};
 
 use bytestream::{ByteOrder::BigEndian, StreamReader, StreamWriter};
 use des::{prelude::MessageBody, runtime::random};
-use inet_types::{iface::MacAddress, FromBytestream, IntoBytestream};
+use types::{iface::MacAddress, FromBytestream, IntoBytestream};
 
 use crate::utils::get_mac_address;
 

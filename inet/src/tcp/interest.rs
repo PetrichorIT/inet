@@ -4,7 +4,7 @@ use std::{
     task::{Poll, Waker},
 };
 
-use super::types::TcpState;
+use super::util::TcpState;
 use crate::io::{Interest, Ready};
 use crate::{socket::Fd, IOContext};
 

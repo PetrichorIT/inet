@@ -1003,11 +1003,11 @@ impl FromBytestream for EnhancedPacketBlock {
                 upper[0], upper[1], upper[2], upper[3], lower[0], lower[1], lower[2], lower[3],
             ]);
 
-            let cap_len = body.read_u32::<LE>()?;
+            let cap_len = body.read_u32::<LE>()? as usize;
             let org_len = body.read_u32::<LE>()?;
 
-            let mut data_stream = body.extract(cap_len as usize)?;
-            let mut data = Vec::new();
+            let mut data_stream = body.extract(cap_len)?;
+            let mut data = Vec::with_capacity(cap_len);
             data_stream.read_to_end(&mut data)?;
 
             let pad = (4 - (cap_len % 4)) % 4;

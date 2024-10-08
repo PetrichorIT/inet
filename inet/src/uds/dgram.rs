@@ -1,4 +1,4 @@
-use inet_types::uds::SocketAddr;
+use types::uds::SocketAddr;
 use std::{
     io::{Error, ErrorKind, Result},
     path::Path,

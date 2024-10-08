@@ -8,8 +8,8 @@ use inet::{
     interface::{add_interface, Interface, NetworkDevice},
     TcpListener, TcpStream,
 };
-use inet_types::ip::Ipv4Packet;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use types::ip::Ipv4Packet;
 
 #[derive(Default)]
 struct Node {

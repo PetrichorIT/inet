@@ -1,6 +1,6 @@
 use des::time::SimTime;
 use fxhash::{FxBuildHasher, FxHashMap};
-use inet_types::{
+use types::{
     icmpv6::{IcmpV6NDPOption, IcmpV6NeighborAdvertisment, IcmpV6PrefixInformation},
     iface::MacAddress,
     ip::{Ipv6Packet, Ipv6Prefix},

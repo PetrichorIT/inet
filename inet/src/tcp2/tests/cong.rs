@@ -1,4 +1,4 @@
-use inet_types::tcp::TcpPacket;
+use types::tcp::TcpPacket;
 
 use super::{TcpTestUnit, WIN_4KB};
 use std::{

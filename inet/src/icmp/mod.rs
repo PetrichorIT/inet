@@ -16,7 +16,7 @@ use std::{
 
 use bytepack::{FromBytestream, ToBytestream};
 use des::time::SimTime;
-use inet_types::{
+use types::{
     icmpv4::{
         IcmpV4DestinationUnreachableCode, IcmpV4Packet, IcmpV4TimeExceededCode, IcmpV4Type,
         PROTO_ICMPV4,

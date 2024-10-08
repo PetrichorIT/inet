@@ -13,7 +13,7 @@ use inet::{
     ipv6::router,
     utils, UdpSocket,
 };
-use inet_types::ip::{Ipv6AddrExt, Ipv6Prefix};
+use types::ip::{Ipv6AddrExt, Ipv6Prefix};
 
 #[derive(Default)]
 struct Host;

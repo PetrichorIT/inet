@@ -1,5 +1,5 @@
 use des::time::SimTime;
-use inet_types::{
+use types::{
     icmpv6::{NDP_MAX_DELAY_BETWEEN_RAS, NDP_MIN_DELAY_BETWEEN_RAS},
     ip::{Ipv6LongestPrefixTable, Ipv6Prefix},
 };

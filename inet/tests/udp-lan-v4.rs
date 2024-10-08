@@ -9,7 +9,7 @@ use inet::{
     interface::{add_interface, Interface, NetworkDevice},
     UdpSocket,
 };
-use inet_types::ip::Ipv4Packet;
+use types::ip::Ipv4Packet;
 
 #[derive(Default)]
 struct Node {

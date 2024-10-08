@@ -3,7 +3,7 @@ use std::{
     net::{IpAddr, SocketAddr},
 };
 
-use inet_types::ip::IpPacketRef;
+use types::ip::IpPacketRef;
 
 use super::TcpPacket;
 

@@ -12,7 +12,7 @@ use inet::{
     interface::{add_interface, Interface, NetworkDevice},
     UdpSocket,
 };
-use inet_types::ip::Ipv6Packet;
+use types::ip::Ipv6Packet;
 
 #[derive(Default)]
 struct Node {

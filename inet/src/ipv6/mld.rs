@@ -5,7 +5,7 @@ use std::{io, net::Ipv6Addr, time::Duration};
 use bytepack::ToBytestream;
 use des::time::SimTime;
 use fxhash::{FxBuildHasher, FxHashMap};
-use inet_types::{
+use types::{
     icmpv6::{IcmpV6MulticastListenerMessage, IcmpV6Packet, PROTO_ICMPV6},
     ip::{Ipv6AddrExt, Ipv6AddrScope, Ipv6Packet},
 };

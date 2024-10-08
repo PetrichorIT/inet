@@ -7,7 +7,7 @@ use std::{
 
 use des::prelude::*;
 use fxhash::{FxBuildHasher, FxHashMap};
-use inet_types::iface::MacAddress;
+use types::iface::MacAddress;
 
 use crate::{dhcp::MESSAGE_KIND_DHCP, utils::get_ip};
 

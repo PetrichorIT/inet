@@ -15,7 +15,7 @@ use std::{
 };
 
 use crate::{ctx::IOContext, interface::IfId};
-use inet_types::ip::{Ipv6AddrExt, Ipv6LongestPrefixTable, Ipv6Prefix};
+use types::ip::{Ipv6AddrExt, Ipv6LongestPrefixTable, Ipv6Prefix};
 
 mod api;
 pub use api::*;

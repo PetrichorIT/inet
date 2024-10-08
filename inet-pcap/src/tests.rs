@@ -4,8 +4,8 @@
 //     interface::{Interface, NetworkDevice},
 //     libpcap::{PcapCapturePoint, PcapEnvelope, PcapSubscriber},
 // };
-// use inet_types::{icmpv6::*, ip::IpPacket};
-// use inet_types::{iface::MacAddress, ip::Ipv6Packet};
+// use types::{icmpv6::*, ip::IpPacket};
+// use types::{iface::MacAddress, ip::Ipv6Packet};
 // use std::{
 //     fs::File,
 //     io::{self, BufWriter},

@@ -4,7 +4,7 @@ use des::{
     net::message::{schedule_at, Message},
     time::SimTime,
 };
-use inet_types::ip::Ipv6Prefix;
+use types::ip::Ipv6Prefix;
 
 use crate::interface::{IfId, ID_IPV6_TIMEOUT, KIND_IO_TIMEOUT};
 

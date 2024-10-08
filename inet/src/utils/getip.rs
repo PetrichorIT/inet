@@ -1,6 +1,6 @@
 use std::{io::Result, net::IpAddr};
 
-use inet_types::iface::MacAddress;
+use types::iface::MacAddress;
 
 use crate::{interface::InterfaceAddr, IOContext};
 

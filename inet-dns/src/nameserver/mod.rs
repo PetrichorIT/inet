@@ -13,13 +13,13 @@ use des::{
     time::SimTime,
 };
 use inet::{dns::set_dns_resolver, UdpSocket};
-use inet_types::ip::IpMask;
 use std::{
     collections::VecDeque,
     net::{IpAddr, Ipv4Addr, SocketAddr},
     str::FromStr,
     time::Duration,
 };
+use types::ip::IpMask;
 
 mod iterative;
 mod recursive;

@@ -4,7 +4,7 @@ use inet::{
     interface::{IfId, Interface},
     libpcap::{set_pcap_deamon, PcapCapturePoint, PcapEnvelope, PcapSubscriber},
 };
-use inet_types::{
+use types::{
     arp::{ArpPacket, KIND_ARP},
     ip::{Ipv4Packet, Ipv6Packet, KIND_IPV4, KIND_IPV6},
 };

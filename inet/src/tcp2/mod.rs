@@ -1,6 +1,6 @@
 use std::net::SocketAddr;
 
-use inet_types::tcp::TcpPacket;
+use types::tcp::TcpPacket;
 
 mod connection;
 pub use connection::{Config, Connection, State};

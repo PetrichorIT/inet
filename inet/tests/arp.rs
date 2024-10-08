@@ -4,9 +4,9 @@ use inet::{
     interface::{add_interface, Interface, NetworkDevice},
     socket::RawIpSocket,
 };
-use inet_types::ip::{IpPacket, Ipv4Packet, Ipv6Packet};
 use serial_test::serial;
 use tokio::spawn;
+use types::ip::{IpPacket, Ipv4Packet, Ipv6Packet};
 
 type Switch = inet::utils::LinkLayerSwitch;
 

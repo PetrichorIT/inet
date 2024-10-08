@@ -1,10 +1,12 @@
+[profile.release]
+debug = true
+
 [workspace]
 members = [
     "inet",
     "inet-bgp",
     "inet-rip",
     "inet-pcap",
-    "inet-types",
     "inet-dns",
     "inet-uds",
     "util/*",

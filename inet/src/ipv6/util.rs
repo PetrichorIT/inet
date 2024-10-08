@@ -1,6 +1,6 @@
 use std::{io, net::Ipv6Addr, time::Duration};
 
-use inet_types::ip::Ipv6Prefix;
+use types::ip::Ipv6Prefix;
 
 use crate::{
     interface::{add_interface, Interface, InterfaceAddr, NetworkDevice},

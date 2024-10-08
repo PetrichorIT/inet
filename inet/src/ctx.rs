@@ -14,23 +14,23 @@ use des::{
     prelude::{Message, ModuleId},
 };
 use fxhash::{FxBuildHasher, FxHashMap};
-use inet_types::{
-    icmpv4::PROTO_ICMPV4,
-    icmpv6::PROTO_ICMPV6,
-    ip::{IpPacket, IpPacketRef, Ipv4Packet, Ipv6Packet, KIND_IPV4, KIND_IPV6},
-};
 use std::{
     cell::RefCell,
     io::{Error, ErrorKind, Result},
     net::{IpAddr, Ipv4Addr},
     panic::UnwindSafe,
 };
+use types::{
+    icmpv4::PROTO_ICMPV4,
+    icmpv6::PROTO_ICMPV6,
+    ip::{IpPacket, IpPacketRef, Ipv4Packet, Ipv6Packet, KIND_IPV4, KIND_IPV6},
+};
 
 #[cfg(feature = "uds")]
 use crate::uds::Uds;
 
 use super::{socket::*, tcp::Tcp};
-use inet_types::{tcp::PROTO_TCP, udp::PROTO_UDP};
+use types::{tcp::PROTO_TCP, udp::PROTO_UDP};
 
 thread_local! {
     static CURRENT: RefCell<Option<Box<IOContext>>> = const { RefCell::new(None) };

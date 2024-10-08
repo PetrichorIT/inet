@@ -1,7 +1,7 @@
 use std::{fmt::Display, io::Result, net::IpAddr};
 
 use des::time::SimTime;
-use inet_types::iface::MacAddress;
+use types::iface::MacAddress;
 
 use super::ArpConfig;
 use crate::{interface::InterfaceName, socket::SocketIfaceBinding, IOContext};

@@ -3,7 +3,7 @@ use fxhash::{FxBuildHasher, FxHashMap};
 use std::{hash::Hash, net::IpAddr, time::Duration};
 
 use crate::interface::IfId;
-use inet_types::{iface::MacAddress, ip::IpPacket};
+use types::{iface::MacAddress, ip::IpPacket};
 
 pub(crate) struct ArpTable {
     pub(super) map: FxHashMap<IpAddr, ArpEntryInternal>,
@@ -84,7 +84,7 @@ impl ArpTable {
 
     pub fn lookup(&self, ip: &IpAddr) -> Option<&ArpEntryInternal> {
         let Some(value) = self.map.get(ip) else {
-            return None
+            return None;
         };
         if value.expires <= SimTime::now() {
             None

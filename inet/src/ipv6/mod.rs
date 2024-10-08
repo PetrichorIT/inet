@@ -3,7 +3,7 @@ use std::{io, net::Ipv6Addr, time::Duration};
 use bitflags::bitflags;
 use des::net::message::{schedule_in, Message};
 use fxhash::{FxBuildHasher, FxHashMap};
-use inet_types::ip::{Ipv6AddrExt, Ipv6Packet, Ipv6Prefix, KIND_IPV6};
+use types::ip::{Ipv6AddrExt, Ipv6Packet, Ipv6Prefix, KIND_IPV6};
 use tracing::Level;
 
 use crate::{ctx::IOContext, interface::IfId};

@@ -13,8 +13,8 @@ use inet::{
     interface::{add_interface, interface_status, Interface, NetworkDevice},
     ipv6::{api::set_node_cfg, cfg::HostConfiguration},
 };
-use inet_types::{icmpv6::IcmpV6Packet, iface::MacAddress, ip::Ipv6Packet};
 use serial_test::serial;
+use types::{icmpv6::IcmpV6Packet, iface::MacAddress, ip::Ipv6Packet};
 
 #[derive(Default)]
 struct WithChecks;

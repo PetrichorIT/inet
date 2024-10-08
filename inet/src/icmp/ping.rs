@@ -1,7 +1,7 @@
 use bytepack::ToBytestream;
 use des::prelude::*;
-use inet_types::icmpv4::{IcmpV4Packet, IcmpV4Type, PROTO_ICMPV4};
-use inet_types::ip::{IpPacket, Ipv4Flags, Ipv4Packet};
+use types::icmpv4::{IcmpV4Packet, IcmpV4Type, PROTO_ICMPV4};
+use types::ip::{IpPacket, Ipv4Flags, Ipv4Packet};
 use std::io::{Error, ErrorKind, Result};
 use std::net::Ipv4Addr;
 use std::time::Duration;

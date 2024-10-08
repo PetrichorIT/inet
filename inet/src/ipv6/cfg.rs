@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use inet_types::ip::Ipv6Prefix;
+use types::ip::Ipv6Prefix;
 
 #[derive(Debug, Clone)]
 pub struct HostConfiguration {

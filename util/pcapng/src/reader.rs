@@ -2,11 +2,12 @@ use crate::Block;
 use bytepack::FromBytestream;
 use std::{
     fmt::Debug,
-    io::{BufReader, Read, Result, Seek},
+    io::{BufReader, ErrorKind, Read, Result, Seek},
 };
 
 /// A lazy reader, that reads PCAPNG blocks from a input device.
 pub struct BlockReader {
+    buffer: Vec<u8>,
     expected: Box<dyn ReadAndSeek>,
 }
 
@@ -18,6 +19,7 @@ impl BlockReader {
         R: Read + Seek + 'static,
     {
         Self {
+            buffer: Vec::with_capacity(4096),
             expected: Box::new(BufReader::new(input)),
         }
     }
@@ -35,21 +37,21 @@ macro_rules! try_err {
 impl Iterator for BlockReader {
     type Item = Result<Block>;
     fn next(&mut self) -> Option<Self::Item> {
-        let mut buf = vec![0; 8];
-        let n = try_err!(self.expected.read(&mut buf));
-        match n {
-            8 => {
-                let block_len = u32::from_slice(&buf[4..])
-                    .expect("4 bytes as confirmed by if clause")
-                    .to_be();
-                buf.resize(block_len as usize, 0);
-                try_err!(self.expected.read_exact(&mut buf[8..]));
+        self.buffer.clear();
+        self.buffer.extend_from_slice(&[0; 8]);
+        match self.expected.read_exact(&mut self.buffer) {
+            Ok(()) => {}
+            Err(e) if e.kind() == ErrorKind::UnexpectedEof => return None,
+            Err(e) => return Some(Err(e)),
+        };
 
-                Some(Block::read_from_vec(&mut buf))
-            }
-            0 => None,
-            _ => todo!(),
-        }
+        let block_len = u32::from_slice(&self.buffer[4..])
+            .expect("4 bytes as confirmed by if clause")
+            .to_be();
+        self.buffer.resize(block_len as usize, 0);
+        try_err!(self.expected.read_exact(&mut self.buffer[8..]));
+
+        Some(Block::read_from_vec(&mut self.buffer))
     }
 }
 

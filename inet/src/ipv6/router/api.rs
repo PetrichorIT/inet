@@ -1,7 +1,7 @@
 use std::{io, net::Ipv6Addr, time::Duration};
 
 use des::time::SimTime;
-use inet_types::ip::{Ipv6AddrExt, Ipv6Prefix};
+use types::ip::{Ipv6AddrExt, Ipv6Prefix};
 
 use crate::{
     ctx::IOContext,

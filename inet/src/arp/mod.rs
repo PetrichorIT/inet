@@ -20,9 +20,9 @@ use crate::socket::SocketIfaceBinding;
 use crate::{interface::*, IOContext};
 use des::prelude::{schedule_in, Message};
 use des::time::SimTime;
-use inet_types::arp::{ARPOperation, ArpPacket, KIND_ARP};
-use inet_types::iface::MacAddress;
-use inet_types::ip::{IpPacket, Ipv6Packet, KIND_IPV4, KIND_IPV6};
+use types::arp::{ARPOperation, ArpPacket, KIND_ARP};
+use types::iface::MacAddress;
+use types::ip::{IpPacket, Ipv6Packet, KIND_IPV4, KIND_IPV6};
 
 mod table;
 pub use self::table::*;

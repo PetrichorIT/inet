@@ -6,7 +6,7 @@ use crate::{
 };
 use bytepack::{FromBytestream, ToBytestream};
 use des::{runtime::sample, time::SimTime};
-use inet_types::{
+use types::{
     icmpv6::{
         IcmpV6DestinationUnreachable, IcmpV6DestinationUnreachableCode, IcmpV6Echo,
         IcmpV6MtuOption, IcmpV6NDPOption, IcmpV6NeighborAdvertisment, IcmpV6NeighborSolicitation,

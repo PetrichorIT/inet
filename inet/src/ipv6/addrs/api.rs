@@ -1,6 +1,6 @@
 use std::io;
 
-use inet_types::ip::Ipv6Prefix;
+use types::ip::Ipv6Prefix;
 
 use crate::IOContext;
 

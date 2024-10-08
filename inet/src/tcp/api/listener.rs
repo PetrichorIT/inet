@@ -7,18 +7,18 @@ use std::task::{Context, Poll};
 
 use crate::socket::*;
 use crate::tcp::interest::{TcpInterest, TcpInterestGuard};
-use crate::tcp::types::{TcpEvent, TcpSyscall};
+use crate::tcp::util::{TcpEvent, TcpSyscall};
 use crate::tcp::{TcpPacket, TcpSocketConfig, TransmissionControlBlock};
 use crate::{
     dns::{lookup_host, ToSocketAddrs},
     IOContext,
 };
 
-use inet_types::ip::IpPacketRef;
 use tokio::sync::{
     mpsc::{self, Receiver, Sender},
     oneshot, Mutex,
 };
+use types::ip::IpPacketRef;
 
 use super::{TcpStream, TcpStreamInner};
 
@@ -94,7 +94,7 @@ impl TcpListener {
         loop {
             let mut rx = self.rx.lock().await;
             let Some(con) = rx.recv().await else {
-                return Err(Error::new(ErrorKind::BrokenPipe, "listener closed"))
+                return Err(Error::new(ErrorKind::BrokenPipe, "listener closed"));
             };
 
             self.backlog.fetch_sub(1, Ordering::SeqCst);

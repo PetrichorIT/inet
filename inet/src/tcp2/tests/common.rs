@@ -7,7 +7,7 @@ use std::{
 
 use crate::tcp2::{Config, Connection, Quad, State, TcpHandle};
 use des::time::SimTime;
-use inet_types::tcp::TcpPacket;
+use types::tcp::TcpPacket;
 use tracing::instrument;
 
 pub(super) const WIN_4KB: u16 = 4096;

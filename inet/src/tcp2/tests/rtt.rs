@@ -3,7 +3,7 @@ use std::{
     net::{Ipv4Addr, SocketAddr},
 };
 
-use inet_types::tcp::TcpPacket;
+use types::tcp::TcpPacket;
 
 use super::{TcpTestUnit, WIN_4KB};
 

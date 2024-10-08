@@ -1,7 +1,7 @@
 use crate::{ctx::IOContext, interface::IfId};
 use bytepack::ToBytestream;
 use des::time::SimTime;
-use inet_types::{
+use types::{
     icmpv6::{IcmpV6Echo, IcmpV6Packet, PROTO_ICMPV6},
     ip::Ipv6Packet,
 };

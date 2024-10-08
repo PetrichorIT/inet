@@ -14,7 +14,7 @@ use inet::{
     utils, UdpSocket,
 };
 use inet_pcap::pcap;
-use inet_types::{
+use types::{
     icmpv6::{IcmpV6MulticastListenerMessage, IcmpV6Packet},
     ip::{IpPacket, Ipv6AddrExt, Ipv6Packet},
 };

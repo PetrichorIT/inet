@@ -1,6 +1,6 @@
 use bytepack::FromBytestream;
 use des::registry;
-use inet_types::{ip::Ipv4Packet, tcp::TcpPacket};
+use types::{ip::Ipv4Packet, tcp::TcpPacket};
 use std::{
     str::FromStr,
     sync::{

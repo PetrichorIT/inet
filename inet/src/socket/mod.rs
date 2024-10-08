@@ -1,8 +1,8 @@
 //! Networking sockets - endpoint for communication.
 
 use fxhash::{FxBuildHasher, FxHashMap};
-use inet_types::ip::IpPacket;
 use tokio::sync::mpsc::Sender;
+use types::ip::IpPacket;
 
 use crate::interface::{IfId, InterfaceAddr};
 
@@ -22,8 +22,8 @@ use std::{
 mod api;
 pub use self::api::*;
 
-mod types;
-pub use self::types::*;
+mod util;
+pub use self::util::*;
 
 mod fd;
 pub use self::fd::*;

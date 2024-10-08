@@ -3,7 +3,7 @@ use std::{
     net::{Ipv4Addr, SocketAddr},
 };
 
-use inet_types::tcp::TcpPacket;
+use types::tcp::TcpPacket;
 
 use crate::tcp2::{tests::WIN_4KB, State};
 

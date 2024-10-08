@@ -6,7 +6,7 @@ use crate::{
     },
 };
 use bytepack::ToBytestream;
-use inet_types::{
+use types::{
     ip::{Ipv4Flags, Ipv4Packet, KIND_IPV4},
     tcp::{TcpPacket, PROTO_TCP},
 };

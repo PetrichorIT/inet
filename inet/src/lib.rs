@@ -26,7 +26,7 @@ cfg_uds! {
 }
 
 use des::net::{module::ModuleId, processing::ProcessingStack};
-pub use inet_types as types;
+pub use types;
 
 mod udp;
 pub use udp::*;

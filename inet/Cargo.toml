@@ -7,7 +7,7 @@ version = "0.1.0"
 full = ["uds", "dhcp"]
 
 default = ["uds"]
-uds = ["inet-types/uds"]
+uds = ["types/uds"]
 dhcp = []
 libpcap = []
 
@@ -19,7 +19,7 @@ tokio = "1.37.0"
 tracing = { version = "*" }
 bytes = "1.4.0"
 rand = "0.8.5"
-inet-types = { path = "../inet-types" }
+types = { path = "../util/types" }
 bytepack = { path = "../util/bytepack" }
 bitflags = "*"
 

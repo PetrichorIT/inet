@@ -4,7 +4,7 @@ use std::{
 };
 
 use des::prelude::*;
-use inet_types::iface::MacAddress;
+use types::iface::MacAddress;
 
 use super::common::{DHCPMessage, DHCPOpsTyp};
 use crate::{
@@ -52,7 +52,7 @@ impl DHCPClient {
     }
 
     pub fn start(&mut self, req_addr: Option<Ipv4Addr>) {
-        let mac: inet_types::iface::MacAddress = get_mac_address()
+        let mac: types::iface::MacAddress = get_mac_address()
             .expect("Failed to fetch MAC address for DHCP")
             .expect("No MAC address found for DHCP");
         self.mac = mac;

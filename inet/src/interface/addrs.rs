@@ -6,7 +6,7 @@ use std::{
 };
 
 use des::time::SimTime;
-use inet_types::{iface::MacAddress, ip::Ipv6AddrExt};
+use types::{iface::MacAddress, ip::Ipv6AddrExt};
 
 use crate::{ctx::IOContext, ipv6::addrs::CanidateAddr};
 

@@ -8,7 +8,7 @@ edition = "2021"
 [dependencies]
 tracing = "*"
 inet = { path = "../inet" }
-inet-types = { path = "../inet-types" }
+types = { path = "../util/types" }
 bytepack = { path = "../util/bytepack" }
 des = { version = "*", features = ["full"] }
 fxhash = "*"

@@ -1,9 +1,9 @@
 use crate::{tests::SAMPLE_RAW_IP_PACKETS, BlockWriter, DefaultBlockWriter, Linktype};
-use inet_types::ip::{Ipv4Flags, Ipv4Packet, KIND_IPV4};
 use std::{
     io::{Error, ErrorKind},
     net::Ipv4Addr,
 };
+use types::ip::{Ipv4Flags, Ipv4Packet, KIND_IPV4};
 
 #[test]
 fn write_sample_ip_packets() -> Result<(), Error> {

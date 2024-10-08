@@ -25,7 +25,7 @@ use crate::{
     interface::{IfId, KIND_IO_TIMEOUT},
     socket::{Fd, SocketIfaceBinding, SocketType},
 };
-use inet_types::{
+use types::{
     ip::{IpPacket, IpPacketRef, IpVersion, Ipv4Flags, Ipv4Packet, Ipv6Packet},
     tcp::{TcpFlags, TcpOption, TcpPacket, PROTO_TCP},
 };
@@ -36,9 +36,9 @@ pub use self::buffer::*;
 mod config;
 pub use self::config::*;
 
-mod types;
-pub(crate) use types::TcpState;
-use types::*;
+mod util;
+pub(crate) use self::util::TcpState;
+use self::util::*;
 
 pub(super) mod api;
 use api::*;

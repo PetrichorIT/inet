@@ -1,6 +1,6 @@
 use crate::interface::IfId;
 use des::time::SimTime;
-use inet_types::ip::{ipv6_matches_subnet, Ipv6Prefix};
+use types::ip::{ipv6_matches_subnet, Ipv6Prefix};
 use std::{net::Ipv6Addr, time::Duration};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
