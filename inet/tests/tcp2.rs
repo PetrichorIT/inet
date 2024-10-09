@@ -1,11 +1,14 @@
-use std::{error::Error, net::Ipv4Addr};
+use std::{error::Error, net::Ipv4Addr, time::Duration};
 
-use des::{net::Sim, prelude::Module, registry, runtime::Builder};
+use des::{net::Sim, prelude::Module, registry, runtime::Builder, time::sleep};
 use inet::{
     interface::{add_interface, Interface, NetworkDevice},
-    tcp2::{api::TcpStream, TcpListener},
+    tcp2::{TcpListener, TcpStream},
 };
-use tokio::{io::AsyncWriteExt, spawn};
+use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt},
+    spawn,
+};
 
 #[derive(Default)]
 struct Client;
@@ -23,7 +26,13 @@ impl Module for Client {
         spawn(async move {
             let mut sock = TcpStream::connect("69.0.0.69:8000").await.unwrap();
             tracing::info!("SOCK ESTAB");
-            sock.write_all(b"Hello world").await.unwrap()
+
+            sock.writable().await.unwrap();
+            tracing::info!("WRITABLE");
+            sleep(Duration::from_secs(1)).await;
+            tracing::info!("DO WRITE");
+
+            sock.write(b"Hello world").await.unwrap()
         });
     }
 }
@@ -38,8 +47,13 @@ impl Module for Server {
 
         spawn(async move {
             let list = TcpListener::bind("0.0.0.0:8000").await.unwrap();
-            while let Ok((_sock, from)) = list.accept().await {
-                tracing::info!("INCOMING SOCK: {from}")
+            while let Ok((mut sock, from)) = list.accept().await {
+                tracing::info!("INCOMING SOCK: {from}");
+                sock.readable().await.unwrap();
+                tracing::info!("CAN READ");
+                let mut buf = [0; 16];
+                let n = sock.read(&mut buf).await.unwrap();
+                tracing::info!("read {n} bytes '{}'", String::from_utf8_lossy(&buf));
             }
         });
     }

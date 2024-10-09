@@ -268,7 +268,7 @@ impl IOContext {
         }
 
         // ONLY SYN
-        if !tcp_pkt.flags.syn || tcp_pkt.flags.ack {
+        if !tcp_pkt.flags.contains(TcpFlags::SYN) || tcp_pkt.flags.contains(TcpFlags::ACK) {
             return true;
         }
 
@@ -473,15 +473,15 @@ impl IOContext {
         assert_eq!(pkt.dst_port, ctrl.local_addr.port());
 
         // Missing PERM
-        let event = if pkt.flags.rst {
+        let event = if pkt.flags.contains(TcpFlags::RST) {
             TcpEvent::Rst((ip.src(), ip.dest(), pkt))
-        } else if pkt.flags.syn {
+        } else if pkt.flags.contains(TcpFlags::SYN) {
             TcpEvent::Syn((ip.src(), ip.dest(), pkt))
         } else {
-            if pkt.flags.fin {
+            if pkt.flags.contains(TcpFlags::FIN) {
                 TcpEvent::Fin((ip.src(), ip.dest(), pkt))
             } else {
-                if pkt.content.is_empty() && pkt.flags.ack {
+                if pkt.content.is_empty() && pkt.flags.contains(TcpFlags::ACK) {
                     TcpEvent::Ack((ip.src(), ip.dest(), pkt))
                 } else {
                     TcpEvent::Data((ip.src(), ip.dest(), pkt))
@@ -651,7 +651,7 @@ impl IOContext {
     fn process_state_listen(&mut self, ctrl: &mut TransmissionControlBlock, event: TcpEvent) {
         match event {
             TcpEvent::Syn((src, dest, syn)) => {
-                assert!(syn.flags.syn);
+                assert!(syn.flags.contains(TcpFlags::SYN));
 
                 ctrl.peer_addr = SocketAddr::new(src, syn.src_port);
                 // ctrl.span = tracing::span!(Level::INFO, "stream", local=?ctrl.local_addr, peer=?ctrl.peer_addr);
@@ -707,7 +707,7 @@ impl IOContext {
                 ctrl.rx_buffer.bump(pkt.seq_no + 1);
                 ctrl.apply_syn_options(&pkt.options);
 
-                if pkt.flags.ack {
+                if pkt.flags.contains(TcpFlags::ACK) {
                     ctrl.tx_last_ack_no = pkt.ack_no;
                     ctrl.tx_next_send_buffer_seq_no = ctrl.tx_next_send_seq_no;
                     ctrl.tx_max_send_seq_no = pkt.ack_no + pkt.window as u32; //
@@ -976,7 +976,7 @@ impl IOContext {
                 // (0) Handle last ACK from FINACK
                 tracing::trace!("received FIN, simultaneous close, transition to closing");
                 ctrl.rx_last_recv_seq_no = pkt.seq_no;
-                if pkt.flags.ack {
+                if pkt.flags.contains(TcpFlags::ACK) {
                     self.handle_data(ctrl, src, dest, pkt);
                 }
 
@@ -1001,7 +1001,8 @@ impl IOContext {
                 // tracing::trace!( "{} {}", pkt.ack_no, ctrl.sender_next_send_seq_no);
 
                 // (0) Check for ACK of FIN (seq_no = nss + 1)
-                let ack_of_fin = pkt.flags.ack && pkt.ack_no == ctrl.tx_next_send_seq_no;
+                let ack_of_fin =
+                    pkt.flags.contains(TcpFlags::ACK) && pkt.ack_no == ctrl.tx_next_send_seq_no;
                 if ack_of_fin {
                     // (1) Switch to finwait2 to prevent simultaneous close
                     // -> Since ACK of FIN was send before FIN peer must be in estab
@@ -1065,7 +1066,8 @@ impl IOContext {
                 // (0) Ignore data parts of packets --> no need for receivers
 
                 // (1) Check for ACK of FIN
-                let ack_of_fin = pkt.flags.ack && ctrl.tx_next_send_seq_no == pkt.ack_no;
+                let ack_of_fin =
+                    pkt.flags.contains(TcpFlags::ACK) && ctrl.tx_next_send_seq_no == pkt.ack_no;
                 if ack_of_fin {
                     tracing::trace!("got ACK of FIN {}, transitioning to time_wait", pkt.ack_no);
                     // (2) Switch to time_wait
@@ -1184,7 +1186,7 @@ impl IOContext {
         // );
 
         // (A) Handle acknowledgement information
-        if pkt.flags.ack {
+        if pkt.flags.contains(TcpFlags::ACK) {
             // let buf_full = self.send_queue == self.send_buffer.size();
             let buf_full = ctrl.tx_buffer.rem() == 0;
 
@@ -1411,7 +1413,9 @@ impl IOContext {
                 dst_port: ctrl.peer_addr.port(),
                 seq_no: ctrl.tx_next_send_seq_no,
                 ack_no: ctrl.rx_last_recv_seq_no,
-                flags: TcpFlags::new().ack(true).psh(is_last_sendable),
+                flags: TcpFlags::empty()
+                    .put(TcpFlags::ACK)
+                    .putv(TcpFlags::PSH, is_last_sendable),
                 window: ctrl.recv_window(),
                 urgent_ptr: 0,
                 options: Vec::new(),
@@ -1698,7 +1702,10 @@ impl TransmissionControlBlock {
             dst_port: self.peer_addr.port(),
             seq_no,
             ack_no: expected,
-            flags: TcpFlags::new().ack(ack).syn(syn).fin(fin),
+            flags: TcpFlags::empty()
+                .putv(TcpFlags::ACK, ack)
+                .putv(TcpFlags::SYN, syn)
+                .putv(TcpFlags::FIN, fin),
             window: 0,
             urgent_ptr: 0,
             options: Vec::new(),

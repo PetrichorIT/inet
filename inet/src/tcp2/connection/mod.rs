@@ -3,11 +3,10 @@ use des::time::SimTime;
 use std::{
     cmp,
     collections::{BTreeMap, VecDeque},
-    io::{self, Error, Write},
+    io::{self, Error, ErrorKind, Write},
     task::Waker,
     time::Duration,
 };
-use tokio::sync::oneshot;
 use tracing::instrument;
 use types::tcp::{TcpFlags, TcpOption, TcpPacket};
 
@@ -47,6 +46,13 @@ impl State {
             _ => true,
         }
     }
+
+    pub fn is_writable(&self) -> bool {
+        match *self {
+            State::Estab | State::CloseWait => true,
+            _ => false,
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -75,13 +81,12 @@ pub struct Connection {
 
     pub closed: bool,
     pub closed_at: Option<u32>,
-    pub closed_with: Option<io::Error>,
 
     pub rx_wakers: Vec<Waker>,
     pub tx_wakers: Vec<Waker>,
-    pub on_ready: Option<oneshot::Sender<Result<(), Error>>>,
 
     pub cfg: Config,
+    pub error: Option<io::Error>,
 }
 
 #[derive(Clone)]
@@ -114,7 +119,15 @@ impl Connection {
     }
 
     fn wake_tx(&mut self) {
-        self.rx_wakers.drain(..).for_each(|w| w.wake());
+        self.tx_wakers.drain(..).for_each(|w| w.wake());
+    }
+
+    pub fn is_readable(&self) -> bool {
+        self.is_rcv_closed() || !self.incoming.is_empty()
+    }
+
+    pub fn is_writable(&self) -> bool {
+        self.state.is_writable() && self.unacked.len() < self.cfg.send_buffer_cap
     }
 
     fn availability(&self) -> Available {
@@ -182,6 +195,35 @@ pub struct RecvSequenceSpace {
 }
 
 impl Connection {
+    pub fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        let nread = self.peek(buf)?;
+        drop(self.incoming.drain(..nread));
+        return Ok(nread);
+    }
+
+    pub fn peek(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        if self.is_rcv_closed() && self.incoming.is_empty() {
+            return Ok(0);
+        }
+
+        if self.incoming.is_empty() {
+            return Err(Error::new(
+                ErrorKind::WouldBlock,
+                "no bytes in rx buffer yet",
+            ));
+        }
+
+        let mut nread = 0;
+        let (head, tail) = self.incoming.as_slices();
+        let hread = std::cmp::min(buf.len(), head.len());
+        buf[..hread].copy_from_slice(&head[..hread]);
+        nread += hread;
+        let tread = std::cmp::min(buf.len() - nread, tail.len());
+        buf[hread..(hread + tread)].copy_from_slice(&tail[..tread]);
+        nread += tread;
+        return Ok(nread);
+    }
+
     pub fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         if self.unacked.len() >= self.cfg.send_buffer_cap {
             return Err(io::Error::new(
@@ -197,12 +239,6 @@ impl Connection {
 
     pub fn recv_window(&self) -> u16 {
         (self.cfg.recv_buffer_cap - self.incoming.len()) as u16
-    }
-
-    pub fn make_on_ready(&mut self) -> oneshot::Receiver<Result<(), Error>> {
-        let (tx, rx) = oneshot::channel();
-        self.on_ready = Some(tx);
-        rx
     }
 
     pub fn connect(nic: &mut TcpSender, quad: Quad, cfg: Config) -> io::Result<Self> {
@@ -237,13 +273,12 @@ impl Connection {
 
             rx_wakers: Vec::new(),
             tx_wakers: Vec::new(),
-            on_ready: None,
 
             closed: false,
             closed_at: None,
-            closed_with: None,
 
             cfg,
+            error: None,
         };
 
         c.send_pkt(nic, Syn, c.send.nxt, 0)?;
@@ -256,7 +291,7 @@ impl Connection {
         pkt: TcpPacket,
         cfg: Config,
     ) -> io::Result<Option<Self>> {
-        if !pkt.flags.syn {
+        if !pkt.flags.contains(TcpFlags::SYN) {
             // only expected SYN packet
             return Ok(None);
         }
@@ -285,13 +320,12 @@ impl Connection {
 
             rx_wakers: Vec::new(),
             tx_wakers: Vec::new(),
-            on_ready: None,
 
             closed: false,
             closed_at: None,
-            closed_with: None,
 
             cfg,
+            error: None,
         };
 
         // need to start establishing a connection
@@ -299,7 +333,7 @@ impl Connection {
         Ok(Some(c))
     }
 
-    #[instrument(skip(self, nic))]
+    #[instrument(skip(self, nic, limit))]
     fn send_pkt(
         &mut self,
         nic: &mut TcpSender,
@@ -313,24 +347,16 @@ impl Connection {
             window: self.recv_window(),
             seq_no: seq,
             ack_no: self.recv.nxt,
-            flags: TcpFlags::new()
-                .syn(matches!(kind, Syn | SynAck))
-                .ack(matches!(kind, SynAck | Ack | Fin))
-                .fin(matches!(kind, Fin)),
+            flags: TcpFlags::empty()
+                .putv(TcpFlags::SYN, matches!(kind, Syn | SynAck))
+                .putv(TcpFlags::ACK, matches!(kind, SynAck | Ack | Fin))
+                .putv(TcpFlags::FIN, matches!(kind, Fin)),
             urgent_ptr: 0,
             options: self.options_for_kind(kind),
             content: Vec::new(),
         };
 
         // TODO: return +1 for SYN/FIN
-        tracing::info!(
-            "write(ack: {}, seq: {}, limit: {}) syn {:?} fin {:?}",
-            self.recv.nxt - self.recv.irs,
-            seq,
-            limit,
-            packet.flags.syn,
-            packet.flags.fin,
-        );
 
         let mut offset = seq.wrapping_sub(self.send.una) as usize;
         // we need to special-case the two "virtual" bytes SYN and FIN
@@ -373,10 +399,10 @@ impl Connection {
         };
 
         let mut next_seq = seq.wrapping_add(payload_bytes as u32);
-        if packet.flags.syn {
+        if packet.flags.contains(TcpFlags::SYN) {
             next_seq = next_seq.wrapping_add(1);
         }
-        if packet.flags.fin {
+        if packet.flags.contains(TcpFlags::FIN) {
             next_seq = next_seq.wrapping_add(1);
         }
         if wrapping_lt(self.send.nxt, next_seq) {
@@ -385,10 +411,11 @@ impl Connection {
         self.timers.send_times.insert(seq, (self.cfg.clock)());
 
         tracing::info!(
-            "sending seq={} ack={} data={:?} (len = {})",
+            "sending seq={} ack={} data={:?} flags={:?} (len = {})",
             packet.seq_no,
             packet.ack_no,
             packet.content.iter().take(20).collect::<Vec<_>>(),
+            packet.flags,
             packet.content.len(),
         );
         nic.send(packet);
@@ -491,10 +518,14 @@ impl Connection {
                     self.closed_at = Some(self.send.una);
                     self.state = State::Closed;
 
-                    self.closed_with = Some(io::Error::new(
+                    tracing::warn!("syn resend count exceeded - closing socket");
+
+                    self.error = Some(io::Error::new(
                         io::ErrorKind::ConnectionRefused,
-                        "host unreachabke: syn resend count exceeded",
+                        "host unreachable: syn resend count exceeded",
                     ));
+                    self.wake_rx();
+                    self.wake_tx();
 
                     return Ok(());
                 }
@@ -557,10 +588,10 @@ impl Connection {
         // # virtual syn and fin bytes
         // the first and last byte are not really send as payload, but rather as an indication that the stream
         // starts or ends. This means seq_no is not exactly pck_len defined but with a + 1
-        if pkt.flags.fin {
+        if pkt.flags.contains(TcpFlags::SYN) {
             slen += 1;
         };
-        if pkt.flags.syn {
+        if pkt.flags.contains(TcpFlags::FIN) {
             slen += 1;
         };
 
@@ -574,7 +605,7 @@ impl Connection {
         );
 
         // RST handeling
-        if pkt.flags.rst {
+        if pkt.flags.contains(TcpFlags::RST) {
             // RFC 9293
             // -> 3.5.3. Reset Processing
             // In all states except SYN-SENT, all reset (RST) segments are validated by checking their SEQ fields.
@@ -604,6 +635,15 @@ impl Connection {
 
             self.closed = true;
             self.state = State::Closed;
+            self.error = Some(Error::new(
+                ErrorKind::ConnectionRefused,
+                "connection refused by peer",
+            ));
+
+            self.wake_rx();
+            self.wake_tx();
+
+            tracing::warn!("resetting socket");
 
             return Ok(Available::empty());
         }
@@ -639,8 +679,8 @@ impl Connection {
         });
 
         // if no-ack but syn, inc recv counter (virtual start byte)
-        if !pkt.flags.ack {
-            if pkt.flags.syn {
+        if !pkt.flags.contains(TcpFlags::ACK) {
+            if pkt.flags.contains(TcpFlags::SYN) {
                 // got SYN part of initial handshake
                 assert!(pkt.content.is_empty());
                 self.recv.nxt = seqn.wrapping_add(1);
@@ -678,16 +718,20 @@ impl Connection {
                 // must have ACKed our SYN, since we detected at least one acked byte,
                 // and we have only sent one byte (the SYN).
                 tracing::info!("established connection from ACK");
-                // Syn sent behaviour
+
                 if let State::SynSent = self.state {
+                    // SYN_SENT behaviour
                     self.recv.irs = pkt.seq_no;
                     self.recv.nxt = self.recv.irs + 1;
                     self.recv.wnd = pkt.window;
                     self.send_pkt(nic, Ack, self.send.nxt, 0)?;
+                } else {
+                    // SYN_RECV behaviour
                 }
 
                 self.state = State::Estab;
-                self.on_ready.take().map(|v| v.send(Ok(())));
+                self.wake_rx();
+                self.wake_tx();
             } else {
                 // TODO: <SEQ=SEG.ACK><CTL=RST>
             }
@@ -819,7 +863,7 @@ impl Connection {
         }
 
         // If this is a FIN packet do something
-        if pkt.flags.fin {
+        if pkt.flags.contains(TcpFlags::FIN) {
             match self.state {
                 State::FinWait1 => {
                     // simultaneous close
@@ -875,14 +919,22 @@ impl Connection {
             }
         } else {
             // When the window is empty, its always invalid to receive another packet
-            if self.state == State::SynSent && pkt.flags.syn && pkt.flags.ack {
+            if self.state == State::SynSent
+                && pkt.flags.contains(TcpFlags::SYN)
+                && pkt.flags.contains(TcpFlags::ACK)
+            {
                 true
-            } else if self.state == State::SynRcvd && pkt.flags.syn && !pkt.flags.ack {
+            } else if self.state == State::SynRcvd
+                && pkt.flags.contains(TcpFlags::SYN)
+                && !pkt.flags.contains(TcpFlags::ACK)
+            {
                 true
             } else if self.recv.wnd == 0 {
                 tracing::warn!("not okay: non-zero-length empty window");
                 // Edge Case: SYN of simultaneous open
-                self.state == State::SynSent && pkt.flags.syn && !pkt.flags.ack
+                self.state == State::SynSent
+                    && pkt.flags.contains(TcpFlags::SYN)
+                    && !pkt.flags.contains(TcpFlags::ACK)
             } else if !is_between_wrapped(self.recv.nxt.wrapping_sub(1), seqn, wend)
                 && !is_between_wrapped(
                     self.recv.nxt.wrapping_sub(1),

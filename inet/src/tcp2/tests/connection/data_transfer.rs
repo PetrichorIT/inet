@@ -1,5 +1,5 @@
 use crate::tcp2::{
-    tests::{TcpTestUnit, WIN_4KB},
+    tests::connection::{TcpTestUnit, WIN_4KB},
     Config,
 };
 use std::{

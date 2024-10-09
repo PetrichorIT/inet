@@ -385,6 +385,14 @@ impl IOContext {
                 "invalid fd - socket dropped",
             ));
         };
+
+        if socket.addr.is_ipv4() != peer.is_ipv4() {
+            return Err(Error::new(
+                ErrorKind::AddrNotAvailable,
+                "address not available - ip version missmatch",
+            ));
+        }
+
         socket.peer = peer;
         Ok(())
     }

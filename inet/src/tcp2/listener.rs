@@ -15,17 +15,17 @@ use crate::{
     IOContext,
 };
 
-use super::{api::TcpStream, Config};
+use super::{Config, TcpStream};
 
 pub struct TcpListener {
     fd: Fd,
-    rx: Mutex<mpsc::Receiver<Result<(Fd, IncomingConnection), Error>>>,
+    rx: Mutex<mpsc::Receiver<Result<Fd, Error>>>,
     backlog: Arc<AtomicU32>,
 }
 
 pub(super) struct Listener {
     pub local_addr: SocketAddr,
-    pub tx: mpsc::Sender<Result<(Fd, IncomingConnection), Error>>,
+    pub tx: mpsc::Sender<Result<Fd, Error>>,
     pub backlog: Arc<AtomicU32>,
     pub config: Config,
 }
@@ -35,7 +35,7 @@ pub(super) type IncomingConnection = oneshot::Receiver<Result<(), Error>>;
 impl TcpListener {
     pub(super) fn from_raw(
         fd: Fd,
-        rx: mpsc::Receiver<Result<(Fd, IncomingConnection), Error>>,
+        rx: mpsc::Receiver<Result<Fd, Error>>,
         backlog: Arc<AtomicU32>,
     ) -> Self {
         Self {
@@ -86,17 +86,17 @@ impl TcpListener {
     pub async fn accept(&self) -> Result<(TcpStream, SocketAddr), Error> {
         loop {
             let mut rx = self.rx.lock().await;
-            let Some(pack) = rx.recv().await else {
+            let Some(fd) = rx.recv().await else {
                 return Err(Error::new(ErrorKind::BrokenPipe, "listener closed"));
             };
 
             self.backlog.fetch_sub(1, Ordering::SeqCst);
 
-            let (fd, con) = pack?;
-
-            con.await.map_err(|e| dbg!(e)).expect("oneshot failure")?;
-
+            let fd = fd?;
             let stream = TcpStream::from_fd(fd);
+
+            stream.writable().await?;
+
             let peer = stream.peer_addr()?;
             return Ok((stream, peer));
         }

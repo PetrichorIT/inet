@@ -6,7 +6,7 @@ use types::{
     tcp::TcpPacket,
 };
 
-use crate::{interface::IfId, socket::Fd, tcp2::PROTO_TCP2};
+use crate::{socket::Fd, tcp2::PROTO_TCP2};
 use bytepack::ToBytestream;
 
 use super::Quad;
@@ -18,15 +18,13 @@ pub struct TcpSenderBuffer {
 
 #[derive(Debug)]
 pub struct TcpSender<'a> {
-    buffer: &'a mut VecDeque<TcpPacket>,
-    fd: Fd,
+    pub buffer: &'a mut VecDeque<TcpPacket>,
 }
 
 impl TcpSenderBuffer {
     pub fn sender<'a>(&'a mut self, fd: Fd) -> TcpSender<'a> {
         TcpSender {
             buffer: self.pending.entry(fd).or_insert(VecDeque::new()),
-            fd,
         }
     }
 }

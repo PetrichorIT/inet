@@ -1,17 +1,17 @@
 use crate::{
-    interface::IfId,
+    interface::{IfId, KIND_IO_TIMEOUT},
     socket::{Fd, SocketDomain, SocketIfaceBinding, SocketType},
-    uds::IncomingStream,
     IOContext,
 };
 
 use bytepack::{FromBytestream, ToBytestream};
-use fxhash::{FxHashMap, FxHashSet};
-use listener::{IncomingConnection, Listener};
+use des::prelude::{schedule_at, Message};
+use fxhash::FxHashMap;
+use listener::Listener;
 use sender::TcpSenderBuffer;
 use std::{
-    collections::VecDeque,
     io::{Error, ErrorKind},
+    mem,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
     sync::{
         atomic::{AtomicU32, Ordering},
@@ -19,13 +19,10 @@ use std::{
     },
     task::{Context, Poll},
 };
-use tokio::{
-    io::ReadBuf,
-    sync::{mpsc, Notify},
-};
+use tokio::{io::ReadBuf, sync::mpsc};
 use types::{
-    ip::{IpPacket, IpPacketRef, Ipv4Flags, Ipv4Packet, Ipv6Packet},
-    tcp::{TcpPacket, PROTO_TCP},
+    ip::IpPacketRef,
+    tcp::{TcpFlags, TcpPacket, PROTO_TCP},
 };
 
 //
@@ -36,13 +33,15 @@ pub const PROTO_TCP2: u8 = PROTO_TCP + 1;
 //
 //
 
-pub mod api;
 mod connection;
+mod interest;
 mod listener;
 mod sender;
+mod stream;
 
 pub use connection::{Config, Connection, State};
 pub use listener::TcpListener;
+pub use stream::TcpStream;
 
 #[cfg(test)]
 mod tests;
@@ -52,7 +51,7 @@ pub struct Tcp {
     pub sender: TcpSenderBuffer,
     pub listeners: FxHashMap<Fd, Listener>,
     pub streams: FxHashMap<Fd, Connection>,
-    pub active: FxHashSet<Fd>,
+    pub active: Vec<Fd>,
 }
 
 #[derive(Clone, Copy, Debug, Hash, Eq, PartialEq)]
@@ -68,7 +67,20 @@ impl Tcp {
             sender: TcpSenderBuffer::default(),
             listeners: FxHashMap::default(),
             streams: FxHashMap::default(),
-            active: FxHashSet::default(),
+            active: Vec::default(),
+        }
+    }
+
+    pub fn set_error(&mut self, fd: Fd, error: Error) {
+        if let Some(stream) = self.streams.get_mut(&fd) {
+            tracing::error!(%fd, ?error, "connection failed with error");
+            stream.error = Some(error);
+        }
+    }
+
+    pub fn set_active(&mut self, fd: Fd) {
+        if !self.active.contains(&fd) {
+            self.active.push(fd);
         }
     }
 }
@@ -96,14 +108,66 @@ impl IOContext {
                 interface.add_write_interest(fd);
             }
 
-            self.send_ip_packet(socket.interface.clone(), pkt, true)
-                .expect("failed to send")
+            if let Err(error) = self.send_ip_packet(socket.interface.clone(), pkt, true) {
+                self.tcp2.set_error(fd, error);
+            }
         } else {
             if !sender.is_empty() {
                 interface.add_write_interest(fd);
             }
         }
     }
+
+    pub fn tcp2_timeout(&mut self, fd: Fd) {
+        self.tcp2.set_active(fd);
+    }
+
+    #[tracing::instrument(skip(self))]
+    pub fn tcp2_tick(&mut self) {
+        let mut fds = Vec::new();
+        mem::swap(&mut fds, &mut self.tcp2.active);
+
+        for fd in &fds {
+            let Some(con) = self.tcp2.streams.get_mut(fd) else {
+                continue;
+            };
+
+            con.on_tick(&mut self.tcp2.sender.sender(*fd))
+                .expect("on tick failure");
+
+            if let Some(deadline) = con.next_timeout() {
+                schedule_at(
+                    Message::new().kind(KIND_IO_TIMEOUT).content(*fd).build(),
+                    deadline,
+                );
+            }
+        }
+
+        for fd in &fds {
+            self.tcp2_socket_link_update(*fd);
+        }
+    }
+
+    pub fn tcp2_connection<R>(
+        &mut self,
+        fd: Fd,
+        f: impl FnOnce(&mut Connection) -> R,
+    ) -> Result<R, Error> {
+        let con = self
+            .tcp2
+            .streams
+            .get_mut(&fd)
+            .ok_or(Error::new(ErrorKind::BrokenPipe, "no such fd"))?;
+
+        let result = f(con);
+        con.on_tick(&mut self.tcp2.sender.sender(fd))?;
+        self.tcp2_socket_link_update(fd);
+        Ok(result)
+    }
+
+    //
+    // # Packet Handeling
+    //
 
     pub fn tcp2_on_packet(&mut self, ip_packet: IpPacketRef, ifid: IfId) -> bool {
         assert_eq!(ip_packet.tos(), PROTO_TCP2);
@@ -141,7 +205,7 @@ impl IOContext {
             return self.tcp2_connection_on_packet(fd, pkt);
         }
 
-        if pkt.flags.syn || !pkt.flags.ack {
+        if pkt.flags.contains(TcpFlags::SYN) || !pkt.flags.contains(TcpFlags::ACK) {
             // SYN
 
             // (2) Check for active listeners
@@ -158,7 +222,7 @@ impl IOContext {
                 return self.tcp2_listener_on_packet(ip_packet, fd, pkt);
             }
 
-            if self.tcp.config.rst_on_syn {
+            if self.tcp2.config.rst_for_syn {
                 tracing::trace!("invalid incoming connection, sending RST");
 
                 let rst = TcpPacket::rst_for_syn(&pkt);
@@ -167,6 +231,7 @@ impl IOContext {
                     .expect("failed to send");
                 true
             } else {
+                tracing::trace!("invalid incoming connection, ignoring");
                 false
             }
         } else {
@@ -188,7 +253,11 @@ impl IOContext {
     }
 
     ///
-    /// TCP read
+    /// TCP ready()
+    ///
+
+    ///
+    /// TCP read()
     ///
 
     pub fn tcp2_read(
@@ -201,7 +270,19 @@ impl IOContext {
             todo!()
         };
 
-        todo!()
+        match con.read(buf.initialize_unfilled()) {
+            Ok(n) => {
+                self.tcp2.set_active(fd);
+                // Alternative:
+                // on_tick() + tcp2_ll_update
+                Poll::Ready(Ok(n))
+            }
+            Err(e) if e.kind() == ErrorKind::WouldBlock => {
+                con.rx_wakers.push(cx.waker().clone());
+                Poll::Pending
+            }
+            Err(e) => Poll::Ready(Err(e)),
+        }
     }
 
     ///
@@ -220,10 +301,9 @@ impl IOContext {
 
         match con.write(buf) {
             Ok(n) => {
-                con.on_tick(&mut self.tcp2.sender.sender(fd))?;
-
-                self.tcp2_socket_link_update(fd);
-
+                self.tcp2.set_active(fd);
+                // Alternative:
+                // on_tick() + tcp2_ll_update
                 Poll::Ready(Ok(n))
             }
             Err(e) if e.kind() == ErrorKind::WouldBlock => {
@@ -231,6 +311,19 @@ impl IOContext {
                 Poll::Pending
             }
             Err(e) => Poll::Ready(Err(e)),
+        }
+    }
+
+    pub fn tcp2_flush(&mut self, fd: Fd, cx: &mut Context<'_>) -> Poll<Result<(), Error>> {
+        let Some(con) = self.tcp2.streams.get_mut(&fd) else {
+            todo!()
+        };
+
+        if con.unacked.is_empty() {
+            Poll::Ready(Ok(()))
+        } else {
+            con.tx_wakers.push(cx.waker().clone());
+            Poll::Pending
         }
     }
 
@@ -278,7 +371,7 @@ impl IOContext {
 
     fn tcp2_unbind(&mut self, fd: Fd) {
         self.tcp.listeners.remove(&fd);
-        self.close_socket(fd);
+        self.close_socket(fd).expect("failed to unbind");
     }
 
     ///
@@ -309,16 +402,8 @@ impl IOContext {
             }
         };
 
-        let notifier = self
-            .tcp2_connect_await_estab(stream)
-            .expect("cannot be already established");
-
         let listener = self.tcp2.listeners.get_mut(&fd).expect("unreachable");
-
-        listener
-            .tx
-            .try_send(Ok((stream, notifier)))
-            .expect("unreachable");
+        listener.tx.try_send(Ok(stream)).expect("unreachable");
 
         tracing::trace!("incoming connection to {dst} from {src}");
 
@@ -411,19 +496,27 @@ impl IOContext {
         // Sends a SYN
         let conn = Connection::connect(&mut self.tcp2.sender.sender(fd), quad, cfg)?;
         self.tcp2.streams.insert(fd, conn);
+        self.tcp2.set_active(fd);
 
-        // -> FWD SYN
+        // -> FWD SYN (TODO: rm)
         self.tcp2_socket_link_update(fd);
 
         Ok(fd)
     }
 
-    fn tcp2_connect_await_estab(&mut self, fd: Fd) -> Option<IncomingConnection> {
-        self.tcp2
+    //
+    // # TCP drop
+    //
+
+    fn tcp2_drop(&mut self, fd: Fd) -> Result<(), Error> {
+        let con = self
+            .tcp2
             .streams
             .get_mut(&fd)
-            .map(|con| (!con.state.is_synchronized()).then(|| con.make_on_ready()))
-            .expect("failed to get stream")
+            .ok_or(Error::new(ErrorKind::BrokenPipe, "no such fd"))?;
+
+        con.close()?;
+        Ok(())
     }
 }
 
@@ -450,4 +543,8 @@ fn is_valid_dest_for(socket_addr: &SocketAddr, packet_addr: &SocketAddr) -> bool
         SocketAddr::V4(_) => socket_addr == packet_addr,
         SocketAddr::V6(_) => socket_addr == packet_addr,
     }
+}
+
+pub fn set_config(config: Config) {
+    IOContext::with_current(|ctx| ctx.tcp2.config = config)
 }

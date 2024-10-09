@@ -1,8 +1,6 @@
-use std::{
-    fmt::Display,
-    io::{Error, ErrorKind, Read, Write},
-};
+use std::io::{Error, ErrorKind, Read, Write};
 
+use bitflags::bitflags;
 use bytepack::{
     BytestreamReader, BytestreamWriter, FromBytestream, ReadBytesExt, ToBytestream, WriteBytesExt,
     BE,
@@ -25,18 +23,18 @@ pub struct TcpPacket {
     pub content: Vec<u8>,
 }
 
-/// Flags of a [`TcpPacket`].
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
-#[allow(clippy::struct_excessive_bools)]
-pub struct TcpFlags {
-    pub cwr: bool,
-    pub ece: bool,
-    pub urg: bool,
-    pub ack: bool,
-    pub psh: bool,
-    pub rst: bool,
-    pub syn: bool,
-    pub fin: bool,
+bitflags! {
+    /// Flags of a [`TcpPacket`].
+    pub struct TcpFlags: u8 {
+        const CWR = 0b1000_0000;
+        const ECE = 0b0100_0000;
+        const URG = 0b0010_0000;
+        const ACK = 0b0001_0000;
+        const PSH = 0b0000_1000;
+        const RST = 0b0000_0100;
+        const SYN = 0b0000_0010;
+        const FIN = 0b0000_0001;
+    }
 }
 
 /// Options of a [`TcpPacket`].
@@ -46,16 +44,6 @@ pub enum TcpOption {
     WindowScaling(u8),
     Timestamp(u32, u32),
     EndOfOptionsList(),
-}
-
-macro_rules! fimpl {
-    ($i:ident) => {
-        #[must_use]
-        pub fn $i(mut self, value: bool) -> Self {
-            self.$i = value;
-            self
-        }
-    };
 }
 
 impl TcpPacket {
@@ -72,7 +60,7 @@ impl TcpPacket {
             dst_port,
             seq_no,
             ack_no,
-            flags: TcpFlags::new().ack(true),
+            flags: TcpFlags::empty().put(TcpFlags::ACK),
             window,
             urgent_ptr: 0,
             options: Vec::new(),
@@ -86,7 +74,7 @@ impl TcpPacket {
             dst_port,
             seq_no,
             ack_no: 0,
-            flags: TcpFlags::new().syn(true),
+            flags: TcpFlags::empty().put(TcpFlags::SYN),
             window,
             urgent_ptr: 0,
             options: Vec::new(),
@@ -95,13 +83,13 @@ impl TcpPacket {
     }
 
     pub fn syn_ack(syn: &TcpPacket, seq_no: u32, window: u16) -> TcpPacket {
-        assert!(syn.flags.syn);
+        assert!(syn.flags.contains(TcpFlags::SYN));
         TcpPacket {
             src_port: syn.dst_port,
             dst_port: syn.src_port,
             seq_no,
             ack_no: syn.seq_no.wrapping_add(1),
-            flags: TcpFlags::new().syn(true).ack(true),
+            flags: TcpFlags::empty().put(TcpFlags::SYN).put(TcpFlags::ACK),
             window,
             urgent_ptr: 0,
             options: Vec::new(),
@@ -118,7 +106,7 @@ impl TcpPacket {
     }
 
     pub fn fin(mut self, value: bool) -> Self {
-        self.flags.fin = value;
+        self.flags.set(TcpFlags::FIN, value);
         self
     }
 
@@ -129,7 +117,7 @@ impl TcpPacket {
             dst_port: syn.src_port,
             seq_no: 0,
             ack_no: syn.seq_no,
-            flags: TcpFlags::new().ack(true).rst(true),
+            flags: TcpFlags::empty().put(TcpFlags::ACK).put(TcpFlags::RST),
             window: 0,
             urgent_ptr: 0,
             options: Vec::new(),
@@ -139,49 +127,14 @@ impl TcpPacket {
 }
 
 impl TcpFlags {
-    #[must_use]
-    pub fn new() -> Self {
-        Self::default()
+    pub fn put(mut self, flag: TcpFlags) -> Self {
+        self.insert(flag);
+        self
     }
-    fimpl!(cwr);
-    fimpl!(ece);
-    fimpl!(urg);
-    fimpl!(ack);
-    fimpl!(psh);
-    fimpl!(rst);
-    fimpl!(syn);
-    fimpl!(fin);
-}
 
-impl Display for TcpFlags {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if self.cwr {
-            write!(f, "CWR")?;
-        }
-        if self.ece {
-            write!(f, "ECE")?;
-        }
-        if self.urg {
-            write!(f, "URG")?;
-        }
-        if self.ack {
-            write!(f, "ACK")?;
-        }
-
-        if self.psh {
-            write!(f, "PSH")?;
-        }
-        if self.rst {
-            write!(f, "RST")?;
-        }
-        if self.syn {
-            write!(f, "SYN")?;
-        }
-        if self.fin {
-            write!(f, "FIN")?;
-        }
-
-        Ok(())
+    pub fn putv(mut self, flag: TcpFlags, value: bool) -> Self {
+        self.set(flag, value);
+        self
     }
 }
 
@@ -234,34 +187,7 @@ impl ToBytestream for TcpPacket {
 impl ToBytestream for TcpFlags {
     type Error = std::io::Error;
     fn to_bytestream(&self, stream: &mut BytestreamWriter) -> Result<(), Self::Error> {
-        let mut byte = 0u8;
-        if self.cwr {
-            byte |= 0b1000_0000;
-        }
-        if self.ece {
-            byte |= 0b0100_0000;
-        }
-        if self.urg {
-            byte |= 0b0010_0000;
-        }
-        if self.ack {
-            byte |= 0b0001_0000;
-        }
-
-        if self.psh {
-            byte |= 0b0000_1000;
-        }
-        if self.rst {
-            byte |= 0b0000_0100;
-        }
-        if self.syn {
-            byte |= 0b0000_0010;
-        }
-        if self.fin {
-            byte |= 0b0000_0001;
-        }
-
-        stream.write_u8(byte)
+        stream.write_u8(self.bits())
     }
 }
 
@@ -338,26 +264,7 @@ impl FromBytestream for TcpFlags {
     type Error = std::io::Error;
     fn from_bytestream(stream: &mut BytestreamReader) -> Result<Self, Self::Error> {
         let byte = stream.read_u8()?;
-
-        let cwr = byte & 0b1000_0000 != 0;
-        let ece = byte & 0b0100_0000 != 0;
-        let urg = byte & 0b0010_0000 != 0;
-        let ack = byte & 0b0001_0000 != 0;
-        let psh = byte & 0b0000_1000 != 0;
-        let rst = byte & 0b0000_0100 != 0;
-        let syn = byte & 0b0000_0010 != 0;
-        let fin = byte & 0b0000_0001 != 0;
-
-        Ok(TcpFlags {
-            cwr,
-            ece,
-            urg,
-            ack,
-            psh,
-            rst,
-            syn,
-            fin,
-        })
+        Ok(TcpFlags::from_bits(byte).unwrap())
     }
 }
 

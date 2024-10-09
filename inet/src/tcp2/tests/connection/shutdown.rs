@@ -6,7 +6,7 @@ use std::{
 use types::tcp::TcpPacket;
 
 use crate::tcp2::{
-    tests::{TcpTestUnit, WIN_4KB},
+    tests::connection::{TcpTestUnit, WIN_4KB},
     State,
 };
 

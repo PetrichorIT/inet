@@ -49,49 +49,6 @@ impl Future for TcpInterest {
         cx: &mut std::task::Context<'_>,
     ) -> std::task::Poll<Self::Output> {
         match *self {
-            // == TCP ==
-            // TcpInterest::TcpAccept(fd) => IOContext::with_current(|ctx| {
-            //     if let Some(handle) = ctx.tcp.binds.get_mut(&fd) {
-            //         if handle.incoming.is_empty() {
-            //             handle.interests.push(TcpInterestGuard {
-            //                 interest: self.clone(),
-            //                 waker: cx.waker().clone(),
-            //             });
-            //             Poll::Pending
-            //         } else {
-            //             Poll::Ready(Ok(Ready::ALL))
-            //         }
-            //     } else {
-            //         Poll::Ready(Err(Error::new(
-            //             ErrorKind::Other,
-            //             "Simulation context has dropped TcpListener",
-            //         )))
-            //     }
-            // }),
-
-            // TcpInterest::TcpEstablished(fd) => IOContext::with_current(|ctx| {
-            //     let Some(handle) = ctx.tcp.streams.get_mut(&fd) else {
-            //         return Poll::Ready(Err(Error::new(
-            //             ErrorKind::InvalidInput,
-            //             "socket dropped - invalid fd",
-            //         )));
-            //     };
-
-            //     if handle.syn_resend_counter >= 3 {
-            //         return Poll::Ready(Err(Error::new(
-            //             ErrorKind::NotFound,
-            //             "host not found - syn exceeded",
-            //         )));
-            //     }
-
-            //     if handle.state as u8 >= TcpState::Established as u8 {
-            //         Poll::Ready(Ok(Ready::ALL))
-            //     } else {
-            //         handle.established_interest = Some(cx.waker().clone());
-
-            //         Poll::Pending
-            //     }
-            // }),
             TcpInterest::TcpRead(fd) => IOContext::with_current(|ctx| {
                 let Some(handle) = ctx.tcp.streams.get_mut(&fd) else {
                     return Poll::Ready(Err(Error::new(

@@ -3,9 +3,9 @@ use std::{
     net::{Ipv4Addr, SocketAddr},
 };
 
-use types::tcp::TcpPacket;
+use types::tcp::{TcpFlags, TcpPacket};
 
-use crate::tcp2::{tests::WIN_4KB, State};
+use crate::tcp2::{tests::connection::WIN_4KB, State};
 
 use super::TcpTestUnit;
 
@@ -20,7 +20,7 @@ fn normal() -> io::Result<()> {
     test.assert_connection_exists();
 
     let mut syn_ack = TcpPacket::syn(80, 1808, 0, WIN_4KB);
-    syn_ack.flags = syn_ack.flags.ack(true);
+    syn_ack.flags.insert(TcpFlags::ACK);
     syn_ack.ack_no = 4001;
     test.assert_outgoing_eq(&[syn_ack]);
 
@@ -51,8 +51,8 @@ fn connect() -> io::Result<()> {
     // <- SYNACK
     // -> ACK
     let mut syn_ack = TcpPacket::syn(1808, 80, 4000, WIN_4KB);
+    syn_ack.flags.insert(TcpFlags::ACK);
     syn_ack.ack_no = 1;
-    syn_ack.flags.ack = true;
     test.incoming(syn_ack)?;
     test.assert_outgoing_eq(&[TcpPacket::new(80, 1808, 1, 4001, WIN_4KB, Vec::new())]);
 
@@ -81,8 +81,8 @@ fn connect_syn_timeout() -> io::Result<()> {
     // <- SYNACK
     // -> ACK
     let mut syn_ack = TcpPacket::syn(1808, 80, 4000, WIN_4KB);
+    syn_ack.flags.insert(TcpFlags::ACK);
     syn_ack.ack_no = 1;
-    syn_ack.flags.ack = true;
 
     test.set_time(17.0);
     test.incoming(syn_ack)?;
@@ -131,8 +131,9 @@ fn connect_regulated_mss() -> io::Result<()> {
     test.assert_outgoing_eq(&[TcpPacket::syn(80, 1808, 0, WIN_4KB)]);
 
     let mut syn_ack = TcpPacket::syn(1808, 80, 4000, WIN_4KB).with_mss(400);
+    syn_ack.flags.insert(TcpFlags::ACK);
     syn_ack.ack_no = 1;
-    syn_ack.flags.ack = true;
+
     test.incoming(syn_ack)?;
     test.assert_outgoing_eq(&[TcpPacket::new(80, 1808, 1, 4001, WIN_4KB, Vec::new())]);
     assert_eq!(test.cong.mss, 400);

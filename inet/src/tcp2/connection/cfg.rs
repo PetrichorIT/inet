@@ -18,6 +18,7 @@ pub struct Config {
     pub iss: Option<u32>,
     pub reuseport: bool,
     pub reuseaddr: bool,
+    pub rst_for_syn: bool,
     pub clock: Arc<dyn Fn() -> SimTime>,
 }
 
@@ -57,6 +58,7 @@ impl Default for Config {
             iss: Some(0), // TODO: This is a debug setting to prevent random ISS
             reuseaddr: false,
             reuseport: false,
+            rst_for_syn: true,
             clock: Arc::new(SimTime::now),
         }
     }

@@ -1,6 +1,5 @@
 use bytepack::FromBytestream;
 use des::registry;
-use types::{ip::Ipv4Packet, tcp::TcpPacket};
 use std::{
     str::FromStr,
     sync::{
@@ -8,6 +7,7 @@ use std::{
         Arc,
     },
 };
+use types::{ip::Ipv4Packet, tcp::TcpPacket};
 
 use des::prelude::*;
 use inet::{interface::*, socket::AsRawFd, TcpSocket};
@@ -22,7 +22,7 @@ impl Module for Link {
             let tcp = TcpPacket::from_slice(&ippacket.content).unwrap();
 
             tracing::error!(
-                "DROP {} --> {} :: Tcp {{ {} seq_no = {} ack_no = {} win = {} data = {} bytes }}",
+                "DROP {} --> {} :: Tcp {{ {:?} seq_no = {} ack_no = {} win = {} data = {} bytes }}",
                 ippacket.src,
                 ippacket.dst,
                 tcp.flags,

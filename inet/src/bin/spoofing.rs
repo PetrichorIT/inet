@@ -42,7 +42,7 @@ impl Module for Spoofer {
                         dst_port: 1000,
                         seq_no: 0,
                         ack_no: 0,
-                        flags: TcpFlags::new().syn(true),
+                        flags: TcpFlags::empty().put(TcpFlags::SYN),
                         window: 1024,
                         urgent_ptr: 0,
                         options: Vec::new(),

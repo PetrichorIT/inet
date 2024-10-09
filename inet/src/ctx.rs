@@ -356,6 +356,7 @@ impl IOContext {
 
     pub fn event_end(&mut self) {
         self.ipv6.timer.schedule_wakeup();
+        self.tcp2_tick();
     }
 
     fn networking_layer_io_timeout(&mut self, msg: Message) -> Option<Message> {
@@ -369,14 +370,16 @@ impl IOContext {
         let Some(fd) = msg.try_content::<Fd>() else {
             return None;
         };
+        let fd = *fd;
 
-        let Some(socket) = self.sockets.get(fd) else {
+        let Some(socket) = self.sockets.get(&fd) else {
             return None;
         };
 
         if socket.typ == SocketType::SOCK_STREAM {
             // TODO: If listeners have timesouts as well we must do something
-            self.tcp_timeout(*fd, msg)
+            self.tcp_timeout(fd, msg);
+            self.tcp2_timeout(fd);
         }
 
         None

@@ -3,8 +3,8 @@ use std::{io, net::Ipv6Addr, time::Duration};
 use bitflags::bitflags;
 use des::net::message::{schedule_in, Message};
 use fxhash::{FxBuildHasher, FxHashMap};
-use types::ip::{Ipv6AddrExt, Ipv6Packet, Ipv6Prefix, KIND_IPV6};
 use tracing::Level;
+use types::ip::{Ipv6AddrExt, Ipv6Packet, Ipv6Prefix, KIND_IPV6};
 
 use crate::{ctx::IOContext, interface::IfId};
 
@@ -129,7 +129,10 @@ impl IOContext {
                     FLAGS = ?flags,
                     "cannot send packet: no valid src addr found"
                 );
-                return Err(io::Error::new(io::ErrorKind::Other, "no valid src addr"));
+                return Err(io::Error::new(
+                    io::ErrorKind::ConnectionRefused,
+                    "host unreachable - no valid src addr",
+                ));
             }
         }
 
