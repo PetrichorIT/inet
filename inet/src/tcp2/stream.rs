@@ -2,6 +2,7 @@ use std::{
     io::{Error, ErrorKind},
     net::SocketAddr,
     sync::Arc,
+    time::Duration,
 };
 
 use crate::io::{Interest, Ready};
@@ -51,7 +52,10 @@ impl TcpStream {
                 ctx.tcp2_connection(fd, |c| c.state == State::Estab)
             })? {
                 let interest = interest::TcpInterest::Write(fd);
-                interest.await?;
+                interest.await.map_err(|e| {
+                    let _ = IOContext::with_current(|ctx| ctx.tcp2_drop(fd));
+                    e
+                })?;
             }
 
             return Ok(TcpStream {
@@ -137,6 +141,51 @@ impl TcpStream {
     pub fn try_write(&self, buf: &[u8]) -> Result<usize, Error> {
         IOContext::with_current(|ctx| ctx.tcp2_connection(self.inner.fd, |con| con.write(buf)))?
     }
+
+    /// Reads the linger duration for this socket by getting the `SO_LINGER`
+    /// option.
+    ///
+    /// For more information about this option, see [`set_linger`].
+    ///
+    /// [`set_linger`]: TcpStream::set_linger
+    ///
+    pub fn linger(&self) -> Result<Option<Duration>, Error> {
+        IOContext::with_current(|ctx| ctx.tcp2_connection(self.inner.fd, |con| con.cfg.linger))
+    }
+
+    /// Sets the linger duration of this socket by setting the `SO_LINGER` option.
+    ///
+    /// This option controls the action taken when a stream has unsent messages and the stream is
+    /// closed. If `SO_LINGER` is set, the system shall block the process until it can transmit the
+    /// data or until the time expires.
+    ///
+    /// If `SO_LINGER` is not specified, and the stream is closed, the system handles the call in a
+    /// way that allows the process to continue as quickly as possible.
+    ///
+    pub fn set_linger(&self, dur: Option<Duration>) -> Result<(), Error> {
+        IOContext::with_current(|ctx| {
+            ctx.tcp2_connection(self.inner.fd, |con| con.cfg.linger = dur)
+        })
+    }
+
+    /// Gets the value of the `IP_TTL` option for this socket.
+    ///
+    /// For more information about this option, see [`set_ttl`].
+    ///
+    /// [`set_ttl`]: TcpStream::set_ttl
+    pub fn ttl(&self) -> Result<u32, Error> {
+        IOContext::with_current(|ctx| ctx.tcp2_connection(self.inner.fd, |con| con.cfg.ttl as u32))
+    }
+
+    /// Sets the value for the `IP_TTL` option on this socket.
+    ///
+    /// This value sets the time-to-live field that is used in every packet sent
+    /// from this socket.
+    ///
+    pub fn set_ttl(&self, ttl: u32) -> Result<(), Error> {
+        let ttl = u8::try_from(ttl).expect("invalid ttl value");
+        IOContext::with_current(|ctx| ctx.tcp2_connection(self.inner.fd, |con| con.cfg.ttl = ttl))
+    }
 }
 
 impl AsyncRead for TcpStream {
@@ -198,6 +247,6 @@ impl FromRawFd for TcpStream {
 
 impl Drop for Inner {
     fn drop(&mut self) {
-        IOContext::try_with_current(|ctx| ctx.tcp2_drop(self.fd));
+        IOContext::try_with_current(|ctx| ctx.tcp2_close(self.fd));
     }
 }

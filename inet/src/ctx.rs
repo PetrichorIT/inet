@@ -372,6 +372,12 @@ impl IOContext {
         };
         let fd = *fd;
 
+        // TCP2 grouped wakeup
+        if fd == u32::MAX {
+            self.tcp2_timeout();
+            return None;
+        }
+
         let Some(socket) = self.sockets.get(&fd) else {
             return None;
         };
@@ -379,7 +385,6 @@ impl IOContext {
         if socket.typ == SocketType::SOCK_STREAM {
             // TODO: If listeners have timesouts as well we must do something
             self.tcp_timeout(fd, msg);
-            self.tcp2_timeout(fd);
         }
 
         None

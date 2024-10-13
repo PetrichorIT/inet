@@ -46,6 +46,7 @@ impl TcpTestUnit {
         self.con = Some(Connection::connect(
             &mut TcpSender {
                 buffer: &mut self.tx,
+                unresolved_wakeups: &mut false,
             },
             self.quad.clone(),
             self.cfg.clone(),
@@ -58,6 +59,7 @@ impl TcpTestUnit {
             con.on_packet(
                 &mut TcpSender {
                     buffer: &mut self.tx,
+                    unresolved_wakeups: &mut false,
                 },
                 pkt,
             )?;
@@ -65,6 +67,7 @@ impl TcpTestUnit {
             self.con = Connection::accept(
                 &mut TcpSender {
                     buffer: &mut self.tx,
+                    unresolved_wakeups: &mut false,
                 },
                 self.quad.clone(),
                 pkt,
@@ -165,6 +168,7 @@ impl TcpTestUnit {
             .expect("no connection exists: cannot tick")
             .on_tick(&mut TcpSender {
                 buffer: &mut self.tx,
+                unresolved_wakeups: &mut false,
             })
     }
 

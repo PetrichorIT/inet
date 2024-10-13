@@ -771,7 +771,7 @@ impl IOContext {
             }
             TcpEvent::Rst((_, _, pkt)) => {
                 // Port is not reachable
-                assert_eq!(pkt.ack_no + 1, ctrl.tx_next_send_seq_no);
+                assert_eq!(pkt.ack_no, ctrl.tx_next_send_seq_no);
                 tracing::trace!("aborting due to port unreachabele (RST)");
 
                 ctrl.established.take().map(|v| {

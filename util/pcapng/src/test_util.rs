@@ -5,7 +5,11 @@ use super::{
     Block, BlockReader, BlockWriter, DefaultBlockWriter, EnhancedPacketOptionFlags,
     InterfaceDescriptionOption, Linktype, MacAddress,
 };
-use std::io::{Error, Read, Result, Seek};
+use std::{
+    fs::File,
+    io::{Error, Read, Result, Seek, Write},
+    panic::{catch_unwind, resume_unwind, AssertUnwindSafe},
+};
 
 /// A writer for tests, that compares the generated output to
 /// an expected packet capture.
@@ -13,6 +17,7 @@ use std::io::{Error, Read, Result, Seek};
 pub struct TestBlockWriter<I: PartialEq + Clone> {
     reader: BlockReader,
     writer: DefaultBlockWriter<Vec<u8>, I>,
+    debug_path: String,
 }
 
 impl<I: PartialEq + Clone> TestBlockWriter<I> {
@@ -21,29 +26,43 @@ impl<I: PartialEq + Clone> TestBlockWriter<I> {
     /// # Errors
     ///
     /// Returns and error, if block encoding failed.
-    pub fn new<R: Read + Seek + 'static>(expected: R, appl_name: &str) -> Result<Self> {
+    pub fn new<R: Read + Seek + 'static>(
+        expected: R,
+        appl_name: &str,
+        debug_path: &str,
+    ) -> Result<Self> {
         Ok(Self {
             reader: BlockReader::new(expected),
             writer: DefaultBlockWriter::new(Vec::new(), appl_name)?,
+            debug_path: debug_path.to_string(),
         })
     }
 
     fn compare_block_output(&mut self) {
-        while !self.writer.output.is_empty() {
-            let Ok(block) = Block::read_from_vec(&mut self.writer.output) else {
-                panic("block parsing error");
-            };
-            let Some(expected) = self.reader.next() else {
-                panic("no further block was expected, but one was found");
-            };
-            let Ok(expected) = expected else {
-                panic("block parsing error");
-            };
-            if block != expected {
-                panic(format!(
-                    "values not equal 'lhs != rhs'\nlhs: {block:#?}\nrhs: {expected:#?}"
-                ));
+        let result = catch_unwind(AssertUnwindSafe(|| {
+            while !self.writer.output.is_empty() {
+                let Ok(block) = Block::read_from_vec(&mut self.writer.output) else {
+                    panic("block parsing error");
+                };
+                let Some(expected) = self.reader.next() else {
+                    panic("no further block was expected, but one was found");
+                };
+                let Ok(expected) = expected else {
+                    panic("block parsing error");
+                };
+                if block != expected {
+                    panic(format!(
+                        "values not equal 'lhs != rhs'\nlhs: {block:#?}\nrhs: {expected:#?}"
+                    ));
+                }
             }
+        }));
+
+        if let Err(e) = result {
+            let mut f =
+                File::create(&self.debug_path).expect("failed to write to debug path after panic");
+            f.write_all(&self.writer.output).expect("failed to write");
+            resume_unwind(e);
         }
     }
 }

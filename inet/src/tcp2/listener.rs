@@ -30,8 +30,6 @@ pub(super) struct Listener {
     pub config: Config,
 }
 
-pub(super) type IncomingConnection = oneshot::Receiver<Result<(), Error>>;
-
 impl TcpListener {
     pub(super) fn from_raw(
         fd: Fd,

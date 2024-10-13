@@ -4,14 +4,14 @@ use inet::{
     interface::{IfId, Interface},
     libpcap::{set_pcap_deamon, PcapCapturePoint, PcapEnvelope, PcapSubscriber},
 };
-use types::{
-    arp::{ArpPacket, KIND_ARP},
-    ip::{Ipv4Packet, Ipv6Packet, KIND_IPV4, KIND_IPV6},
-};
 use pcapng::{
     BlockWriter, DefaultBlockWriter, InterfaceDescriptionOption, Linktype, TestBlockWriter,
 };
 use std::io::{BufReader, BufWriter, Error, ErrorKind, Read, Result, Seek, Write};
+use types::{
+    arp::{ArpPacket, KIND_ARP},
+    ip::{Ipv4Packet, Ipv6Packet, KIND_IPV4, KIND_IPV6},
+};
 
 #[cfg(test)]
 mod tests;
@@ -30,12 +30,12 @@ where
 
 /// Applies a new configuration to PCAP, starting a new
 /// capturing epoch.
-pub fn pcap_for_test<R>(expected: R) -> Result<()>
+pub fn pcap_for_test<R>(expected: R, diff: &str) -> Result<()>
 where
     R: Read + Seek + 'static,
 {
     set_pcap_deamon(LibPcapDeamon {
-        writer: TestBlockWriter::new(BufReader::new(expected), current().path().as_str())?,
+        writer: TestBlockWriter::new(BufReader::new(expected), current().path().as_str(), diff)?,
     });
     Ok(())
 }

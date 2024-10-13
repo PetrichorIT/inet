@@ -2,6 +2,7 @@ use std::{
     hash::{DefaultHasher, Hash, Hasher},
     net::SocketAddr,
     sync::Arc,
+    time::Duration,
     u32,
 };
 
@@ -16,6 +17,8 @@ pub struct Config {
     pub syn_resent_count: usize,
     pub mss: Option<u16>,
     pub iss: Option<u32>,
+    pub ttl: u8,
+    pub linger: Option<Duration>,
     pub reuseport: bool,
     pub reuseaddr: bool,
     pub rst_for_syn: bool,
@@ -56,6 +59,8 @@ impl Default for Config {
             syn_resent_count: 3,
             mss: None,
             iss: Some(0), // TODO: This is a debug setting to prevent random ISS
+            linger: None,
+            ttl: 64,
             reuseaddr: false,
             reuseport: false,
             rst_for_syn: true,

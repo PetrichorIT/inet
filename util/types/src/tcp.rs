@@ -115,8 +115,8 @@ impl TcpPacket {
         TcpPacket {
             src_port: syn.dst_port,
             dst_port: syn.src_port,
-            seq_no: 0,
-            ack_no: syn.seq_no,
+            seq_no: syn.ack_no,
+            ack_no: syn.seq_no.wrapping_add(1),
             flags: TcpFlags::empty().put(TcpFlags::ACK).put(TcpFlags::RST),
             window: 0,
             urgent_ptr: 0,

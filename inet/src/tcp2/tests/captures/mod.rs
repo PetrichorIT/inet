@@ -4,7 +4,9 @@ use std::{
 };
 
 use bytepack::ToBytestream;
-use pcapng::{BlockWriter, InterfaceDescriptionOption, Linktype, TestBlockWriter};
+use pcapng::{
+    BlockWriter, DefaultBlockWriter, InterfaceDescriptionOption, Linktype, TestBlockWriter,
+};
 use types::{
     ip::{Ipv4Flags, Ipv4Packet, KIND_IPV4},
     tcp::PROTO_TCP,
@@ -82,13 +84,17 @@ fn pcap_test_case() -> io::Result<()> {
 
     client.cfg.send_buffer_cap = 20_000;
     server.cfg.send_buffer_cap = 20_000;
+    client.cfg.recv_buffer_cap = 20_000;
+    server.cfg.recv_buffer_cap = 20_000;
     client.cfg.iss = Some(2000);
     server.cfg.iss = Some(8000);
 
     let mut writer = TestBlockWriter::new(
         Cursor::new(include_bytes!("client.pcapng").as_slice()),
         "client",
+        "src/tcp2/tests/captures/diff/client.pcapng",
     )?;
+
     writer.add_interface(
         &IfId::new("eth0"),
         Linktype::ETHERNET,

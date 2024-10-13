@@ -87,10 +87,10 @@ impl CongestionControl {
 impl Connection {
     pub fn remaining_window_space(&self) -> u32 {
         if self.cong.enabled {
-            (self.send.wnd as u32 - self.num_unacked_bytes())
+            (self.snd.wnd as u32 - self.num_unacked_bytes())
                 .min(self.cong.wnd.saturating_sub(self.num_unacked_bytes()))
         } else {
-            self.send.wnd as u32 - self.num_unacked_bytes()
+            self.snd.wnd as u32 - self.num_unacked_bytes()
         }
     }
 }

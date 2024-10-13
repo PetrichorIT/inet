@@ -40,6 +40,11 @@ pub enum State {
 }
 
 impl State {
+    pub fn transition_to(&mut self, new: Self) {
+        tracing::trace!("{self:?} -> {new:?}");
+        *self = new;
+    }
+
     pub fn is_synchronized(&self) -> bool {
         match *self {
             State::SynSent | State::SynRcvd | State::Closed => false,
@@ -67,7 +72,7 @@ use PacketKind::*;
 
 pub struct Connection {
     pub state: State,
-    pub send: SendSequenceSpace,
+    pub snd: SendSequenceSpace,
     pub recv: RecvSequenceSpace,
     pub timers: Timers,
 
@@ -114,12 +119,19 @@ impl Connection {
         self.state.is_synchronized()
     }
 
-    fn wake_rx(&mut self) {
-        self.rx_wakers.drain(..).for_each(|w| w.wake());
+    pub fn wake_all(&mut self, snd: &mut TcpSender) {
+        self.wake_rx(snd);
+        self.wake_tx(snd);
     }
 
-    fn wake_tx(&mut self) {
-        self.tx_wakers.drain(..).for_each(|w| w.wake());
+    pub fn wake_rx(&mut self, snd: &mut TcpSender) {
+        // tracing::trace!("waking {} rx wakers", self.tx_wakers.len());
+        snd.wake(&mut self.rx_wakers);
+    }
+
+    pub fn wake_tx(&mut self, snd: &mut TcpSender) {
+        // tracing::trace!("waking {} tx wakers", self.tx_wakers.len());
+        snd.wake(&mut self.tx_wakers);
     }
 
     pub fn is_readable(&self) -> bool {
@@ -164,9 +176,9 @@ pub struct SendSequenceSpace {
     /// send urgent pointer
     pub up: bool,
     /// segment sequence number used for last window update
-    pub wl1: usize,
+    pub wl1: u32,
     /// segment acknowledgment number used for last window update
-    pub wl2: usize,
+    pub wl2: u32,
     /// initial send sequence number
     pub iss: u32,
 }
@@ -189,7 +201,7 @@ pub struct RecvSequenceSpace {
     /// receive window
     pub wnd: u16,
     /// receive urgent pointer
-    pub up: bool,
+    pub up: u32,
     /// initial receive sequence number
     pub irs: u32,
 }
@@ -234,6 +246,7 @@ impl Connection {
 
         let n = cmp::min(buf.len(), self.cfg.send_buffer_cap - self.unacked.len());
         self.unacked.extend(buf[..n].iter());
+        tracing::trace!("Connection::write({}) = {n}", buf.len());
         Ok(n)
     }
 
@@ -261,12 +274,14 @@ impl Connection {
                 srtt: Duration::from_secs(10).as_secs_f64(),
             },
             state: State::SynSent,
-            send: SendSequenceSpace::new(iss, wnd),
-            recv: RecvSequenceSpace::empty(),
+            snd: SendSequenceSpace::new(iss, wnd),
+            recv: RecvSequenceSpace::empty(
+                u16::try_from(cfg.recv_buffer_cap).expect("failed to downcast"),
+            ),
             quad,
             syn_resend_counter: 0,
 
-            cong: CongestionControl::disabled(mss),
+            cong: CongestionControl::new(cfg.enable_congestion_control, mss),
 
             incoming: VecDeque::with_capacity(cfg.recv_buffer_cap),
             unacked: VecDeque::with_capacity(cfg.send_buffer_cap),
@@ -281,7 +296,7 @@ impl Connection {
             error: None,
         };
 
-        c.send_pkt(nic, Syn, c.send.nxt, 0)?;
+        c.send_pkt(nic, Syn, c.snd.nxt, 0)?;
         Ok(c)
     }
 
@@ -308,7 +323,7 @@ impl Connection {
                 srtt: Duration::from_secs(10).as_secs_f64(),
             },
             state: State::SynRcvd,
-            send: SendSequenceSpace::new(iss, wnd),
+            snd: SendSequenceSpace::new(iss, wnd),
             recv: RecvSequenceSpace::from_syn(&pkt),
             quad,
             syn_resend_counter: 0,
@@ -329,7 +344,7 @@ impl Connection {
         };
 
         // need to start establishing a connection
-        c.send_pkt(nic, SynAck, c.send.nxt, 0)?;
+        c.send_pkt(nic, SynAck, c.snd.nxt, 0)?;
         Ok(Some(c))
     }
 
@@ -358,7 +373,7 @@ impl Connection {
 
         // TODO: return +1 for SYN/FIN
 
-        let mut offset = seq.wrapping_sub(self.send.una) as usize;
+        let mut offset = seq.wrapping_sub(self.snd.una) as usize;
         // we need to special-case the two "virtual" bytes SYN and FIN
         if let Some(closed_at) = self.closed_at {
             if seq == closed_at.wrapping_add(1) {
@@ -405,8 +420,8 @@ impl Connection {
         if packet.flags.contains(TcpFlags::FIN) {
             next_seq = next_seq.wrapping_add(1);
         }
-        if wrapping_lt(self.send.nxt, next_seq) {
-            self.send.nxt = next_seq;
+        if wrapping_lt(self.snd.nxt, next_seq) {
+            self.snd.nxt = next_seq;
         }
         self.timers.send_times.insert(seq, (self.cfg.clock)());
 
@@ -445,7 +460,7 @@ impl Connection {
         options
     }
 
-    fn _send_rst(&mut self, nic: &mut TcpSender) -> io::Result<()> {
+    fn send_rst(&mut self, nic: &mut TcpSender, seq: u32) -> io::Result<()> {
         // TODO: fix sequence numbers here
         // If the incoming segment has an ACK field, the reset takes its
         // sequence number from the ACK field of the segment, otherwise the
@@ -462,15 +477,15 @@ impl Connection {
         // and an acknowledgment indicating the next sequence number expected
         // to be received, and the connection remains in the same state.
 
-        self.send_pkt(nic, Rst, self.send.nxt, 0)?;
+        self.send_pkt(nic, Rst, seq, 0)?;
         Ok(())
     }
 
     /// The number of bytes in transit, with no ack just yet
     pub fn num_unacked_bytes(&self) -> u32 {
         self.closed_at
-            .unwrap_or(self.send.nxt)
-            .wrapping_sub(self.send.una)
+            .unwrap_or(self.snd.nxt)
+            .wrapping_sub(self.snd.una)
     }
 
     /// The number of bytes in the tx buffer,
@@ -491,7 +506,7 @@ impl Connection {
         let waited_for = self
             .timers
             .send_times
-            .range(self.send.una..)
+            .range(self.snd.una..)
             .next()
             .map(|t| now - *t.1);
 
@@ -504,19 +519,19 @@ impl Connection {
 
         if should_retransmit {
             tracing::info!("retransmitting packet");
-            let resend = std::cmp::min(self.unacked.len() as u32, self.send.wnd as u32);
-            if resend < self.send.wnd as u32 && self.closed {
+            let resend = std::cmp::min(self.unacked.len() as u32, self.snd.wnd as u32);
+            if resend < self.snd.wnd as u32 && self.closed {
                 // can we include the FIN?
-                self.closed_at = Some(self.send.una.wrapping_add(self.unacked.len() as u32));
+                self.closed_at = Some(self.snd.una.wrapping_add(self.unacked.len() as u32));
                 self.cong.on_timeout();
-                self.send_pkt(nic, Fin, self.send.una, resend as usize)?;
+                self.send_pkt(nic, Fin, self.snd.una, resend as usize)?;
             } else if let State::SynSent = self.state {
                 assert_eq!(resend, 0);
 
                 if self.syn_resend_counter >= self.cfg.syn_resent_count {
                     self.closed = true;
-                    self.closed_at = Some(self.send.una);
-                    self.state = State::Closed;
+                    self.closed_at = Some(self.snd.una);
+                    self.state.transition_to(State::Closed);
 
                     tracing::warn!("syn resend count exceeded - closing socket");
 
@@ -524,19 +539,19 @@ impl Connection {
                         io::ErrorKind::ConnectionRefused,
                         "host unreachable: syn resend count exceeded",
                     ));
-                    self.wake_rx();
-                    self.wake_tx();
+                    self.wake_rx(nic);
+                    self.wake_tx(nic);
 
                     return Ok(());
                 }
 
                 self.syn_resend_counter += 1;
-                self.send_pkt(nic, Syn, self.send.una, 0)?;
+                self.send_pkt(nic, Syn, self.snd.una, 0)?;
             } else if let State::SynRcvd = self.state {
-                self.send_pkt(nic, SynAck, self.send.una, 0)?;
+                self.send_pkt(nic, SynAck, self.snd.una, 0)?;
             } else {
                 self.cong.on_timeout();
-                self.send_pkt(nic, Ack, self.send.una, resend as usize)?;
+                self.send_pkt(nic, Ack, self.snd.una, resend as usize)?;
             }
         } else {
             loop {
@@ -544,12 +559,20 @@ impl Connection {
                     break;
                 };
 
+                tracing::trace!(num_unsend_bytes, "");
+
                 // we should send new data if we have new data and space in the window
                 if num_unsend_bytes == 0 && self.closed_at.is_some() {
                     return Ok(());
                 }
 
                 let remaining_window_space = self.remaining_window_space();
+                tracing::trace!(
+                    remaining_window_space,
+                    "unacked {} wnd {}",
+                    self.num_unacked_bytes(),
+                    self.snd.wnd
+                );
                 if remaining_window_space == 0 {
                     return Ok(());
                 }
@@ -561,19 +584,19 @@ impl Connection {
                 {
                     // If there is space left in the window and we are closed without FIN
                     // attach the virtual FIN byte
-                    self.closed_at = Some(self.send.una.wrapping_add(self.unacked.len() as u32));
+                    self.closed_at = Some(self.snd.una.wrapping_add(self.unacked.len() as u32));
 
                     // RFC 9293
                     // -> 3.6. Closing a Connection
                     // Case 1:
                     // Local user initiates the close In this case, a FIN segment can be constructed and placed on the outgoing segment queue.
                     // ...
-                    self.send_pkt(nic, Fin, self.send.nxt, bytes_to_be_sent as usize)?;
+                    self.send_pkt(nic, Fin, self.snd.nxt, bytes_to_be_sent as usize)?;
                 } else {
                     if num_unsend_bytes == 0 {
                         break;
                     }
-                    self.send_pkt(nic, Ack, self.send.nxt, bytes_to_be_sent as usize)?;
+                    self.send_pkt(nic, Ack, self.snd.nxt, bytes_to_be_sent as usize)?;
                 }
             }
         }
@@ -581,17 +604,25 @@ impl Connection {
         Ok(())
     }
 
-    pub fn on_packet<'a>(&mut self, nic: &mut TcpSender, pkt: TcpPacket) -> io::Result<Available> {
+    pub fn on_packet(&mut self, nic: &mut TcpSender, seg: TcpPacket) -> io::Result<Available> {
+        if let State::SynSent = self.state {
+            // RFC 9293 -  3.10.7 SEGMENT ARRIVES
+            // -> Defines custom handlers for state SYN_SENT
+            return self.on_packet_syn_sent(nic, seg);
+        }
+        // Otherwise,
+        // States = SYN-RECEIVED, ESTABLISHED, FIN-WAIT-1, FIN-WAIT-2, CLOSE-WAIT, CLOSING, LAST-ACK, TIME-WAIT
+
         // first, check that sequence numbers are valid (RFC 793 S3.3)
-        let seqn = pkt.seq_no;
-        let mut slen = pkt.content.len() as u32;
+        let seqn = seg.seq_no;
+        let mut slen = seg.content.len() as u32;
         // # virtual syn and fin bytes
         // the first and last byte are not really send as payload, but rather as an indication that the stream
         // starts or ends. This means seq_no is not exactly pck_len defined but with a + 1
-        if pkt.flags.contains(TcpFlags::SYN) {
+        if seg.flags.contains(TcpFlags::SYN) {
             slen += 1;
         };
-        if pkt.flags.contains(TcpFlags::FIN) {
+        if seg.flags.contains(TcpFlags::FIN) {
             slen += 1;
         };
 
@@ -601,166 +632,195 @@ impl Connection {
 
         tracing::info!(
             "recv({seqn}, len: {slen} (real {}), wend: {wend})",
-            pkt.content.len(),
+            seg.content.len(),
         );
 
-        // RST handeling
-        if pkt.flags.contains(TcpFlags::RST) {
-            // RFC 9293
-            // -> 3.5.3. Reset Processing
-            // In all states except SYN-SENT, all reset (RST) segments are validated by checking their SEQ fields.
-            // A reset is valid if its sequence number is in the window. In the SYN-SENT state
-            // (a RST received in response to an initial SYN), the RST is acceptable if the ACK field acknowledges the SYN.
-            let valid = if let State::SynSent = self.state {
-                true
-            } else {
-                self.packet_is_valid(slen, seqn, wend, &pkt)
-            };
+        // RFC 9293 - 3.10.7.4. Other States
+        // First, check sequence number:
+        //
+        // Segments are processed in sequence. Initial tests on arrival are used to discard old duplicates,
+        // but further processing is done in SEG.SEQ order. If a segment's contents straddle the boundary
+        // between old and new, only the new parts are processed.
+        // -> TODO: Reorder+Trunacate buffer
+        //
+        // In general, the processing of received segments MUST be implemented to aggregate ACK segments whenever possible (MUST-58).
+        // For example, if the TCP endpoint is processing a series of queued segments, it MUST process them all before sending any ACK
+        // segments (MUST-59).
+        // -> Since we are in a discrete event simulation, multiple packets cannot be received at a time, since we are perfectly timed.
 
-            // RFC 9293
-            // -> 3.5.3. Reset Processing
-            // The receiver of a RST first validates it, then changes state.
-            // If the receiver was in the LISTEN state, it ignores it.
-            // If the receiver was in SYN-RECEIVED state and had previously been in the LISTEN state,
-            // then the receiver returns to the LISTEN state;
-            // otherwise, the receiver aborts the connection and goes to the CLOSED state.
-            // If the receiver was in any other state, it aborts the connection and advises the user and goes to the CLOSED state.
-            //
-            // -> LISTEN does not exist, when a connection object exitst -> NOP
-            // -> SYN-RECEIVED to LISTEN is implemented by closing the connection, since the LISTEN socket is a seperate object -> allways CLOSED
-            // -> go CLOSED
-            if !valid {
-                return Ok(Available::empty());
-            }
+        // There are four cases for the acceptability test for an incoming segment:
+        // If the RCV.WND is zero, no segments will be acceptable, but special allowance
+        // should be made to accept valid ACKs, URGs, and RSTs.
+        let okay = self.packet_is_valid(slen, seqn, wend, &seg);
 
-            self.closed = true;
-            self.state = State::Closed;
-            self.error = Some(Error::new(
-                ErrorKind::ConnectionRefused,
-                "connection refused by peer",
-            ));
-
-            self.wake_rx();
-            self.wake_tx();
-
-            tracing::warn!("resetting socket");
-
-            return Ok(Available::empty());
-        }
-
-        let okay = self.packet_is_valid(slen, seqn, wend, &pkt);
-
-        // TODO: explain
-        // not okay, try indicating a resend
+        // If an incoming segment is not acceptable, an acknowledgment should be sent in reply
+        // (unless the RST bit is set, if so drop the segment and return): <SEQ=SND.NXT><ACK=RCV.NXT><CTL=ACK>
+        // After sending the acknowledgment, drop the unacceptable segment and return.
         if !okay {
-            tracing::error!("NOT OKAY");
-            self.send_pkt(nic, Ack, self.send.nxt, 0)?;
+            tracing::error!("segment not acceptable");
+            if !seg.flags.contains(TcpFlags::RST) {
+                self.send_pkt(nic, Ack, self.snd.nxt, 0)?;
+            }
             return Ok(self.availability());
         }
 
-        // process options, always
-        pkt.options.iter().for_each(|opt| match opt {
-            TcpOption::MaximumSegmentSize(mss) => {
-                // Default MSS according to RFC 9293
-                // -> 3.7.1. Maximum Segment Size Option
-                //
-                // We update the local MSS. We also automatically send an update
-                // TODO: correct MSS computation
-                if self.cong.mss != *mss {
-                    tracing::info!(
-                        "update maximum-segement-size {} -> {}",
-                        self.cong.mss,
-                        self.cong.mss.min(*mss)
-                    );
-                    self.cong.mss = self.cong.mss.min(*mss);
-                }
-            }
-            _ => {}
-        });
+        // Note that for the TIME-WAIT state, there is an improved algorithm described in [40]
+        // for handling incoming SYN segments that utilizes timestamps rather than relying on the
+        // sequence number check described here. When the improved algorithm is implemented, the logic
+        // above is not applicable for incoming SYN segments with Timestamp Options, received on a
+        // connection in the TIME-WAIT state.
+        // -> TODO
 
-        // if no-ack but syn, inc recv counter (virtual start byte)
-        if !pkt.flags.contains(TcpFlags::ACK) {
-            if pkt.flags.contains(TcpFlags::SYN) {
+        // In the following it is assumed that the segment is the idealized segment that begins at RCV.NXT
+        // and does not exceed the window. One could tailor actual segments to fit this assumption by
+        // trimming off any portions that lie outside the window (including SYN and FIN)
+        // and only processing further if the segment then begins at RCV.NXT.
+        // Segments with higher beginning sequence numbers SHOULD be held for later processing (SHLD-31).
+        // -> TODO Reorder and Trimming Buffer
+
+        // Second, check the RST bit:
+        if seg.flags.contains(TcpFlags::RST) {
+            return self.on_rst(seqn, wend, nic);
+        }
+
+        // Third, check security: ...
+        // -> Will not be implemented
+
+        // Process the MSS options
+        self.on_tcp_options(&seg);
+
+        // Fourth, check the SYN bit:
+        if seg.flags.contains(TcpFlags::SYN) {
+            // !Important
+            // RFC 9293 omitt the fact that simultaneous ope, does not work with an event processing
+            // described in 3.10.7.4, since all SYN flags will be unexpected in states from SYN_RCVD.
+            // However, on simultaneous open, SYN-ACKs act as the final ACK nessecary for the handshake, so they are not unexpected
+            let is_sim_open = seg.flags.contains(TcpFlags::ACK)
+                && is_between_wrapped(self.snd.una.wrapping_add(1), seg.ack_no, self.snd.nxt);
+
+            if is_sim_open {
+                tracing::info!("Sim open bypass")
+            } else {
+                return self.on_syn(&seg, seqn, nic);
+            }
+        }
+
+        // Fifth, check the ACK field:
+        // if the ACK bit is off, drop the segment and return:
+        if !seg.flags.contains(TcpFlags::ACK) {
+            if seg.flags.contains(TcpFlags::SYN) {
                 // got SYN part of initial handshake
-                assert!(pkt.content.is_empty());
+                assert!(seg.content.is_empty());
                 self.recv.nxt = seqn.wrapping_add(1);
 
                 if let State::SynRcvd = self.state {
                     // resend SYN ACK, it seems to be lost
-                    self.send_pkt(nic, SynAck, self.send.nxt.wrapping_sub(1), 0)?;
-                }
-
-                if let State::SynSent = self.state {
-                    // simultaneous open
-                    // send SYN ACK
-                    self.recv.irs = pkt.seq_no;
-                    self.recv.nxt = pkt.seq_no.wrapping_add(1);
-                    self.recv.wnd = pkt.window;
-                    self.recv.up = false;
-
-                    self.send_pkt(nic, SynAck, self.send.nxt, 0)?;
-                    self.state = State::SynRcvd;
+                    self.send_pkt(nic, SynAck, self.snd.nxt.wrapping_sub(1), 0)?;
                 }
             }
             return Ok(self.availability());
         }
 
-        // acked some code, expecting all ack from now
-        let ackn = pkt.ack_no;
+        // // RFC 5961, Section 5 describes a potential blind data injection attack, and mitigation that implementations
+        // // MAY choose to include (MAY-12). TCP stacks that implement RFC 5961 MUST add an input check that the ACK value
+        // // is acceptable only if it is in the range of ((SND.UNA - MAX.SND.WND) =< SEG.ACK =< SND.NXT).
+        // let ack_acceptable = is_between_wrapped(
+        //     self.snd.una.wrapping_sub(self.snd.wnd as u32),
+        //     pkt.ack_no,
+        //     self.snd.nxt,
+        // );
 
-        if let State::SynSent | State::SynRcvd = self.state {
-            tracing::info!("SYN RECV: ");
+        // // All incoming segments whose ACK value doesn't satisfy the above condition MUST be discarded and an ACK sent back.
+        // // The new state variable MAX.SND.WND is defined as the largest window that the local sender has ever received
+        // // from its peer (subject to window scaling) or may be hard-coded to a maximum permissible window value. When
+        // // the ACK value is acceptable, the per-state processing below applies:
+        // // -> TODO max WINDOW
+        // if !ack_acceptable {
+        //     self.send_pkt(nic, Ack, self.snd.nxt, 0)?;
+        //     return Ok(self.availability());
+        // }
+
+        // SYN-RECEIVED STATE
+        if let State::SynRcvd = self.state {
+            // If SND.UNA < SEG.ACK =< SND.NXT, then enter ESTABLISHED state and continue
+            // processing with the variables below set to:
+            // SND.WND <- SEG.WND
+            // SND.WL1 <- SEG.SEQ
+            // SND.WL2 <- SEG.ACK
             if is_between_wrapped(
-                self.send.una.wrapping_sub(1),
-                ackn,
-                self.send.nxt.wrapping_add(1),
+                self.snd.una.wrapping_sub(1),
+                seg.ack_no,
+                self.snd.nxt.wrapping_add(1),
             ) {
                 // must have ACKed our SYN, since we detected at least one acked byte,
                 // and we have only sent one byte (the SYN).
                 tracing::info!("established connection from ACK");
+                self.state.transition_to(State::Estab);
 
-                if let State::SynSent = self.state {
-                    // SYN_SENT behaviour
-                    self.recv.irs = pkt.seq_no;
-                    self.recv.nxt = self.recv.irs + 1;
-                    self.recv.wnd = pkt.window;
-                    self.send_pkt(nic, Ack, self.send.nxt, 0)?;
-                } else {
-                    // SYN_RECV behaviour
-                }
+                self.snd.wnd = seg.window;
+                self.snd.wl1 = seg.seq_no;
+                self.snd.wl2 = seg.ack_no;
 
-                self.state = State::Estab;
-                self.wake_rx();
-                self.wake_tx();
+                self.wake_rx(nic);
+                self.wake_tx(nic);
             } else {
-                // TODO: <SEQ=SEG.ACK><CTL=RST>
+                // If the segment acknowledgment is not acceptable, form a reset segment
+                // <SEQ=SEG.ACK><CTL=RST> and send it.
+                self.send_rst(nic, seg.ack_no)?;
+
+                // TODO: and stop processing ??, not specified
+                return Ok(self.availability());
             }
         }
 
-        // We already have a ack history, so start to tick of from buffers
+        // acked some code, expecting all ack from now
+        let ackn = seg.ack_no;
+
+        // ESTABLISHED STATE
+        //   ...
+        // CLOSE-WAIT STATE
+        //   Do the same processing as for the ESTABLISHED state.
+        // Also used in FIN-WAIT-1, FIN-WAIT-2, CLOSING,
         if let State::Estab | State::FinWait1 | State::FinWait2 | State::LastAck | State::Closing =
             self.state
         {
-            // akc no must be between last_acked ... next
-            // -> if not, either not valid or already known ack
-            self.send.wnd = pkt.window;
-            if is_between_wrapped(self.send.una, ackn, self.send.nxt.wrapping_add(1)) {
+            // If SND.UNA < SEG.ACK =< SND.NXT, then set SND.UNA <- SEG.ACK.
+            // Any segments on the retransmission queue that are thereby entirely acknowledged are removed.
+            // Users should receive positive acknowledgments for buffers that have been SENT and fully acknowledged
+            // (i.e., SEND buffer should be returned with "ok" response).
+            // If the ACK is a duplicate (SEG.ACK =< SND.UNA), it can be ignored.
+            // If the ACK acks something not yet sent (SEG.ACK > SND.NXT), then send an ACK, drop the segment, and return.
+
+            // If SND.UNA =< SEG.ACK =< SND.NXT, the send window should be updated.
+            // If (SND.WL1 < SEG.SEQ or (SND.WL1 = SEG.SEQ and SND.WL2 =< SEG.ACK)),
+            // set SND.WND <- SEG.WND, set SND.WL1 <- SEG.SEQ, and set SND.WL2 <- SEG.ACK.
+            if is_between_wrapped(self.snd.una, ackn, self.snd.nxt.wrapping_add(1)) {
+                if self.snd.wl1 < seg.seq_no
+                    || (self.snd.wl1 == seg.seq_no && self.snd.wl2 <= seg.ack_no)
+                {
+                    self.snd.wnd = seg.window;
+                    self.snd.wl1 = seg.seq_no;
+                    self.snd.wl2 = seg.ack_no;
+                }
+            }
+
+            if is_between_wrapped(self.snd.una, ackn, self.snd.nxt.wrapping_add(1)) {
                 tracing::info!(
-                    "ack for {} (last: {}); prune {} bytes",
+                    "ack for {} (last: {}, wnd: {}); prune {} bytes",
                     ackn,
-                    self.send.una,
-                    ackn - self.send.una
+                    self.snd.una,
+                    self.snd.wnd,
+                    ackn - self.snd.una
                 );
 
                 // If unacked is not empty, ack did something actually,
-                // TODO: Wake Write
                 if !self.unacked.is_empty() {
                     // seq no of lasted unacked byte, corrected for virtual bytes
-                    let data_start = if self.send.una == self.send.iss {
+                    let data_start = if self.snd.una == self.snd.iss {
                         // send.una hasn't been updated yet with ACK for our SYN, so data starts just beyond it
-                        self.send.una.wrapping_add(1)
+                        self.snd.una.wrapping_add(1)
                     } else {
-                        self.send.una
+                        self.snd.una
                     };
 
                     // number of acked bytes, to be drained from the buffer
@@ -771,7 +831,7 @@ impl Connection {
                     // We go an ack, reset send timers, we can send once more
                     let old = std::mem::replace(&mut self.timers.send_times, BTreeMap::new());
 
-                    let una = self.send.una;
+                    let una = self.snd.una;
                     let srtt = &mut self.timers.srtt;
 
                     let now = (self.cfg.clock)();
@@ -791,25 +851,55 @@ impl Connection {
                             }
                         }));
 
-                    let n = ackn - self.send.una;
-                    self.cong.on_ack(n, self.send.wnd as u32);
+                    let n = ackn - self.snd.una;
+                    self.cong.on_ack(n, self.snd.wnd as u32);
+
+                    // Now is place to write more data
+                    self.wake_tx(nic);
                 }
 
                 // set last ack no
-                self.send.una = ackn;
+                self.snd.una = ackn;
             }
 
             // TODO: if unacked empty and waiting flush, notify
-            // TODO: update window
         }
 
-        // Fin wait: I have closed, and send a FIN
+        // FIN-WAIT-2 STATE
+        // In addition to the processing for the ESTABLISHED state, if the retransmission queue is empty,
+        // the user's CLOSE can be acknowledged ("ok") but do not delete the TCB.
+        if let State::FinWait2 = self.state {
+            if self.num_unacked_bytes() == 0 {
+                // TODO: Acknowledge close()
+            }
+        }
+
+        // TIME-WAIT STATE
+        // The only thing that can arrive in this state is a retransmission of the remote FIN.
+        // Acknowledge it, and restart the 2 MSL timeout.
+        if let State::TimeWait = self.state {
+            // Should always be true
+            if seg.flags.contains(TcpFlags::FIN) {
+                self.send_pkt(nic, Ack, self.snd.nxt, 0)?;
+                // TODO: MLS*2
+            }
+        }
+
+        // FIN-WAIT-1 STATE
+        //   In addition to the processing for the ESTABLISHED state, if the FIN segment is now acknowledged,
+        //   then enter FIN-WAIT-2 and continue processing in that state.
+        // CLOSING STATE
+        //   In addition to the processing for the ESTABLISHED state, if the ACK acknowledges our FIN,
+        //   then enter the TIME-WAIT state; otherwise, ignore the segment.
+        // LAST-ACK STATE
+        //   The only thing that can arrive in this state is an acknowledgment of our FIN.
+        //   If our FIN is now acknowledged, delete the TCB, enter the CLOSED state, and return.
         if let State::FinWait1 | State::Closing | State::LastAck = self.state {
             // This should always be true
             if let Some(closed_at) = self.closed_at {
                 // we got an ack, check if it is for the FIN
                 // since una == FIN seq no (una is final since next will not move, since we are write-closed)
-                if self.send.una == closed_at.wrapping_add(1) {
+                if self.snd.una == closed_at.wrapping_add(1) {
                     // our FIN has been ACKed!
                     let new_state = match self.state {
                         State::FinWait1 => State::FinWait2,
@@ -818,89 +908,413 @@ impl Connection {
                         _ => unreachable!(),
                     };
                     tracing::info!("received ACK for FIN ({:?} -> {:?})", self.state, new_state);
-                    self.state = new_state;
+                    self.state.transition_to(new_state);
                 }
             }
         }
 
-        // Process data in packets
-        if !pkt.content.is_empty() {
-            // recv open states
+        // Sixth, check the URG bit:
+        if seg.flags.contains(TcpFlags::URG) {
+            match self.state {
+                State::Estab | State::FinWait1 | State::FinWait2 => {
+                    // If the URG bit is set, RCV.UP <- max(RCV.UP,SEG.UP), and signal the user that the remote side has
+                    // urgent data if the urgent pointer (RCV.UP) is in advance of the data consumed.
+                    // If the user has already been signaled (or is still in the "urgent mode")
+                    // for this continuous sequence of urgent data, do not signal the user again.
+                    self.recv.up = self
+                        .recv
+                        .up
+                        .max(seg.seq_no.wrapping_add(seg.urgent_ptr as u32));
+                }
+                _ => {
+                    // This should not occur since a FIN has been received from the remote side. Ignore the URG.
+                }
+            }
+        }
+
+        // Seventh, process the segment text:
+        if !seg.content.is_empty() {
+            // ESTABLISHED STATE, FIN-WAIT-1 STATE, FIN-WAIT-2 STATE
             if let State::Estab | State::FinWait1 | State::FinWait2 = self.state {
+                // Once in the ESTABLISHED state, it is possible to deliver segment data to user RECEIVE buffers.
+                // Data from segments can be moved into buffers until either the buffer is full or the segment is empty.
+                // If the segment empties and carries a PUSH flag, then the user is informed, when the buffer is returned,
+                // that a PUSH has been received.
+                // -> We always wake, so we treat all segments as PSH
+
+                // When the TCP endpoint takes responsibility for delivering the data to the user,
+                // it must also acknowledge the receipt of the data.
+                // -> We send an ACK at the end of this block
+
                 // offset of received data to expected data
                 // we might get a packet further to the furutre
                 // -> never negative, since seq_no was checked
                 let mut unread_data_at = self.recv.nxt.wrapping_sub(seqn) as usize;
 
                 // FIN escape hatch
-                if unread_data_at > pkt.content.len() {
+                if unread_data_at > seg.content.len() {
                     // we must have received a re-transmitted FIN that we have already seen
                     // nxt points to beyond the fin, but the fin is not in data!
-                    assert_eq!(unread_data_at, pkt.content.len() + 1);
+                    assert_eq!(unread_data_at, seg.content.len() + 1);
                     unread_data_at = 0;
                 }
 
                 // Extend the incoming data
-                self.incoming.extend(&pkt.content[unread_data_at..]);
+                self.incoming.extend(&seg.content[unread_data_at..]);
 
-                // TODO: reordering, current impl only allows in-order
-
-                /*
-                Once the TCP takes responsibility for the data it advances
-                RCV.NXT over the data accepted, and adjusts RCV.WND as
-                apporopriate to the current buffer availability.  The total of
-                RCV.NXT and RCV.WND should not be reduced.
-                 */
-                self.recv.nxt = seqn.wrapping_add(pkt.content.len() as u32);
+                // Once the TCP takes responsibility for the data it advances
+                // RCV.NXT over the data accepted, and adjusts RCV.WND as
+                // apporopriate to the current buffer availability. The total of
+                // RCV.NXT and RCV.WND should not be reduced.
+                // -> the actual recv wnd is computed on the fly, wnd is only the cap
+                self.recv.nxt = seqn.wrapping_add(seg.content.len() as u32);
 
                 // Since pkt.content is non empty, new data was received, rx ready
-                self.wake_rx();
+                self.wake_rx(nic);
+
+                // A TCP implementation MAY send an ACK segment acknowledging RCV.NXT when a valid segment
+                // arrives that is in the window but not at the left window edge (MAY-13).
+                // -> We always ACK for now, but we should try to pack acks in the future
 
                 // Send an acknowledgment of the form: <SEQ=SND.NXT><ACK=RCV.NXT><CTL=ACK>
+                // This acknowledgment should be piggybacked on a segment being transmitted if possible without incurring undue delay.
                 // TODO: maybe just tick to piggyback ack on data?
-                self.send_pkt(nic, Ack, self.send.nxt, 0)?;
+                self.send_pkt(nic, Ack, self.snd.nxt, 0)?;
             }
+            // For other states
+            // This should not occur since a FIN has been received from the remote side. Ignore the segment text.
         }
 
-        // If this is a FIN packet do something
-        if pkt.flags.contains(TcpFlags::FIN) {
+        // Eighth, check the FIN bit:
+        if seg.flags.contains(TcpFlags::FIN) {
+            // Do not process the FIN if the state is CLOSED, LISTEN, or SYN-SENT since the SEG.SEQ cannot be validated;
+            // drop the segment and return.
+            if let State::Closed | State::SynSent = self.state {
+                return Ok(self.availability());
+            }
+
+            // If the FIN bit is set, signal the user "connection closing"
+            // and return any pending RECEIVEs with same message,
+            // advance RCV.NXT over the FIN, and send an acknowledgment for the FIN.
+            // Note that FIN implies PUSH for any segment text not yet delivered to the user.
+            // -> TODO: done in read()
+            // -> PSH is already always active, so nothing to do there
+            self.recv.nxt = seg.seq_no.wrapping_add(slen);
+            self.send_pkt(nic, Ack, self.snd.nxt, 0)?;
             match self.state {
-                State::FinWait1 => {
-                    // simultaneous close
-                    tracing::info!("closing recv-duplex due to received FIN (CLOSING)");
-                    self.recv.nxt = self.recv.nxt.wrapping_add(1);
-                    self.send_pkt(nic, Ack, self.send.nxt, 0)?;
-                    self.state = State::Closing;
-                }
-                State::FinWait2 => {
-                    // we're done with the connection!
-                    tracing::info!("closing recv-simplex due to received FIN (TIME_WAIT)");
-                    self.recv.nxt = self.recv.nxt.wrapping_add(1);
-                    self.send_pkt(nic, Ack, self.send.nxt, 0)?;
-                    self.state = State::TimeWait;
-                    self.wake_rx(); // Wake up to read the read(_) = 0, EOF
+                State::SynRcvd => {
+                    // Do nothing
                 }
                 State::Estab => {
-                    // peer is done with connection
+                    // Enter the CLOSE-WAIT state.
                     tracing::info!("closing recv-simplex due to received FIN (CLOSE_WAIT)");
-                    self.recv.nxt = self.recv.nxt.wrapping_add(1);
-                    self.send_pkt(nic, Ack, self.send.nxt, 0)?;
-                    self.state = State::CloseWait;
-                    self.wake_rx(); // Wake up to read the read(_) = 0, EOF
+                    self.state.transition_to(State::CloseWait);
+                    self.wake_rx(nic); // Wake up to read the read(_) = 0, EOF
                 }
-                State::CloseWait => {
-                    // resend FIN (ACK must be lost)
-                    self.send_pkt(nic, Ack, self.send.nxt, 0)?;
+                State::FinWait1 => {
+                    // If our FIN has been ACKed (perhaps in this segment),
+                    // then enter TIME-WAIT, start the time-wait timer, turn off the other timers;
+                    // otherwise, enter the CLOSING state.
+                    // -> TODO check ACK of own FIN, is that allready done in ACK handleing???
+                    tracing::info!("closing recv-duplex due to received FIN (CLOSING)");
+                    self.state.transition_to(State::Closing);
                 }
-                _ => unimplemented!("unknown state for FIN recv: {:?}", self.state),
+                State::FinWait2 => {
+                    // Enter the TIME-WAIT state. Start the time-wait timer, turn off the other timers.
+                    // -> TODO: Set time wait timer
+                    tracing::info!("closing recv-simplex due to received FIN (TIME_WAIT)");
+                    self.state.transition_to(State::TimeWait);
+                    self.wake_rx(nic); // Wake up to read the read(_) = 0, EOF
+                }
+                State::CloseWait | State::Closing | State::LastAck => {
+                    // Remain in the X state.
+                }
+                State::TimeWait => {
+                    // Remain in the TIME-WAIT state. Restart the 2 MSL time-wait timeout.
+                    // -> TODO: Restart Time Wait Timer
+                }
+                // captured by upper if condition
+                _ => unreachable!(),
             }
         }
 
         Ok(self.availability())
     }
 
-    fn packet_is_valid(&mut self, slen: u32, seqn: u32, wend: u32, pkt: &TcpPacket) -> bool {
-        let okay = if slen == 0 {
+    fn on_syn(
+        &mut self,
+        pkt: &TcpPacket,
+        seqn: u32,
+        nic: &mut TcpSender<'_>,
+    ) -> Result<Available, Error> {
+        if let State::SynRcvd = self.state {
+            // TODO: own addition
+            if !pkt.flags.contains(TcpFlags::ACK) {
+                // Another SYN, SYNACK must be lost, and client must have timed out
+                assert!(pkt.content.is_empty());
+                self.recv.nxt = seqn.wrapping_add(1);
+                self.send_pkt(nic, SynAck, self.snd.nxt.wrapping_sub(1), 0)?;
+                return Ok(Available::empty());
+            }
+
+            self.state = State::Closed;
+            self.closed = true;
+            self.wake_all(nic);
+            Ok(Available::empty())
+        } else {
+            // If the SYN bit is set in these synchronized states, it may be either a legitimate new connection attempt
+            // (e.g., in the case of TIME-WAIT), an error where the connection should be reset, or the result of an
+            // attack attempt, as described in RFC 5961.
+
+            // For the TIME-WAIT state, new connections can be accepted if the Timestamp Option is used and meets expectations.
+            if let State::TimeWait = self.state {
+                // TODO: check timestamp and re-initialized connection
+            }
+
+            // For all other cases, RFC 5961 provides a mitigation with applicability to some situations,
+            // though there are also alternatives that offer cryptographic protection (see Section 7).
+            // RFC 5961 recommends that in these synchronized states, if the SYN bit is set, irrespective of the sequence number,
+            // TCP endpoints MUST send a "challenge ACK" to the remote peer:
+            // <SEQ=SND.NXT><ACK=RCV.NXT><CTL=ACK>
+            self.send_pkt(nic, Ack, self.snd.nxt, 0)?;
+
+            // After sending the acknowledgment, TCP implementations MUST drop the unacceptable segment and
+            // stop processing further. ...
+            Ok(self.availability())
+        }
+    }
+
+    fn on_tcp_options(&mut self, pkt: &TcpPacket) {
+        pkt.options.iter().for_each(|opt| match opt {
+            TcpOption::MaximumSegmentSize(mss) => {
+                // Default MSS according to RFC 9293
+                // -> 3.7.1. Maximum Segment Size Option
+                //
+                // We update the local MSS. We also automatically send an update
+                // TODO: correct MSS computation
+                if self.cong.mss != *mss {
+                    tracing::info!(
+                        "update maximum-segement-size {} -> {}",
+                        self.cong.mss,
+                        self.cong.mss.min(*mss)
+                    );
+                    self.cong.mss = self.cong.mss.min(*mss);
+                }
+            }
+            _ => {}
+        });
+    }
+
+    fn on_rst(
+        &mut self,
+        seqn: u32,
+        wend: u32,
+        nic: &mut TcpSender<'_>,
+    ) -> Result<Available, Error> {
+        if !is_between_wrapped(self.recv.nxt.wrapping_sub(1), seqn, wend) {
+            return Ok(Available::empty());
+        }
+        if self.recv.nxt != seqn {
+            // If the RST bit is set and the sequence number does not exactly match the next expected sequence value,
+            // yet is within the current receive window, TCP endpoints MUST send an acknowledgment (challenge ACK):
+            // <SEQ=SND.NXT><ACK=RCV.NXT><CTL=ACK>
+            self.send_pkt(nic, Ack, self.snd.nxt, 0)?;
+
+            // After sending the challenge ACK, TCP endpoints MUST drop the unacceptable segment and
+            // stop processing the incoming packet further. ...
+            return Ok(Available::empty());
+        }
+        match self.state {
+            State::SynRcvd => {
+                // If this connection was initiated with a passive OPEN (i.e., came from the LISTEN state),
+                // then return this connection to LISTEN state and return. The user need not be informed.
+                // -> Listen is no valid state for the Connection, set to Closed, listening socket remains
+                self.state = State::Closed;
+                self.closed = true;
+                self.wake_all(nic);
+
+                // If this connection was initiated with an active OPEN (i.e., came from SYN-SENT state),
+                // then the connection was refused; signal the user "connection refused".
+                // And in the active OPEN case, enter the CLOSED state and delete the TCB, and return.
+                // -> Already done
+                self.error = Some(Error::new(
+                    ErrorKind::ConnectionRefused,
+                    "connection refused - RST in SYN_RCVD",
+                ));
+
+                //  In either case, the retransmission queue should be flushed.
+                self.unacked.clear();
+                // TODO: indicate, that queued packets may be deleted
+                Ok(Available::empty())
+            }
+            State::Estab | State::FinWait1 | State::FinWait2 | State::CloseWait => {
+                // ... then any outstanding RECEIVEs and SEND should receive "reset" responses.
+                // All segment queues should be flushed. Users should also receive an unsolicited
+                // general "connection reset" signal. Enter the CLOSED state, delete the TCB, and return.
+
+                self.state = State::Closed;
+                self.closed = true;
+                self.error = Some(Error::new(
+                    ErrorKind::ConnectionReset,
+                    "connection reset - RST in ESTAB'like",
+                ));
+                self.wake_all(nic);
+                Ok(Available::empty())
+            }
+
+            State::Closing | State::LastAck | State::TimeWait => {
+                // If the RST bit is set, then enter the CLOSED state, delete the TCB, and return.
+                self.state = State::Closed;
+                self.closed = true;
+                self.wake_all(nic);
+                Ok(Available::empty())
+            }
+            State::SynSent | State::Closed => unreachable!(),
+        }
+    }
+
+    fn on_packet_syn_sent(&mut self, snd: &mut TcpSender, seg: TcpPacket) -> io::Result<Available> {
+        // RFC 9293 - 3.10.7.3. SYN-SENT STATE
+        // First, check the ACK bit:
+        //   If the ACK bit is set:
+        if seg.flags.contains(TcpFlags::ACK) {
+            // If SEG.ACK =< ISS or SEG.ACK > SND.NXT, send a reset (unless the RST bit is set, if so drop the segment and return)
+            // <SEQ=SEG.ACK><CTL=RST> and discard the segment. Return.
+            if seg.ack_no <= self.snd.iss || seg.ack_no > self.snd.nxt {
+                if !seg.flags.contains(TcpFlags::RST) {
+                    self.send_rst(snd, seg.ack_no)?;
+                }
+                tracing::warn!(
+                    seg.ack_no,
+                    self.snd.iss,
+                    self.snd.nxt,
+                    "invalid ACK in segment"
+                );
+                return Ok(Available::empty());
+            };
+
+            // If SND.UNA < SEG.ACK =< SND.NXT, then the ACK is acceptable.
+            // -> If not, drop the packet without rest
+            if !is_between_wrapped(
+                self.snd.una.wrapping_sub(1),
+                seg.ack_no,
+                self.snd.nxt.wrapping_add(1),
+            ) {
+                return Ok(Available::empty());
+            }
+        }
+
+        // Second, check the RST bit:
+        //   If the RST bit is set:
+        if seg.flags.contains(TcpFlags::RST) {
+            // A potential blind reset attack is described in RFC 5961 [9].
+            // The mitigation described in that document has specific applicability explained therein, and is
+            // not a substitute for cryptographic protection (e.g., IPsec or TCP-AO). A TCP implementation that
+            // supports the mitigation described in RFC 5961 SHOULD first check that the sequence number exactly
+            // matches RCV.NXT prior to executing the action in the next paragraph.
+            tracing::info!(seg.seq_no, self.recv.nxt, "RST");
+            if seg.seq_no != self.recv.nxt {
+                return Ok(Available::empty());
+            }
+
+            // If the ACK was acceptable, then signal to the user "error: connection reset",
+            // drop the segment, enter CLOSED state, delete TCB, and return.
+            // Otherwise (no ACK), drop the segment and return.
+            if seg.flags.contains(TcpFlags::ACK) {
+                self.error = Some(Error::new(
+                    ErrorKind::ConnectionReset,
+                    "connection reset: RST+ACK in SYN_SNT",
+                ));
+                self.wake_rx(snd);
+                self.wake_tx(snd);
+                self.state.transition_to(State::Closed);
+                return Ok(Available::empty());
+            } else {
+                return Ok(Available::empty());
+            }
+        }
+
+        // Third, check the security:
+        // -> NOP, security will not be implemented
+
+        self.on_tcp_options(&seg);
+
+        // Fourth, check the SYN bit:
+        // This step should be reached only if the ACK is ok, or there is no ACK, and the segment did not contain a RST.
+        // -> Code paths only allow valid acks, no acks AND no rst
+        if seg.flags.contains(TcpFlags::SYN) {
+            // If the SYN bit is on and ... then RCV.NXT is set to SEG.SEQ+1, IRS is set to SEG.SEQ. SND.UNA should
+            // be advanced to equal SEG.ACK (if there is an ACK), and any segments on the retransmission queue that
+            // are thereby acknowledged should be removed.
+            // -> no segments are in the tx queue, no need to update
+            self.recv.nxt = seg.seq_no.wrapping_add(1);
+            self.recv.irs = seg.seq_no;
+            if seg.flags.contains(TcpFlags::ACK) {
+                self.snd.una = seg.ack_no;
+            }
+
+            // If SND.UNA > ISS (our SYN has been ACKed), change the connection state to ESTABLISHED,
+            // form an ACK segment <SEQ=SND.NXT><ACK=RCV.NXT><CTL=ACK>
+            if self.snd.una > self.snd.iss {
+                self.state.transition_to(State::Estab);
+                self.wake_rx(snd);
+                self.wake_tx(snd);
+                self.send_pkt(snd, Ack, self.snd.nxt, 0)?;
+
+                // TODO: this is wrong here
+                self.snd.wnd = seg.window;
+
+                // and send it. Data or controls that were queued for transmission MAY be included. ... If there are other controls
+                // or text in the segment, then continue processing at the sixth step under Section 3.10.7.4
+                // where the URG bit is checked; otherwise, return.
+                // -> TODO
+                return Ok(Available::all());
+            } else {
+                // Otherwise, enter SYN-RECEIVED, form a SYN,ACK segment <SEQ=ISS><ACK=RCV.NXT><CTL=SYN,ACK>
+                self.state.transition_to(State::SynRcvd);
+                self.send_pkt(snd, SynAck, self.snd.iss, 0)?;
+
+                // and send it. Set the variables:
+                self.snd.wnd = seg.window;
+                self.snd.wl1 = seg.seq_no;
+                self.snd.wl2 = seg.ack_no;
+
+                // If there are other controls or text in the segment, queue them for processing after the
+                // ESTABLISHED state has been reached, return.
+
+                return Ok(Available::empty());
+            }
+        }
+
+        // Fifth, if neither of the SYN or RST bits is set, then drop the segment and return.
+        // -> reaching this point means that these conditions are met
+        Ok(Available::all())
+    }
+
+    fn packet_is_valid(&self, seg_len: u32, seqn: u32, wend: u32, seg: &TcpPacket) -> bool {
+        // RFC 9293 - 3.10.7.4.  Other States
+        // There are four cases for the acceptability test for an incoming segment:
+        // +=========+=========+======================================+
+        // | Segment | Receive | Test                                 |
+        // | Length  | Window  |                                      |
+        // +=========+=========+======================================+
+        // | 0       | 0       | SEG.SEQ = RCV.NXT                    |
+        // +---------+---------+--------------------------------------+
+        // | 0       | >0      | RCV.NXT =< SEG.SEQ <                 |
+        // |         |         | RCV.NXT+RCV.WND                      |
+        // +---------+---------+--------------------------------------+
+        // | >0      | 0       | not acceptable                       |
+        // +---------+---------+--------------------------------------+
+        // | >0      | >0      | RCV.NXT =< SEG.SEQ <                 |
+        // |         |         | RCV.NXT+RCV.WND                      |
+        // |         |         |                                      |
+        // |         |         | or                                   |
+        // |         |         |                                      |
+        // |         |         | RCV.NXT =< SEG.SEQ+SEG.LEN-1         |
+        // |         |         | < RCV.NXT+RCV.WND                    |
+        // +---------+---------+--------------------------------------+
+
+        let okay = if seg_len == 0 {
             // zero-length segment has separate rules for acceptance
             if self.recv.wnd == 0 {
                 if seqn != self.recv.nxt {
@@ -919,26 +1333,18 @@ impl Connection {
             }
         } else {
             // When the window is empty, its always invalid to receive another packet
-            if self.state == State::SynSent
-                && pkt.flags.contains(TcpFlags::SYN)
-                && pkt.flags.contains(TcpFlags::ACK)
-            {
-                true
-            } else if self.state == State::SynRcvd
-                && pkt.flags.contains(TcpFlags::SYN)
-                && !pkt.flags.contains(TcpFlags::ACK)
+            if self.state == State::SynRcvd
+                && seg.flags.contains(TcpFlags::SYN)
+                && !seg.flags.contains(TcpFlags::ACK)
             {
                 true
             } else if self.recv.wnd == 0 {
                 tracing::warn!("not okay: non-zero-length empty window");
-                // Edge Case: SYN of simultaneous open
-                self.state == State::SynSent
-                    && pkt.flags.contains(TcpFlags::SYN)
-                    && !pkt.flags.contains(TcpFlags::ACK)
+                false
             } else if !is_between_wrapped(self.recv.nxt.wrapping_sub(1), seqn, wend)
                 && !is_between_wrapped(
                     self.recv.nxt.wrapping_sub(1),
-                    seqn.wrapping_add(slen - 1),
+                    seqn.wrapping_add(seg_len - 1),
                     wend,
                 )
             {
@@ -966,10 +1372,10 @@ impl Connection {
             // When the other TCP peer has both acknowledged the FIN and sent a FIN of its own, the first TCP peer can ACK this FIN.
             // Note that a TCP endpoint receiving a FIN will ACK but not send its own FIN until its user has CLOSED the connection also.
             State::SynRcvd | State::Estab => {
-                self.state = State::FinWait1;
+                self.state.transition_to(State::FinWait1);
             }
             State::FinWait1 | State::FinWait2 => {}
-            State::CloseWait => self.state = State::LastAck,
+            State::CloseWait => self.state.transition_to(State::LastAck),
             _ => {
                 return Err(io::Error::new(
                     io::ErrorKind::NotConnected,
@@ -1002,16 +1408,16 @@ impl RecvSequenceSpace {
             irs: pkt.seq_no,
             nxt: pkt.seq_no.wrapping_add(1),
             wnd: pkt.window,
-            up: false,
+            up: pkt.seq_no,
         }
     }
 
-    pub const fn empty() -> Self {
+    pub const fn empty(wnd: u16) -> Self {
         Self {
             nxt: 0,
-            wnd: 0,
+            wnd,
             irs: 0,
-            up: false,
+            up: 0,
         }
     }
 }
@@ -1027,6 +1433,7 @@ fn wrapping_lt(lhs: u32, rhs: u32) -> bool {
     lhs.wrapping_sub(rhs) > (1 << 31)
 }
 
+/// `start` <= `x` < end
 fn is_between_wrapped(start: u32, x: u32, end: u32) -> bool {
     wrapping_lt(start, x) && wrapping_lt(x, end) || start == x
 }

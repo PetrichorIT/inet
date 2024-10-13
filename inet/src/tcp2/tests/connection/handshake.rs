@@ -170,7 +170,7 @@ fn connect_simultaneous_open() -> io::Result<()> {
     test.assert_outgoing_eq(&[TcpPacket::syn(80, 1808, 0, WIN_4KB)]);
 
     let syn = TcpPacket::syn(1808, 80, 4000, WIN_4KB);
-    let syn_ack = TcpPacket::syn_ack(&syn, 1, WIN_4KB);
+    let syn_ack = TcpPacket::syn_ack(&syn, 0, WIN_4KB);
 
     test.incoming(syn)?;
     test.assert_outgoing_eq(&[syn_ack]);
@@ -279,9 +279,9 @@ fn e2e_simultaneous_open() -> io::Result<()> {
     // -> SYN-ACK
     // <- SYN-ACK
     let syn_ack_for_client_syn =
-        TcpPacket::syn_ack(&TcpPacket::syn(80, 1808, 2000, WIN_4KB), 8001, WIN_4KB);
+        TcpPacket::syn_ack(&TcpPacket::syn(80, 1808, 2000, WIN_4KB), 8000, WIN_4KB);
     let syn_ack_for_server_syn =
-        TcpPacket::syn_ack(&TcpPacket::syn(1808, 80, 8000, WIN_4KB), 2001, WIN_4KB);
+        TcpPacket::syn_ack(&TcpPacket::syn(1808, 80, 8000, WIN_4KB), 2000, WIN_4KB);
     client.pipe_and_expect(&mut server, 1, &[syn_ack_for_server_syn])?;
     server.pipe_and_expect(&mut client, 1, &[syn_ack_for_client_syn])?;
 

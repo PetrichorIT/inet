@@ -66,6 +66,7 @@ impl Future for TcpInterest {
                     )));
                 };
 
+                tracing::info!("polling write interest: {:?}", handle.error);
                 if let Some(err) = handle.error.take() {
                     return Poll::Ready(Err(err));
                 }

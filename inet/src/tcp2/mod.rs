@@ -5,7 +5,10 @@ use crate::{
 };
 
 use bytepack::{FromBytestream, ToBytestream};
-use des::prelude::{schedule_at, Message};
+use des::{
+    prelude::{schedule_at, schedule_in, Message},
+    time::SimTime,
+};
 use fxhash::FxHashMap;
 use listener::Listener;
 use sender::TcpSenderBuffer;
@@ -18,6 +21,8 @@ use std::{
         Arc,
     },
     task::{Context, Poll},
+    time::Duration,
+    u32,
 };
 use tokio::{io::ReadBuf, sync::mpsc};
 use types::{
@@ -48,10 +53,17 @@ mod tests;
 
 pub struct Tcp {
     pub config: Config,
+    pub timers: Timers,
     pub sender: TcpSenderBuffer,
     pub listeners: FxHashMap<Fd, Listener>,
     pub streams: FxHashMap<Fd, Connection>,
     pub active: Vec<Fd>,
+}
+
+#[derive(Debug, Default)]
+struct Timers {
+    pub needed_wakeups: FxHashMap<Fd, SimTime>,
+    pub scheduled: Vec<SimTime>,
 }
 
 #[derive(Clone, Copy, Debug, Hash, Eq, PartialEq)]
@@ -64,6 +76,7 @@ impl Tcp {
     pub fn new() -> Self {
         Tcp {
             config: Config::default(),
+            timers: Timers::default(),
             sender: TcpSenderBuffer::default(),
             listeners: FxHashMap::default(),
             streams: FxHashMap::default(),
@@ -75,6 +88,8 @@ impl Tcp {
         if let Some(stream) = self.streams.get_mut(&fd) {
             tracing::error!(%fd, ?error, "connection failed with error");
             stream.error = Some(error);
+            stream.wake_tx(&mut self.sender.sender(fd));
+            stream.wake_rx(&mut self.sender.sender(fd));
         }
     }
 
@@ -93,23 +108,32 @@ impl IOContext {
         let Some(interface) = self.ifaces.get_mut(&socket.interface.unwrap_ifid()) else {
             return;
         };
+        let Some(con) = self.tcp2.streams.get(&fd) else {
+            return;
+        };
 
         let mut sender = self.tcp2.sender.sender(fd);
 
         if !interface.is_busy() {
-            let Some(pkt) = sender.next(Quad {
-                src: socket.addr,
-                dst: socket.peer,
-            }) else {
+            let Some(pkt) = sender.next(con) else {
                 return;
             };
 
-            if !sender.is_empty() {
-                interface.add_write_interest(fd);
-            }
+            let is_empty = sender.is_empty();
 
             if let Err(error) = self.send_ip_packet(socket.interface.clone(), pkt, true) {
                 self.tcp2.set_error(fd, error);
+            }
+
+            // TODO: that is just horrible
+            let Some(socket) = self.sockets.get(&fd) else {
+                return;
+            };
+            let Some(interface) = self.ifaces.get_mut(&socket.interface.unwrap_ifid()) else {
+                return;
+            };
+            if !is_empty {
+                interface.add_write_interest(fd);
             }
         } else {
             if !sender.is_empty() {
@@ -118,12 +142,31 @@ impl IOContext {
         }
     }
 
-    pub fn tcp2_timeout(&mut self, fd: Fd) {
-        self.tcp2.set_active(fd);
+    pub fn tcp2_timeout(&mut self) {
+        // TCP2 grouped wakeup
+        for fd in self.tcp2.timers.on_wakeup() {
+            // We cannot defer any work, since timeouts could cause async progerss
+            // this can lead to two calls to on_tick per event
+            let Some(con) = self.tcp2.streams.get_mut(&fd) else {
+                continue;
+            };
+
+            con.on_tick(&mut self.tcp2.sender.sender(fd))
+                .expect("on tick failure");
+
+            self.tcp2.set_active(fd);
+        }
     }
 
     #[tracing::instrument(skip(self))]
     pub fn tcp2_tick(&mut self) {
+        // TODO:
+        // need to check, whether the tick caused some
+        // wakers to be woken. If yes, then
+        // schedule a 0s reactivation to use these wakers
+
+        self.tcp2.sender.has_unresolved_wakeups = false;
+
         let mut fds = Vec::new();
         mem::swap(&mut fds, &mut self.tcp2.active);
 
@@ -135,17 +178,22 @@ impl IOContext {
             con.on_tick(&mut self.tcp2.sender.sender(*fd))
                 .expect("on tick failure");
 
-            if let Some(deadline) = con.next_timeout() {
-                schedule_at(
-                    Message::new().kind(KIND_IO_TIMEOUT).content(*fd).build(),
-                    deadline,
-                );
-            }
+            self.tcp2.timers.update(*fd, con);
         }
 
         for fd in &fds {
             self.tcp2_socket_link_update(*fd);
         }
+
+        if self.tcp2.sender.has_unresolved_wakeups {
+            // Apparently, this is never true
+            // this cannot be right i think, but maybe it is
+            // TODO: check for timeouts
+            // TODO: if there are wakeups in the event_end_tick, reschedule a 0s event, to resolve the wakeups
+            unreachable!()
+        }
+
+        self.tcp2.timers.schedule()
     }
 
     pub fn tcp2_connection<R>(
@@ -159,9 +207,12 @@ impl IOContext {
             .get_mut(&fd)
             .ok_or(Error::new(ErrorKind::BrokenPipe, "no such fd"))?;
 
+        // TODO: is this a good idea?
+        // if let Some(error) = con.error.take() {
+        //     return Err(error);
+        // }
         let result = f(con);
-        con.on_tick(&mut self.tcp2.sender.sender(fd))?;
-        self.tcp2_socket_link_update(fd);
+        self.tcp2.set_active(fd);
         Ok(result)
     }
 
@@ -248,7 +299,7 @@ impl IOContext {
         connection
             .on_packet(&mut self.tcp2.sender.sender(fd), pkt)
             .expect("failed to recv");
-        self.tcp2_socket_link_update(fd);
+        self.tcp2.set_active(fd);
         true
     }
 
@@ -427,6 +478,7 @@ impl IOContext {
         if let Some(con) = con {
             self.tcp2.streams.insert(stream_socket, con);
         }
+        // TODO: introduce indirection
         self.tcp2_socket_link_update(stream_socket);
         Ok(stream_socket)
     }
@@ -496,9 +548,8 @@ impl IOContext {
         // Sends a SYN
         let conn = Connection::connect(&mut self.tcp2.sender.sender(fd), quad, cfg)?;
         self.tcp2.streams.insert(fd, conn);
-        self.tcp2.set_active(fd);
 
-        // -> FWD SYN (TODO: rm)
+        // Nessecary, since failure to send packets may wake up wakers
         self.tcp2_socket_link_update(fd);
 
         Ok(fd)
@@ -509,6 +560,17 @@ impl IOContext {
     //
 
     fn tcp2_drop(&mut self, fd: Fd) -> Result<(), Error> {
+        self.tcp2
+            .streams
+            .remove(&fd)
+            .ok_or(Error::new(ErrorKind::BrokenPipe, "no such fd"))?;
+
+        self.close_socket(fd)?;
+
+        Ok(())
+    }
+
+    fn tcp2_close(&mut self, fd: Fd) -> Result<(), Error> {
         let con = self
             .tcp2
             .streams
@@ -517,6 +579,55 @@ impl IOContext {
 
         con.close()?;
         Ok(())
+    }
+}
+
+impl Timers {
+    fn on_wakeup(&mut self) -> Vec<Fd> {
+        let now = SimTime::now();
+
+        while self.scheduled.first().map_or(false, |v| *v <= now) {
+            self.scheduled.remove(0);
+        }
+
+        let mut vec = Vec::new();
+        for (k, v) in &self.needed_wakeups {
+            if *v <= now {
+                vec.push(*k);
+            }
+        }
+
+        vec
+    }
+
+    fn schedule(&mut self) {
+        let Some(min) = self.needed_wakeups.values().min().copied() else {
+            return;
+        };
+
+        if min <= SimTime::now() {
+            return;
+        }
+        let next_scheduled = self.scheduled.first().unwrap_or(&SimTime::MAX);
+        if min < *next_scheduled {
+            tracing::info!("scheduling wakeup: {min}");
+            schedule_at(
+                Message::new()
+                    .kind(KIND_IO_TIMEOUT)
+                    .content(u32::MAX)
+                    .build(),
+                min,
+            );
+            self.scheduled.insert(0, min);
+        }
+    }
+
+    fn update(&mut self, fd: Fd, con: &Connection) {
+        if let Some(next_wakeup) = con.next_timeout() {
+            self.needed_wakeups.insert(fd, next_wakeup);
+        } else {
+            self.needed_wakeups.remove(&fd);
+        }
     }
 }
 

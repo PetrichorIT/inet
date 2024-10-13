@@ -14,3 +14,5 @@ we do NOT recv a MSS but have a non-default one.
 # Path MTU discovery
 
 # Close TIMEWAIT after LINGER
+
+# OPTIONS: SO_LINGER
