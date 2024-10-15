@@ -16,3 +16,23 @@ we do NOT recv a MSS but have a non-default one.
 # Close TIMEWAIT after LINGER
 
 # OPTIONS: SO_LINGER
+
+# Wrong WINDOW cmp
+
+Most comparispns of is_between_wrapped or wrapping_lt uses the wend
+computed as NXT + WND. WND is however not the window with cong control.
+Fix by updating WND accordingly instead of recv_window() get
+
+# Off by 1 erros with is_between_wrapped()
+
+The original impl uses wrapping_sub to handle the x = start case.
+I do it manually. Check if wrapping_sub(1) is still needed
+
+# ICMP demultiplexing on IP layer
+
+ICMP messages V4 are assigned to sockets, based on the src addr. This is not
+a good idea, since e.g. multiple connections may be established to the same peer,
+differnt ports and one of these connections might rcv a port-unreachable while
+others do not.
+
+# ICMP V6 DEMUX

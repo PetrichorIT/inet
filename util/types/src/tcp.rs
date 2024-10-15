@@ -111,6 +111,21 @@ impl TcpPacket {
     }
 
     #[must_use]
+    pub fn rst(seq_no: u32, window: u16, cause: &TcpPacket) -> TcpPacket {
+        TcpPacket {
+            src_port: cause.dst_port,
+            dst_port: cause.src_port,
+            seq_no,
+            ack_no: 0,
+            flags: TcpFlags::RST,
+            window,
+            urgent_ptr: 0,
+            options: Vec::new(),
+            content: Vec::new(),
+        }
+    }
+
+    #[must_use]
     pub fn rst_for_syn(syn: &TcpPacket) -> TcpPacket {
         TcpPacket {
             src_port: syn.dst_port,

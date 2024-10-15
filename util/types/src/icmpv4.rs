@@ -17,19 +17,24 @@ pub struct IcmpV4Packet {
     pub content: Vec<u8>, // ip header + first 8 byte payload or padding
 }
 
+const PAYLOAD_LIMIT: usize = 20 + 64;
+
 impl IcmpV4Packet {
     pub fn new(typ: IcmpV4Type, pkt: &Ipv4Packet) -> Self {
         let mut content = pkt.to_vec().expect("Failed to write incoming IP ???");
-        content.truncate(28);
+        dbg!(content.len());
+        content.truncate(PAYLOAD_LIMIT);
         Self { typ, content }
     }
 
-    pub fn contained(&mut self) -> Ipv4Packet {
+    pub fn contained(&self) -> Result<Ipv4Packet, Error> {
         // Override len with 8
-        self.content[2] = 0;
-        self.content[3] = 20 + 8;
-        let ip = Ipv4Packet::read_from_slice(&mut &self.content[..]).unwrap();
-        ip
+        let mut buffer = self.content.clone();
+        let len = buffer.len().min(PAYLOAD_LIMIT);
+        assert!(len < 256);
+        buffer[2] = 0;
+        buffer[3] = len as u8;
+        Ipv4Packet::read_from_slice(&mut &buffer[..])
     }
 }
 
@@ -45,7 +50,7 @@ impl FromBytestream for IcmpV4Packet {
     type Error = Error;
     fn from_bytestream(bytestream: &mut BytestreamReader) -> Result<Self, Self::Error> {
         let typ = IcmpV4Type::from_bytestream(bytestream)?;
-        let mut content = vec![0; 20 + 8];
+        let mut content = vec![0; PAYLOAD_LIMIT];
         let n = bytestream.read(&mut content)?;
         content.truncate(n);
         Ok(Self { typ, content })

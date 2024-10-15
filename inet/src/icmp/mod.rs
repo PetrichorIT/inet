@@ -109,7 +109,7 @@ impl IOContext {
                 }
             }
             IcmpV4Type::DestinationUnreachable { next_hop_mtu, code } => {
-                let ip = pkt.contained();
+                let ip = pkt.contained().unwrap();
                 let unreachable = ip.dst;
 
                 // (0) check for recent pings
@@ -156,7 +156,7 @@ impl IOContext {
                 let _ = next_hop_mtu;
             }
             IcmpV4Type::TimeExceeded { code } => {
-                let ip = pkt.contained();
+                let ip = pkt.contained().unwrap();
                 let unreachable = ip.dst;
 
                 if let Some(trace) = self.icmp.traceroutes.get_mut(&unreachable) {

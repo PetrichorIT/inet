@@ -1,21 +1,29 @@
-use cong::CongestionControl;
+use bytepack::FromBytestream;
 use des::time::SimTime;
 use std::{
     cmp,
     collections::{BTreeMap, VecDeque},
     io::{self, Error, ErrorKind, Write},
+    net::SocketAddrV4,
     task::Waker,
     time::Duration,
 };
 use tracing::instrument;
-use types::tcp::{TcpFlags, TcpOption, TcpPacket};
+use types::{
+    icmpv4::{IcmpV4DestinationUnreachableCode, IcmpV4Packet, IcmpV4Type},
+    icmpv6::{IcmpV6DestinationUnreachableCode, IcmpV6Packet},
+    tcp::{TcpFlags, TcpOption, TcpPacket},
+};
 
-use super::{sender::TcpSender, Quad};
-
-mod cong;
+use super::{sender::TcpSender, Quad, PROTO_TCP2};
 
 mod cfg;
+mod cong;
+mod reorder;
+
 pub use cfg::*;
+use cong::CongestionControl;
+pub(super) use reorder::*;
 
 bitflags::bitflags! {
     pub struct Available: u8 {
@@ -73,12 +81,13 @@ use PacketKind::*;
 pub struct Connection {
     pub state: State,
     pub snd: SendSequenceSpace,
-    pub recv: RecvSequenceSpace,
+    pub rcv: RecvSequenceSpace,
     pub timers: Timers,
 
+    pub incoming: ReorderBuffer,
     pub cong: CongestionControl,
 
-    pub incoming: VecDeque<u8>,
+    pub received: VecDeque<u8>,
     pub unacked: VecDeque<u8>,
     pub quad: Quad,
 
@@ -135,7 +144,7 @@ impl Connection {
     }
 
     pub fn is_readable(&self) -> bool {
-        self.is_rcv_closed() || !self.incoming.is_empty()
+        self.is_rcv_closed() || !self.received.is_empty()
     }
 
     pub fn is_writable(&self) -> bool {
@@ -144,7 +153,7 @@ impl Connection {
 
     fn availability(&self) -> Available {
         let mut a = Available::empty();
-        if self.is_rcv_closed() || !self.incoming.is_empty() {
+        if self.is_rcv_closed() || !self.received.is_empty() {
             a |= Available::READ;
         }
         // TODO: take into account self.state
@@ -209,31 +218,63 @@ pub struct RecvSequenceSpace {
 impl Connection {
     pub fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         let nread = self.peek(buf)?;
-        drop(self.incoming.drain(..nread));
+        drop(self.received.drain(..nread));
         return Ok(nread);
     }
 
     pub fn peek(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        if self.is_rcv_closed() && self.incoming.is_empty() {
-            return Ok(0);
-        }
+        // RFC 9293 - 3.10.3. RECEIVE Call
 
-        if self.incoming.is_empty() {
+        // LISTEN, SYN-SNT, SYN-RCVD
+        // Queue for processing after entering ESTABLISHED state. If there is no room to queue this request,
+        // respond with "error: insufficient resources".
+        if let State::SynSent | State::SynRcvd = self.state {
+            // This is illegal, since no TcpStream should exist before ESTABLISHED is reached
+            // -> do never allow requuest queuing
             return Err(Error::new(
-                ErrorKind::WouldBlock,
-                "no bytes in rx buffer yet",
+                ErrorKind::Other,
+                "insufficient resources - unexpected read before Estab",
             ));
         }
 
-        let mut nread = 0;
-        let (head, tail) = self.incoming.as_slices();
-        let hread = std::cmp::min(buf.len(), head.len());
-        buf[..hread].copy_from_slice(&head[..hread]);
-        nread += hread;
-        let tread = std::cmp::min(buf.len() - nread, tail.len());
-        buf[hread..(hread + tread)].copy_from_slice(&tail[..tread]);
-        nread += tread;
-        return Ok(nread);
+        if let State::Estab | State::FinWait1 | State::FinWait2 | State::CloseWait = self.state {
+            // If insufficient incoming segments are queued to satisfy the request, queue the request.
+            // If there is no queue space to remember the RECEIVE, respond with "error: insufficient resources".
+            // -> No request queuing is allowed, since we work non-blocking poll based
+
+            if self.is_rcv_closed() && self.received.is_empty() {
+                return Ok(0);
+            }
+
+            if self.received.is_empty() {
+                return Err(Error::new(
+                    ErrorKind::WouldBlock,
+                    "no bytes in rx buffer yet",
+                ));
+            }
+
+            // Reassemble queued incoming segments into receive buffer and return to user.
+            // Mark "push seen" (PUSH) if this is the case.
+            // -> no need for PUSH mng, since all data is PSH
+
+            // If RCV.UP is in advance of the data currently being passed to the user, notify the user of the presence of urgent data.
+            // -> Not part of the tokio API
+
+            let mut nread = 0;
+            let (head, tail) = self.received.as_slices();
+            let hread = std::cmp::min(buf.len(), head.len());
+            buf[..hread].copy_from_slice(&head[..hread]);
+            nread += hread;
+            let tread = std::cmp::min(buf.len() - nread, tail.len());
+            buf[hread..(hread + tread)].copy_from_slice(&tail[..tread]);
+            nread += tread;
+
+            // When the TCP endpoint takes responsibility for delivering data ...
+            // -> We already send an ACK, read interacts only with the buffer
+            return Ok(nread);
+        }
+
+        Err(Error::new(ErrorKind::InvalidInput, "connection closing"))
     }
 
     pub fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
@@ -251,7 +292,7 @@ impl Connection {
     }
 
     pub fn recv_window(&self) -> u16 {
-        (self.cfg.recv_buffer_cap - self.incoming.len()) as u16
+        (self.cfg.recv_buffer_cap - self.received.len()) as u16
     }
 
     pub fn connect(nic: &mut TcpSender, quad: Quad, cfg: Config) -> io::Result<Self> {
@@ -275,15 +316,16 @@ impl Connection {
             },
             state: State::SynSent,
             snd: SendSequenceSpace::new(iss, wnd),
-            recv: RecvSequenceSpace::empty(
+            rcv: RecvSequenceSpace::empty(
                 u16::try_from(cfg.recv_buffer_cap).expect("failed to downcast"),
             ),
             quad,
             syn_resend_counter: 0,
 
+            incoming: ReorderBuffer::default(),
             cong: CongestionControl::new(cfg.enable_congestion_control, mss),
 
-            incoming: VecDeque::with_capacity(cfg.recv_buffer_cap),
+            received: VecDeque::with_capacity(cfg.recv_buffer_cap),
             unacked: VecDeque::with_capacity(cfg.send_buffer_cap),
 
             rx_wakers: Vec::new(),
@@ -324,13 +366,14 @@ impl Connection {
             },
             state: State::SynRcvd,
             snd: SendSequenceSpace::new(iss, wnd),
-            recv: RecvSequenceSpace::from_syn(&pkt),
+            rcv: RecvSequenceSpace::from_syn(&pkt),
             quad,
             syn_resend_counter: 0,
 
+            incoming: ReorderBuffer::default(),
             cong: CongestionControl::new(cfg.enable_congestion_control, mss),
 
-            incoming: VecDeque::with_capacity(cfg.recv_buffer_cap),
+            received: VecDeque::with_capacity(cfg.recv_buffer_cap),
             unacked: VecDeque::with_capacity(cfg.send_buffer_cap),
 
             rx_wakers: Vec::new(),
@@ -361,11 +404,12 @@ impl Connection {
             dst_port: self.quad.dst.port(),
             window: self.recv_window(),
             seq_no: seq,
-            ack_no: self.recv.nxt,
+            ack_no: self.rcv.nxt,
             flags: TcpFlags::empty()
                 .putv(TcpFlags::SYN, matches!(kind, Syn | SynAck))
                 .putv(TcpFlags::ACK, matches!(kind, SynAck | Ack | Fin))
-                .putv(TcpFlags::FIN, matches!(kind, Fin)),
+                .putv(TcpFlags::FIN, matches!(kind, Fin))
+                .putv(TcpFlags::RST, matches!(kind, Rst)),
             urgent_ptr: 0,
             options: self.options_for_kind(kind),
             content: Vec::new(),
@@ -499,7 +543,7 @@ impl Connection {
             return Ok(());
         }
 
-        // etracing::info!("ON TICK: state {:?} una {} nxt {} unacked {:?}",
+        // tracing::info!("ON TICK: state {:?} una {} nxt {} unacked {:?}",
         //           self.state, self.send.una, self.send.nxt, self.unacked);
 
         let now = (self.cfg.clock)();
@@ -604,6 +648,53 @@ impl Connection {
         Ok(())
     }
 
+    pub fn on_icmp_v4(&mut self, snd: &mut TcpSender, icmp: IcmpV4Packet) -> io::Result<()> {
+        // # Demultiplex ICMP messages
+        let ip_header = icmp.contained()?;
+        if ip_header.proto != PROTO_TCP2 {
+            // Not directed at us, so no error
+            return Ok(());
+        }
+
+        let tcp = TcpPacket::from_slice(&ip_header.content)?;
+        let implied_quad = Quad {
+            src: SocketAddrV4::new(ip_header.src, tcp.src_port).into(),
+            dst: SocketAddrV4::new(ip_header.dst, tcp.dst_port).into(),
+        };
+        if implied_quad != self.quad {
+            return Ok(());
+        }
+
+        if let IcmpV4Type::DestinationUnreachable { code, .. } = icmp.typ {
+            use IcmpV4DestinationUnreachableCode::*;
+            // Hard errors
+            if let ProtocolUnreachable | PortUnreachable | DatagramToBig = code {
+                tracing::warn!("ICMP: destinations unreachable, closing connection");
+                // -> Rst with an valid ack
+                let mut rst = TcpPacket::new(
+                    self.quad.dst.port(),
+                    self.quad.src.port(),
+                    self.rcv.nxt,
+                    self.snd.una.wrapping_add(1),
+                    0,
+                    Vec::new(),
+                );
+                rst.flags.insert(TcpFlags::RST);
+                rst.flags.insert(TcpFlags::ACK);
+                // TODO: Add custom error handling
+                self.on_packet(snd, rst)?;
+                return Ok(());
+            }
+
+            if let NetworkUnreachable | HostUnreachable | SourceRouteFailed = code {
+                // Do not abort,
+                // but inform application
+                // -> TODO
+            }
+        };
+        Ok(())
+    }
+
     pub fn on_packet(&mut self, nic: &mut TcpSender, seg: TcpPacket) -> io::Result<Available> {
         if let State::SynSent = self.state {
             // RFC 9293 -  3.10.7 SEGMENT ARRIVES
@@ -613,6 +704,43 @@ impl Connection {
         // Otherwise,
         // States = SYN-RECEIVED, ESTABLISHED, FIN-WAIT-1, FIN-WAIT-2, CLOSE-WAIT, CLOSING, LAST-ACK, TIME-WAIT
 
+        // RFC 9293 - 3.10.7.4. Other States
+        // First, check sequence number:
+
+        // Segments are processed in sequence. Initial tests on arrival are used to discard old duplicates,
+        // but further processing is done in SEG.SEQ order. If a segment's contents straddle the boundary
+        // between old and new, only the new parts are processed.
+        //
+        // Condition: RCV.NXT < SEG.SEQ < WEND
+
+        // -> Only for packets of an established connection aka ACK do reordering
+        //    else you might buffer packets of handshakes or RST
+        if seg.flags.contains(TcpFlags::ACK) {
+            let wend = self.rcv.nxt.wrapping_add(self.recv_window() as u32);
+            tracing::info!(self.rcv.nxt, seg.seq_no, wend, "");
+            if wrapping_lt(self.rcv.nxt, seg.seq_no) && wrapping_lt(seg.seq_no, wend) {
+                // check the validity of the segment non-the-less to not get out of window packets
+                let okay = self.packet_is_valid(&seg);
+                if okay {
+                    self.incoming.enqueue(seg);
+                    return Ok(self.availability());
+                }
+                // process as usual if packet is not okay, to not duplicate not-okay logic
+            }
+        }
+
+        let mut last = self.on_inorder_packet(nic, seg)?;
+        while let Some(next_pkt) = self.incoming.next(self.rcv.nxt) {
+            last = self.on_inorder_packet(nic, next_pkt)?;
+        }
+        Ok(last)
+    }
+
+    fn on_inorder_packet(
+        &mut self,
+        nic: &mut TcpSender<'_>,
+        seg: TcpPacket,
+    ) -> Result<Available, Error> {
         // first, check that sequence numbers are valid (RFC 793 S3.3)
         let seqn = seg.seq_no;
         let mut slen = seg.content.len() as u32;
@@ -628,21 +756,13 @@ impl Connection {
 
         // max allowed recv seq_no
         // -> aka. last byte that will be accepted in the input stream
-        let wend = self.recv.nxt.wrapping_add(self.recv.wnd as u32);
+        let wend = self.rcv.nxt.wrapping_add(self.rcv.wnd as u32);
 
         tracing::info!(
             "recv({seqn}, len: {slen} (real {}), wend: {wend})",
             seg.content.len(),
         );
 
-        // RFC 9293 - 3.10.7.4. Other States
-        // First, check sequence number:
-        //
-        // Segments are processed in sequence. Initial tests on arrival are used to discard old duplicates,
-        // but further processing is done in SEG.SEQ order. If a segment's contents straddle the boundary
-        // between old and new, only the new parts are processed.
-        // -> TODO: Reorder+Trunacate buffer
-        //
         // In general, the processing of received segments MUST be implemented to aggregate ACK segments whenever possible (MUST-58).
         // For example, if the TCP endpoint is processing a series of queued segments, it MUST process them all before sending any ACK
         // segments (MUST-59).
@@ -651,7 +771,7 @@ impl Connection {
         // There are four cases for the acceptability test for an incoming segment:
         // If the RCV.WND is zero, no segments will be acceptable, but special allowance
         // should be made to accept valid ACKs, URGs, and RSTs.
-        let okay = self.packet_is_valid(slen, seqn, wend, &seg);
+        let okay = self.packet_is_valid(&seg);
 
         // If an incoming segment is not acceptable, an acknowledgment should be sent in reply
         // (unless the RST bit is set, if so drop the segment and return): <SEQ=SND.NXT><ACK=RCV.NXT><CTL=ACK>
@@ -711,7 +831,7 @@ impl Connection {
             if seg.flags.contains(TcpFlags::SYN) {
                 // got SYN part of initial handshake
                 assert!(seg.content.is_empty());
-                self.recv.nxt = seqn.wrapping_add(1);
+                self.rcv.nxt = seqn.wrapping_add(1);
 
                 if let State::SynRcvd = self.state {
                     // resend SYN ACK, it seems to be lost
@@ -921,8 +1041,8 @@ impl Connection {
                     // urgent data if the urgent pointer (RCV.UP) is in advance of the data consumed.
                     // If the user has already been signaled (or is still in the "urgent mode")
                     // for this continuous sequence of urgent data, do not signal the user again.
-                    self.recv.up = self
-                        .recv
+                    self.rcv.up = self
+                        .rcv
                         .up
                         .max(seg.seq_no.wrapping_add(seg.urgent_ptr as u32));
                 }
@@ -949,7 +1069,7 @@ impl Connection {
                 // offset of received data to expected data
                 // we might get a packet further to the furutre
                 // -> never negative, since seq_no was checked
-                let mut unread_data_at = self.recv.nxt.wrapping_sub(seqn) as usize;
+                let mut unread_data_at = self.rcv.nxt.wrapping_sub(seqn) as usize;
 
                 // FIN escape hatch
                 if unread_data_at > seg.content.len() {
@@ -960,14 +1080,14 @@ impl Connection {
                 }
 
                 // Extend the incoming data
-                self.incoming.extend(&seg.content[unread_data_at..]);
+                self.received.extend(&seg.content[unread_data_at..]);
 
                 // Once the TCP takes responsibility for the data it advances
                 // RCV.NXT over the data accepted, and adjusts RCV.WND as
                 // apporopriate to the current buffer availability. The total of
                 // RCV.NXT and RCV.WND should not be reduced.
                 // -> the actual recv wnd is computed on the fly, wnd is only the cap
-                self.recv.nxt = seqn.wrapping_add(seg.content.len() as u32);
+                self.rcv.nxt = seqn.wrapping_add(seg.content.len() as u32);
 
                 // Since pkt.content is non empty, new data was received, rx ready
                 self.wake_rx(nic);
@@ -999,7 +1119,7 @@ impl Connection {
             // Note that FIN implies PUSH for any segment text not yet delivered to the user.
             // -> TODO: done in read()
             // -> PSH is already always active, so nothing to do there
-            self.recv.nxt = seg.seq_no.wrapping_add(slen);
+            self.rcv.nxt = seg.seq_no.wrapping_add(slen);
             self.send_pkt(nic, Ack, self.snd.nxt, 0)?;
             match self.state {
                 State::SynRcvd => {
@@ -1052,7 +1172,7 @@ impl Connection {
             if !pkt.flags.contains(TcpFlags::ACK) {
                 // Another SYN, SYNACK must be lost, and client must have timed out
                 assert!(pkt.content.is_empty());
-                self.recv.nxt = seqn.wrapping_add(1);
+                self.rcv.nxt = seqn.wrapping_add(1);
                 self.send_pkt(nic, SynAck, self.snd.nxt.wrapping_sub(1), 0)?;
                 return Ok(Available::empty());
             }
@@ -1111,10 +1231,11 @@ impl Connection {
         wend: u32,
         nic: &mut TcpSender<'_>,
     ) -> Result<Available, Error> {
-        if !is_between_wrapped(self.recv.nxt.wrapping_sub(1), seqn, wend) {
+        if !is_between_wrapped(self.rcv.nxt, seqn, wend) {
             return Ok(Available::empty());
         }
-        if self.recv.nxt != seqn {
+
+        if self.rcv.nxt != seqn {
             // If the RST bit is set and the sequence number does not exactly match the next expected sequence value,
             // yet is within the current receive window, TCP endpoints MUST send an acknowledgment (challenge ACK):
             // <SEQ=SND.NXT><ACK=RCV.NXT><CTL=ACK>
@@ -1212,8 +1333,8 @@ impl Connection {
             // not a substitute for cryptographic protection (e.g., IPsec or TCP-AO). A TCP implementation that
             // supports the mitigation described in RFC 5961 SHOULD first check that the sequence number exactly
             // matches RCV.NXT prior to executing the action in the next paragraph.
-            tracing::info!(seg.seq_no, self.recv.nxt, "RST");
-            if seg.seq_no != self.recv.nxt {
+            tracing::info!(seg.seq_no, self.rcv.nxt, "RST");
+            if seg.seq_no != self.rcv.nxt {
                 return Ok(Available::empty());
             }
 
@@ -1247,8 +1368,8 @@ impl Connection {
             // be advanced to equal SEG.ACK (if there is an ACK), and any segments on the retransmission queue that
             // are thereby acknowledged should be removed.
             // -> no segments are in the tx queue, no need to update
-            self.recv.nxt = seg.seq_no.wrapping_add(1);
-            self.recv.irs = seg.seq_no;
+            self.rcv.nxt = seg.seq_no.wrapping_add(1);
+            self.rcv.irs = seg.seq_no;
             if seg.flags.contains(TcpFlags::ACK) {
                 self.snd.una = seg.ack_no;
             }
@@ -1291,7 +1412,7 @@ impl Connection {
         Ok(Available::all())
     }
 
-    fn packet_is_valid(&self, seg_len: u32, seqn: u32, wend: u32, seg: &TcpPacket) -> bool {
+    fn packet_is_valid(&self, seg: &TcpPacket) -> bool {
         // RFC 9293 - 3.10.7.4.  Other States
         // There are four cases for the acceptability test for an incoming segment:
         // +=========+=========+======================================+
@@ -1313,18 +1434,27 @@ impl Connection {
         // |         |         | RCV.NXT =< SEG.SEQ+SEG.LEN-1         |
         // |         |         | < RCV.NXT+RCV.WND                    |
         // +---------+---------+--------------------------------------+
+        let wend = self.rcv.nxt.wrapping_add(self.recv_window() as u32);
+
+        let mut seg_len = seg.content.len() as u32;
+        if seg.flags.contains(TcpFlags::SYN) {
+            seg_len += 1;
+        };
+        if seg.flags.contains(TcpFlags::FIN) {
+            seg_len += 1;
+        };
 
         let okay = if seg_len == 0 {
             // zero-length segment has separate rules for acceptance
-            if self.recv.wnd == 0 {
-                if seqn != self.recv.nxt {
+            if self.recv_window() == 0 {
+                if seg.seq_no != self.rcv.nxt {
                     tracing::warn!("not okay: zero-length no window not virtual byte");
                     false
                 } else {
                     // allowed if seq_no is not next -> to receive virtual bytes independen of window
                     true
                 }
-            } else if !is_between_wrapped(self.recv.nxt.wrapping_sub(1), seqn, wend) {
+            } else if !is_between_wrapped(self.rcv.nxt.wrapping_sub(1), seg.seq_no, wend) {
                 tracing::warn!("not okay: zero-length not in rnage");
                 false
             } else {
@@ -1338,13 +1468,13 @@ impl Connection {
                 && !seg.flags.contains(TcpFlags::ACK)
             {
                 true
-            } else if self.recv.wnd == 0 {
+            } else if self.recv_window() == 0 {
                 tracing::warn!("not okay: non-zero-length empty window");
                 false
-            } else if !is_between_wrapped(self.recv.nxt.wrapping_sub(1), seqn, wend)
+            } else if !is_between_wrapped(self.rcv.nxt.wrapping_sub(1), seg.seq_no, wend)
                 && !is_between_wrapped(
-                    self.recv.nxt.wrapping_sub(1),
-                    seqn.wrapping_add(seg_len - 1),
+                    self.rcv.nxt.wrapping_sub(1),
+                    seg.seq_no.wrapping_add(seg_len - 1),
                     wend,
                 )
             {

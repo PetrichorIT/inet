@@ -148,7 +148,7 @@ impl TcpTestUnit {
         self.incoming(TcpPacket::new(
             self.quad.dst.port(),
             self.quad.src.port(),
-            self.recv.nxt,
+            self.rcv.nxt,
             last.seq_no + last.content.len() as u32,
             WIN_4KB,
             Vec::new(),
