@@ -1,12 +1,13 @@
 use crate::{
     interface::{IfId, KIND_IO_TIMEOUT},
+    io::Interest,
     socket::{Fd, SocketDomain, SocketIfaceBinding, SocketType},
     IOContext,
 };
 
 use bytepack::{FromBytestream, ToBytestream};
 use des::{
-    prelude::{schedule_at, schedule_in, Message},
+    prelude::{schedule_at, Message},
     time::SimTime,
 };
 use fxhash::FxHashMap;
@@ -21,7 +22,6 @@ use std::{
         Arc,
     },
     task::{Context, Poll},
-    time::Duration,
     u32,
 };
 use tokio::{io::ReadBuf, sync::mpsc};
@@ -87,9 +87,8 @@ impl Tcp {
     pub fn set_error(&mut self, fd: Fd, error: Error) {
         if let Some(stream) = self.streams.get_mut(&fd) {
             tracing::error!(%fd, ?error, "connection failed with error");
-            stream.error = Some(error);
-            stream.wake_tx(&mut self.sender.sender(fd));
-            stream.wake_rx(&mut self.sender.sender(fd));
+            stream.interface.set_error(error);
+            stream.interface.wake(Interest::BOTH);
         }
     }
 
@@ -329,7 +328,7 @@ impl IOContext {
                 Poll::Ready(Ok(n))
             }
             Err(e) if e.kind() == ErrorKind::WouldBlock => {
-                con.rx_wakers.push(cx.waker().clone());
+                con.interface.register(Interest::READABLE, cx);
                 Poll::Pending
             }
             Err(e) => Poll::Ready(Err(e)),
@@ -358,7 +357,7 @@ impl IOContext {
                 Poll::Ready(Ok(n))
             }
             Err(e) if e.kind() == ErrorKind::WouldBlock => {
-                con.tx_wakers.push(cx.waker().clone());
+                con.interface.register(Interest::WRITABLE, cx);
                 Poll::Pending
             }
             Err(e) => Poll::Ready(Err(e)),
@@ -373,7 +372,7 @@ impl IOContext {
         if con.unacked.is_empty() {
             Poll::Ready(Ok(()))
         } else {
-            con.tx_wakers.push(cx.waker().clone());
+            con.interface.register(Interest::WRITABLE, cx);
             Poll::Pending
         }
     }

@@ -213,3 +213,49 @@ fn tx_can_emit_multiple_packets() -> io::Result<()> {
 
     Ok(())
 }
+
+#[test]
+fn rcv_wnd_updates_at_read() -> io::Result<()> {
+    let mut test = TcpTestUnit::new(
+        SocketAddr::new(Ipv4Addr::new(10, 0, 1, 104).into(), 80),
+        SocketAddr::new(Ipv4Addr::new(20, 0, 2, 204).into(), 1808),
+    );
+    test.cfg.recv_buffer_cap = 1024;
+
+    test.handshake(4000, WIN_4KB)?;
+    assert_eq!(test.rcv.wnd, 1024);
+
+    test.incoming(TcpPacket::new(1808, 80, 4001, 1, WIN_4KB, vec![100; 100]))?;
+    test.clear_outgoing();
+    assert_eq!(test.rcv.wnd, 1024 - 100);
+
+    let mut buf = [0; 100];
+    let n = test.read(&mut buf)?;
+    assert_eq!(n, 100);
+    assert_eq!(test.rcv.wnd, 1024);
+
+    Ok(())
+}
+
+#[test]
+fn rcv_wnd_no_updates_at_peek() -> io::Result<()> {
+    let mut test = TcpTestUnit::new(
+        SocketAddr::new(Ipv4Addr::new(10, 0, 1, 104).into(), 80),
+        SocketAddr::new(Ipv4Addr::new(20, 0, 2, 204).into(), 1808),
+    );
+    test.cfg.recv_buffer_cap = 1024;
+
+    test.handshake(4000, WIN_4KB)?;
+    assert_eq!(test.rcv.wnd, 1024);
+
+    test.incoming(TcpPacket::new(1808, 80, 4001, 1, WIN_4KB, vec![100; 100]))?;
+    test.clear_outgoing();
+    assert_eq!(test.rcv.wnd, 1024 - 100);
+
+    let mut buf = [0; 100];
+    let n = test.peek(&mut buf)?;
+    assert_eq!(n, 100);
+    assert_eq!(test.rcv.wnd, 1024 - 100);
+
+    Ok(())
+}

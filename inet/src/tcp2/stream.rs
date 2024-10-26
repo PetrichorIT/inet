@@ -14,7 +14,7 @@ use crate::{
     IOContext,
 };
 
-use super::{interest, State};
+use super::{interest::TcpInterest, State};
 
 /// A TCP Stream.
 #[derive(Debug)]
@@ -51,7 +51,7 @@ impl TcpStream {
             while !IOContext::with_current(|ctx| {
                 ctx.tcp2_connection(fd, |c| c.state == State::Estab)
             })? {
-                let interest = interest::TcpInterest::Write(fd);
+                let interest = TcpInterest::write(fd);
                 interest.await.map_err(|e| {
                     let _ = IOContext::with_current(|ctx| ctx.tcp2_drop(fd));
                     e
@@ -82,7 +82,7 @@ impl TcpStream {
     /// It can be used to concurrently read / write to the same socket on a single task
     /// without splitting the socket.
     pub async fn ready(&self, interest: Interest) -> Result<Ready, Error> {
-        let interest = interest::TcpInterest::from_tokio(self.inner.fd, interest);
+        let interest = TcpInterest::from_tokio(self.inner.fd, interest);
         interest.await
     }
 

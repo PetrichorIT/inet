@@ -2,7 +2,7 @@ use std::{
     collections::VecDeque,
     io,
     net::SocketAddr,
-    ops::Deref,
+    ops::{Deref, DerefMut},
     sync::{Arc, Mutex},
 };
 
@@ -214,9 +214,16 @@ impl TcpTestUnit {
 impl Deref for TcpTestUnit {
     type Target = Connection;
     fn deref(&self) -> &Self::Target {
-        &self
-            .con
+        self.con
             .as_ref()
+            .expect("Deref can only be used on existing connections")
+    }
+}
+
+impl DerefMut for TcpTestUnit {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.con
+            .as_mut()
             .expect("Deref can only be used on existing connections")
     }
 }

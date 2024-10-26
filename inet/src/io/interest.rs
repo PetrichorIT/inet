@@ -29,6 +29,9 @@ impl Interest {
     /// Writable interest includes write-closed events.
     pub const WRITABLE: Interest = Interest(MioInterest::WRITABLE);
 
+    /// Interest in all events.
+    pub const BOTH: Interest = Interest(MioInterest::BOTH);
+
     /// Returns true if the value includes readable interest.
     ///
     /// # Examples

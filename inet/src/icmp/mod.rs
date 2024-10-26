@@ -51,7 +51,7 @@ impl IOContext {
     pub(super) fn recv_icmpv4_packet(&mut self, ip_icmp: &Ipv4Packet, ifid: IfId) -> bool {
         assert_eq!(ip_icmp.proto, PROTO_ICMPV4);
 
-        let Ok(mut pkt) = IcmpV4Packet::read_from_slice(&mut &ip_icmp.content[..]) else {
+        let Ok(pkt) = IcmpV4Packet::read_from_slice(&mut &ip_icmp.content[..]) else {
             tracing::error!(
                 "received ip-packet with proto=0x1 (icmpv4) but content was no icmpv4-packet"
             );

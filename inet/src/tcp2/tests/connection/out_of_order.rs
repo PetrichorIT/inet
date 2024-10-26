@@ -28,11 +28,11 @@ fn window_updates_prefer_higher_seqno() -> io::Result<()> {
     let ack2 = TcpPacket::new(1808, 80, 4001, 801, WIN_4KB - 800, Vec::new());
 
     test.incoming(ack2)?;
-    assert_eq!(test.num_unacked_bytes(), 0);
+    assert_eq!(test.snd.num_unacked_bytes(), 0);
     assert_eq!(test.snd.wnd, WIN_4KB - 800);
 
     test.incoming(ack1)?;
-    assert_eq!(test.num_unacked_bytes(), 0);
+    assert_eq!(test.snd.num_unacked_bytes(), 0);
     assert_eq!(test.snd.wnd, WIN_4KB - 800);
 
     Ok(())

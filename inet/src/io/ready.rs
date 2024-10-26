@@ -1,6 +1,8 @@
 use std::fmt;
 use std::ops;
 
+use crate::io::Interest;
+
 const READABLE: usize = 0b0_01;
 const WRITABLE: usize = 0b0_10;
 const READ_CLOSED: usize = 0b0_0100;
@@ -141,29 +143,19 @@ impl Ready {
 // use crate::io::Interest;
 
 impl Ready {
-    // pub(crate) fn from_interest(interest: Interest) -> Ready {
-    //     let mut ready = Ready::EMPTY;
+    pub(crate) fn from_interest(interest: Interest) -> Ready {
+        let mut ready = Ready::EMPTY;
 
-    //     if interest.is_readable() {
-    //         ready |= Ready::READABLE;
-    //         ready |= Ready::READ_CLOSED;
-    //     }
+        if interest.is_readable() {
+            ready |= Ready::READABLE;
+        }
 
-    //     if interest.is_writable() {
-    //         ready |= Ready::WRITABLE;
-    //         ready |= Ready::WRITE_CLOSED;
-    //     }
+        if interest.is_writable() {
+            ready |= Ready::WRITABLE;
+        }
 
-    //     ready
-    // }
-
-    // pub(crate) fn intersection(self, interest: Interest) -> Ready {
-    //     Ready(self.0 & Ready::from_interest(interest).0)
-    // }
-
-    // pub(crate) fn satisfies(self, interest: Interest) -> bool {
-    //     self.0 & Ready::from_interest(interest).0 != 0
-    // }
+        ready
+    }
 }
 
 impl ops::BitOr<Ready> for Ready {

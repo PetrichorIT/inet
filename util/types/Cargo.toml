@@ -8,6 +8,6 @@ default = []
 uds = []
 
 [dependencies]
-bitflags = "*"
+bitflags = "2.6"
 bytepack = { path = "../bytepack" }
 des = { version = "*", features = ["full"] }

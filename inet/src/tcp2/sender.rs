@@ -37,13 +37,6 @@ impl TcpSender<'_> {
         self.buffer.push_back(pkt);
     }
 
-    pub fn wake(&mut self, wakers: &mut Vec<Waker>) {
-        wakers.drain(..).for_each(|waker| {
-            *self.unresolved_wakeups = true;
-            waker.wake();
-        });
-    }
-
     pub fn is_empty(&self) -> bool {
         self.buffer.is_empty()
     }

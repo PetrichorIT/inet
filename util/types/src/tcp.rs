@@ -25,6 +25,8 @@ pub struct TcpPacket {
 
 bitflags! {
     /// Flags of a [`TcpPacket`].
+    #[repr(transparent)]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
     pub struct TcpFlags: u8 {
         const CWR = 0b1000_0000;
         const ECE = 0b0100_0000;

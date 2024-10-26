@@ -87,7 +87,6 @@ impl Ipv6 {
 }
 
 bitflags! {
-    #[derive(Debug)]
     pub struct Ipv6SendFlags: u8 {
         const DEFAULT = 0b0000_0000;
         const ALLOW_SRC_UNSPECIFIED = 0b0000_0001;

@@ -136,7 +136,7 @@ fn connect_regulated_mss() -> io::Result<()> {
 
     test.incoming(syn_ack)?;
     test.assert_outgoing_eq(&[TcpPacket::new(80, 1808, 1, 4001, WIN_4KB, Vec::new())]);
-    assert_eq!(test.cong.mss, 400);
+    assert_eq!(test.snd.mss, 400);
 
     Ok(())
 }

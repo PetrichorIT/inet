@@ -29,7 +29,7 @@ fn syn_snt_rst_on_invalid_ack() -> io::Result<()> {
     test.assert_outgoing_eq(&[TcpPacket::rst(0, WIN_4KB, &invalid_syn_ack)]);
 
     assert_eq!(test.state, State::SynSent);
-    assert!(test.error.is_none());
+    assert!(test.interface.error.is_none());
 
     Ok(())
 }
@@ -50,7 +50,7 @@ fn syn_snt_incoming_rst_without_ack() -> io::Result<()> {
     test.assert_outgoing_eq(&[]);
 
     assert_eq!(test.state, State::SynSent);
-    assert!(test.error.is_none());
+    assert!(test.interface.error.is_none());
 
     Ok(())
 }
@@ -70,7 +70,7 @@ fn syn_snt_incoming_rst_with_ack_refuse_connection() -> io::Result<()> {
     test.assert_outgoing_eq(&[]);
 
     assert_eq!(
-        test.error.as_ref().map(|e| e.kind()),
+        test.interface.error.as_ref().map(|e| e.kind()),
         Some(ErrorKind::ConnectionReset)
     );
     assert_eq!(test.state, State::Closed);
@@ -96,14 +96,14 @@ fn segment_not_okay_full_window_empty_pkt() -> io::Result<()> {
         vec![42; WIN_4KB as usize],
     ))?;
     test.clear_outgoing();
-    assert_eq!(test.recv_window(), 0);
+    assert_eq!(test.rcv.wnd, 0);
 
     let valid_segment = TcpPacket::new(1808, 80, test.rcv.nxt, 1, WIN_4KB, vec![]);
     let invalid_segment = TcpPacket::new(1808, 80, test.rcv.nxt + 1, 1, WIN_4KB, vec![]);
 
     test.incoming(valid_segment)?;
     test.assert_outgoing_eq(&[]);
-    assert!(test.error.is_none());
+    assert!(test.interface.error.is_none());
 
     test.incoming(invalid_segment)?;
     test.assert_outgoing_eq(&[TcpPacket::new(
@@ -136,7 +136,7 @@ fn segment_not_okay_full_window_non_empty_pkt() -> io::Result<()> {
         vec![42; WIN_4KB as usize],
     ))?;
     test.clear_outgoing();
-    assert_eq!(test.recv_window(), 0);
+    assert_eq!(test.rcv.wnd, 0);
 
     // there is no valid segment
     let invalid_segment = TcpPacket::new(1808, 80, test.rcv.nxt, 1, WIN_4KB, vec![1, 2, 3]);
@@ -173,14 +173,14 @@ fn segment_not_okay_remaining_window_empty_pkt() -> io::Result<()> {
         vec![42; (WIN_4KB - 100) as usize],
     ))?;
     test.clear_outgoing();
-    assert_eq!(test.recv_window(), 100);
+    assert_eq!(test.rcv.wnd, 100);
 
     let valid_segment = TcpPacket::new(1808, 80, test.rcv.nxt, 1, WIN_4KB, Vec::new());
     let invalid_segment = TcpPacket::new(1808, 80, test.rcv.nxt + 104, 1, WIN_4KB, Vec::new());
 
     test.incoming(valid_segment)?;
     test.assert_outgoing_eq(&[]);
-    assert!(test.error.is_none());
+    assert!(test.interface.error.is_none());
 
     test.incoming(invalid_segment)?;
     test.assert_outgoing_eq(&[TcpPacket::new(
@@ -214,7 +214,7 @@ fn segment_not_okay_remaining_window_non_empty_pkt() -> io::Result<()> {
         vec![42; (WIN_4KB - 100) as usize],
     ))?;
     test.clear_outgoing();
-    assert_eq!(test.recv_window(), 100);
+    assert_eq!(test.rcv.wnd, 100);
 
     // Condition
     // RCV.NXT =< SEG.SEQ < RCV.NXT+RCV.WND or RCV.NXT =< SEG.SEQ+SEG.LEN-1 < RCV.NXT+RCV.WND
@@ -227,7 +227,7 @@ fn segment_not_okay_remaining_window_non_empty_pkt() -> io::Result<()> {
     let invalid_segment_b = TcpPacket::new(
         1808,
         80,
-        test.rcv.nxt + test.recv_window() as u32,
+        test.rcv.nxt + test.rcv.wnd as u32,
         1,
         WIN_4KB,
         vec![120; 120],
@@ -337,7 +337,7 @@ fn valid_rst_in_syn_rcvd_simultaneous_open() -> io::Result<()> {
     test.incoming(rst)?;
     assert_eq!(test.state, State::Closed);
     assert_eq!(
-        test.error.as_ref().map(|e| e.kind()),
+        test.interface.error.as_ref().map(|e| e.kind()),
         Some(ErrorKind::ConnectionRefused)
     );
 
@@ -362,7 +362,7 @@ fn valid_rst_in_syn_rcvd_passive_open() -> io::Result<()> {
     test.incoming(rst_syn_ack)?;
     assert_eq!(test.state, State::Closed);
     assert_eq!(
-        test.error.as_ref().map(|e| e.kind()),
+        test.interface.error.as_ref().map(|e| e.kind()),
         Some(ErrorKind::ConnectionRefused)
     );
 
@@ -385,7 +385,7 @@ fn valid_rst_in_estab() -> io::Result<()> {
     test.assert_outgoing_eq(&[]);
     assert_eq!(test.state, State::Closed);
     assert_eq!(
-        test.error.as_ref().map(|e| e.kind()),
+        test.interface.error.as_ref().map(|e| e.kind()),
         Some(ErrorKind::ConnectionReset)
     );
 
@@ -415,7 +415,7 @@ fn valid_rst_in_closing_state_no_error() -> io::Result<()> {
         &TcpPacket::new(80, 1808, 2, 4002, WIN_4KB, Vec::new()),
     ))?;
     assert_eq!(test.state, State::Closed);
-    assert!(test.error.is_none());
+    assert!(test.interface.error.is_none());
 
     Ok(())
 }
@@ -444,7 +444,7 @@ fn valid_rst_in_time_wait_state_no_error() -> io::Result<()> {
         &TcpPacket::new(80, 1808, 2, 4002, WIN_4KB, Vec::new()),
     ))?;
     assert_eq!(test.state, State::Closed);
-    assert!(test.error.is_none());
+    assert!(test.interface.error.is_none());
 
     Ok(())
 }
@@ -472,7 +472,7 @@ fn valid_rst_in_last_ack_state_no_error() -> io::Result<()> {
         &TcpPacket::new(80, 1808, 1, 4002, WIN_4KB, Vec::new()),
     ))?;
     assert_eq!(test.state, State::Closed);
-    assert!(test.error.is_none());
+    assert!(test.interface.error.is_none());
 
     Ok(())
 }

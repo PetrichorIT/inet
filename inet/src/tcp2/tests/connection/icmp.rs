@@ -201,7 +201,7 @@ fn dst_unreachable_hard_on_syn_snt() -> io::Result<()> {
     })?;
     assert_eq!(test.state, State::Closed);
     assert_eq!(
-        test.error.as_ref().map(|v| v.kind()),
+        test.interface.error.as_ref().map(|v| v.kind()),
         Some(ErrorKind::ConnectionReset)
     );
 
@@ -228,7 +228,7 @@ fn dst_unreachable_hard_on_syn_rcvd() -> io::Result<()> {
     })?;
     assert_eq!(test.state, State::Closed);
     assert_eq!(
-        test.error.as_ref().map(|v| v.kind()),
+        test.interface.error.as_ref().map(|v| v.kind()),
         Some(ErrorKind::ConnectionRefused)
     );
 
@@ -250,7 +250,7 @@ fn dst_unreachable_hard_on_estab_like() -> io::Result<()> {
     })?;
     assert_eq!(test.state, State::Closed);
     assert_eq!(
-        test.error.as_ref().map(|v| v.kind()),
+        test.interface.error.as_ref().map(|v| v.kind()),
         Some(ErrorKind::ConnectionReset)
     );
 
@@ -279,7 +279,7 @@ fn dst_unreachable_hard_on_close_like() -> io::Result<()> {
         code: IcmpV4DestinationUnreachableCode::ProtocolUnreachable,
     })?;
     assert_eq!(test.state, State::Closed);
-    assert!(test.error.is_none());
+    assert!(test.interface.error.is_none());
 
     Ok(())
 }

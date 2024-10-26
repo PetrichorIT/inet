@@ -18,7 +18,7 @@ fn slow_start_doubles_window() -> io::Result<()> {
 
     test.handshake(4000, WIN_4KB)?;
 
-    assert_eq!(test.cong.wnd, 536);
+    assert_eq!(test.snd.c.cwnd, 536);
 
     let data: Vec<u8> = repeat(8).take(536 * 7).collect();
     assert_eq!(test.write(&data)?, 7 * 536);
@@ -35,7 +35,7 @@ fn slow_start_doubles_window() -> io::Result<()> {
         Vec::new(),
     ))?;
 
-    assert_eq!(test.cong.wnd, 2 * 536);
+    assert_eq!(test.snd.c.cwnd, 2 * 536);
 
     // Second RT
     test.tick()?;
@@ -52,7 +52,7 @@ fn slow_start_doubles_window() -> io::Result<()> {
         Vec::new(),
     ))?;
 
-    assert_eq!(test.cong.wnd, 3 * 536);
+    assert_eq!(test.snd.c.cwnd, 3 * 536);
 
     Ok(())
 }
@@ -73,18 +73,18 @@ fn congestion_avoidance_additive_increase() -> io::Result<()> {
     test.write_and_ack(&[2])?;
     test.write_and_ack(&[3])?;
 
-    assert_eq!(test.cong.wnd, 4 * 536);
+    assert_eq!(test.snd.c.cwnd, 4 * 536);
 
     // Congestion avoidance (count bytes ACKEed)
     test.write_and_ack(&vec![8; 536])?;
 
-    assert_eq!(test.cong.avoid_counter, 3 * 536);
-    assert_eq!(test.cong.wnd, 4 * 536);
+    assert_eq!(test.snd.c.avoid_counter, 3 * 536);
+    assert_eq!(test.snd.c.cwnd, 4 * 536);
 
     // Saturation over 0, AI
     test.write_and_ack(&vec![8; 3 * 536])?;
-    assert_eq!(test.cong.wnd, 5 * 536);
-    assert_eq!(test.cong.avoid_counter, 5 * 536);
+    assert_eq!(test.snd.c.cwnd, 5 * 536);
+    assert_eq!(test.snd.c.avoid_counter, 5 * 536);
 
     Ok(())
 }
@@ -104,7 +104,7 @@ fn congestion_avoidance_multiplicative_decrease() -> io::Result<()> {
     test.write_and_ack(&[2])?;
     test.write_and_ack(&[3])?;
 
-    assert_eq!(test.cong.wnd, 4 * 536);
+    assert_eq!(test.snd.c.cwnd, 4 * 536);
 
     // <- DATA
     test.write(&[4])?;
@@ -115,19 +115,19 @@ fn congestion_avoidance_multiplicative_decrease() -> io::Result<()> {
     test.set_time(15.0);
     test.tick()?;
     test.assert_outgoing_eq(&[TcpPacket::new(80, 1808, 4, 4001, WIN_4KB, vec![4])]);
-    assert_eq!(test.cong.wnd, 2 * 536);
+    assert_eq!(test.snd.c.cwnd, 2 * 536);
 
     // Lost '2 (multiplicative decrease)
     test.set_time(30.0);
     test.tick()?;
     test.assert_outgoing_eq(&[TcpPacket::new(80, 1808, 4, 4001, WIN_4KB, vec![4])]);
-    assert_eq!(test.cong.wnd, 536);
+    assert_eq!(test.snd.c.cwnd, 536);
 
     // Lost '3 (lower bound of 1 MSS)
     test.set_time(45.0);
     test.tick()?;
     test.assert_outgoing_eq(&[TcpPacket::new(80, 1808, 4, 4001, WIN_4KB, vec![4])]);
-    assert_eq!(test.cong.wnd, 536);
+    assert_eq!(test.snd.c.cwnd, 536);
 
     Ok(())
 }

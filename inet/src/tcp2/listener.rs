@@ -7,7 +7,7 @@ use std::{
     },
 };
 
-use tokio::sync::{mpsc, oneshot, Mutex};
+use tokio::sync::{mpsc, Mutex};
 
 use crate::{
     dns::{lookup_host, ToSocketAddrs},
