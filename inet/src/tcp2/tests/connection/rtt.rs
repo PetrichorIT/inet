@@ -43,7 +43,7 @@ fn probing_via_data_acks() -> io::Result<()> {
         test.assert_outgoing_eq(&[]);
     }
 
-    assert_eq!(test.timers.srtt, 1.9663676416000002);
+    assert_eq!(test.timers.rto, 1.1501693725585938);
 
     Ok(())
 }

@@ -6,9 +6,8 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use crate::tcp2::{sender::TcpSender, Config, Connection, Quad, State};
+use crate::tcp2::{Config, Connection, Quad, State};
 use des::time::SimTime;
-use rand::{rngs::StdRng, Rng, SeedableRng};
 use tracing::instrument;
 use types::tcp::TcpPacket;
 
@@ -17,7 +16,6 @@ mod handshake;
 mod icmp;
 mod lossful;
 mod out_of_order;
-mod reorder;
 mod rst;
 mod rtt;
 mod shutdown;
@@ -26,12 +24,10 @@ mod transfer;
 pub(in crate::tcp2::tests) const WIN_4KB: u16 = 4096;
 
 pub(in crate::tcp2::tests) struct TcpTestUnit {
-    pub tx: VecDeque<TcpPacket>,
     pub quad: Quad,
     pub con: Option<Connection>,
     pub cfg: Config,
     pub clock: Arc<Mutex<SimTime>>,
-    pub rng: StdRng,
 }
 
 impl TcpTestUnit {
@@ -39,15 +35,13 @@ impl TcpTestUnit {
         let clock = Arc::new(Mutex::new(SimTime::ZERO));
         let clock_reader = clock.clone();
         Self {
-            tx: VecDeque::default(),
             quad: Quad { src, dst },
             con: None,
             clock,
             cfg: Config {
                 clock: Arc::new(move || *clock_reader.lock().unwrap()),
-                ..Default::default()
+                ..Config::test_default()
             },
-            rng: StdRng::seed_from_u64(0),
         }
     }
 
@@ -57,42 +51,29 @@ impl TcpTestUnit {
 
     pub fn connect(&mut self) -> io::Result<()> {
         assert!(self.con.is_none());
-        self.con = Some(Connection::connect(
-            &mut TcpSender {
-                buffer: &mut self.tx,
-                unresolved_wakeups: &mut false,
-            },
-            self.quad.clone(),
-            self.cfg.clone(),
-        )?);
+        self.con = Some(Connection::connect(self.quad.clone(), self.cfg.clone())?);
         Ok(())
     }
 
     pub fn incoming(&mut self, pkt: TcpPacket) -> io::Result<()> {
         if let Some(ref mut con) = self.con {
-            con.on_packet(
-                &mut TcpSender {
-                    buffer: &mut self.tx,
-                    unresolved_wakeups: &mut false,
-                },
-                pkt,
-            )?;
+            con.on_packet(pkt)?;
         } else {
-            self.con = Connection::accept(
-                &mut TcpSender {
-                    buffer: &mut self.tx,
-                    unresolved_wakeups: &mut false,
-                },
-                self.quad.clone(),
-                pkt,
-                self.cfg.clone(),
-            )?;
+            self.con = Connection::accept(self.quad.clone(), pkt, self.cfg.clone())?;
         }
         Ok(())
     }
 
+    pub fn tx(&mut self) -> &mut VecDeque<TcpPacket> {
+        self.con
+            .as_mut()
+            .map(|con| &mut con.outgoing)
+            .expect("cannot test tx, where not connection exists")
+    }
+
     pub fn pipe(&mut self, peer: &mut Self, n: usize) -> io::Result<()> {
-        for pkt in self.tx.drain(..n.min(self.tx.len())) {
+        let n = n.min(self.tx().len());
+        for pkt in self.tx().drain(..n) {
             peer.incoming(pkt)?;
         }
         Ok(())
@@ -104,7 +85,7 @@ impl TcpTestUnit {
         n: usize,
         pkts: &[TcpPacket],
     ) -> io::Result<()> {
-        for (i, pkt) in self.tx.drain(..n).enumerate() {
+        for (i, pkt) in self.tx().drain(..n).enumerate() {
             assert_eq!(pkt, pkts[i]);
             peer.incoming(pkt)?;
         }
@@ -135,7 +116,7 @@ impl TcpTestUnit {
             self.con.is_some(),
             "no connection exists: expected on assert outing"
         );
-        f(self.tx.drain(..).collect())
+        f(self.tx().drain(..).collect())
     }
 
     pub fn assert_outgoing_eq(&mut self, pkts: &[TcpPacket]) {
@@ -155,7 +136,7 @@ impl TcpTestUnit {
         let n = self.write(buf)?;
         self.tick()?;
 
-        let last = self.tx.pop_back().unwrap();
+        let last = self.tx().pop_back().unwrap();
         self.clear_outgoing();
 
         // Collective ACK
@@ -180,14 +161,11 @@ impl TcpTestUnit {
         self.con
             .as_mut()
             .expect("no connection exists: cannot tick")
-            .on_tick(&mut TcpSender {
-                buffer: &mut self.tx,
-                unresolved_wakeups: &mut false,
-            })
+            .on_tick()
     }
 
     pub fn clear_outgoing(&mut self) {
-        self.tx.clear();
+        self.tx().clear();
     }
 
     pub fn handshake(&mut self, remote_seq_no: u32, remote_recv_window: u16) -> io::Result<()> {

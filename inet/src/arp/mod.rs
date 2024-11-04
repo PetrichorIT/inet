@@ -189,7 +189,7 @@ impl IOContext {
 
         if !self.arp.requests.is_empty() {
             schedule_in(
-                Message::new().kind(KIND_ARP).id(KIND_ARP).build(),
+                Message::new().kind(KIND_IO_TIMEOUT).id(KIND_ARP).build(),
                 self.arp.config.timeout,
             );
             self.arp.active_wakeup = true;

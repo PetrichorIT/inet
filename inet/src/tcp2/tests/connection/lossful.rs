@@ -7,7 +7,8 @@ use std::{
 
 impl TcpTestUnit {
     pub fn pipe_lossful(&mut self, peer: &mut Self, n: usize, drop: &[usize]) -> io::Result<()> {
-        for (i, pkt) in self.tx.drain(..n.min(self.tx.len())).enumerate() {
+        let n = n.min(self.tx().len());
+        for (i, pkt) in self.tx().drain(..n).enumerate() {
             if drop.contains(&i) {
                 continue;
             }

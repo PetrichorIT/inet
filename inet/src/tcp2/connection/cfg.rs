@@ -15,6 +15,7 @@ pub struct Config {
     pub send_buffer_cap: usize,
     pub recv_buffer_cap: usize,
     pub syn_resent_count: usize,
+    pub initial_rto: Duration,
     pub mss: Option<u16>,
     pub iss: Option<u32>,
     pub ttl: u8,
@@ -26,6 +27,24 @@ pub struct Config {
 }
 
 impl Config {
+    pub fn test_default() -> Config {
+        Config {
+            enable_congestion_control: false,
+            send_buffer_cap: 4096,
+            recv_buffer_cap: 4096,
+            syn_resent_count: 3,
+            initial_rto: Duration::from_secs(10),
+            mss: None,
+            iss: Some(0), // TODO: This is a debug setting to prevent random ISS
+            linger: None,
+            ttl: 64,
+            reuseaddr: false,
+            reuseport: false,
+            rst_for_syn: true,
+            clock: Arc::new(SimTime::now),
+        }
+    }
+
     pub fn for_listener(&self, _addr: SocketAddr) -> Config {
         Config { ..self.clone() }
     }
@@ -56,6 +75,7 @@ impl Default for Config {
             enable_congestion_control: false,
             send_buffer_cap: 4096,
             recv_buffer_cap: 4096,
+            initial_rto: Duration::from_secs(3),
             syn_resent_count: 3,
             mss: None,
             iss: Some(0), // TODO: This is a debug setting to prevent random ISS

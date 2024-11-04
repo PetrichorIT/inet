@@ -408,7 +408,7 @@ impl IOContext {
         crate::libpcap::capture(crate::libpcap::PcapEnvelope {
             capture: crate::libpcap::PcapCapturePoint::Ingress,
             message: &msg,
-            iface: iface,
+            iface,
         });
 
         // Check that packet is addressed correctly.

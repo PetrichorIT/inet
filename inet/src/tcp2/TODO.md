@@ -17,11 +17,6 @@ we do NOT recv a MSS but have a non-default one.
 
 # OPTIONS: SO_LINGER
 
-# Wrong WINDOW cmp
-
-Most comparispns of is_between_wrapped or wrapping_lt uses the wend
-computed as NXT + WND. WND is however not the window with cong control.
-Fix by updating WND accordingly instead of recv_window() get
 
 # Off by 1 erros with is_between_wrapped()
 

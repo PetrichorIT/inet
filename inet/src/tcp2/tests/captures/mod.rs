@@ -27,7 +27,7 @@ impl TcpTestUnit {
             buf
         }
 
-        let n = n.min(self.tx.len());
+        let n = n.min(self.tx().len());
 
         let IpAddr::V4(src) = self.quad.src.ip() else {
             todo!("")
@@ -35,7 +35,7 @@ impl TcpTestUnit {
         let IpAddr::V4(dst) = peer.quad.src.ip() else {
             todo!("")
         };
-        for pkt in self.tx.drain(..n) {
+        for pkt in self.tx().drain(..n) {
             let ip_packet = Ipv4Packet {
                 dscp: 0,
                 enc: 0,

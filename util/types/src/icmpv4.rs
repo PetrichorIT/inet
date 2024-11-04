@@ -22,7 +22,6 @@ const PAYLOAD_LIMIT: usize = 20 + 64;
 impl IcmpV4Packet {
     pub fn new(typ: IcmpV4Type, pkt: &Ipv4Packet) -> Self {
         let mut content = pkt.to_vec().expect("Failed to write incoming IP ???");
-        dbg!(content.len());
         content.truncate(PAYLOAD_LIMIT);
         Self { typ, content }
     }

@@ -99,6 +99,37 @@ impl TcpListener {
             return Ok((stream, peer));
         }
     }
+
+    /// Returns the local address that this socket is bound to.
+    pub fn local_addr(&self) -> Result<SocketAddr, Error> {
+        IOContext::with_current(|ctx| ctx.get_socket_addr(self.fd))
+    }
+    /// Gets the value of the IP_TTL option for this socket.
+    ///
+    /// For more information about this option, see [set_ttl](TcpListener::set_ttl).
+    pub fn ttl(&self) -> Result<u32, Error> {
+        IOContext::with_current(|ctx| {
+            if let Some(handle) = ctx.tcp2.listeners.get(&self.fd) {
+                Ok(handle.config.ttl as u32)
+            } else {
+                Err(Error::new(ErrorKind::Other, "Lost Tcp"))
+            }
+        })
+    }
+
+    /// Sets the value for the IP_TTL option on this socket.
+    ///
+    /// This value sets the time-to-live field that is used in every packet sent from this socket.
+    pub fn set_ttl(&self, ttl: u32) -> Result<(), Error> {
+        IOContext::with_current(|ctx| {
+            if let Some(handle) = ctx.tcp2.listeners.get_mut(&self.fd) {
+                handle.config.ttl = u8::try_from(ttl).expect("u8");
+                Ok(())
+            } else {
+                Err(Error::new(ErrorKind::Other, "Lost Tcp"))
+            }
+        })
+    }
 }
 
 impl Drop for TcpListener {

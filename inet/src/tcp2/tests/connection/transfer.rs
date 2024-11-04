@@ -215,6 +215,33 @@ fn tx_can_emit_multiple_packets() -> io::Result<()> {
 }
 
 #[test]
+fn tx_flush() -> io::Result<()> {
+    let mut test = TcpTestUnit::new(
+        SocketAddr::new(Ipv4Addr::new(10, 0, 1, 104).into(), 80),
+        SocketAddr::new(Ipv4Addr::new(20, 0, 2, 204).into(), 1808),
+    );
+
+    test.handshake(4000, 500)?;
+
+    test.write(&vec![1; 750])?;
+    assert_eq!(test.is_flushed(), false);
+
+    test.tick()?;
+    test.assert_outgoing_eq(&[TcpPacket::new(80, 1808, 1, 4001, WIN_4KB, vec![1; 500])]);
+    assert_eq!(test.is_flushed(), false);
+
+    test.incoming(TcpPacket::new(1808, 80, 4001, 501, 500, Vec::new()))?;
+    test.tick()?;
+    test.assert_outgoing_eq(&[TcpPacket::new(80, 1808, 501, 4001, WIN_4KB, vec![1; 250])]);
+    assert_eq!(test.is_flushed(), false);
+
+    test.incoming(TcpPacket::new(1808, 80, 4001, 751, 500, Vec::new()))?;
+    assert_eq!(test.is_flushed(), true);
+
+    Ok(())
+}
+
+#[test]
 fn rcv_wnd_updates_at_read() -> io::Result<()> {
     let mut test = TcpTestUnit::new(
         SocketAddr::new(Ipv4Addr::new(10, 0, 1, 104).into(), 80),

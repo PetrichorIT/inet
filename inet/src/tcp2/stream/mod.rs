@@ -1,20 +1,23 @@
+use super::{interest::TcpInterest, State};
+use crate::io::{Interest, Ready};
+use crate::{
+    dns::{lookup_host, ToSocketAddrs},
+    socket::{AsRawFd, Fd, FromRawFd, IntoRawFd},
+    IOContext,
+};
 use std::{
     io::{Error, ErrorKind},
     net::SocketAddr,
     sync::Arc,
     time::Duration,
 };
-
-use crate::io::{Interest, Ready};
 use tokio::io::{AsyncRead, AsyncWrite};
 
-use crate::{
-    dns::{lookup_host, ToSocketAddrs},
-    socket::{AsRawFd, Fd, FromRawFd, IntoRawFd},
-    IOContext,
-};
+mod owned_half;
+pub use owned_half::*;
 
-use super::{interest::TcpInterest, State};
+mod ref_half;
+pub use ref_half::*;
 
 /// A TCP Stream.
 #[derive(Debug)]
@@ -82,7 +85,7 @@ impl TcpStream {
     /// It can be used to concurrently read / write to the same socket on a single task
     /// without splitting the socket.
     pub async fn ready(&self, interest: Interest) -> Result<Ready, Error> {
-        let interest = TcpInterest::from_tokio(self.inner.fd, interest);
+        let interest = TcpInterest::from_io(self.inner.fd, interest);
         interest.await
     }
 
@@ -186,6 +189,27 @@ impl TcpStream {
         let ttl = u8::try_from(ttl).expect("invalid ttl value");
         IOContext::with_current(|ctx| ctx.tcp2_connection(self.inner.fd, |con| con.cfg.ttl = ttl))
     }
+
+    /// Splits a `TcpStream` into a read half and a write half, which can be used to read and write the stream concurrently.
+    ///
+    /// This method is more efficient than [into_split](TcpStream::into_split), but the halves cannot be moved into independently spawned tasks
+    pub fn split<'a>(&'a mut self) -> (ReadHalf<'a>, WriteHalf<'a>) {
+        (ReadHalf { stream: self }, WriteHalf { stream: self })
+    }
+
+    /// Splits a `TcpStream` into a read half and a write half, which can be used to read and write the stream concurrently.
+    ///
+    /// Unlike [split](TcpStream::split), the owned halves can be moved to separate tasks, however this comes at the cost of a heap allocation.
+    ///
+    /// Note: Dropping the write half will shut down the write half of the TCP stream. This is equivalent to calling shutdown() on the TcpStream.
+    pub fn into_split(self) -> (OwnedReadHalf, OwnedWriteHalf) {
+        (
+            OwnedReadHalf {
+                inner: self.inner.clone(),
+            },
+            OwnedWriteHalf { inner: self.inner },
+        )
+    }
 }
 
 impl AsyncRead for TcpStream {
@@ -195,7 +219,7 @@ impl AsyncRead for TcpStream {
         buf: &mut tokio::io::ReadBuf<'_>,
     ) -> std::task::Poll<std::io::Result<()>> {
         IOContext::with_current(|ctx| {
-            ctx.tcp2_read(self.inner.fd, cx, buf)
+            ctx.tcp2_poll_read(self.inner.fd, cx, buf)
                 .map(|rdy| rdy.map(|n| buf.advance(n)))
         })
     }
@@ -207,7 +231,7 @@ impl AsyncWrite for TcpStream {
         cx: &mut std::task::Context<'_>,
         buf: &[u8],
     ) -> std::task::Poll<Result<usize, std::io::Error>> {
-        IOContext::with_current(|ctx| ctx.tcp2_write(self.inner.fd, cx, buf))
+        IOContext::with_current(|ctx| ctx.tcp2_poll_write(self.inner.fd, cx, buf))
     }
     fn poll_flush(
         self: std::pin::Pin<&mut Self>,

@@ -32,12 +32,13 @@ pub struct SendSequenceSpace {
     pub iss: u32,
     /// maximum segment size
     pub mss: u16,
-
+    /// number of syn packets send without ack
     pub syn_resend_counter: usize,
-
+    /// A indicator, whether the sender is closed
     pub closed: bool,
+    /// The last data seq no, before the close of the sender (FIN)
     pub closed_at: Option<u32>,
-
+    /// Variables for congestion control
     pub c: CongestionControl,
 }
 

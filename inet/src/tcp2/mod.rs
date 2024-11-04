@@ -11,8 +11,6 @@ use des::{
     time::SimTime,
 };
 use fxhash::FxHashMap;
-use listener::Listener;
-use sender::TcpSenderBuffer;
 use std::{
     io::{Error, ErrorKind},
     mem,
@@ -41,12 +39,13 @@ pub const PROTO_TCP2: u8 = PROTO_TCP + 1;
 mod connection;
 mod interest;
 mod listener;
-mod sender;
 mod stream;
+
+use listener::Listener;
 
 pub use connection::{Config, Connection, State};
 pub use listener::TcpListener;
-pub use stream::TcpStream;
+pub use stream::{OwnedReadHalf, OwnedWriteHalf, ReadHalf, TcpStream, WriteHalf};
 
 #[cfg(test)]
 mod tests;
@@ -54,7 +53,6 @@ mod tests;
 pub struct Tcp {
     pub config: Config,
     pub timers: Timers,
-    pub sender: TcpSenderBuffer,
     pub listeners: FxHashMap<Fd, Listener>,
     pub streams: FxHashMap<Fd, Connection>,
     pub active: Vec<Fd>,
@@ -77,7 +75,6 @@ impl Tcp {
         Tcp {
             config: Config::default(),
             timers: Timers::default(),
-            sender: TcpSenderBuffer::default(),
             listeners: FxHashMap::default(),
             streams: FxHashMap::default(),
             active: Vec::default(),
@@ -107,18 +104,16 @@ impl IOContext {
         let Some(interface) = self.ifaces.get_mut(&socket.interface.unwrap_ifid()) else {
             return;
         };
-        let Some(con) = self.tcp2.streams.get(&fd) else {
+
+        let Some(con) = self.tcp2.streams.get_mut(&fd) else {
             return;
         };
 
-        let mut sender = self.tcp2.sender.sender(fd);
-
         if !interface.is_busy() {
-            let Some(pkt) = sender.next(con) else {
+            let Some(pkt) = con.outgoing_next() else {
                 return;
             };
-
-            let is_empty = sender.is_empty();
+            let is_empty = con.outgoing.is_empty();
 
             if let Err(error) = self.send_ip_packet(socket.interface.clone(), pkt, true) {
                 self.tcp2.set_error(fd, error);
@@ -135,7 +130,7 @@ impl IOContext {
                 interface.add_write_interest(fd);
             }
         } else {
-            if !sender.is_empty() {
+            if !con.outgoing.is_empty() {
                 interface.add_write_interest(fd);
             }
         }
@@ -150,8 +145,7 @@ impl IOContext {
                 continue;
             };
 
-            con.on_tick(&mut self.tcp2.sender.sender(fd))
-                .expect("on tick failure");
+            con.on_tick().expect("on tick failure");
 
             self.tcp2.set_active(fd);
         }
@@ -164,8 +158,6 @@ impl IOContext {
         // wakers to be woken. If yes, then
         // schedule a 0s reactivation to use these wakers
 
-        self.tcp2.sender.has_unresolved_wakeups = false;
-
         let mut fds = Vec::new();
         mem::swap(&mut fds, &mut self.tcp2.active);
 
@@ -174,8 +166,7 @@ impl IOContext {
                 continue;
             };
 
-            con.on_tick(&mut self.tcp2.sender.sender(*fd))
-                .expect("on tick failure");
+            con.on_tick().expect("on tick failure");
 
             self.tcp2.timers.update(*fd, con);
         }
@@ -184,13 +175,13 @@ impl IOContext {
             self.tcp2_socket_link_update(*fd);
         }
 
-        if self.tcp2.sender.has_unresolved_wakeups {
-            // Apparently, this is never true
-            // this cannot be right i think, but maybe it is
-            // TODO: check for timeouts
-            // TODO: if there are wakeups in the event_end_tick, reschedule a 0s event, to resolve the wakeups
-            unreachable!()
-        }
+        // if self.tcp2.sender.has_unresolved_wakeups {
+        //     // Apparently, this is never true
+        //     // this cannot be right i think, but maybe it is
+        //     // TODO: check for timeouts
+        //     // TODO: if there are wakeups in the event_end_tick, reschedule a 0s event, to resolve the wakeups
+        //     unreachable!()
+        // }
 
         self.tcp2.timers.schedule()
     }
@@ -295,9 +286,7 @@ impl IOContext {
             return false;
         };
 
-        connection
-            .on_packet(&mut self.tcp2.sender.sender(fd), pkt)
-            .expect("failed to recv");
+        connection.on_packet(pkt).expect("failed to recv");
         self.tcp2.set_active(fd);
         true
     }
@@ -310,7 +299,29 @@ impl IOContext {
     /// TCP read()
     ///
 
-    pub fn tcp2_read(
+    pub fn tcp2_read(&mut self, fd: Fd, buf: &mut [u8]) -> Result<usize, Error> {
+        let Some(con) = self.tcp2.streams.get_mut(&fd) else {
+            todo!()
+        };
+
+        con.read(buf).map(|n| {
+            self.tcp2.set_active(fd);
+            n
+        })
+    }
+
+    pub fn tcp2_peek(&mut self, fd: Fd, buf: &mut [u8]) -> Result<usize, Error> {
+        let Some(con) = self.tcp2.streams.get_mut(&fd) else {
+            todo!()
+        };
+
+        con.peek(buf).map(|n| {
+            self.tcp2.set_active(fd);
+            n
+        })
+    }
+
+    pub fn tcp2_poll_read(
         &mut self,
         fd: Fd,
         cx: &mut Context<'_>,
@@ -339,7 +350,18 @@ impl IOContext {
     /// TCP write()
     ///
 
-    pub fn tcp2_write(
+    pub fn tcp2_write(&mut self, fd: Fd, buf: &[u8]) -> Result<usize, Error> {
+        let Some(con) = self.tcp2.streams.get_mut(&fd) else {
+            todo!()
+        };
+
+        con.write(buf).map(|n| {
+            self.tcp2.set_active(fd);
+            n
+        })
+    }
+
+    pub fn tcp2_poll_write(
         &mut self,
         fd: Fd,
         cx: &mut Context<'_>,
@@ -369,7 +391,7 @@ impl IOContext {
             todo!()
         };
 
-        if con.unacked.is_empty() {
+        if con.is_flushed() {
             Poll::Ready(Ok(()))
         } else {
             con.interface.register(Interest::WRITABLE, cx);
@@ -473,7 +495,7 @@ impl IOContext {
             src: self.get_socket_addr(stream_socket)?,
             dst: src,
         };
-        let con = Connection::accept(&mut self.tcp2.sender.sender(stream_socket), quad, pkt, cfg)?;
+        let con = Connection::accept(quad, pkt, cfg)?;
         if let Some(con) = con {
             self.tcp2.streams.insert(stream_socket, con);
         }
@@ -545,7 +567,7 @@ impl IOContext {
         };
 
         // Sends a SYN
-        let conn = Connection::connect(&mut self.tcp2.sender.sender(fd), quad, cfg)?;
+        let conn = Connection::connect(quad, cfg)?;
         self.tcp2.streams.insert(fd, conn);
 
         // Nessecary, since failure to send packets may wake up wakers

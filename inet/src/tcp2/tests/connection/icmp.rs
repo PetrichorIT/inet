@@ -11,20 +11,14 @@ use types::{
     udp::PROTO_UDP,
 };
 
-use crate::tcp2::{sender::TcpSender, State, PROTO_TCP2};
+use crate::tcp2::{State, PROTO_TCP2};
 
 use super::{TcpTestUnit, WIN_4KB};
 
 impl TcpTestUnit {
     pub fn icmp_v4_with(&mut self, typ: IcmpV4Type, pkt: &Ipv4Packet) -> io::Result<()> {
         if let Some(ref mut con) = self.con {
-            con.on_icmp_v4(
-                &mut TcpSender {
-                    buffer: &mut self.tx,
-                    unresolved_wakeups: &mut false,
-                },
-                IcmpV4Packet::new(typ, pkt),
-            )
+            con.on_icmp_v4(IcmpV4Packet::new(typ, pkt))
         } else {
             Ok(())
         }
@@ -32,44 +26,38 @@ impl TcpTestUnit {
 
     pub fn icmp_v4(&mut self, icmp: IcmpV4Type) -> io::Result<()> {
         if let Some(ref mut con) = self.con {
-            con.on_icmp_v4(
-                &mut TcpSender {
-                    buffer: &mut self.tx,
-                    unresolved_wakeups: &mut false,
-                },
-                IcmpV4Packet {
-                    typ: icmp,
-                    content: {
-                        let buf = Ipv4Packet {
-                            dscp: 0,
-                            enc: 0,
-                            identification: 0,
-                            flags: Ipv4Flags { df: true, mf: true },
-                            ttl: 64,
-                            fragment_offset: 0,
-                            proto: PROTO_TCP2,
-                            src: Ipv4Addr::new(10, 0, 1, 104),
-                            dst: Ipv4Addr::new(20, 0, 2, 204),
-                            content: TcpPacket {
-                                src_port: con.quad.src.port(),
-                                dst_port: con.quad.dst.port(),
-                                seq_no: 0,
-                                ack_no: 0,
-                                flags: TcpFlags::empty(),
-                                window: 0,
-                                urgent_ptr: 0,
-                                options: Vec::new(),
-                                content: Vec::new(),
-                            }
-                            .to_vec()
-                            .unwrap(),
+            con.on_icmp_v4(IcmpV4Packet {
+                typ: icmp,
+                content: {
+                    let buf = Ipv4Packet {
+                        dscp: 0,
+                        enc: 0,
+                        identification: 0,
+                        flags: Ipv4Flags { df: true, mf: true },
+                        ttl: 64,
+                        fragment_offset: 0,
+                        proto: PROTO_TCP2,
+                        src: Ipv4Addr::new(10, 0, 1, 104),
+                        dst: Ipv4Addr::new(20, 0, 2, 204),
+                        content: TcpPacket {
+                            src_port: con.quad.src.port(),
+                            dst_port: con.quad.dst.port(),
+                            seq_no: 0,
+                            ack_no: 0,
+                            flags: TcpFlags::empty(),
+                            window: 0,
+                            urgent_ptr: 0,
+                            options: Vec::new(),
+                            content: Vec::new(),
                         }
                         .to_vec()
-                        .unwrap();
-                        buf
-                    },
+                        .unwrap(),
+                    }
+                    .to_vec()
+                    .unwrap();
+                    buf
                 },
-            )
+            })
         } else {
             Ok(())
         }

@@ -21,7 +21,7 @@ impl TcpInterest {
         }
     }
 
-    pub(crate) fn from_tokio(fd: Fd, interest: io::Interest) -> Self {
+    pub(crate) fn from_io(fd: Fd, interest: io::Interest) -> Self {
         Self { fd, interest }
     }
 }

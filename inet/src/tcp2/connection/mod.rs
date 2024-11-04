@@ -1,4 +1,4 @@
-use bytepack::FromBytestream;
+use bytepack::{FromBytestream, ToBytestream};
 use des::time::SimTime;
 use interface::UserInterface;
 use std::{
@@ -11,21 +11,25 @@ use std::{
 use tracing::instrument;
 use types::{
     icmpv4::{IcmpV4DestinationUnreachableCode, IcmpV4Packet, IcmpV4Type},
+    ip::{IpPacket, Ipv4Flags, Ipv4Packet, Ipv6Packet},
     tcp::{TcpFlags, TcpOption, TcpPacket},
 };
 
 use crate::io::Interest;
 
-use super::{sender::TcpSender, Quad, PROTO_TCP2};
+use super::{Quad, PROTO_TCP2};
 
 mod cfg;
 mod interface;
 mod reorder;
 mod snd;
+mod timers;
 
 pub use cfg::*;
 pub(super) use reorder::*;
+
 use snd::SendSequenceSpace;
+use timers::Timers;
 
 bitflags::bitflags! {
     pub struct Available: u8 {
@@ -92,6 +96,7 @@ pub struct Connection {
     pub timers: Timers,
 
     pub incoming: ReorderBuffer,
+    pub outgoing: VecDeque<TcpPacket>,
 
     pub received: VecDeque<u8>,
     pub unacked: VecDeque<u8>,
@@ -99,12 +104,6 @@ pub struct Connection {
     pub interface: UserInterface,
 
     pub cfg: Config,
-}
-
-#[derive(Clone)]
-pub struct Timers {
-    pub send_times: BTreeMap<u32, SimTime>,
-    pub srtt: f64,
 }
 
 impl Connection {
@@ -117,13 +116,17 @@ impl Connection {
         }
     }
 
+    pub fn is_flushed(&self) -> bool {
+        self.unacked.is_empty()
+    }
+
     pub fn now(&self) -> SimTime {
         (self.cfg.clock)()
     }
 
     pub fn next_timeout(&self) -> Option<SimTime> {
         let oldest_send_time = self.timers.send_times.values().min()?;
-        Some(*oldest_send_time + Duration::from_secs_f64(self.timers.srtt * 1.5))
+        Some(*oldest_send_time + Duration::from_secs_f64(self.timers.rto * 1.5))
     }
 
     pub fn is_synchronized(&self) -> bool {
@@ -136,6 +139,39 @@ impl Connection {
 
     pub fn is_writable(&self) -> bool {
         self.state.is_writable() && self.unacked.len() < self.cfg.send_buffer_cap
+    }
+
+    pub fn outgoing_next(&mut self) -> Option<IpPacket> {
+        self.outgoing.pop_front().map(|tcp| {
+            use std::net::IpAddr::*;
+            match (self.quad.src.ip(), self.quad.dst.ip()) {
+                (V4(src), V4(dst)) => IpPacket::V4(Ipv4Packet {
+                    dscp: 0,
+                    enc: 0,
+                    identification: 0,
+                    flags: Ipv4Flags {
+                        df: false,
+                        mf: false,
+                    },
+                    fragment_offset: 0,
+                    ttl: self.cfg.ttl,
+                    proto: PROTO_TCP2,
+                    src,
+                    dst,
+                    content: tcp.to_vec().expect("failed to encode"),
+                }),
+                (V6(src), V6(dst)) => IpPacket::V6(Ipv6Packet {
+                    traffic_class: 0,
+                    flow_label: 0,
+                    next_header: PROTO_TCP2,
+                    hop_limit: self.cfg.ttl,
+                    src,
+                    dst,
+                    content: tcp.to_vec().expect("failed to encodes"),
+                }),
+                _ => todo!(),
+            }
+        })
     }
 
     fn availability(&self) -> Available {
@@ -251,7 +287,7 @@ impl Connection {
         Ok(n)
     }
 
-    pub fn connect(nic: &mut TcpSender, quad: Quad, cfg: Config) -> io::Result<Self> {
+    pub fn connect(quad: Quad, cfg: Config) -> io::Result<Self> {
         assert!(!quad.dst.ip().is_unspecified());
 
         // Default MSS according to RFC 9293
@@ -263,16 +299,14 @@ impl Connection {
         let rcv_wnd = u16::try_from(cfg.recv_buffer_cap).expect("u16 error");
 
         let mut c = Connection {
-            timers: Timers {
-                send_times: Default::default(),
-                srtt: Duration::from_secs(10).as_secs_f64(),
-            },
+            timers: Timers::new(&cfg),
             state: State::SynSent,
             snd: SendSequenceSpace::new(&quad, &cfg),
             rcv: RecvSequenceSpace::empty(rcv_wnd, rcv_wnd),
             quad,
 
             incoming: ReorderBuffer::default(),
+            outgoing: VecDeque::new(),
 
             received: VecDeque::with_capacity(cfg.recv_buffer_cap),
             unacked: VecDeque::with_capacity(cfg.send_buffer_cap),
@@ -282,16 +316,11 @@ impl Connection {
             cfg,
         };
 
-        c.send_pkt(nic, Syn, c.snd.nxt, 0)?;
+        c.send_pkt(Syn, c.snd.nxt, 0)?;
         Ok(c)
     }
 
-    pub fn accept(
-        nic: &mut TcpSender,
-        quad: Quad,
-        pkt: TcpPacket,
-        cfg: Config,
-    ) -> io::Result<Option<Self>> {
+    pub fn accept(quad: Quad, pkt: TcpPacket, cfg: Config) -> io::Result<Option<Self>> {
         if !pkt.flags.contains(TcpFlags::SYN) {
             // only expected SYN packet
             return Ok(None);
@@ -302,16 +331,14 @@ impl Connection {
         let rcv_wnd = u16::try_from(cfg.recv_buffer_cap).expect("u16 error");
 
         let mut c = Connection {
-            timers: Timers {
-                send_times: Default::default(),
-                srtt: Duration::from_secs(10).as_secs_f64(),
-            },
+            timers: Timers::new(&cfg),
             state: State::SynRcvd,
             snd: SendSequenceSpace::new(&quad, &cfg), // init send window to 1, to allow SYN bit
             rcv: RecvSequenceSpace::from_syn(&pkt, rcv_wnd, rcv_wnd),
             quad,
 
             incoming: ReorderBuffer::default(),
+            outgoing: VecDeque::new(),
 
             received: VecDeque::with_capacity(cfg.recv_buffer_cap),
             unacked: VecDeque::with_capacity(cfg.send_buffer_cap),
@@ -322,7 +349,7 @@ impl Connection {
         };
 
         // need to start establishing a connection
-        c.send_pkt(nic, SynAck, c.snd.nxt, 0)?;
+        c.send_pkt(SynAck, c.snd.nxt, 0)?;
         Ok(Some(c))
     }
 
@@ -336,14 +363,8 @@ impl Connection {
         true
     }
 
-    #[instrument(skip(self, nic, limit))]
-    fn send_pkt(
-        &mut self,
-        nic: &mut TcpSender,
-        kind: PacketKind,
-        seq: u32,
-        mut limit: usize,
-    ) -> io::Result<usize> {
+    #[instrument(skip(self, limit))]
+    fn send_pkt(&mut self, kind: PacketKind, seq: u32, mut limit: usize) -> io::Result<usize> {
         let mut packet = TcpPacket {
             src_port: self.quad.src.port(),
             dst_port: self.quad.dst.port(),
@@ -412,7 +433,7 @@ impl Connection {
         if wrapping_lt(self.snd.nxt, next_seq) {
             self.snd.nxt = next_seq;
         }
-        self.timers.send_times.insert(seq, (self.cfg.clock)());
+        self.timers.on_send(seq, (self.cfg.clock)());
 
         tracing::info!(
             "sending seq={} ack={} data={:?} flags={:?} (len = {})",
@@ -422,7 +443,7 @@ impl Connection {
             packet.flags,
             packet.content.len(),
         );
-        nic.send(packet);
+        self.outgoing.push_back(packet);
         Ok(payload_bytes)
     }
 
@@ -449,7 +470,7 @@ impl Connection {
         options
     }
 
-    fn send_rst(&mut self, nic: &mut TcpSender, seq: u32) -> io::Result<()> {
+    fn send_rst(&mut self, seq: u32) -> io::Result<()> {
         // TODO: fix sequence numbers here
         // If the incoming segment has an ACK field, the reset takes its
         // sequence number from the ACK field of the segment, otherwise the
@@ -466,7 +487,7 @@ impl Connection {
         // and an acknowledgment indicating the next sequence number expected
         // to be received, and the connection remains in the same state.
 
-        self.send_pkt(nic, Rst, seq, 0)?;
+        self.send_pkt(Rst, seq, 0)?;
         Ok(())
     }
 
@@ -475,73 +496,22 @@ impl Connection {
         (self.unacked.len() as u32).checked_sub(self.snd.num_unacked_bytes())
     }
 
-    pub fn on_tick(&mut self, nic: &mut TcpSender) -> io::Result<()> {
+    pub fn on_tick(&mut self) -> io::Result<()> {
         if let State::FinWait2 | State::TimeWait | State::Closed = self.state {
             // we have shutdown our write side and the other side acked, no need to (re)transmit anything
             return Ok(());
         }
 
         self.incoming
-            .update(self.now(), Duration::from_secs_f64(self.timers.srtt / 4.0));
+            .update(self.now(), Duration::from_secs_f64(self.timers.rto / 4.0));
 
         // tracing::info!("ON TICK: state {:?} una {} nxt {} unacked {:?}",
         //           self.state, self.send.una, self.send.nxt, self.unacked);
 
-        let now = (self.cfg.clock)();
-        let waited_for = self
-            .timers
-            .send_times
-            .range(self.snd.una..)
-            .next()
-            .map(|t| dbg!(now) - dbg!(*t.1));
-
-        let should_retransmit = if let Some(waited_for) = waited_for {
-            waited_for >= Duration::from_secs(1)
-                && waited_for.as_secs_f64() >= 1.5 * self.timers.srtt
-        } else {
-            false
-        };
+        let should_retransmit = self.timers.should_retransmit(self.snd.una, self.now());
 
         if should_retransmit {
-            tracing::info!("retransmitting packet");
-
-            // TODO: Is that right ?
-
-            let num_resend = std::cmp::min(self.unacked.len() as u32, self.snd.wnd as u32);
-
-            if num_resend < self.snd.wnd as u32 && self.snd.closed {
-                // can we include the FIN?
-                self.snd.closed_at = Some(self.snd.una.wrapping_add(self.unacked.len() as u32));
-                self.snd.on_timeout();
-                self.send_pkt(nic, Fin, self.snd.una, num_resend as usize)?;
-            } else if let State::SynSent = self.state {
-                assert_eq!(num_resend, 0);
-
-                if self.snd.syn_resend_counter >= self.cfg.syn_resent_count {
-                    self.snd.closed = true;
-                    self.snd.closed_at = Some(self.snd.una);
-                    self.state.transition_to(State::Closed);
-
-                    tracing::warn!("syn resend count exceeded - closing socket");
-
-                    self.interface.set_error(io::Error::new(
-                        io::ErrorKind::ConnectionRefused,
-                        "host unreachable: syn resend count exceeded",
-                    ));
-
-                    self.interface.wake(Interest::BOTH);
-
-                    return Ok(());
-                }
-
-                self.snd.syn_resend_counter += 1;
-                self.send_pkt(nic, Syn, self.snd.una, 0)?;
-            } else if let State::SynRcvd = self.state {
-                self.send_pkt(nic, SynAck, self.snd.una, 0)?;
-            } else {
-                self.snd.on_timeout();
-                self.send_pkt(nic, Ack, self.snd.una, num_resend as usize)?;
-            }
+            self.on_tick_retransmit()?;
         } else {
             loop {
                 let Some(num_unsend_bytes) = self.num_unsend_bytes() else {
@@ -580,12 +550,12 @@ impl Connection {
                     // Case 1:
                     // Local user initiates the close In this case, a FIN segment can be constructed and placed on the outgoing segment queue.
                     // ...
-                    self.send_pkt(nic, Fin, self.snd.nxt, bytes_to_be_sent as usize)?;
+                    self.send_pkt(Fin, self.snd.nxt, bytes_to_be_sent as usize)?;
                 } else {
                     if num_unsend_bytes == 0 {
                         break;
                     }
-                    self.send_pkt(nic, Ack, self.snd.nxt, bytes_to_be_sent as usize)?;
+                    self.send_pkt(Ack, self.snd.nxt, bytes_to_be_sent as usize)?;
                 }
             }
         }
@@ -593,7 +563,48 @@ impl Connection {
         Ok(())
     }
 
-    pub fn on_icmp_v4(&mut self, snd: &mut TcpSender, icmp: IcmpV4Packet) -> io::Result<()> {
+    fn on_tick_retransmit(&mut self) -> Result<(), Error> {
+        tracing::info!("retransmitting packet");
+
+        let num_resend = std::cmp::min(self.unacked.len() as u32, self.snd.wnd as u32);
+
+        if num_resend < self.snd.wnd as u32 && self.snd.closed {
+            // can we include the FIN?
+            self.snd.closed_at = Some(self.snd.una.wrapping_add(self.unacked.len() as u32));
+            self.snd.on_timeout();
+            self.send_pkt(Fin, self.snd.una, num_resend as usize)?;
+        } else if let State::SynSent = self.state {
+            assert_eq!(num_resend, 0);
+
+            if self.snd.syn_resend_counter >= self.cfg.syn_resent_count {
+                self.snd.closed = true;
+                self.snd.closed_at = Some(self.snd.una);
+                self.state.transition_to(State::Closed);
+
+                tracing::warn!("syn resend count exceeded - closing socket");
+
+                self.interface.set_error(io::Error::new(
+                    io::ErrorKind::ConnectionRefused,
+                    "host unreachable: syn resend count exceeded",
+                ));
+
+                self.interface.wake(Interest::BOTH);
+                return Ok(());
+            }
+
+            self.snd.syn_resend_counter += 1;
+            self.send_pkt(Syn, self.snd.una, 0)?;
+        } else if let State::SynRcvd = self.state {
+            self.send_pkt(SynAck, self.snd.una, 0)?;
+        } else {
+            self.snd.on_timeout();
+            self.send_pkt(Ack, self.snd.una, num_resend as usize)?;
+        }
+
+        Ok(())
+    }
+
+    pub fn on_icmp_v4(&mut self, icmp: IcmpV4Packet) -> io::Result<()> {
         // # Demultiplex ICMP messages
         let ip_header = icmp.contained()?;
         if ip_header.proto != PROTO_TCP2 {
@@ -627,7 +638,7 @@ impl Connection {
                 rst.flags.insert(TcpFlags::RST);
                 rst.flags.insert(TcpFlags::ACK);
                 // TODO: Add custom error handling
-                self.on_packet(snd, rst)?;
+                self.on_packet(rst)?;
                 return Ok(());
             }
 
@@ -640,11 +651,11 @@ impl Connection {
         Ok(())
     }
 
-    pub fn on_packet(&mut self, nic: &mut TcpSender, seg: TcpPacket) -> io::Result<Available> {
+    pub fn on_packet(&mut self, seg: TcpPacket) -> io::Result<Available> {
         if let State::SynSent = self.state {
             // RFC 9293 -  3.10.7 SEGMENT ARRIVES
             // -> Defines custom handlers for state SYN_SENT
-            return self.on_packet_syn_sent(nic, seg);
+            return self.on_packet_syn_sent(seg);
         }
         // Otherwise,
         // States = SYN-RECEIVED, ESTABLISHED, FIN-WAIT-1, FIN-WAIT-2, CLOSE-WAIT, CLOSING, LAST-ACK, TIME-WAIT
@@ -660,7 +671,7 @@ impl Connection {
 
         // -> Update reorder buffer first
         self.incoming
-            .update(self.now(), Duration::from_secs_f64(self.timers.srtt / 4.0));
+            .update(self.now(), Duration::from_secs_f64(self.timers.rto / 4.0));
 
         // -> Only for packets of an established connection aka ACK do reordering
         //    else you might buffer packets of handshakes or RST
@@ -678,18 +689,14 @@ impl Connection {
             }
         }
 
-        let mut last = self.on_inorder_packet(nic, seg)?;
+        let mut last = self.on_inorder_packet(seg)?;
         while let Some(next_pkt) = self.incoming.next(self.rcv.nxt) {
-            last = self.on_inorder_packet(nic, next_pkt)?;
+            last = self.on_inorder_packet(next_pkt)?;
         }
         Ok(last)
     }
 
-    fn on_inorder_packet(
-        &mut self,
-        nic: &mut TcpSender<'_>,
-        seg: TcpPacket,
-    ) -> Result<Available, Error> {
+    fn on_inorder_packet(&mut self, seg: TcpPacket) -> Result<Available, Error> {
         // first, check that sequence numbers are valid (RFC 793 S3.3)
         let seqn = seg.seq_no;
         let mut slen = seg.content.len() as u32;
@@ -728,7 +735,7 @@ impl Connection {
         if !okay {
             tracing::error!("segment not acceptable");
             if !seg.flags.contains(TcpFlags::RST) {
-                self.send_pkt(nic, Ack, self.snd.nxt, 0)?;
+                self.send_pkt(Ack, self.snd.nxt, 0)?;
             }
             return Ok(self.availability());
         }
@@ -749,7 +756,7 @@ impl Connection {
 
         // Second, check the RST bit:
         if seg.flags.contains(TcpFlags::RST) {
-            return self.on_rst(seqn, wend, nic);
+            return self.on_rst(seqn, wend);
         }
 
         // Third, check security: ...
@@ -770,7 +777,7 @@ impl Connection {
             if is_sim_open {
                 tracing::info!("Sim open bypass")
             } else {
-                return self.on_syn(&seg, seqn, nic);
+                return self.on_syn(&seg, seqn);
             }
         }
 
@@ -784,7 +791,7 @@ impl Connection {
 
                 if let State::SynRcvd = self.state {
                     // resend SYN ACK, it seems to be lost
-                    self.send_pkt(nic, SynAck, self.snd.nxt.wrapping_sub(1), 0)?;
+                    self.send_pkt(SynAck, self.snd.nxt.wrapping_sub(1), 0)?;
                 }
             }
             return Ok(self.availability());
@@ -805,7 +812,7 @@ impl Connection {
         // // the ACK value is acceptable, the per-state processing below applies:
         // // -> TODO max WINDOW
         // if !ack_acceptable {
-        //     self.send_pkt(nic, Ack, self.snd.nxt, 0)?;
+        //     self.send_pkt( Ack, self.snd.nxt, 0)?;
         //     return Ok(self.availability());
         // }
 
@@ -834,7 +841,7 @@ impl Connection {
             } else {
                 // If the segment acknowledgment is not acceptable, form a reset segment
                 // <SEQ=SEG.ACK><CTL=RST> and send it.
-                self.send_rst(nic, seg.ack_no)?;
+                self.send_rst(seg.ack_no)?;
 
                 // TODO: and stop processing ??, not specified
                 return Ok(self.availability());
@@ -897,27 +904,12 @@ impl Connection {
                     self.unacked.drain(..acked_data_end);
 
                     // We go an ack, reset send timers, we can send once more
-                    let old = std::mem::replace(&mut self.timers.send_times, BTreeMap::new());
-
-                    let una = self.snd.una;
-                    let srtt = &mut self.timers.srtt;
-
                     let now = (self.cfg.clock)();
+                    self.timers.on_recv(self.snd.una, ackn, now);
 
                     // add new send timer, where old timers are evaluated
                     // -> if timer was for now acked bytes -> calculate rrt with it
                     // -> if timer is for yet unacked bytes -> keep it
-                    self.timers
-                        .send_times
-                        .extend(old.into_iter().filter_map(|(seq, sent)| {
-                            if is_between_wrapped(una, seq, ackn) {
-                                let elapsed = (now - sent).as_secs_f64();
-                                *srtt = 0.8 * *srtt + (1.0 - 0.8) * elapsed;
-                                None
-                            } else {
-                                Some((seq, sent))
-                            }
-                        }));
 
                     let n = ackn - self.snd.una;
                     self.snd.on_ack(n);
@@ -948,7 +940,7 @@ impl Connection {
         if let State::TimeWait = self.state {
             // Should always be true
             if seg.flags.contains(TcpFlags::FIN) {
-                self.send_pkt(nic, Ack, self.snd.nxt, 0)?;
+                self.send_pkt(Ack, self.snd.nxt, 0)?;
                 // TODO: MLS*2
             }
         }
@@ -1055,7 +1047,7 @@ impl Connection {
                 // Send an acknowledgment of the form: <SEQ=SND.NXT><ACK=RCV.NXT><CTL=ACK>
                 // This acknowledgment should be piggybacked on a segment being transmitted if possible without incurring undue delay.
                 // TODO: maybe just tick to piggyback ack on data?
-                self.send_pkt(nic, Ack, self.snd.nxt, 0)?;
+                self.send_pkt(Ack, self.snd.nxt, 0)?;
             }
             // For other states
             // This should not occur since a FIN has been received from the remote side. Ignore the segment text.
@@ -1076,7 +1068,7 @@ impl Connection {
             // -> TODO: done in read()
             // -> PSH is already always active, so nothing to do there
             self.rcv.nxt = seg.seq_no.wrapping_add(slen);
-            self.send_pkt(nic, Ack, self.snd.nxt, 0)?;
+            self.send_pkt(Ack, self.snd.nxt, 0)?;
             match self.state {
                 State::SynRcvd => {
                     // Do nothing
@@ -1117,19 +1109,14 @@ impl Connection {
         Ok(self.availability())
     }
 
-    fn on_syn(
-        &mut self,
-        pkt: &TcpPacket,
-        seqn: u32,
-        nic: &mut TcpSender<'_>,
-    ) -> Result<Available, Error> {
+    fn on_syn(&mut self, pkt: &TcpPacket, seqn: u32) -> Result<Available, Error> {
         if let State::SynRcvd = self.state {
             // TODO: own addition
             if !pkt.flags.contains(TcpFlags::ACK) {
                 // Another SYN, SYNACK must be lost, and client must have timed out
                 assert!(pkt.content.is_empty());
                 self.rcv.nxt = seqn.wrapping_add(1);
-                self.send_pkt(nic, SynAck, self.snd.nxt.wrapping_sub(1), 0)?;
+                self.send_pkt(SynAck, self.snd.nxt.wrapping_sub(1), 0)?;
                 return Ok(Available::empty());
             }
 
@@ -1153,7 +1140,7 @@ impl Connection {
             // RFC 5961 recommends that in these synchronized states, if the SYN bit is set, irrespective of the sequence number,
             // TCP endpoints MUST send a "challenge ACK" to the remote peer:
             // <SEQ=SND.NXT><ACK=RCV.NXT><CTL=ACK>
-            self.send_pkt(nic, Ack, self.snd.nxt, 0)?;
+            self.send_pkt(Ack, self.snd.nxt, 0)?;
 
             // After sending the acknowledgment, TCP implementations MUST drop the unacceptable segment and
             // stop processing further. ...
@@ -1182,12 +1169,7 @@ impl Connection {
         });
     }
 
-    fn on_rst(
-        &mut self,
-        seqn: u32,
-        wend: u32,
-        nic: &mut TcpSender<'_>,
-    ) -> Result<Available, Error> {
+    fn on_rst(&mut self, seqn: u32, wend: u32) -> Result<Available, Error> {
         if !is_between_wrapped(self.rcv.nxt, seqn, wend) {
             return Ok(Available::empty());
         }
@@ -1196,7 +1178,7 @@ impl Connection {
             // If the RST bit is set and the sequence number does not exactly match the next expected sequence value,
             // yet is within the current receive window, TCP endpoints MUST send an acknowledgment (challenge ACK):
             // <SEQ=SND.NXT><ACK=RCV.NXT><CTL=ACK>
-            self.send_pkt(nic, Ack, self.snd.nxt, 0)?;
+            self.send_pkt(Ack, self.snd.nxt, 0)?;
 
             // After sending the challenge ACK, TCP endpoints MUST drop the unacceptable segment and
             // stop processing the incoming packet further. ...
@@ -1251,7 +1233,7 @@ impl Connection {
         }
     }
 
-    fn on_packet_syn_sent(&mut self, snd: &mut TcpSender, seg: TcpPacket) -> io::Result<Available> {
+    fn on_packet_syn_sent(&mut self, seg: TcpPacket) -> io::Result<Available> {
         // RFC 9293 - 3.10.7.3. SYN-SENT STATE
         // First, check the ACK bit:
         //   If the ACK bit is set:
@@ -1260,7 +1242,7 @@ impl Connection {
             // <SEQ=SEG.ACK><CTL=RST> and discard the segment. Return.
             if seg.ack_no <= self.snd.iss || seg.ack_no > self.snd.nxt {
                 if !seg.flags.contains(TcpFlags::RST) {
-                    self.send_rst(snd, seg.ack_no)?;
+                    self.send_rst(seg.ack_no)?;
                 }
                 tracing::warn!(
                     seg.ack_no,
@@ -1335,7 +1317,7 @@ impl Connection {
             if self.snd.una > self.snd.iss {
                 self.state.transition_to(State::Estab);
                 self.interface.wake(Interest::BOTH);
-                self.send_pkt(snd, Ack, self.snd.nxt, 0)?;
+                self.send_pkt(Ack, self.snd.nxt, 0)?;
 
                 // TODO: this is wrong here
                 self.snd.wnd = seg.window;
@@ -1348,7 +1330,7 @@ impl Connection {
             } else {
                 // Otherwise, enter SYN-RECEIVED, form a SYN,ACK segment <SEQ=ISS><ACK=RCV.NXT><CTL=SYN,ACK>
                 self.state.transition_to(State::SynRcvd);
-                self.send_pkt(snd, SynAck, self.snd.iss, 0)?;
+                self.send_pkt(SynAck, self.snd.iss, 0)?;
 
                 // and send it. Set the variables:
                 self.snd.wnd = seg.window;
