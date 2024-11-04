@@ -7,6 +7,7 @@ pub struct FixedBuffer<T> {
 }
 
 impl<T> FixedBuffer<T> {
+    #[must_use]
     pub fn new(cap: usize) -> Self {
         Self {
             inner: VecDeque::with_capacity(cap),

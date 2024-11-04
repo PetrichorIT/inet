@@ -20,17 +20,27 @@ pub struct IcmpV4Packet {
 const PAYLOAD_LIMIT: usize = 20 + 64;
 
 impl IcmpV4Packet {
+    /// Creates a new `IcmpV4Packet`.
+    ///
+    /// # Panics
+    ///
+    /// This function panics, if the IP packet cannot be encoded.
+    #[must_use]
     pub fn new(typ: IcmpV4Type, pkt: &Ipv4Packet) -> Self {
         let mut content = pkt.to_vec().expect("Failed to write incoming IP ???");
         content.truncate(PAYLOAD_LIMIT);
         Self { typ, content }
     }
 
+    /// Returns the contained ip packet.
+    ///
+    /// # Errors
+    ///
+    /// Can return an error, if the parsing of the IP packet fails.
     pub fn contained(&self) -> Result<Ipv4Packet, Error> {
         // Override len with 8
         let mut buffer = self.content.clone();
         let len = buffer.len().min(PAYLOAD_LIMIT);
-        assert!(len < 256);
         buffer[2] = 0;
         buffer[3] = len as u8;
         Ipv4Packet::read_from_slice(&mut &buffer[..])
@@ -217,7 +227,7 @@ impl FromBytestream for IcmpV4Type {
                 let _ = stream.read_u16::<BE>()?;
                 let next_hop_mtu = stream.read_u16::<BE>()?;
                 Ok(Self::DestinationUnreachable {
-                    next_hop_mtu: next_hop_mtu,
+                    next_hop_mtu,
                     code: IcmpV4DestinationUnreachableCode::from_raw_repr(code)?,
                 })
             }

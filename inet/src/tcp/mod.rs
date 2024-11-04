@@ -204,7 +204,7 @@ impl TransmissionControlBlock {
     }
 }
 
-fn is_valid_dest_for(socket_addr: &SocketAddr, packet_addr: &SocketAddr) -> bool {
+fn is_valid_dst_for(socket_addr: &SocketAddr, packet_addr: &SocketAddr) -> bool {
     if socket_addr.ip().is_unspecified() {
         return socket_addr.port() == packet_addr.port();
     }
@@ -235,14 +235,14 @@ impl IOContext {
         };
 
         let src = SocketAddr::new(ip_packet.src(), tcp_pkt.src_port);
-        let dest = SocketAddr::new(ip_packet.dest(), tcp_pkt.dst_port);
+        let dest = SocketAddr::new(ip_packet.dst(), tcp_pkt.dst_port);
 
         // (0) All sockets that are bound to the correct destination (local) address
         let mut valid_sockets = self
             .sockets
             .iter_mut()
             .filter(|(_, sock)| {
-                sock.typ == SocketType::SOCK_STREAM && is_valid_dest_for(&sock.addr, &dest)
+                sock.typ == SocketType::SOCK_STREAM && is_valid_dst_for(&sock.addr, &dest)
             })
             .collect::<Vec<_>>();
 
@@ -364,7 +364,7 @@ impl IOContext {
             dest,
             fd,
             config,
-            (ip_packet.src(), ip_packet.dest(), tcp_pkt),
+            (ip_packet.src(), ip_packet.dst(), tcp_pkt),
         );
 
         let stream = match r {
@@ -474,17 +474,17 @@ impl IOContext {
 
         // Missing PERM
         let event = if pkt.flags.contains(TcpFlags::RST) {
-            TcpEvent::Rst((ip.src(), ip.dest(), pkt))
+            TcpEvent::Rst((ip.src(), ip.dst(), pkt))
         } else if pkt.flags.contains(TcpFlags::SYN) {
-            TcpEvent::Syn((ip.src(), ip.dest(), pkt))
+            TcpEvent::Syn((ip.src(), ip.dst(), pkt))
         } else {
             if pkt.flags.contains(TcpFlags::FIN) {
-                TcpEvent::Fin((ip.src(), ip.dest(), pkt))
+                TcpEvent::Fin((ip.src(), ip.dst(), pkt))
             } else {
                 if pkt.content.is_empty() && pkt.flags.contains(TcpFlags::ACK) {
-                    TcpEvent::Ack((ip.src(), ip.dest(), pkt))
+                    TcpEvent::Ack((ip.src(), ip.dst(), pkt))
                 } else {
-                    TcpEvent::Data((ip.src(), ip.dest(), pkt))
+                    TcpEvent::Data((ip.src(), ip.dst(), pkt))
                 }
             }
         };

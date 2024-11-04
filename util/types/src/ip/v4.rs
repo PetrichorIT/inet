@@ -42,6 +42,7 @@ impl Ipv4Packet {
         content: Vec::new(),
     };
 
+    #[must_use]
     pub fn reverse(&self) -> Ipv4Packet {
         Ipv4Packet {
             dscp: self.dscp,
@@ -144,7 +145,7 @@ impl FromBytestream for Ipv4Packet {
         // TODO: check checksum
 
         let src = Ipv4Addr::from(stream.read_u32::<BE>()?);
-        let dest = Ipv4Addr::from(stream.read_u32::<BE>()?);
+        let dst = Ipv4Addr::from(stream.read_u32::<BE>()?);
 
         // fetch rest
         let mut content = vec![0; len as usize - 20];
@@ -161,7 +162,7 @@ impl FromBytestream for Ipv4Packet {
             ttl,
             proto,
             src,
-            dst: dest,
+            dst,
             content,
         })
     }

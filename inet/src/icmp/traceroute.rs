@@ -121,7 +121,7 @@ impl IOContext {
 
     fn traceroute_register_send(&mut self, target: Ipv4Addr) {
         let Some(trace) = self.icmp.traceroutes.get_mut(&target) else {
-            return
+            return;
         };
         trace.last_send = SimTime::now();
     }

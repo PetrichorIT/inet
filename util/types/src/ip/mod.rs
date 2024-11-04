@@ -63,7 +63,7 @@ impl IpPacketRef<'_, '_> {
     }
 
     #[must_use]
-    pub fn dest(&self) -> IpAddr {
+    pub fn dst(&self) -> IpAddr {
         match self {
             Self::V4(v4) => IpAddr::V4(v4.dst),
             Self::V6(v6) => IpAddr::V6(v6.dst),
@@ -142,6 +142,7 @@ impl IpPacket {
         }
     }
 
+    #[must_use]
     pub fn content(&self) -> &[u8] {
         match self {
             Self::V4(v4) => &v4.content,
@@ -150,10 +151,10 @@ impl IpPacket {
     }
 
     #[must_use]
-    pub fn new(src: IpAddr, dest: IpAddr, content: Vec<u8>) -> Self {
+    pub fn new(src: IpAddr, dst: IpAddr, content: Vec<u8>) -> Self {
         use IpAddr::{V4, V6};
-        match (src, dest) {
-            (V4(src), V4(dest)) => IpPacket::V4(Ipv4Packet {
+        match (src, dst) {
+            (V4(src), V4(dst)) => IpPacket::V4(Ipv4Packet {
                 dscp: 0,
                 enc: 0,
                 identification: 0,
@@ -165,16 +166,16 @@ impl IpPacket {
                 ttl: 128,
                 proto: 0,
                 src,
-                dst: dest,
+                dst,
                 content,
             }),
-            (V6(src), V6(dest)) => IpPacket::V6(Ipv6Packet {
+            (V6(src), V6(dst)) => IpPacket::V6(Ipv6Packet {
                 traffic_class: 0,
                 flow_label: 0,
                 next_header: 0,
                 hop_limit: 128,
                 src,
-                dst: dest,
+                dst,
                 content,
             }),
             _ => unreachable!(),
@@ -209,6 +210,7 @@ pub fn ipv6_matches_subnet(ip: Ipv6Addr, subnet: Ipv6Addr, mask: Ipv6Addr) -> bo
     true
 }
 
+#[must_use]
 pub fn ipv6_matches_subnet_len(ip: Ipv6Addr, subnet: Ipv6Addr, prefix_len: u8) -> bool {
     let ip_u128 = u128::from(ip);
     let subnet_u128 = u128::from(subnet);

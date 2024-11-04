@@ -47,6 +47,7 @@ pub struct OspfDatabaseDescriptionPacket {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct OspfOptions {
     pub external: bool,
     pub multicast: bool,

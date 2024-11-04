@@ -1011,7 +1011,7 @@ impl FromBytestream for EnhancedPacketBlock {
             data_stream.read_to_end(&mut data)?;
 
             let pad = (4 - (cap_len % 4)) % 4;
-            body.read_exact(&mut vec![0; pad as usize])?;
+            body.read_exact(&mut vec![0; pad])?;
 
             let options = read_options::<EnhancedPacketOption>(body)?;
 

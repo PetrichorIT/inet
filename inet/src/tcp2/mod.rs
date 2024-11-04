@@ -221,14 +221,14 @@ impl IOContext {
         };
 
         let src = SocketAddr::new(ip_packet.src(), pkt.src_port);
-        let dest = SocketAddr::new(ip_packet.dest(), pkt.dst_port);
+        let dest = SocketAddr::new(ip_packet.dst(), pkt.dst_port);
 
         // (0) All sockets that are bound to the correct destination (local) address
         let mut valid_sockets = self
             .sockets
             .iter_mut()
             .filter(|(_, sock)| {
-                sock.typ == SocketType::SOCK_STREAM && is_valid_dest_for(&sock.addr, &dest)
+                sock.typ == SocketType::SOCK_STREAM && is_valid_dst_for(&sock.addr, &dest)
             })
             .collect::<Vec<_>>();
 
@@ -452,7 +452,7 @@ impl IOContext {
 
     fn tcp2_listener_on_packet(&mut self, ip_packet: IpPacketRef, fd: Fd, pkt: TcpPacket) -> bool {
         let src = SocketAddr::new(ip_packet.src(), pkt.src_port);
-        let dst = SocketAddr::new(ip_packet.dest(), pkt.dst_port);
+        let dst = SocketAddr::new(ip_packet.dst(), pkt.dst_port);
 
         let Some(listener) = self.tcp2.listeners.get_mut(&fd) else {
             tracing::error!("found tcp socket, but missing tcp listener");
@@ -666,7 +666,7 @@ impl Quad {
     }
 }
 
-fn is_valid_dest_for(socket_addr: &SocketAddr, packet_addr: &SocketAddr) -> bool {
+fn is_valid_dst_for(socket_addr: &SocketAddr, packet_addr: &SocketAddr) -> bool {
     if socket_addr.ip().is_unspecified() {
         return socket_addr.port() == packet_addr.port();
     }

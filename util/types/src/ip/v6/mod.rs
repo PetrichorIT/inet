@@ -76,7 +76,7 @@ impl FromBytestream for Ipv6Packet {
         let hop_limit = stream.read_u8()?;
 
         let src = Ipv6Addr::from(stream.read_u128::<BE>()?);
-        let dest = Ipv6Addr::from(stream.read_u128::<BE>()?);
+        let dst = Ipv6Addr::from(stream.read_u128::<BE>()?);
 
         // fetch rest
         let mut content = vec![0; len as usize];
@@ -88,7 +88,7 @@ impl FromBytestream for Ipv6Packet {
             next_header,
             hop_limit,
             src,
-            dst: dest,
+            dst,
             content,
         })
     }

@@ -21,6 +21,7 @@ impl MacAddress {
     pub const IPV4_MULTICAST: MacAddress = MacAddress([0x01, 0, 0x5e, 0, 0, 0]);
     pub const IPV4_MULTICAST_MASK: MacAddress = MacAddress([0xff, 0xff, 0xff, 0x80, 0, 0]);
 
+    #[must_use]
     pub fn ipv6_multicast(ip: Ipv6Addr) -> MacAddress {
         let mut mac = MacAddress::IPV6_MULTICAST;
         mac.0[2..].copy_from_slice(&ip.octets()[12..]);
@@ -67,6 +68,7 @@ impl MacAddress {
         false
     }
 
+    #[must_use]
     pub fn embed_into(&self, addr: Ipv6Addr) -> Ipv6Addr {
         let mut bytes = addr.octets();
         bytes[8..11].copy_from_slice(&self.as_slice()[..3]);

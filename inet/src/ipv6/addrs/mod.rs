@@ -45,7 +45,7 @@ impl PolicyTable {
 
 impl Default for PolicyTable {
     fn default() -> Self {
-        let mut table = Ipv6LongestPrefixTable::new();
+        let mut table = Ipv6LongestPrefixTable::default();
         table.insert(
             Ipv6Prefix::new(Ipv6Addr::LOCALHOST, 128),
             PolicyEntry {

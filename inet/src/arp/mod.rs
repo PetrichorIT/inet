@@ -41,7 +41,7 @@ impl IOContext {
         match arp.operation {
             ARPOperation::Request => {
                 assert!(MacAddress::from(msg.header().dest).is_broadcast());
-                assert!(arp.dest_mac_addr().is_unspecified());
+                assert!(arp.dst_mac_addr().is_unspecified());
 
                 // (0) Add sender entry to local arp table
                 if !arp.src_ip_addr().is_unspecified() {
@@ -69,7 +69,7 @@ impl IOContext {
 
                 // (1) check whether the responding interface has an appropiate ip addr.
                 let iface = self.ifaces.get_mut(&ifid).unwrap();
-                let requested_addr = arp.dest_ip_addr();
+                let requested_addr = arp.dst_ip_addr();
 
                 let valid_iaddr = iface
                     .addrs
@@ -86,7 +86,7 @@ impl IOContext {
 
                     tracing::trace!(
                         "responding to arp request for {} with {}",
-                        arp.dest_ip_addr(),
+                        arp.dst_ip_addr(),
                         iface.device.addr
                     );
 
@@ -106,20 +106,20 @@ impl IOContext {
             }
             ARPOperation::Response => {
                 // (0) Add response data to ARP table (not requester, was allready added)
-                if !arp.dest_ip_addr().is_unspecified() {
+                if !arp.dst_ip_addr().is_unspecified() {
                     let sendable = self.arp.update(ArpEntryInternal {
                         negated: false,
                         hostname: None,
-                        ip: arp.dest_ip_addr().into(),
-                        mac: arp.dest_mac_addr(),
+                        ip: arp.dst_ip_addr().into(),
+                        mac: arp.dst_mac_addr(),
                         iface: ifid,
                         expires: SimTime::ZERO,
                     });
 
                     tracing::trace!(
                         "receiving arp response for {} is {} (sending {})",
-                        arp.dest_ip_addr(),
-                        arp.dest_mac_addr(),
+                        arp.dst_ip_addr(),
+                        arp.dst_mac_addr(),
                         sendable.as_ref().map(|v| v.1.len()).unwrap_or(0)
                     );
 

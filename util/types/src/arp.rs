@@ -56,6 +56,11 @@ impl ArpPacket {
 
     // Ethernet
 
+    /// Returns the src MAC addr.
+    ///
+    /// # Panics
+    ///
+    /// This function panics, if the src addr is not a MAC.
     #[must_use]
     pub fn src_mac_addr(&self) -> MacAddress {
         let bytes: [u8; 6] = self
@@ -65,8 +70,13 @@ impl ArpPacket {
         MacAddress::from(bytes)
     }
 
+    /// Returns the dst MAC addr.
+    ///
+    /// # Panics
+    ///
+    /// This function panics, if the dst addr is not a MAC.
     #[must_use]
-    pub fn dest_mac_addr(&self) -> MacAddress {
+    pub fn dst_mac_addr(&self) -> MacAddress {
         let bytes: [u8; 6] = self
             .dst_haddr()
             .try_into()
@@ -86,16 +96,21 @@ impl ArpPacket {
     }
 
     #[must_use]
-    pub fn dest_ip_addr(&self) -> IpAddr {
+    pub fn dst_ip_addr(&self) -> IpAddr {
         if self.is_ipv4_ethernet() {
-            self.dest_ipv4_addr().into()
+            self.dst_ipv4_addr().into()
         } else {
-            self.dest_ipv6_addr().into()
+            self.dst_ipv6_addr().into()
         }
     }
 
     // Ipv4
 
+    /// Returns the src IP addr.
+    ///
+    /// # Panics
+    ///
+    /// This function panics, if the src addr is not IPv4.
     #[must_use]
     pub fn src_ipv4_addr(&self) -> Ipv4Addr {
         let bytes: [u8; 4] = self
@@ -105,8 +120,13 @@ impl ArpPacket {
         Ipv4Addr::from(bytes)
     }
 
+    /// Returns the dst IP addr.
+    ///
+    /// # Panics
+    ///
+    /// This function panics, if the dst addr is not IPv4.
     #[must_use]
-    pub fn dest_ipv4_addr(&self) -> Ipv4Addr {
+    pub fn dst_ipv4_addr(&self) -> Ipv4Addr {
         let bytes: [u8; 4] = self
             .dst_paddr()
             .try_into()
@@ -116,6 +136,11 @@ impl ArpPacket {
 
     // Ipv6
 
+    /// Returns the src IP addr.
+    ///
+    /// # Panics
+    ///
+    /// This function panics, if the src addr is not IPv6.
     #[must_use]
     pub fn src_ipv6_addr(&self) -> Ipv6Addr {
         let bytes: [u8; 16] = self
@@ -125,8 +150,13 @@ impl ArpPacket {
         Ipv6Addr::from(bytes)
     }
 
+    /// Returns the dst IP addr.
+    ///
+    /// # Panics
+    ///
+    /// This function panics, if the dst addr is not IPv6.
     #[must_use]
-    pub fn dest_ipv6_addr(&self) -> Ipv6Addr {
+    pub fn dst_ipv6_addr(&self) -> Ipv6Addr {
         let bytes: [u8; 16] = self
             .dst_paddr()
             .try_into()
@@ -186,11 +216,11 @@ impl ArpPacket {
     }
 
     #[must_use]
-    pub fn into_response(&self, dest_haddr: MacAddress) -> Self {
+    pub fn into_response(&self, dst_haddr: MacAddress) -> Self {
         let mut resp = self.clone();
         resp.operation = ARPOperation::Response;
         let buf = resp.dst_paddr_mut();
-        buf[..6].copy_from_slice(&dest_haddr.as_slice()[..6]);
+        buf[..6].copy_from_slice(&dst_haddr.as_slice()[..6]);
         resp
     }
 }
@@ -281,17 +311,17 @@ mod tests {
         assert_eq!(r.htype, 1);
         assert_eq!(r.ptype, 0x0800);
         assert_eq!(r.src_mac_addr(), [1, 2, 3, 4, 5, 6].into());
-        assert_eq!(r.dest_mac_addr(), [0, 0, 0, 0, 0, 0].into());
+        assert_eq!(r.dst_mac_addr(), [0, 0, 0, 0, 0, 0].into());
         assert_eq!(r.src_ipv4_addr(), Ipv4Addr::new(1, 2, 3, 4));
-        assert_eq!(r.dest_ipv4_addr(), Ipv4Addr::new(255, 254, 253, 252));
+        assert_eq!(r.dst_ipv4_addr(), Ipv4Addr::new(255, 254, 253, 252));
 
         let r = ArpPacket::read_from_vec(&mut r.to_vec().unwrap()).unwrap();
         assert_eq!(r.htype, 1);
         assert_eq!(r.ptype, 0x0800);
         assert_eq!(r.src_mac_addr(), [1, 2, 3, 4, 5, 6].into());
-        assert_eq!(r.dest_mac_addr(), [0, 0, 0, 0, 0, 0].into());
+        assert_eq!(r.dst_mac_addr(), [0, 0, 0, 0, 0, 0].into());
         assert_eq!(r.src_ipv4_addr(), Ipv4Addr::new(1, 2, 3, 4));
-        assert_eq!(r.dest_ipv4_addr(), Ipv4Addr::new(255, 254, 253, 252));
+        assert_eq!(r.dst_ipv4_addr(), Ipv4Addr::new(255, 254, 253, 252));
     }
 
     #[test]
@@ -305,16 +335,16 @@ mod tests {
         assert_eq!(r.htype, 1);
         assert_eq!(r.ptype, 0x86DD);
         assert_eq!(r.src_mac_addr(), [1, 2, 3, 4, 5, 6].into());
-        assert_eq!(r.dest_mac_addr(), [0, 0, 0, 0, 0, 0].into());
+        assert_eq!(r.dst_mac_addr(), [0, 0, 0, 0, 0, 0].into());
         assert_eq!(r.src_ipv6_addr(), Ipv6Addr::new(1, 2, 3, 4, 5, 6, 7, 8));
-        assert_eq!(r.dest_ipv6_addr(), Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 0));
+        assert_eq!(r.dst_ipv6_addr(), Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 0));
 
         let r = ArpPacket::read_from_vec(&mut r.to_vec().unwrap()).unwrap();
         assert_eq!(r.htype, 1);
         assert_eq!(r.ptype, 0x86DD);
         assert_eq!(r.src_mac_addr(), [1, 2, 3, 4, 5, 6].into());
-        assert_eq!(r.dest_mac_addr(), [0, 0, 0, 0, 0, 0].into());
+        assert_eq!(r.dst_mac_addr(), [0, 0, 0, 0, 0, 0].into());
         assert_eq!(r.src_ipv6_addr(), Ipv6Addr::new(1, 2, 3, 4, 5, 6, 7, 8));
-        assert_eq!(r.dest_ipv6_addr(), Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 0));
+        assert_eq!(r.dst_ipv6_addr(), Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 0));
     }
 }

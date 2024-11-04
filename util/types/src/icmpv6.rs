@@ -126,7 +126,7 @@ pub struct IcmpV6DestinationUnreachable {
     /// not be delivered.
     pub code: IcmpV6DestinationUnreachableCode,
     /// The error causing IP packet, possibly truncated to fit into
-    /// the ICMPv6 message.
+    /// the `ICMPv6` message.
     pub packet: Vec<u8>,
 }
 
@@ -163,7 +163,7 @@ pub struct IcmpV6PacketToBig {
     /// The maximum transfer size of the link, which caused the error message.
     pub mtu: u32,
     /// The error causing IP packet, possibly truncated to fit into
-    /// the ICMPv6 message.
+    /// the `ICMPv6` message.
     pub packet: Vec<u8>,
 }
 
@@ -201,7 +201,7 @@ pub struct IcmpV6TimeExceeded {
     /// A detailed error code indicating which requirement was exceeded.
     pub code: IcmpV6TimeExceededCode,
     /// The error causing IP packet, possibly truncated to fit into
-    /// the ICMPv6 message.
+    /// the `ICMPv6` message.
     pub packet: Vec<u8>,
 }
 
@@ -236,7 +236,7 @@ pub struct IcmpV6ParameterProblem {
     /// Indicates the offset into the packet on which the problem was discovered.
     pub pointer: u32,
     /// The error causing IP packet, possibly truncated to fit into
-    /// the ICMPv6 message.
+    /// the `ICMPv6` message.
     pub packet: Vec<u8>,
 }
 
@@ -324,7 +324,7 @@ impl ToBytestream for IcmpV6RouterSolicitation {
         stream.write_u16::<BE>(0)?; // checksum
         stream.write_u32::<BE>(0)?; // adding
         for option in &self.options {
-            if !matches!(option, IcmpV6NDPOption::SourceLinkLayerAddress(_)) {}
+            // if !matches!(option, IcmpV6NDPOption::SourceLinkLayerAddress(_)) {}
             option.to_bytestream(stream)?;
         }
         Ok(())
@@ -351,15 +351,15 @@ pub struct IcmpV6RouterAdvertisement {
     /// The perferred hop count of the router. The value 0 means
     /// unspecified.
     pub current_hop_limit: u8,
-    /// This flag indicates the existence of a DHCPv6 service
+    /// This flag indicates the existence of a `DHCPv6` service
     /// in this network for address configuration.
     pub managed: bool,
     /// This flag indicates that other configuration informations
-    /// not including addressing is available through a DHCPv6 service.
+    /// not including addressing is available through a `DHCPv6` service.
     ///
     /// This flag may only be set if `managed` is not set, since managed
-    /// allready indicates to use DHCPv6 fully. Only this flag indicates
-    /// that DHCPv6 should not be used for address configuration, BUT
+    /// allready indicates to use `DHCPv6` fully. Only this flag indicates
+    /// that `DHCPv6` should not be used for address configuration, BUT
     /// should be used to assign other information.
     pub other_configuration: bool,
     /// A lifetime of the router in seconds. This value should be limited to 9000.
@@ -704,6 +704,7 @@ pub struct IcmpV6PrefixInformation {
 }
 
 impl IcmpV6PrefixInformation {
+    #[must_use]
     pub fn prefix(&self) -> Ipv6Prefix {
         Ipv6Prefix::new(self.prefix, self.prefix_len)
     }
@@ -800,7 +801,7 @@ impl FromBytestream for IcmpV6MulticastListenerMessage {
     fn from_bytestream(stream: &mut bytepack::BytestreamReader) -> Result<Self, Self::Error> {
         assert_eq!(0, stream.read_u8()?);
         assert_eq!(0, stream.read_u16::<BE>()?);
-        let maximum_response_delay = Duration::from_millis(stream.read_u16::<BE>()? as u64);
+        let maximum_response_delay = Duration::from_millis(u64::from(stream.read_u16::<BE>()?));
         assert_eq!(0, stream.read_u16::<BE>()?);
         let multicast_addr = Ipv6Addr::from(stream.read_u128::<BE>()?);
         Ok(Self {

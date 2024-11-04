@@ -24,6 +24,12 @@ pub enum Ipv6AddrScope {
 }
 
 impl Ipv6AddrScope {
+    /// Creates a new `Ipv6AddrScope`
+    ///
+    /// # Panics
+    ///
+    /// Panics if the address is of a unknown multicast scope
+    #[must_use]
     pub fn new(addr: Ipv6Addr) -> Self {
         if addr.is_multicast() {
             match addr.segments()[0] & 0x000f {
@@ -36,35 +42,35 @@ impl Ipv6AddrScope {
                 14 => Self::MulticastGlobal,
                 scope => panic!("Unknown multicast address {addr}: unknown scope {scope}"),
             }
-        } else {
-            if let Some(ipv4) = addr.to_ipv4_mapped() {
-                if ipv4.octets()[0] == 169 && ipv4.octets()[1] == 254 {
-                    return Self::UnicastLinkLocal;
-                }
-                if ipv4.octets()[0] == 127 {
-                    return Self::UnicastLinkLocal;
-                }
-
-                Self::UnicastGlobal
-            } else {
-                if (addr.segments()[0] & 0xffc0) == 0xfe80 {
-                    // LinkLocal addr
-                    return Self::UnicastLinkLocal;
-                }
-                if addr == Ipv6Addr::LOCALHOST {
-                    return Self::UnicastLinkLocal;
-                }
-
-                if addr.to_ipv4().is_some() {
-                    // other ipv4 addr
-                    return Self::UnicastGlobal;
-                }
-
-                Self::UnicastGlobal
+        } else if let Some(ipv4) = addr.to_ipv4_mapped() {
+            if ipv4.octets()[0] == 169 && ipv4.octets()[1] == 254 {
+                return Self::UnicastLinkLocal;
             }
+            if ipv4.octets()[0] == 127 {
+                return Self::UnicastLinkLocal;
+            }
+
+            Self::UnicastGlobal
+        } else {
+            if (addr.segments()[0] & 0xffc0) == 0xfe80 {
+                // LinkLocal addr
+                return Self::UnicastLinkLocal;
+            }
+            if addr == Ipv6Addr::LOCALHOST {
+                return Self::UnicastLinkLocal;
+            }
+
+            if addr.to_ipv4().is_some() {
+                // other ipv4 addr
+                return Self::UnicastGlobal;
+            }
+
+            Self::UnicastGlobal
         }
     }
 
+    #[must_use]
+    #[allow(clippy::trivially_copy_pass_by_ref)]
     fn as_ord_idx(&self) -> u8 {
         *self as u8
     }
@@ -104,7 +110,7 @@ impl Ipv6AddrExt for Ipv6Addr {
         // pad
         bytes[11] = 0x01;
         bytes[12] = 0xff;
-        bytes[13..].copy_from_slice(&mut addr.octets()[13..]);
+        bytes[13..].copy_from_slice(&addr.octets()[13..]);
         Ipv6Addr::from(bytes)
     }
 
@@ -134,6 +140,12 @@ impl Ipv6Prefix {
     pub const LINK_LOCAL: Ipv6Prefix =
         Ipv6Prefix::new_unchcecked(Ipv6Addr::new(0xfe80, 0, 0, 0, 0, 0, 0, 0), 64);
 
+    /// Creates a new `Ipv6Perfix`
+    ///
+    /// # Panics
+    ///
+    /// This function panics if the len is greater than 128
+    #[must_use]
     pub fn new(prefix: Ipv6Addr, len: u8) -> Self {
         assert!(len <= 128);
         let prefix = if len == 0 {
@@ -145,6 +157,7 @@ impl Ipv6Prefix {
         Self::new_unchcecked(prefix, len)
     }
 
+    #[must_use]
     pub fn fit(addr: Ipv6Addr) -> Self {
         let len = 128 - u128::from(addr).trailing_zeros();
         Self::new(addr, len as u8)
@@ -155,15 +168,22 @@ impl Ipv6Prefix {
         Self { addr: prefix, len }
     }
 
+    #[must_use]
     pub const fn addr(&self) -> Ipv6Addr {
         self.addr
     }
 
+    #[must_use]
     pub const fn len(&self) -> u8 {
         self.len
     }
 
-    #[inline(always)]
+    #[must_use]
+    pub const fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    #[inline]
     fn mask(&self) -> u128 {
         if self.len == 0 {
             0
@@ -172,6 +192,7 @@ impl Ipv6Prefix {
         }
     }
 
+    #[must_use]
     pub fn contains(&self, addr: Ipv6Addr) -> bool {
         let addr = u128::from(addr);
         let prefix = u128::from(self.addr);
@@ -179,6 +200,7 @@ impl Ipv6Prefix {
         addr & mask == prefix
     }
 
+    #[must_use]
     pub fn common_prefix_len(&self, other: Ipv6Addr) -> usize {
         let s = u128::from(self.addr);
         let d = u128::from(other);
@@ -214,10 +236,10 @@ impl FromStr for Ipv6Prefix {
         }
         let prefix = split[0]
             .parse()
-            .map_err(|e| Ipv6PrefixParsingError::AddrParseError(e))?;
+            .map_err(Ipv6PrefixParsingError::AddrParseError)?;
         let len = split[1]
             .parse()
-            .map_err(|e| Ipv6PrefixParsingError::ParseIntError(e))?;
+            .map_err(Ipv6PrefixParsingError::ParseIntError)?;
         Ok(Self::new(prefix, len))
     }
 }
@@ -243,13 +265,6 @@ pub struct Ipv6LongestPrefixTable<E> {
 }
 
 impl<E> Ipv6LongestPrefixTable<E> {
-    pub fn new() -> Self {
-        Self {
-            keys: Vec::new(),
-            values: Vec::new(),
-        }
-    }
-
     pub fn insert(&mut self, prefix: Ipv6Prefix, entry: E) {
         match self.keys.binary_search_by(|v| prefix.cmp(v)) {
             Ok(i) => {
@@ -286,6 +301,7 @@ impl<E> Ipv6LongestPrefixTable<E> {
         }
     }
 
+    #[must_use]
     pub fn lookup(&self, addr: Ipv6Addr) -> Option<&E> {
         let pos = self.keys.iter().position(|prefix| prefix.contains(addr))?;
         Some(&self.values[pos])
@@ -304,6 +320,15 @@ impl<E: Debug> Debug for Ipv6LongestPrefixTable<E> {
         f.debug_map()
             .entries((0..self.keys.len()).map(|i| (&self.keys[i], &self.values[i])))
             .finish()
+    }
+}
+
+impl<E> Default for Ipv6LongestPrefixTable<E> {
+    fn default() -> Self {
+        Self {
+            keys: Vec::new(),
+            values: Vec::new(),
+        }
     }
 }
 
@@ -396,7 +421,7 @@ mod tests {
 
     #[test]
     fn longest_prefix_table_insert() {
-        let mut tbl = Ipv6LongestPrefixTable::new();
+        let mut tbl = Ipv6LongestPrefixTable::default();
         tbl.insert(
             Ipv6Prefix {
                 addr: Ipv6Addr::UNSPECIFIED,
@@ -419,6 +444,6 @@ mod tests {
             3,
         );
 
-        assert_eq!(tbl.iter().copied().collect::<Vec<_>>(), [3, 1, 2])
+        assert_eq!(tbl.iter().copied().collect::<Vec<_>>(), [3, 1, 2]);
     }
 }

@@ -1,10 +1,10 @@
 use des::time::SimTime;
+use rand::distributions::Uniform;
+use std::{io, net::Ipv6Addr, time::Duration};
 use types::{
     icmpv6::{NDP_MAX_DELAY_BETWEEN_RAS, NDP_MIN_DELAY_BETWEEN_RAS},
     ip::{Ipv6LongestPrefixTable, Ipv6Prefix},
 };
-use rand::distributions::Uniform;
-use std::{io, net::Ipv6Addr, time::Duration};
 
 use crate::{ctx::IOContext, interface::IfId};
 
@@ -42,7 +42,7 @@ pub struct Entry {
 impl Router {
     pub fn new() -> Self {
         Router {
-            entries: Ipv6LongestPrefixTable::new(),
+            entries: Ipv6LongestPrefixTable::default(),
         }
     }
 

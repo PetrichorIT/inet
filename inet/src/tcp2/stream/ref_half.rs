@@ -4,7 +4,6 @@ use crate::tcp2::interest::TcpInterest;
 use crate::IOContext;
 use std::io::{Error, ErrorKind, IoSlice, IoSliceMut};
 use std::net::SocketAddr;
-use std::pin::Pin;
 use std::task::*;
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 

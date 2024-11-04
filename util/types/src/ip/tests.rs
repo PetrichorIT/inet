@@ -7,7 +7,7 @@ use super::*;
 #[test]
 fn v4_empty() -> std::io::Result<()> {
     let input = Ipv4Packet {
-        dscp: 0b000000,
+        dscp: 0b00_0000,
         enc: 0b00,
         identification: 0,
         flags: Ipv4Flags {
@@ -26,7 +26,7 @@ fn v4_empty() -> std::io::Result<()> {
     assert_eq!(input, output);
 
     let input = Ipv4Packet {
-        dscp: 0b010101,
+        dscp: 0b01_0101,
         enc: 0b10,
         identification: 0,
         flags: Ipv4Flags {
@@ -45,7 +45,7 @@ fn v4_empty() -> std::io::Result<()> {
     assert_eq!(input, output);
 
     let input = Ipv4Packet {
-        dscp: 0b111000,
+        dscp: 0b11_1000,
         enc: 0b01,
         identification: 8861,
         flags: Ipv4Flags {
@@ -64,7 +64,7 @@ fn v4_empty() -> std::io::Result<()> {
     assert_eq!(input, output);
 
     let input = Ipv4Packet {
-        dscp: 0b000000,
+        dscp: 0b00_0000,
         enc: 0b11,
         identification: 11,
         flags: Ipv4Flags {
@@ -83,7 +83,7 @@ fn v4_empty() -> std::io::Result<()> {
     assert_eq!(input, output);
 
     let input = Ipv4Packet {
-        dscp: 0b100001,
+        dscp: 0b10_0001,
         enc: 0b00,
         identification: 0,
         flags: Ipv4Flags { df: true, mf: true },
@@ -104,7 +104,7 @@ fn v4_empty() -> std::io::Result<()> {
 #[test]
 fn v4_with_content() -> std::io::Result<()> {
     let input = Ipv4Packet {
-        dscp: 0b000000,
+        dscp: 0b00_0000,
         enc: 0b00,
         identification: 0,
         flags: Ipv4Flags {
@@ -123,7 +123,7 @@ fn v4_with_content() -> std::io::Result<()> {
     assert_eq!(input, output);
 
     let input = Ipv4Packet {
-        dscp: 0b010101,
+        dscp: 0b01_0101,
         enc: 0b10,
         identification: 0,
         flags: Ipv4Flags {
@@ -142,7 +142,7 @@ fn v4_with_content() -> std::io::Result<()> {
     assert_eq!(input, output);
 
     let input = Ipv4Packet {
-        dscp: 0b111000,
+        dscp: 0b11_1000,
         enc: 0b01,
         identification: 8861,
         flags: Ipv4Flags {
@@ -161,7 +161,7 @@ fn v4_with_content() -> std::io::Result<()> {
     assert_eq!(input, output);
 
     let input = Ipv4Packet {
-        dscp: 0b000000,
+        dscp: 0b00_0000,
         enc: 0b11,
         identification: 11,
         flags: Ipv4Flags {
@@ -180,7 +180,7 @@ fn v4_with_content() -> std::io::Result<()> {
     assert_eq!(input, output);
 
     let input = Ipv4Packet {
-        dscp: 0b100001,
+        dscp: 0b10_0001,
         enc: 0b00,
         identification: 0,
         flags: Ipv4Flags { df: true, mf: true },
@@ -248,7 +248,7 @@ fn v6_empty() -> std::io::Result<()> {
         traffic_class: 0,
         flow_label: 0,
         next_header: 123,
-        hop_limit: 088,
+        hop_limit: 88,
 
         src: Ipv6Addr::new(1, 2, 3, 4, 5, 6, 7, 7),
         dst: Ipv6Addr::new(9, 8, 7, 6, 4, 5, 6, 7),
@@ -329,7 +329,7 @@ fn v6_with_content() -> std::io::Result<()> {
         traffic_class: 0,
         flow_label: 0,
         next_header: 123,
-        hop_limit: 088,
+        hop_limit: 88,
 
         src: Ipv6Addr::new(1, 2, 3, 4, 5, 6, 7, 7),
         dst: Ipv6Addr::new(9, 8, 7, 6, 4, 5, 6, 7),

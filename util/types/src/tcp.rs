@@ -49,6 +49,7 @@ pub enum TcpOption {
 }
 
 impl TcpPacket {
+    #[must_use]
     pub fn new(
         src_port: u16,
         dst_port: u16,
@@ -70,6 +71,7 @@ impl TcpPacket {
         }
     }
 
+    #[must_use]
     pub fn syn(src_port: u16, dst_port: u16, seq_no: u32, window: u16) -> TcpPacket {
         TcpPacket {
             src_port,
@@ -84,6 +86,12 @@ impl TcpPacket {
         }
     }
 
+    /// Creates a SYN+ACK for an incoming SYN
+    ///
+    /// # Panics
+    ///
+    /// This function panics if the input packet is not a SYN.
+    #[must_use]
     pub fn syn_ack(syn: &TcpPacket, seq_no: u32, window: u16) -> TcpPacket {
         assert!(syn.flags.contains(TcpFlags::SYN));
         TcpPacket {
@@ -99,6 +107,7 @@ impl TcpPacket {
         }
     }
 
+    #[must_use]
     pub fn with_mss(mut self, mss: u16) -> Self {
         self.options.insert(0, TcpOption::MaximumSegmentSize(mss));
         if self.options.last() != Some(&TcpOption::EndOfOptionsList()) {
@@ -107,6 +116,7 @@ impl TcpPacket {
         self
     }
 
+    #[must_use]
     pub fn fin(mut self, value: bool) -> Self {
         self.flags.set(TcpFlags::FIN, value);
         self
@@ -144,11 +154,13 @@ impl TcpPacket {
 }
 
 impl TcpFlags {
+    #[must_use]
     pub fn put(mut self, flag: TcpFlags) -> Self {
         self.insert(flag);
         self
     }
 
+    #[must_use]
     pub fn putv(mut self, flag: TcpFlags, value: bool) -> Self {
         self.set(flag, value);
         self
@@ -237,7 +249,7 @@ impl FromBytestream for TcpPacket {
     type Error = std::io::Error;
     fn from_bytestream(stream: &mut BytestreamReader) -> Result<Self, Self::Error> {
         let src_port = stream.read_u16::<BE>()?;
-        let dest_port = stream.read_u16::<BE>()?;
+        let dst_port = stream.read_u16::<BE>()?;
 
         let seq_no = stream.read_u32::<BE>()?;
         let ack_no = stream.read_u32::<BE>()?;
@@ -265,7 +277,7 @@ impl FromBytestream for TcpPacket {
 
         Ok(TcpPacket {
             src_port,
-            dst_port: dest_port,
+            dst_port,
             seq_no,
             ack_no,
             flags,

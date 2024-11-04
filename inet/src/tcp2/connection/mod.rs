@@ -3,7 +3,7 @@ use des::time::SimTime;
 use interface::UserInterface;
 use std::{
     cmp,
-    collections::{BTreeMap, VecDeque},
+    collections::VecDeque,
     io::{self, Error, ErrorKind, Write},
     net::SocketAddrV4,
     time::Duration,
@@ -125,8 +125,8 @@ impl Connection {
     }
 
     pub fn next_timeout(&self) -> Option<SimTime> {
-        let oldest_send_time = self.timers.send_times.values().min()?;
-        Some(*oldest_send_time + Duration::from_secs_f64(self.timers.rto * 1.5))
+        let oldst_send_time = self.timers.send_times.values().min()?;
+        Some(*oldst_send_time + Duration::from_secs_f64(self.timers.rto * 1.5))
     }
 
     pub fn is_synchronized(&self) -> bool {

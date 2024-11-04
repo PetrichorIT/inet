@@ -79,7 +79,7 @@ fn is_broadcast(ip: IpAddr) -> bool {
     }
 }
 
-fn is_valid_dest_for(socket_addr: &SocketAddr, packet_addr: &SocketAddr) -> bool {
+fn is_valid_dst_for(socket_addr: &SocketAddr, packet_addr: &SocketAddr) -> bool {
     if socket_addr.ip().is_unspecified() {
         return socket_addr.port() == packet_addr.port();
     }
@@ -100,7 +100,7 @@ impl IOContext {
     pub(super) fn recv_udp_packet(&mut self, packet: IpPacketRef, ifid: IfId) -> bool {
         assert_eq!(packet.tos(), PROTO_UDP);
 
-        let is_broadcast = is_broadcast(packet.dest());
+        let is_broadcast = is_broadcast(packet.dst());
 
         let Ok(udp) = UdpPacket::from_slice(packet.content()) else {
             tracing::error!(
@@ -110,10 +110,10 @@ impl IOContext {
         };
 
         let src = SocketAddr::new(packet.src(), udp.src_port);
-        let dest = SocketAddr::new(packet.dest(), udp.dst_port);
+        let dest = SocketAddr::new(packet.dst(), udp.dst_port);
 
         let mut iter = self.sockets.iter_mut().filter(|(_, sock)| {
-            sock.typ == SocketType::SOCK_DGRAM && is_valid_dest_for(&sock.addr, &dest)
+            sock.typ == SocketType::SOCK_DGRAM && is_valid_dst_for(&sock.addr, &dest)
         });
 
         if is_broadcast {
@@ -226,8 +226,8 @@ impl IOContext {
         }
 
         // (1.2) Check Broadcast
-        if let IpAddr::V4(dest_addr) = target.ip() {
-            if dest_addr.is_broadcast() && !mng.broadcast {
+        if let IpAddr::V4(dst_addr) = target.ip() {
+            if dst_addr.is_broadcast() && !mng.broadcast {
                 return Err(Error::new(
                     ErrorKind::Other,
                     "cannot send broadcast without broadcast flag enabled",
