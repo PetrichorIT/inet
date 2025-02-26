@@ -4,9 +4,7 @@ use std::{
 };
 
 use bytepack::ToBytestream;
-use pcapng::{
-    BlockWriter, DefaultBlockWriter, InterfaceDescriptionOption, Linktype, TestBlockWriter,
-};
+use pcapng::{BlockWriter, InterfaceDescriptionOption, Linktype, TestBlockWriter};
 use types::{
     ip::{Ipv4Flags, Ipv4Packet, KIND_IPV4},
     tcp::PROTO_TCP,

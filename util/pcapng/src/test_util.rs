@@ -17,6 +17,7 @@ use std::{
 pub struct TestBlockWriter<I: PartialEq + Clone> {
     reader: BlockReader,
     writer: DefaultBlockWriter<Vec<u8>, I>,
+    write_offset: usize,
     debug_path: String,
 }
 
@@ -34,21 +35,30 @@ impl<I: PartialEq + Clone> TestBlockWriter<I> {
         Ok(Self {
             reader: BlockReader::new(expected),
             writer: DefaultBlockWriter::new(Vec::new(), appl_name)?,
+            write_offset: 0,
             debug_path: debug_path.to_string(),
         })
     }
 
     fn compare_block_output(&mut self) {
         let result = catch_unwind(AssertUnwindSafe(|| {
-            while !self.writer.output.is_empty() {
-                let Ok(block) = Block::read_from_vec(&mut self.writer.output) else {
-                    panic("block parsing error");
+            while !self.writer.output[self.write_offset..].is_empty() {
+                let mut slice = &self.writer.output[self.write_offset..];
+                let total = slice.len();
+
+                let Ok(block) = Block::read_from_slice(&mut slice) else {
+                    panic("block parsing error: writer");
                 };
+
+                let n = total - slice.len();
+                dbg!(n);
+                self.write_offset += n;
+
                 let Some(expected) = self.reader.next() else {
                     panic("no further block was expected, but one was found");
                 };
                 let Ok(expected) = expected else {
-                    panic("block parsing error");
+                    panic("block parsing error: reader");
                 };
                 if block != expected {
                     panic(format!(
@@ -62,6 +72,7 @@ impl<I: PartialEq + Clone> TestBlockWriter<I> {
             let mut f =
                 File::create(&self.debug_path).expect("failed to write to debug path after panic");
             f.write_all(&self.writer.output).expect("failed to write");
+            eprintln!("failed after {} bytes", self.write_offset);
             resume_unwind(e);
         }
     }

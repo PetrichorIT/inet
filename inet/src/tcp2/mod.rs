@@ -110,9 +110,10 @@ impl IOContext {
         };
 
         if !interface.is_busy() {
-            let Some(pkt) = con.outgoing_next() else {
+            let Some((pkt, segn)) = con.outgoing_next() else {
                 return;
             };
+            con.timers.update_send_time(segn, SimTime::now());
             let is_empty = con.outgoing.is_empty();
 
             if let Err(error) = self.send_ip_packet(socket.interface.clone(), pkt, true) {
@@ -167,12 +168,23 @@ impl IOContext {
             };
 
             con.on_tick().expect("on tick failure");
-
             self.tcp2.timers.update(*fd, con);
         }
 
         for fd in &fds {
             self.tcp2_socket_link_update(*fd);
+        }
+
+        // Remove closed sockets
+        for fd in &fds {
+            if self
+                .tcp2
+                .streams
+                .get(fd)
+                .map_or(false, |con| con.state == State::Closed)
+            {
+                self.tcp2_drop(*fd).expect("failed");
+            }
         }
 
         // if self.tcp2.sender.has_unresolved_wakeups {
@@ -288,6 +300,7 @@ impl IOContext {
 
         connection.on_packet(pkt).expect("failed to recv");
         self.tcp2.set_active(fd);
+
         true
     }
 
@@ -581,6 +594,7 @@ impl IOContext {
     //
 
     fn tcp2_drop(&mut self, fd: Fd) -> Result<(), Error> {
+        self.tcp2.timers.remove(fd);
         self.tcp2
             .streams
             .remove(&fd)
@@ -621,6 +635,10 @@ impl Timers {
         vec
     }
 
+    fn remove(&mut self, fd: Fd) {
+        self.needed_wakeups.remove(&fd);
+    }
+
     fn schedule(&mut self) {
         let Some(min) = self.needed_wakeups.values().min().copied() else {
             return;
@@ -631,7 +649,7 @@ impl Timers {
         }
         let next_scheduled = self.scheduled.first().unwrap_or(&SimTime::MAX);
         if min < *next_scheduled {
-            tracing::info!("scheduling wakeup: {min}");
+            tracing::debug!("<TCP2> scheduling wakeup: {min}");
             schedule_at(
                 Message::new()
                     .kind(KIND_IO_TIMEOUT)

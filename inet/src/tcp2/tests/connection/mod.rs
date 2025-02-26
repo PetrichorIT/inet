@@ -153,7 +153,9 @@ impl TcpTestUnit {
     }
 
     pub fn set_time(&self, now: impl Into<SimTime>) {
-        *self.clock.lock().unwrap() = now.into();
+        let now = now.into();
+        tracing::info!("set_time({:?})", now);
+        *self.clock.lock().unwrap() = now;
     }
 
     #[instrument(skip_all)]

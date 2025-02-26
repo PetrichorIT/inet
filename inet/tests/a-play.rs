@@ -13,11 +13,9 @@ use inet::tcp2::TcpStream;
 #[serial]
 #[test]
 fn connect_no_local_ip_version() {
-    des::tracing::init();
-
     let mut sim = Sim::new(()).with_stack(inet::init);
     sim.node(
-        "alice",
+        "sender",
         AsyncFn::io(|_| async move {
             add_interface(Interface::ethv4(
                 NetworkDevice::eth(),
@@ -34,14 +32,14 @@ fn connect_no_local_ip_version() {
     );
 
     sim.node(
-        "bob",
+        "receiver",
         AsyncFn::new(|_| async move {
             // NOP
         }),
     );
 
-    let a = sim.gate("alice", "port");
-    let b = sim.gate("bob", "port");
+    let a = sim.gate("sender", "port");
+    let b = sim.gate("receiver", "port");
     a.connect(
         b,
         Some(Channel::new(ChannelMetrics::new(

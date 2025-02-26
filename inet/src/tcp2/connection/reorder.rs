@@ -23,7 +23,7 @@ impl ReorderBuffer {
 
     pub fn update(&mut self, t: SimTime, max_store_time: Duration) {
         self.pkts
-            .retain(|(event_t, _)| (dbg!(t) - dbg!(*event_t)) <= dbg!(max_store_time));
+            .retain(|(event_t, _)| (t - *event_t) <= max_store_time);
     }
 
     /// `expected = RCV.NXT`
@@ -33,7 +33,6 @@ impl ReorderBuffer {
         if wrapping_lt(canidate.seq_no, expected.wrapping_add(1)) {
             let (_, mut seg) = self.pkts.pop_front()?;
             let trunc_len = expected.wrapping_sub(seg.seq_no) as usize;
-            dbg!(trunc_len, seg.content.len());
             if trunc_len >= seg.content.len() {
                 // skip this packet
                 return self.next(expected);

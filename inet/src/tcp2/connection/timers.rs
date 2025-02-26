@@ -1,6 +1,13 @@
 use super::{is_between_wrapped, Config};
 use des::time::SimTime;
-use std::{collections::BTreeMap, time::Duration};
+use std::{
+    collections::BTreeMap,
+    ops::{Deref, DerefMut},
+};
+
+//
+// # Segment timers
+//
 
 /// RFC 6298 - Computing TCP's Retransmission Timer
 ///
@@ -9,10 +16,19 @@ use std::{collections::BTreeMap, time::Duration};
 /// time variation).  In addition, we assume a clock granularity of G
 /// seconds.
 #[derive(Debug, Clone)]
-pub struct Timers {
-    pub send_times: BTreeMap<u32, SimTime>,
+pub struct RetranssmissionTimers {
+    /// (seg.seqn, (send-time, retransmission))
+    pub segments: BTreeMap<u32, Entry>,
+
     pub rto: f64,
     pub running: Option<SmoothedRTT>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Entry {
+    pub sent: SimTime,
+    pub timeout: SimTime,
+    pub is_retransmission: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -22,44 +38,63 @@ pub struct SmoothedRTT {
     pub nto: usize,
 }
 
-impl Timers {
+impl RetranssmissionTimers {
     pub fn new(cfg: &Config) -> Self {
         // (2.1) Until a round-trip time (RTT) measurement has been made for a
         // segment sent between the sender and receiver, the sender SHOULD
         // set RTO <- 1 second.
         Self {
-            send_times: Default::default(),
+            segments: Default::default(),
+
             rto: cfg.initial_rto.as_secs_f64(),
             running: None,
         }
     }
 
-    pub fn on_send(&mut self, seq: u32, now: SimTime) {
-        self.send_times.insert(seq, now);
+    fn next_timeout(&self) -> Option<SimTime> {
+        self.segments.values().map(|v| v.timeout).min()
+    }
+
+    pub fn register_segment(&mut self, seq: u32, is_retransmission: bool, now: SimTime) {
+        self.segments.insert(
+            seq,
+            Entry {
+                sent: now,
+                timeout: now + self.rto,
+                is_retransmission,
+            },
+        );
+    }
+
+    pub fn update_send_time(&mut self, seg: u32, now: SimTime) {
+        if let Some(entry) = self.segments.get_mut(&seg) {
+            let offset = now - entry.sent;
+            entry.sent = now;
+            entry.timeout += offset;
+        }
     }
 
     pub fn on_recv(&mut self, una: u32, ackn: u32, now: SimTime) {
         let mut meassurements = Vec::new();
 
-        self.send_times.retain(|&seq, sent| {
+        self.segments.retain(|&seq, entry| {
             if is_between_wrapped(una, seq, ackn) {
-                let elapsed = (now - *sent).as_secs_f64();
-                meassurements.push(elapsed);
+                let elapsed = (now - entry.sent).as_secs_f64();
+                if !entry.is_retransmission {
+                    meassurements.push(elapsed);
+                }
                 false
             } else {
                 true
             }
         });
 
-        // TODO: ensure that the meassured segment was only sent once,
-        // else the meassurement cannot know, whether the ack refers to the first
-        // or second transmission
         meassurements
             .into_iter()
-            .for_each(|m| self.on_meassurement(m));
+            .for_each(|m| self.add_meassurement(m));
     }
 
-    pub fn on_meassurement(&mut self, r: f64) {
+    pub fn add_meassurement(&mut self, r: f64) {
         // (4) ... Experience has shown that finer clock granularities (<= 100 msec)
         // perform somewhat better than coarser granularities.
 
@@ -99,18 +134,13 @@ impl Timers {
         self.rto = self.rto.min(60.0);
     }
 
-    pub fn should_retransmit(&mut self, una: u32, now: SimTime) -> bool {
-        let waited_for = self.send_times.range(una..).next().map(|t| now - *t.1);
-
-        tracing::trace!("{waited_for:?} {}", self.rto);
-
-        let should_retransmit = if let Some(waited_for) = waited_for {
-            waited_for >= Duration::from_secs(1) && waited_for.as_secs_f64() >= 1.5 * self.rto
-        } else {
-            false
-        };
-
-        should_retransmit
+    pub fn expired(&mut self, una: u32, now: SimTime) -> Vec<u32> {
+        self.segments.retain(|v, _| *v >= una);
+        self.segments
+            .range(una..)
+            .filter(|(_, e)| now >= e.timeout)
+            .map(|v| *v.0)
+            .collect()
     }
 
     pub fn on_timeout(&mut self, _is_ack_of_syn: bool) {
@@ -137,6 +167,52 @@ impl Timers {
     }
 }
 
+//
+// # Other timers
+//
+
+#[derive(Debug, Clone)]
+pub struct Timers {
+    rtt: RetranssmissionTimers,
+    time_wait_to: Option<SimTime>,
+}
+
+impl Timers {
+    pub fn new(cfg: &Config) -> Self {
+        Self {
+            rtt: RetranssmissionTimers::new(cfg),
+            time_wait_to: None,
+        }
+    }
+
+    pub fn set_timewait_to(&mut self, now: SimTime) {
+        self.time_wait_to = Some(now + self.rtt.rto * 2.0);
+    }
+
+    pub fn timewait_to_expired(&self, now: SimTime) -> bool {
+        self.time_wait_to.map_or(false, |to| now >= to)
+    }
+
+    pub fn next_timeout(&self) -> Option<SimTime> {
+        self.rtt
+            .next_timeout()
+            .map(|a| self.time_wait_to.map_or(a, |b| a.min(b)))
+    }
+}
+
+impl Deref for Timers {
+    type Target = RetranssmissionTimers;
+    fn deref(&self) -> &Self::Target {
+        &self.rtt
+    }
+}
+
+impl DerefMut for Timers {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.rtt
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use rand::random;
@@ -146,10 +222,10 @@ mod tests {
 
     #[test]
     fn rto_computation_first_meassurement() {
-        let mut timers = Timers::new(&Config::test_default());
+        let mut timers = RetranssmissionTimers::new(&Config::test_default());
         assert_eq!(timers.rto, 10.0); // initial_rto = 10s
 
-        timers.on_meassurement(1.3);
+        timers.add_meassurement(1.3);
         assert_eq!(timers.rto, 3.9000000000000004);
 
         assert_eq!(timers.running.as_ref().map(|v| v.srtt), Some(1.3));
@@ -158,26 +234,26 @@ mod tests {
 
     #[test]
     fn rto_minimum_value() {
-        let mut timers = Timers::new(&Config::test_default());
+        let mut timers = RetranssmissionTimers::new(&Config::test_default());
         for r in iter::repeat_with(|| random::<f64>()).take(1000) {
-            timers.on_meassurement(r);
+            timers.add_meassurement(r);
             assert!(timers.rto >= 1.0);
         }
     }
 
     #[test]
     fn rto_maximum_value() {
-        let mut timers = Timers::new(&Config::test_default());
+        let mut timers = RetranssmissionTimers::new(&Config::test_default());
         for r in iter::repeat_with(|| random::<f64>()).take(1000) {
-            timers.on_meassurement(60.0 + 10.0 * r);
+            timers.add_meassurement(60.0 + 10.0 * r);
             assert!(timers.rto <= 60.0);
         }
     }
 
-    fn rto_default_setup() -> Timers {
-        let mut timers = Timers::new(&Config::test_default());
+    fn rto_default_setup() -> RetranssmissionTimers {
+        let mut timers = RetranssmissionTimers::new(&Config::test_default());
         for r in [0.7, 0.78, 0.64, 0.63, 0.67, 0.6] {
-            timers.on_meassurement(r);
+            timers.add_meassurement(r);
         }
         timers
     }
@@ -209,10 +285,10 @@ mod tests {
 
     #[test]
     fn recv_emitts_one_sample() {
-        let mut timers = Timers::new(&Config::test_default());
+        let mut timers = RetranssmissionTimers::new(&Config::test_default());
 
-        timers.on_send(1, 1.0.into());
-        timers.on_send(101, 1.2.into());
+        timers.register_segment(1, false, 1.0.into());
+        timers.register_segment(101, false, 1.2.into());
 
         timers.on_recv(1, 101, 2.0.into());
         assert_eq!(timers.running.as_ref().map(|v| v.srtt), Some(1.0));
@@ -223,10 +299,10 @@ mod tests {
 
     #[test]
     fn recv_emitts_multiple_samples() {
-        let mut timers = Timers::new(&Config::test_default());
+        let mut timers = RetranssmissionTimers::new(&Config::test_default());
 
-        timers.on_send(1, 1.0.into());
-        timers.on_send(101, 1.2.into());
+        timers.register_segment(1, false, 1.0.into());
+        timers.register_segment(101, false, 1.2.into());
 
         timers.on_recv(1, 201, 2.0.into());
         assert_ne!(timers.running.as_ref().map(|v| v.srtt), Some(1.0));
@@ -235,13 +311,25 @@ mod tests {
 
     #[test]
     fn recv_drops_timers() {
-        let mut timers = Timers::new(&Config::test_default());
+        let mut timers = RetranssmissionTimers::new(&Config::test_default());
 
-        timers.on_send(1, 1.0.into());
-        timers.on_send(101, 1.2.into());
+        timers.register_segment(1, false, 1.0.into());
+        timers.register_segment(101, false, 1.2.into());
 
-        assert_eq!(timers.send_times.len(), 2);
+        assert_eq!(timers.segments.len(), 2);
         timers.on_recv(1, 101, 2.0.into());
-        assert_eq!(timers.send_times.len(), 1);
+        assert_eq!(timers.segments.len(), 1);
+    }
+
+    #[test]
+    fn recv_retransmit_is_no_meassurement() {
+        let mut timers = rto_default_setup();
+
+        timers.register_segment(1, false, 1.0.into());
+        timers.register_segment(1, true, 2.0.into());
+
+        let rto = timers.rto;
+        timers.on_recv(1, 101, 2.2.into());
+        assert_eq!(timers.rto, rto);
     }
 }

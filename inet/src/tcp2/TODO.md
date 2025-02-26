@@ -13,10 +13,17 @@ we do NOT recv a MSS but have a non-default one.
 
 # Path MTU discovery
 
-# Close TIMEWAIT after LINGER
-
 # OPTIONS: SO_LINGER
 
+
+# Infinite Rcv in FinWait
+
+When a socket closes and thus enters FinWait1 / FinWait2 it can still recv segments.
+However, since the socket is closed the user can no longer rcv that data. Thus if the RCV buffer is full
+the application blocks forever
+
+-> auto clear the recv buffer
+-> or ignore segments
 
 # Off by 1 erros with is_between_wrapped()
 

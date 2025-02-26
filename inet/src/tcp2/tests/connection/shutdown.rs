@@ -394,3 +394,61 @@ fn active_close_lost_fin_with_data() -> io::Result<()> {
 
     Ok(())
 }
+
+#[test]
+fn e2e_active_close_can_still_recv_data_beyond_buffer_space() -> io::Result<()> {
+    let mut client = TcpTestUnit::new(
+        SocketAddr::new(Ipv4Addr::new(10, 0, 1, 104).into(), 80), // local
+        SocketAddr::new(Ipv4Addr::new(20, 0, 2, 204).into(), 1808), // peer
+    );
+    let mut server = TcpTestUnit::new(
+        SocketAddr::new(Ipv4Addr::new(20, 0, 2, 204).into(), 1808), // local
+        SocketAddr::new(Ipv4Addr::new(10, 0, 1, 104).into(), 80),   // peer
+    );
+
+    client.handshake_pipe(&mut server)?;
+
+    // -> FIN
+    client.close()?;
+    client.tick()?;
+    client.pipe(&mut server, 1)?;
+
+    // <- ACK of FIN
+    server.pipe(&mut client, 1)?;
+    client.assert_outgoing_eq(&[]);
+
+    assert_eq!(client.con.as_ref().unwrap().rcv.nxt, 1);
+
+    // client: FinWait2, server: CloseWait
+    // <- Send 4000 bytes of data <= WIN_4KB
+    assert_eq!(4000, server.write(&[42; 4000])?);
+    server.tick()?;
+    server.pipe(&mut client, 99)?;
+
+    assert_eq!(client.con.as_ref().unwrap().rcv.nxt, 4001);
+    assert_eq!(client.con.as_ref().unwrap().received.len(), 0);
+
+    // -> ACK for 4000 bytes
+    client.pipe(&mut server, 99)?;
+
+    // <- Send 4000 more byte, window should allow it
+    assert_eq!(4000, server.write(&[69; 4000])?);
+    server.tick()?;
+    server.pipe(&mut client, 99)?;
+
+    assert_eq!(client.con.as_ref().unwrap().rcv.nxt, 8001);
+    assert_eq!(client.con.as_ref().unwrap().received.len(), 0);
+
+    // check normal close
+    client.pipe(&mut server, 99)?;
+    server.close()?;
+    server.tick()?;
+
+    server.pipe(&mut client, 1)?;
+    client.pipe(&mut server, 1)?;
+
+    assert_eq!(client.state, State::TimeWait);
+    assert_eq!(server.state, State::Closed);
+
+    Ok(())
+}

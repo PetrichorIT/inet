@@ -69,7 +69,7 @@ fn connect_syn_timeout() -> io::Result<()> {
     // -> SYN
     test.connect()?;
     test.assert_outgoing_eq(&[TcpPacket::syn(80, 1808, 0, WIN_4KB)]);
-    assert_eq!(test.next_timeout(), Some(15.0.into()));
+    assert_eq!(test.next_timeout(), Some(10.0.into()));
 
     test.tick()?;
     test.assert_outgoing_eq(&[]);
@@ -101,7 +101,7 @@ fn connect_closed_after_too_many_syn_timeouts() -> io::Result<()> {
     // -> SYN (initial)
     test.connect()?;
     test.assert_outgoing_eq(&[TcpPacket::syn(80, 1808, 0, WIN_4KB)]);
-    assert_eq!(test.next_timeout(), Some(15.0.into()));
+    assert_eq!(test.next_timeout(), Some(10.0.into()));
 
     // repeats nr 1,2,3
     for t in [15.0, 30.0, 45.0] {
