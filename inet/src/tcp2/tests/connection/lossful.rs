@@ -1,4 +1,4 @@
-use super::{TcpTestUnit, WIN_4KB};
+use super::{tx, TcpTestUnit, WIN_4KB};
 use rand::{thread_rng, RngCore};
 use std::{
     io,
@@ -7,8 +7,8 @@ use std::{
 
 impl TcpTestUnit {
     pub fn pipe_lossful(&mut self, peer: &mut Self, n: usize, drop: &[usize]) -> io::Result<()> {
-        let n = n.min(self.tx().len());
-        for (i, pkt) in self.tx().drain(..n).enumerate() {
+        let n = n.min(tx(&mut self.con).len());
+        for (i, pkt) in tx(&mut self.con).drain(..n).enumerate() {
             if drop.contains(&i) {
                 continue;
             }
@@ -60,8 +60,8 @@ fn loss_of_data_packets() -> io::Result<()> {
 
     tracing::debug!("real test case begins");
 
-    assert_eq!(client.num_unsend_bytes(), Some(6584));
-    assert_eq!(client.snd.c.cwnd, 2144);
+    assert_eq!(client.num_unsend_bytes(), Some(8344));
+    assert_eq!(client.snd.c.cwnd, 1608);
 
     client.tick()?;
     client.pipe_lossful(&mut server, 100, &[1])?;

@@ -32,6 +32,8 @@ pub struct SendSequenceSpace {
     pub iss: u32,
     /// maximum segment size
     pub mss: u16,
+    /// duplicate ack resend counter
+    pub dup_ack_resend_counter: usize,
     /// number of syn packets send without ack
     pub syn_resend_counter: usize,
     /// A indicator, whether the sender is closed
@@ -56,6 +58,7 @@ impl SendSequenceSpace {
             wl2: 0,
             mss,
 
+            dup_ack_resend_counter: 0,
             syn_resend_counter: 0,
 
             closed: false,
@@ -74,7 +77,6 @@ pub struct CongestionControl {
     pub ssthresh: u32,
     pub avoid_counter: u32,
     pub slow_start: bool,
-    pub dup_ack_counter: usize,
 }
 
 impl CongestionControl {
@@ -85,7 +87,6 @@ impl CongestionControl {
             ssthresh: 4 * (mss as u32),
             avoid_counter: 0,
             slow_start: enabled,
-            dup_ack_counter: 0,
         }
     }
 }
@@ -117,8 +118,8 @@ impl SendSequenceSpace {
     }
 
     pub fn on_dup_ack(&mut self) {
+        self.dup_ack_resend_counter = self.dup_ack_resend_counter.saturating_add(1);
         self.c.cwnd = self.c.cwnd / 2;
-        self.c.dup_ack_counter = 0;
     }
 
     pub fn on_timeout(&mut self) {

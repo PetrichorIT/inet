@@ -307,7 +307,7 @@ impl Connection {
             rcv: RecvSequenceSpace::from_syn(&pkt, rcv_wnd, rcv_wnd),
             quad,
 
-            incoming: ReorderBuffer::default(),
+            incoming: ReorderBuffer::from_syn(&pkt, &cfg),
             outgoing: VecDeque::new(),
 
             received: VecDeque::with_capacity(cfg.recv_buffer_cap),
@@ -453,7 +453,8 @@ impl Connection {
     }
 
     fn options_for_kind(&mut self, kind: PacketKind) -> Vec<TcpOption> {
-        let mut options = match kind {
+        let mut options = Vec::new();
+        match kind {
             // RFC 9293
             // ->  3.7.1. Maximum Segment Size Option
             // TCP implementations SHOULD send an MSS Option in every SYN segment when its receive MSS differs from
@@ -461,16 +462,29 @@ impl Connection {
             Syn => {
                 let is_default = self.snd.mss == self.quad.default_mss();
                 if !is_default {
-                    vec![TcpOption::MaximumSegmentSize(self.snd.mss)]
-                } else {
-                    Vec::new()
+                    options.push(TcpOption::MaximumSegmentSize(self.snd.mss));
+                }
+                if self.cfg.enable_sack {
+                    options.push(TcpOption::SelectiveAcknowledgementPermitted);
                 }
             }
-            _ => Vec::new(),
+            SynAck => {
+                if self.cfg.enable_sack {
+                    options.push(TcpOption::SelectiveAcknowledgementPermitted);
+                }
+            }
+            _ => {
+                if self.incoming.sack {
+                    let sacks = self.incoming.sacks();
+                    if !sacks.is_empty() {
+                        options.push(TcpOption::SelectiveAcknowledgement(sacks));
+                    }
+                }
+            }
         };
 
         if !options.is_empty() {
-            options.push(TcpOption::EndOfOptionsList())
+            options.push(TcpOption::EndOfOptionsList)
         }
         options
     }
@@ -526,45 +540,45 @@ impl Connection {
 
         if !expired.is_empty() {
             self.on_tick_retransmit(expired)?;
-        } else {
-            loop {
-                let Some(num_unsend_bytes) = self.num_unsend_bytes() else {
+        }
+
+        loop {
+            let Some(num_unsend_bytes) = self.num_unsend_bytes() else {
+                break;
+            };
+
+            // we should send new data if we have new data and space in the window
+            if num_unsend_bytes == 0 && self.snd.closed_at.is_some() {
+                return Ok(());
+            }
+
+            tracing::trace!(num_unsend_bytes, una = self.snd.una, "tick-send");
+
+            let remaining_window_space = self.snd.remaining_window_space();
+            if remaining_window_space == 0 {
+                return Ok(());
+            }
+
+            let bytes_to_be_sent = cmp::min(num_unsend_bytes, remaining_window_space);
+            if bytes_to_be_sent < remaining_window_space
+                && self.snd.closed
+                && self.snd.closed_at.is_none()
+            {
+                // If there is space left in the window and we are closed without FIN
+                // attach the virtual FIN byte
+                self.snd.closed_at = Some(self.snd.una.wrapping_add(self.unacked.len() as u32));
+
+                // RFC 9293
+                // -> 3.6. Closing a Connection
+                // Case 1:
+                // Local user initiates the close In this case, a FIN segment can be constructed and placed on the outgoing segment queue.
+                // ...
+                self.send_pkt(Fin, self.snd.nxt, bytes_to_be_sent as usize)?;
+            } else {
+                if num_unsend_bytes == 0 {
                     break;
-                };
-
-                // we should send new data if we have new data and space in the window
-                if num_unsend_bytes == 0 && self.snd.closed_at.is_some() {
-                    return Ok(());
                 }
-
-                tracing::trace!(num_unsend_bytes, una = self.snd.una, "tick-send");
-
-                let remaining_window_space = self.snd.remaining_window_space();
-                if remaining_window_space == 0 {
-                    return Ok(());
-                }
-
-                let bytes_to_be_sent = cmp::min(num_unsend_bytes, remaining_window_space);
-                if bytes_to_be_sent < remaining_window_space
-                    && self.snd.closed
-                    && self.snd.closed_at.is_none()
-                {
-                    // If there is space left in the window and we are closed without FIN
-                    // attach the virtual FIN byte
-                    self.snd.closed_at = Some(self.snd.una.wrapping_add(self.unacked.len() as u32));
-
-                    // RFC 9293
-                    // -> 3.6. Closing a Connection
-                    // Case 1:
-                    // Local user initiates the close In this case, a FIN segment can be constructed and placed on the outgoing segment queue.
-                    // ...
-                    self.send_pkt(Fin, self.snd.nxt, bytes_to_be_sent as usize)?;
-                } else {
-                    if num_unsend_bytes == 0 {
-                        break;
-                    }
-                    self.send_pkt(Ack, self.snd.nxt, bytes_to_be_sent as usize)?;
-                }
+                self.send_pkt(Ack, self.snd.nxt, bytes_to_be_sent as usize)?;
             }
         }
 
@@ -572,8 +586,6 @@ impl Connection {
     }
 
     fn on_tick_retransmit(&mut self, mut expired: Vec<u32>) -> Result<(), Error> {
-        tracing::trace!(una = self.snd.una, "retransmitting packet: {expired:?}");
-
         // For any state if the retransmission timeout expires on a segment in the retransmission queue,
         // send the segment at the front of the retransmission queue again,
         // reinitialize the retransmission timer, and return.
@@ -957,6 +969,22 @@ impl Connection {
                 }
 
                 // set last ack no
+                if wrapping_lt(ackn, self.snd.una) || ackn == self.snd.una {
+                    self.snd.on_dup_ack();
+
+                    if self
+                        .cfg
+                        .dup_ack_resend_cnt
+                        .map_or(false, |limit| self.snd.dup_ack_resend_counter >= limit)
+                    {
+                        tracing::trace!("resending due to dup ack");
+                        self.on_tick_retransmit(vec![ackn])?;
+                        self.snd.dup_ack_resend_counter = 0;
+                    }
+                } else {
+                    self.snd.dup_ack_resend_counter = 0;
+                }
+
                 self.snd.una = ackn;
             }
 
@@ -1219,6 +1247,9 @@ impl Connection {
                     );
                     self.snd.mss = self.snd.mss.min(*mss);
                 }
+            }
+            TcpOption::SelectiveAcknowledgementPermitted => {
+                self.incoming.sack = self.cfg.enable_sack;
             }
             _ => {}
         });

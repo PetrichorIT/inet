@@ -13,6 +13,9 @@ use des::time::SimTime;
 pub struct Config {
     pub enable_congestion_control: bool,
     pub enable_reorder_buffer: bool,
+    pub enable_sack: bool,
+
+    pub dup_ack_resend_cnt: Option<usize>,
 
     pub send_buffer_cap: usize,
     pub recv_buffer_cap: usize,
@@ -33,6 +36,11 @@ impl Config {
         Config {
             enable_congestion_control: false,
             enable_reorder_buffer: true,
+            enable_sack: false,
+
+            // TODO: change to Some(3) breaking no tests
+            dup_ack_resend_cnt: Some(3),
+
             send_buffer_cap: 4096,
             recv_buffer_cap: 4096,
             syn_resent_count: 3,
@@ -77,6 +85,10 @@ impl Default for Config {
         Self {
             enable_congestion_control: false,
             enable_reorder_buffer: true,
+            enable_sack: false,
+
+            dup_ack_resend_cnt: Some(3),
+
             send_buffer_cap: 4096,
             recv_buffer_cap: 4096,
             initial_rto: Duration::from_secs(3),

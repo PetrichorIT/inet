@@ -40,12 +40,15 @@ bitflags! {
 }
 
 /// Options of a [`TcpPacket`].
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum TcpOption {
+    EndOfOptionsList,
+    NoOperation,
     MaximumSegmentSize(u16),
     WindowScaling(u8),
+    SelectiveAcknowledgementPermitted,
+    SelectiveAcknowledgement(Vec<(u32, u32)>),
     Timestamp(u32, u32),
-    EndOfOptionsList(),
 }
 
 impl TcpPacket {
@@ -110,9 +113,15 @@ impl TcpPacket {
     #[must_use]
     pub fn with_mss(mut self, mss: u16) -> Self {
         self.options.insert(0, TcpOption::MaximumSegmentSize(mss));
-        if self.options.last() != Some(&TcpOption::EndOfOptionsList()) {
-            self.options.push(TcpOption::EndOfOptionsList());
+        if self.options.last() != Some(&TcpOption::EndOfOptionsList) {
+            self.options.push(TcpOption::EndOfOptionsList);
         }
+        self
+    }
+
+    #[must_use]
+    pub fn with_option(mut self, option: TcpOption) -> Self {
+        self.options.push(option);
         self
     }
 
@@ -167,6 +176,14 @@ impl TcpFlags {
     }
 }
 
+const TCP_OPTION_KIND_EEOL: u8 = 0;
+const TCP_OPTION_KIND_NOP: u8 = 1;
+const TCP_OPTION_KIND_MSS: u8 = 2;
+const TCP_OPTION_KIND_WINDOWSCALE: u8 = 3;
+const TCP_OPTION_KIND_SACKPERMITTED: u8 = 4;
+const TCP_OPTION_KIND_SACK: u8 = 5;
+const TCP_OPTION_KIND_TIMESTAMP: u8 = 8;
+
 impl ToBytestream for TcpPacket {
     type Error = std::io::Error;
     fn to_bytestream(&self, stream: &mut BytestreamWriter) -> Result<(), Self::Error> {
@@ -188,7 +205,7 @@ impl ToBytestream for TcpPacket {
 
         let mut options_len = stream.len_since_marker(&hlen_marker) - 7;
         if options_len > 0 {
-            if *self.options.last().unwrap() != TcpOption::EndOfOptionsList() {
+            if *self.options.last().unwrap() != TcpOption::EndOfOptionsList {
                 return Err(Error::new(
                     ErrorKind::Other,
                     "missing end of options list tag",
@@ -224,25 +241,53 @@ impl ToBytestream for TcpOption {
     type Error = std::io::Error;
     fn to_bytestream(&self, stream: &mut BytestreamWriter) -> Result<(), Self::Error> {
         match self {
-            Self::MaximumSegmentSize(mss) => {
-                stream.write_u8(2)?;
-                stream.write_u8(4)?;
-                stream.write_u16::<BE>(*mss)
+            Self::EndOfOptionsList => stream.write_u8(TCP_OPTION_KIND_EEOL),
+            Self::NoOperation => stream.write_u8(TCP_OPTION_KIND_NOP),
+
+            Self::MaximumSegmentSize(mss) => write_option(TCP_OPTION_KIND_MSS, stream, |body| {
+                body.write_u16::<BE>(*mss)
+            }),
+            Self::WindowScaling(cnt) => write_option(TCP_OPTION_KIND_WINDOWSCALE, stream, |body| {
+                body.write_u8(*cnt)
+            }),
+            Self::SelectiveAcknowledgementPermitted => {
+                write_option(TCP_OPTION_KIND_SACKPERMITTED, stream, |_| Ok(()))
             }
-            Self::WindowScaling(cnt) => {
-                stream.write_u8(3)?;
-                stream.write_u8(3)?;
-                stream.write_u8(*cnt)
+            Self::SelectiveAcknowledgement(sacks) => {
+                write_option(TCP_OPTION_KIND_SACK, stream, |body| {
+                    if sacks.len() > 4 {
+                        return Err(Error::new(ErrorKind::InvalidInput, "too many SACK blocks"));
+                    }
+
+                    for sack in sacks {
+                        body.write_u32::<BE>(sack.0)?;
+                        body.write_u32::<BE>(sack.1)?;
+                    }
+                    Ok(())
+                })
             }
             Self::Timestamp(send, recv) => {
-                stream.write_u8(8)?;
-                stream.write_u8(10)?;
-                stream.write_u32::<BE>(*send)?;
-                stream.write_u32::<BE>(*recv)
+                write_option(TCP_OPTION_KIND_TIMESTAMP, stream, |body| {
+                    body.write_u32::<BE>(*send)?;
+                    body.write_u32::<BE>(*recv)
+                })
             }
-            Self::EndOfOptionsList() => stream.write_u8(0),
         }
     }
+}
+
+fn write_option(
+    kind: u8,
+    stream: &mut BytestreamWriter,
+    f: impl FnOnce(&mut BytestreamWriter) -> Result<(), std::io::Error>,
+) -> Result<(), std::io::Error> {
+    stream.write_u8(kind)?;
+    let marker = stream.create_typed_marker::<u8>()?;
+    let len = stream.len();
+    f(stream)?;
+    let written_len = stream.len() - len + 2; // bytes for kind and len included
+    stream.update_marker(&marker).write_u8(written_len as u8)?;
+    Ok(())
 }
 
 impl FromBytestream for TcpPacket {
@@ -267,8 +312,9 @@ impl FromBytestream for TcpPacket {
         let mut options = Vec::new();
         while !substream.is_empty() {
             let option = TcpOption::from_bytestream(&mut substream)?;
+            let is_end = option == TcpOption::EndOfOptionsList;
             options.push(option);
-            if option == TcpOption::EndOfOptionsList() {
+            if is_end {
                 break;
             }
         }
@@ -301,28 +347,47 @@ impl FromBytestream for TcpOption {
     type Error = std::io::Error;
     fn from_bytestream(stream: &mut BytestreamReader) -> Result<Self, Self::Error> {
         let kind = stream.read_u8()?;
-        if kind == 0 {
-            return Ok(Self::EndOfOptionsList());
-        }
 
-        let len = stream.read_u8()? - 2;
-        let mut substream = stream.extract(len as usize)?;
+        return match kind {
+            TCP_OPTION_KIND_EEOL => Ok(Self::EndOfOptionsList),
+            TCP_OPTION_KIND_NOP => Ok(Self::NoOperation),
 
-        match kind {
-            2 => {
-                let mss = substream.read_u16::<BE>()?;
-                Ok(Self::MaximumSegmentSize(mss))
+            TCP_OPTION_KIND_MSS => read_option(stream, |body| {
+                Ok(TcpOption::MaximumSegmentSize(body.read_u16::<BE>()?))
+            }),
+            TCP_OPTION_KIND_WINDOWSCALE => {
+                read_option(stream, |body| Ok(TcpOption::WindowScaling(body.read_u8()?)))
             }
-            3 => {
-                let cnt = substream.read_u8()?;
-                Ok(Self::WindowScaling(cnt))
-            }
-            8 => {
-                let send = substream.read_u32::<BE>()?;
-                let recv = substream.read_u32::<BE>()?;
-                Ok(Self::Timestamp(send, recv))
-            }
+            TCP_OPTION_KIND_SACKPERMITTED => read_option(stream, |body| {
+                debug_assert!(body.is_empty());
+                Ok(TcpOption::SelectiveAcknowledgementPermitted)
+            }),
+            TCP_OPTION_KIND_SACK => read_option(stream, |body| {
+                let mut sacks = Vec::new();
+                while !body.is_empty() {
+                    let start = body.read_u32::<BE>()?;
+                    let end = body.read_u32::<BE>()?;
+                    sacks.push((start, end));
+                }
+
+                Ok(TcpOption::SelectiveAcknowledgement(sacks))
+            }),
+            TCP_OPTION_KIND_TIMESTAMP => read_option(stream, |body| {
+                Ok(TcpOption::Timestamp(
+                    body.read_u32::<BE>()?,
+                    body.read_u32::<BE>()?,
+                ))
+            }),
             _ => Err(Error::new(ErrorKind::Other, "invalid tcp options kind")),
-        }
+        };
     }
+}
+
+fn read_option(
+    stream: &mut BytestreamReader,
+    f: fn(&mut BytestreamReader) -> Result<TcpOption, std::io::Error>,
+) -> Result<TcpOption, std::io::Error> {
+    let len = stream.read_u8()? - 2;
+    let mut substream = stream.extract(len as usize)?;
+    f(&mut substream)
 }

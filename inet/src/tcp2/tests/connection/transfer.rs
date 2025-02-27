@@ -289,8 +289,6 @@ fn rcv_wnd_no_updates_at_peek() -> io::Result<()> {
 
 #[test]
 fn sender_lost_pkt_will_be_retransmitted() -> io::Result<()> {
-    // des::tracing::init();
-
     let mut test = TcpTestUnit::new(
         SocketAddr::new(Ipv4Addr::new(10, 0, 1, 104).into(), 80),
         SocketAddr::new(Ipv4Addr::new(20, 0, 2, 204).into(), 1808),

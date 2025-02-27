@@ -51,7 +51,6 @@ impl<I: PartialEq + Clone> TestBlockWriter<I> {
                 };
 
                 let n = total - slice.len();
-                dbg!(n);
                 self.write_offset += n;
 
                 let Some(expected) = self.reader.next() else {

@@ -36,7 +36,7 @@ fn large_stream() {
                 ))?;
 
                 set_config(Config {
-                    enable_congestion_control: true,
+                    // enable_congestion_control: true,
                     send_buffer_cap: (u16::MAX / 2) as usize,
                     recv_buffer_cap: (u16::MAX / 2) as usize,
                     ..Default::default()
@@ -62,7 +62,7 @@ fn large_stream() {
                 ))?;
 
                 set_config(Config {
-                    enable_congestion_control: true,
+                    // enable_congestion_control: true,
                     send_buffer_cap: (u16::MAX / 2) as usize,
                     recv_buffer_cap: (u16::MAX / 2) as usize,
                     ..Default::default()

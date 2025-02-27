@@ -1,23 +1,32 @@
 use std::{
     collections::VecDeque,
+    fs::File,
     io,
-    net::SocketAddr,
+    net::{IpAddr, SocketAddr},
     ops::{Deref, DerefMut},
+    path::Path,
     sync::{Arc, Mutex},
 };
 
-use crate::tcp2::{Config, Connection, Quad, State};
+use crate::tcp2::{Config, Connection, Quad, State, PROTO_TCP2};
+use bytepack::ToBytestream;
 use des::time::SimTime;
+use pcapng::{BlockWriter, DefaultBlockWriter, InterfaceDescriptionOption, Linktype};
 use tracing::instrument;
-use types::tcp::TcpPacket;
+use types::{
+    ip::{Ipv4Flags, Ipv4Packet, Ipv6Packet, KIND_IPV4, KIND_IPV6},
+    tcp::{TcpPacket, PROTO_TCP},
+};
 
 mod cong;
+mod dup_ack;
 mod handshake;
 mod icmp;
 mod lossful;
 mod out_of_order;
 mod rst;
 mod rtt;
+mod sack;
 mod shutdown;
 mod transfer;
 
@@ -28,6 +37,7 @@ pub(in crate::tcp2::tests) struct TcpTestUnit {
     pub con: Option<Connection>,
     pub cfg: Config,
     pub clock: Arc<Mutex<SimTime>>,
+    pub recorder: Option<DefaultBlockWriter<File, ()>>,
 }
 
 impl TcpTestUnit {
@@ -42,7 +52,22 @@ impl TcpTestUnit {
                 clock: Arc::new(move || *clock_reader.lock().unwrap()),
                 ..Config::test_default()
             },
+            recorder: None,
         }
+    }
+
+    pub fn set_recorder(&mut self, path: impl AsRef<Path>) -> io::Result<()> {
+        let mut recorder = DefaultBlockWriter::new(File::create(path)?, "test-case-recording")?;
+        recorder.add_interface(
+            &(),
+            Linktype::ETHERNET,
+            4096,
+            vec![InterfaceDescriptionOption::InterfaceName(
+                "Ethernet".to_string(),
+            )],
+        )?;
+        self.recorder = Some(recorder);
+        Ok(())
     }
 
     pub fn cfg(&mut self, cfg: Config) {
@@ -56,6 +81,7 @@ impl TcpTestUnit {
     }
 
     pub fn incoming(&mut self, pkt: TcpPacket) -> io::Result<()> {
+        record(&mut self.recorder, &pkt, self.quad.reversed())?;
         if let Some(ref mut con) = self.con {
             con.on_packet(pkt)?;
         } else {
@@ -64,16 +90,10 @@ impl TcpTestUnit {
         Ok(())
     }
 
-    pub fn tx(&mut self) -> &mut VecDeque<TcpPacket> {
-        self.con
-            .as_mut()
-            .map(|con| &mut con.outgoing)
-            .expect("cannot test tx, where not connection exists")
-    }
-
     pub fn pipe(&mut self, peer: &mut Self, n: usize) -> io::Result<()> {
-        let n = n.min(self.tx().len());
-        for pkt in self.tx().drain(..n) {
+        let n = n.min(tx(&mut self.con).len());
+        for pkt in tx(&mut self.con).drain(..n) {
+            record(&mut self.recorder, &pkt, self.quad)?;
             peer.incoming(pkt)?;
         }
         Ok(())
@@ -85,7 +105,8 @@ impl TcpTestUnit {
         n: usize,
         pkts: &[TcpPacket],
     ) -> io::Result<()> {
-        for (i, pkt) in self.tx().drain(..n).enumerate() {
+        for (i, pkt) in tx(&mut self.con).drain(..n).enumerate() {
+            record(&mut self.recorder, &pkt, self.quad)?;
             assert_eq!(pkt, pkts[i]);
             peer.incoming(pkt)?;
         }
@@ -116,7 +137,13 @@ impl TcpTestUnit {
             self.con.is_some(),
             "no connection exists: expected on assert outing"
         );
-        f(self.tx().drain(..).collect())
+        f(tx(&mut self.con)
+            .drain(..)
+            .map(|pkt| {
+                record(&mut self.recorder, &pkt, self.quad).unwrap();
+                pkt
+            })
+            .collect())
     }
 
     pub fn assert_outgoing_eq(&mut self, pkts: &[TcpPacket]) {
@@ -125,18 +152,11 @@ impl TcpTestUnit {
         });
     }
 
-    pub fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        self.con
-            .as_mut()
-            .expect("no connection exists: cannot write")
-            .write(buf)
-    }
-
     pub fn write_and_ack(&mut self, buf: &[u8]) -> io::Result<usize> {
         let n = self.write(buf)?;
         self.tick()?;
 
-        let last = self.tx().pop_back().unwrap();
+        let last = tx(&mut self.con).pop_back().unwrap();
         self.clear_outgoing();
 
         // Collective ACK
@@ -167,7 +187,7 @@ impl TcpTestUnit {
     }
 
     pub fn clear_outgoing(&mut self) {
-        self.tx().clear();
+        self.assert_outgoing(|_| {});
     }
 
     pub fn handshake(&mut self, remote_seq_no: u32, remote_recv_window: u16) -> io::Result<()> {
@@ -220,4 +240,69 @@ impl DerefMut for TcpTestUnit {
             .as_mut()
             .expect("Deref can only be used on existing connections")
     }
+}
+
+fn tx(con: &mut Option<Connection>) -> &mut VecDeque<TcpPacket> {
+    con.as_mut()
+        .map(|con| &mut con.outgoing)
+        .expect("cannot test tx, where not connection exists")
+}
+
+fn record(
+    recorder: &mut Option<DefaultBlockWriter<File, ()>>,
+    pkt: &TcpPacket,
+    quad: Quad,
+) -> io::Result<()> {
+    if let Some(ref mut recorder) = recorder {
+        let ts = SimTime::now().as_millis() as u64;
+
+        match (quad.src.ip(), quad.dst.ip()) {
+            (IpAddr::V4(src), IpAddr::V4(dst)) => {
+                recorder.add_packet(
+                    &(),
+                    ts,
+                    [0, 0, 0, 0, 0, 0],
+                    [0, 0, 0, 0, 0, 0],
+                    KIND_IPV4,
+                    &Ipv4Packet {
+                        dscp: 0,
+                        enc: 0,
+                        identification: 0,
+                        flags: Ipv4Flags {
+                            df: false,
+                            mf: false,
+                        },
+                        fragment_offset: 0,
+                        ttl: 64,
+                        proto: PROTO_TCP,
+                        src,
+                        dst,
+                        content: pkt.to_vec()?,
+                    },
+                    None,
+                )?;
+            }
+            (IpAddr::V6(src), IpAddr::V6(dst)) => {
+                recorder.add_packet(
+                    &(),
+                    ts,
+                    [0, 0, 0, 0, 0, 0],
+                    [0, 0, 0, 0, 0, 0],
+                    KIND_IPV6,
+                    &Ipv6Packet {
+                        traffic_class: 0,
+                        flow_label: 0,
+                        next_header: PROTO_TCP,
+                        hop_limit: 64,
+                        src,
+                        dst,
+                        content: pkt.to_vec()?,
+                    },
+                    None,
+                )?;
+            }
+            _ => unreachable!(),
+        }
+    }
+    Ok(())
 }

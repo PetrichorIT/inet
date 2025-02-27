@@ -671,11 +671,18 @@ impl Timers {
 }
 
 impl Quad {
-    pub fn is_ipv4(&self) -> bool {
+    pub const fn reversed(&self) -> Self {
+        Self {
+            src: self.dst,
+            dst: self.src,
+        }
+    }
+
+    pub const fn is_ipv4(&self) -> bool {
         self.src.is_ipv4() && self.dst.is_ipv4()
     }
 
-    fn default_mss(&self) -> u16 {
+    const fn default_mss(&self) -> u16 {
         if self.is_ipv4() {
             536
         } else {

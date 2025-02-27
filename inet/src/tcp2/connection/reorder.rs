@@ -1,16 +1,27 @@
 use std::{collections::VecDeque, time::Duration};
 
 use des::time::SimTime;
-use types::tcp::TcpPacket;
+use types::tcp::{TcpOption, TcpPacket};
 
-use super::wrapping_lt;
+use super::{wrapping_lt, Config};
 
 #[derive(Debug, Default)]
 pub struct ReorderBuffer {
+    pub sack: bool,
     pub pkts: VecDeque<(SimTime, TcpPacket)>,
 }
 
 impl ReorderBuffer {
+    pub fn from_syn(syn: &TcpPacket, cfg: &Config) -> Self {
+        Self {
+            sack: syn
+                .options
+                .contains(&TcpOption::SelectiveAcknowledgementPermitted)
+                && cfg.enable_sack,
+            pkts: VecDeque::new(),
+        }
+    }
+
     pub fn enqueue(&mut self, pkt: TcpPacket, t: SimTime) {
         tracing::trace!(?pkt.flags, ?pkt.seq_no, ?pkt.ack_no, ?pkt.window, pkt.content=pkt.content.len(), "enqueing out-of-order packet");
         match self
@@ -44,6 +55,28 @@ impl ReorderBuffer {
         } else {
             None
         }
+    }
+
+    pub fn sacks(&self) -> Vec<(u32, u32)> {
+        let mut sacks = Vec::new();
+        let mut current = None;
+
+        for (_, pkt) in &self.pkts {
+            if let Some((from, to)) = &mut current {
+                if *from == pkt.seq_no {
+                    // extend
+                    *to += pkt.content.len() as u32;
+                } else {
+                    sacks.push((*from, *to));
+                    current = Some((pkt.seq_no, pkt.seq_no + pkt.content.len() as u32));
+                }
+            } else {
+                current = Some((pkt.seq_no, pkt.seq_no + pkt.content.len() as u32))
+            }
+        }
+
+        sacks.truncate(4);
+        sacks
     }
 }
 

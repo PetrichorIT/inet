@@ -417,6 +417,9 @@ fn e2e_active_close_can_still_recv_data_beyond_buffer_space() -> io::Result<()> 
     server.pipe(&mut client, 1)?;
     client.assert_outgoing_eq(&[]);
 
+    assert_eq!(client.state, State::FinWait2);
+    assert_eq!(server.state, State::CloseWait);
+
     assert_eq!(client.con.as_ref().unwrap().rcv.nxt, 1);
 
     // client: FinWait2, server: CloseWait
@@ -444,8 +447,10 @@ fn e2e_active_close_can_still_recv_data_beyond_buffer_space() -> io::Result<()> 
     server.close()?;
     server.tick()?;
 
-    server.pipe(&mut client, 1)?;
-    client.pipe(&mut server, 1)?;
+    server.pipe(&mut client, 99)?;
+
+    client.pipe(&mut server, 99)?;
+    server.pipe(&mut client, 99)?;
 
     assert_eq!(client.state, State::TimeWait);
     assert_eq!(server.state, State::Closed);

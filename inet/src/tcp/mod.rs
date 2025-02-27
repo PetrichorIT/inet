@@ -1716,7 +1716,7 @@ impl TransmissionControlBlock {
     fn syn_options(&self) -> Vec<TcpOption> {
         vec![
             TcpOption::MaximumSegmentSize(self.mss),
-            TcpOption::EndOfOptionsList(),
+            TcpOption::EndOfOptionsList,
         ]
     }
 
