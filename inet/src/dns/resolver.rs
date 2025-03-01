@@ -3,6 +3,8 @@ use std::io::{Error, ErrorKind, Result};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
 use std::pin::Pin;
 
+use tokio::sync::oneshot;
+
 use crate::ctx::IOContext;
 
 #[inline]

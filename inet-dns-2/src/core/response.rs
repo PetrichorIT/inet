@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use super::{DnsQuestion, DnsResourceRecord};
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -46,5 +48,23 @@ impl QueryResponse {
             additional,
             ..Default::default()
         }
+    }
+}
+
+impl Display for QueryResponse {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for answer in &self.anwsers {
+            writeln!(f)?;
+            write!(f, "> {}", answer)?;
+        }
+        for auth in &self.auths {
+            writeln!(f)?;
+            write!(f, "> {}", auth)?;
+        }
+        for additional in &self.additional {
+            writeln!(f)?;
+            write!(f, "+ {}", additional)?;
+        }
+        Ok(())
     }
 }

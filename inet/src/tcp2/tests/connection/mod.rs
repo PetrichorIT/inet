@@ -8,7 +8,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use crate::tcp2::{Config, Connection, Quad, State, PROTO_TCP2};
+use crate::tcp2::{Config, Connection, Quad, State};
 use bytepack::ToBytestream;
 use des::time::SimTime;
 use pcapng::{BlockWriter, DefaultBlockWriter, InterfaceDescriptionOption, Linktype};
@@ -56,6 +56,7 @@ impl TcpTestUnit {
         }
     }
 
+    #[allow(unused)]
     pub fn set_recorder(&mut self, path: impl AsRef<Path>) -> io::Result<()> {
         let mut recorder = DefaultBlockWriter::new(File::create(path)?, "test-case-recording")?;
         recorder.add_interface(

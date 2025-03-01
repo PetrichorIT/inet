@@ -216,5 +216,3 @@ raw_enum! {
         Status = 2,
     }
 }
-
-// # DNSReponseCode

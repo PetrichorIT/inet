@@ -4,6 +4,7 @@ use std::{
 };
 
 use des::{runtime::random, time::SimTime};
+use tracing::info_span;
 
 use crate::core::{
     AAAAResourceRecord, AResourceRecord, DnsQuestion, DnsResponseCode, DnsString, DnsZoneResolver,
@@ -21,7 +22,7 @@ pub struct DnsRecursiveNameserver {
     pub inner: DnsIterativeNameserver,
 
     pub queries: Vec<DnsNameserverQuery>,
-    pub roots: Vec<IpAddr>,
+    pub roots: Vec<(IpAddr, String)>,
 
     pub active_transactions: Vec<DnsTransaction>,
     pub finished_transactions: Vec<DnsFinishedTransaction>,
@@ -42,12 +43,17 @@ impl DnsRecursiveNameserver {
         })
     }
 
-    pub fn with_roots(mut self, roots: Vec<IpAddr>) -> Self {
+    pub fn with_roots(mut self, roots: Vec<(IpAddr, String)>) -> Self {
         self.roots = roots;
         self
     }
 
-    pub fn handle(&mut self, client: SocketAddr, client_transaction: u16, question: DnsQuestion) {
+    pub fn handle_query(
+        &mut self,
+        client: SocketAddr,
+        client_transaction: u16,
+        question: DnsQuestion,
+    ) {
         let tx = DnsTransaction {
             client,
             client_transaction,
@@ -58,13 +64,18 @@ impl DnsRecursiveNameserver {
             operation_counter: 0,
         };
         self.transaction_num += 1;
-        self.query(tx);
+        info_span!(
+            "tx",
+            req = tx.client_transaction,
+            resolve = tx.local_transaction
+        )
+        .in_scope(|| self.query(tx));
     }
 
     pub fn get_addr_of(&self, domain: &DnsString) -> Option<IpAddr> {
         let response = self
             .inner
-            .handle(&DnsQuestion {
+            .query(&DnsQuestion {
                 qname: domain.clone(),
                 qclass: QuestionClass::IN,
                 qtyp: QuestionTyp::A,
@@ -98,14 +109,20 @@ impl DnsRecursiveNameserver {
     }
 
     pub fn query(&mut self, mut tx: DnsTransaction) {
-        println!("[{}] Computing {}", tx.id(), tx.question);
+        tracing::trace!("querying '{}'", tx.question);
         tx.operation_counter += 1;
-        match self.inner.handle(&tx.question) {
+        match self.inner.query(&tx.question) {
             Ok(response) => {
                 // Direct anwser
                 if !response.anwsers.is_empty() {
-                    println!("[{}] Anwsered {}", tx.id(), tx.question);
+                    tracing::trace!(
+                        "anwsered query '{}' with {} anwsers: \n{}",
+                        tx.question,
+                        response.anwsers.len(),
+                        response.anwsers[0]
+                    );
                     self.finished_transactions.push(DnsFinishedTransaction {
+                        transaction: tx.client_transaction,
                         client: tx.client,
                         question: tx.question,
                         response,
@@ -125,9 +142,8 @@ impl DnsRecursiveNameserver {
                         .get_addr_of(&ns.nameserver)
                         .expect("no NS name resoultion");
 
-                    println!(
-                        "[{}] Delegating {} to {} ({})",
-                        tx.id(),
+                    tracing::trace!(
+                        "delegating '{}' to {} ({})",
                         tx.question,
                         ns.nameserver,
                         ns_addr
@@ -147,13 +163,17 @@ impl DnsRecursiveNameserver {
 
                 // no anweser, and now extra info
                 // refer to root servers
-                let root = self.roots[random::<usize>() % self.roots.len()];
+                let root = &self.roots[random::<usize>() % self.roots.len()];
                 self.queries.push(DnsNameserverQuery {
                     transaction: tx.local_transaction,
-                    nameserver_ip: root,
+                    nameserver_ip: root.0,
                     question: tx.question.clone(),
                 });
-                println!("[{}] Delegating {} to ROOT {} ", tx.id(), tx.question, root);
+                tracing::trace!(
+                    "delegating '{}' to root nameserver {:?} ",
+                    tx.question,
+                    root
+                );
 
                 self.active_transactions.push(tx);
             }
@@ -161,7 +181,7 @@ impl DnsRecursiveNameserver {
         }
     }
 
-    pub fn include(&mut self, source: SocketAddr, msg: DnsMessage) {
+    pub fn handle_response(&mut self, source: SocketAddr, msg: DnsMessage) {
         let Some(active_transaction_idx) = self
             .active_transactions
             .iter()
@@ -172,32 +192,39 @@ impl DnsRecursiveNameserver {
 
         let tx = self.active_transactions.remove(active_transaction_idx);
 
-        if msg.rcode != DnsResponseCode::NoError {
-            tracing::warn!(
-                "[0x{:x}] Got response to transaction {} with errors {:?} from {}",
-                tx.client_transaction,
-                msg.transaction,
-                msg.rcode,
-                source
-            );
-            let mut resp = msg;
-            resp.transaction = tx.client_transaction;
-            // self.finished_transactions.push(DnsFinishedTransaction { client: tx.client, question: tx., response: () });
-            return;
-        }
+        info_span!(
+            "tx",
+            req = tx.client_transaction,
+            resolve = tx.local_transaction
+        )
+        .in_scope(|| {
+            if msg.rcode != DnsResponseCode::NoError {
+                tracing::warn!("got response with errors {:?} from {}", msg.rcode, source);
+                let mut resp = msg;
+                resp.transaction = tx.client_transaction;
+                // self.finished_transactions.push(DnsFinishedTransaction { client: tx.client, question: tx., response: () });
+                return;
+            }
 
-        for record in msg.response() {
-            self.inner.add_cached(record.clone());
-        }
+            tracing::trace!("got response: {} elements", msg.response().count());
 
-        //  Restate questions
-        self.query(tx);
+            for record in msg.response() {
+                self.inner.add_cached(record.clone());
+            }
+
+            //  Restate questions
+            self.query(tx);
+        });
     }
 }
 
 impl DnsNameserver for DnsRecursiveNameserver {
     fn incoming(&mut self, source: SocketAddr, mut msg: DnsMessage) {
-        self.handle(source, msg.transaction, msg.response.questions.remove(0));
+        if msg.qr {
+            self.handle_response(source, msg);
+        } else {
+            self.handle_query(source, msg.transaction, msg.response.questions.remove(0));
+        }
     }
     fn queries(&mut self) -> impl Iterator<Item = DnsNameserverQuery> {
         self.queries.drain(..)

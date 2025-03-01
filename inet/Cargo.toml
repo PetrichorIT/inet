@@ -6,10 +6,11 @@ version = "0.1.0"
 [features]
 full = ["uds", "dhcp"]
 
-default = ["uds"]
+default = ["uds", "test-util"]
 uds = ["types/uds"]
 dhcp = []
 libpcap = []
+test-util = []
 
 [dependencies]
 async-trait = "*"

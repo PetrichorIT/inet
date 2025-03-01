@@ -1,5 +1,5 @@
-use std::io;
 use des::time::SimTime;
+use std::io;
 
 mod db;
 mod error;
@@ -18,7 +18,6 @@ pub use types::*;
 pub use zonefile::*;
 
 pub struct DnsZoneResolver {
-    // dbs: FxHashMap<ResourceRecordClass, RecordMap>,
     db: RecordMap,
     zone: DnsString,
 }

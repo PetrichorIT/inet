@@ -18,6 +18,7 @@ pub struct DnsTransaction {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DnsFinishedTransaction {
+    pub transaction: u16,
     pub client: SocketAddr,
     pub question: DnsQuestion,
     pub response: QueryResponse,

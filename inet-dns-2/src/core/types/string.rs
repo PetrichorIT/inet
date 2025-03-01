@@ -241,7 +241,7 @@ mod tests {
 
     #[test]
     fn truncate() {
-        let mut value: DnsString = "www.example.org.".parse().unwrap();
+        let value: DnsString = "www.example.org.".parse().unwrap();
         assert_eq!(value.truncated(3), "www.example.org.".parse().unwrap());
         assert_eq!(value.truncated(2), "example.org.".parse().unwrap());
         assert_eq!(value.truncated(1), "org.".parse().unwrap());

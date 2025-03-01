@@ -1,6 +1,6 @@
 use bytepack::{FromBytestream, ToBytestream};
 use des::time::sleep;
-use inet::UdpSocket;
+use inet::{utils::get_ip, UdpSocket};
 use std::{
     io,
     net::{Ipv4Addr, SocketAddr},
@@ -18,6 +18,7 @@ use crate::core::QueryResponse;
 pub use iterative::DnsIterativeNameserver;
 pub use pkt::*;
 pub use recursive::DnsRecursiveNameserver;
+pub use root::*;
 use transaction::DnsFinishedTransaction;
 use types::DnsNameserverQuery;
 
@@ -31,14 +32,37 @@ pub trait DnsNameserver {
 
 pub struct UdpBased<T: DnsNameserver> {
     nameserver: T,
+    port: u16,
+    root: bool,
 }
 
 impl<T: DnsNameserver> UdpBased<T> {
+    pub const fn new(nameserver: T) -> Self {
+        Self {
+            nameserver,
+            port: 43,
+            root: false,
+        }
+    }
+
+    pub const fn with_port(mut self, port: u16) -> Self {
+        self.port = port;
+        self
+    }
+
+    pub fn set_root(mut self) -> Self {
+        self.root = true;
+        self
+    }
+
     pub async fn launch(&mut self) -> io::Result<()> {
-        let addr = SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), 43);
+        let addr = SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), self.port);
         let socket = UdpSocket::bind(addr).await?;
 
-        tracing::info!("created socket {} for dns requrests", socket.local_addr()?);
+        tracing::trace!("created socket {} for dns requrests", socket.local_addr()?);
+        if self.root {
+            declare_root(get_ip().unwrap(), ".".to_string());
+        }
 
         let mut buf = vec![0u8; 512];
         loop {
@@ -57,8 +81,18 @@ impl<T: DnsNameserver> UdpBased<T> {
 
             // Process outgoing streams
             for anwser in self.nameserver.anwsers() {
-                // let buf = anwser.
-                dbg!(anwser);
+                let msg = DnsMessage {
+                    transaction: anwser.transaction,
+                    qr: true,
+                    opcode: DnsOpCode::Query,
+                    aa: false,
+                    tc: false,
+                    rd: true,
+                    ra: false,
+                    rcode: DnsResponseCode::NoError,
+                    response: anwser.response,
+                };
+                socket.send_to(&msg.to_vec()?, anwser.client).await?;
             }
 
             for query in self.nameserver.queries() {
@@ -83,7 +117,7 @@ impl<T: DnsNameserver> UdpBased<T> {
             }
         }
 
-        tracing::info!("closed socket {} for dns requrests", socket.local_addr()?);
+        tracing::trace!("closed socket {} for dns requrests", socket.local_addr()?);
 
         Ok(())
     }

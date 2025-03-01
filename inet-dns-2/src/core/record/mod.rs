@@ -174,7 +174,7 @@ impl Display for DnsResourceRecord {
     }
 }
 
-pub trait ResourceRecord: Debug {
+pub trait ResourceRecord: Debug + Send {
     fn name(&self) -> &DnsString;
     fn ttl(&self) -> Option<u32>;
     fn class(&self) -> Option<ResourceRecordClass>;

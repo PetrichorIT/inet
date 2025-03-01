@@ -1,6 +1,10 @@
 use std::net::SocketAddr;
 
-use crate::core::{DnsError, DnsQuestion, DnsResourceRecord, DnsZoneResolver, QueryResponse};
+use tracing::info_span;
+
+use crate::core::{
+    DnsError, DnsQuestion, DnsResourceRecord, DnsResponseCode, DnsZoneResolver, QueryResponse,
+};
 
 use super::{
     transaction::DnsFinishedTransaction, types::DnsNameserverQuery, DnsMessage, DnsNameserver,
@@ -10,7 +14,7 @@ pub struct DnsIterativeNameserver {
     zones: Vec<DnsZoneResolver>,
     cache: Option<DnsZoneResolver>,
 
-    respone: Option<DnsFinishedTransaction>,
+    responses: Vec<DnsFinishedTransaction>,
 }
 
 impl DnsIterativeNameserver {
@@ -19,7 +23,7 @@ impl DnsIterativeNameserver {
         Self {
             zones,
             cache: None,
-            respone: None,
+            responses: Vec::new(),
         }
     }
 
@@ -34,8 +38,9 @@ impl DnsIterativeNameserver {
         }
     }
 
-    pub fn handle(&self, question: &DnsQuestion) -> Result<QueryResponse, DnsError> {
-        // DB tick
+    pub fn query(&self, question: &DnsQuestion) -> Result<QueryResponse, DnsError> {
+        // TODO: db tick
+
         let mut last_err = None;
         for zone in self
             .zones
@@ -50,20 +55,38 @@ impl DnsIterativeNameserver {
             }
         }
 
-        Err(last_err.take().unwrap())
+        Err(last_err.take().unwrap_or_else(|| {
+            DnsError::new(DnsResponseCode::NotZone, "request directed to invalid zone")
+        }))
     }
 }
 
 impl DnsNameserver for DnsIterativeNameserver {
     fn incoming(&mut self, source: SocketAddr, msg: DnsMessage) {
-        self.respone = Some(DnsFinishedTransaction {
-            response: self.handle(&msg.response.questions[0]).unwrap(),
-            question: msg.response.questions[0].clone(),
-            client: source,
+        info_span!("tx", req = msg.transaction).in_scope(|| {
+            for question in msg.response.questions {
+                tracing::trace!("querying '{}'", question);
+                match self.query(&question) {
+                    Ok(result) => self.responses.push(DnsFinishedTransaction {
+                        transaction: msg.transaction,
+                        response: result,
+                        question,
+                        client: source,
+                    }),
+                    Err(e) => {
+                        tracing::error!("query error: {e}");
+                        return;
+                    }
+                };
+            }
         });
     }
+
     fn anwsers(&mut self) -> impl Iterator<Item = DnsFinishedTransaction> {
-        self.respone.take().into_iter()
+        self.responses.drain(..).map(|v| {
+            tracing::trace!("responding to '{}' with:{}", v.question, v.response);
+            v
+        })
     }
 
     fn queries(&mut self) -> impl Iterator<Item = DnsNameserverQuery> {

@@ -14,3 +14,6 @@ des = { version = "*", features = ["full"] }
 fxhash = "*"
 async-trait = "*"
 tokio = "*"
+
+[dev-dependencies]
+inet = { path = "../inet", features = ["test-util"] }

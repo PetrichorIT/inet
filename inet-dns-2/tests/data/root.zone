@@ -1,0 +1,8 @@
+. 7000 IN SOA a.root-servers.net. admin@a.net (7000 7000 7000 7000 700)
+
+. 1800 IN NS a.root-server.net.
+. 1800 IN NS b.root-servers.net.
+
+org. 1800 IN NS ns0.nameservers.org.
+
+ns0.nameservers.org. 1800 IN A 192.168.2.20

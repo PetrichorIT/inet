@@ -66,10 +66,8 @@ impl FromStr for Zonefile {
 
         let mut reader = Reader {
             origin: Rc::new(DnsString::empty()),
-
             last_ttl: None,
             default_ttl: None,
-
             last_name: None,
         };
 
