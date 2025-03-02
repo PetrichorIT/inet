@@ -1,7 +1,7 @@
 use super::IOContext;
 use des::{
     net::{module::current, processing::ProcessingElement},
-    prelude::{Message, ModuleId},
+    prelude::Message,
 };
 
 /// A plugin managing IO primitives provided by inet.
@@ -12,9 +12,9 @@ pub struct IOPlugin {
 
 impl IOPlugin {
     /// Creates a new plugin without defined network devices.
-    pub(super) fn new(id: ModuleId) -> Self {
+    pub(super) fn new(ctx: IOContext) -> Self {
         Self {
-            ctx: Some(Box::new(IOContext::new(id))),
+            ctx: Some(Box::new(ctx)),
             prev: None,
         }
     }

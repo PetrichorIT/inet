@@ -1,7 +1,7 @@
 use std::{future::Future, io, net::Ipv4Addr, time::Duration};
 
 use des::{
-    net::{AsyncFn, Sim},
+    net::{processing::ProcessingStack, AsyncFn, Sim},
     prelude::{Channel, ChannelDropBehaviour, ChannelMetrics},
     runtime::{Builder, RuntimeResult},
 };
@@ -16,8 +16,8 @@ pub struct SimpleSim {
 }
 
 impl SimpleSim {
-    pub fn new() -> Self {
-        let mut sim = Sim::new(()).with_stack(crate::init);
+    pub fn new(stack: impl FnMut() -> ProcessingStack + 'static) -> Self {
+        let mut sim = Sim::new(()).with_stack(stack);
         sim.node("switch", LinkLayerSwitch::default());
 
         Self { sim }
@@ -56,5 +56,14 @@ impl SimpleSim {
     pub fn run(self) -> RuntimeResult<Sim<()>> {
         let rt = Builder::seeded(123).max_time(100.0.into()).build(self.sim);
         rt.run()
+    }
+}
+
+impl Default for SimpleSim {
+    fn default() -> Self {
+        let mut sim = Sim::new(()).with_stack(crate::init);
+        sim.node("switch", LinkLayerSwitch::default());
+
+        Self { sim }
     }
 }

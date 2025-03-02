@@ -7,7 +7,7 @@ edition = "2021"
 
 [dependencies]
 tracing = "*"
-inet = { path = "../inet" }
+inet = { path = "../inet", features = ["uds"] }
 types = { path = "../util/types" }
 bytepack = { path = "../util/bytepack" }
 des = { version = "*", features = ["full"] }
@@ -16,4 +16,4 @@ async-trait = "*"
 tokio = "*"
 
 [dev-dependencies]
-inet = { path = "../inet", features = ["test-util"] }
+inet = { path = "../inet", features = ["uds", "test-util"] }

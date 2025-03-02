@@ -30,6 +30,7 @@ cfg_test_util! {
 }
 
 use des::net::{module::ModuleId, processing::ProcessingStack};
+use dns::DnsResolver;
 pub use types;
 
 mod udp;
@@ -52,5 +53,17 @@ use ctx::*;
 /// Call this function as the first step in your simulation (pre runtime creation)
 #[must_use]
 pub fn init() -> ProcessingStack {
-    ProcessingStack::from(IOPlugin::new(ModuleId::NULL))
+    ProcessingStack::from(IOPlugin::new(IOContext::new(ModuleId::NULL)))
+}
+
+pub fn stack(
+    dns_hook: DnsResolver,
+    // on_startup: impl Fn() -> () + 'static,
+) -> Box<dyn FnMut() -> ProcessingStack + 'static> {
+    // let on_startup = Arc::new(on_startup);
+    Box::new(move || {
+        let mut io = IOContext::new(ModuleId::NULL);
+        io.dns = dns_hook;
+        ProcessingStack::from(IOPlugin::new(io))
+    })
 }

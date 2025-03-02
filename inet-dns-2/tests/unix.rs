@@ -1,8 +1,9 @@
-use std::str::FromStr;
+use std::{str::FromStr, time::Duration};
 
-use inet::test_util::SimpleSim;
+use des::time::SimTime;
+use inet::{dns::lookup_host, stack, test_util::SimpleSim};
 use inet_dns_2::{
-    client::dns_resolver,
+    client::{resolve, ClientResolver},
     core::{DnsZoneResolver, Zonefile},
     server::{DnsIterativeNameserver, UdpBased},
 };
@@ -13,7 +14,9 @@ const ZONE_FILE_EXAMPLE_ORG: &str = include_str!("data/example.org.zone");
 
 #[test]
 fn test_integration() {
-    let mut sim = SimpleSim::default();
+    des::tracing::init();
+
+    let mut sim = SimpleSim::new(stack(resolve));
 
     // Servers
     sim.node("192.168.2.10", || async {
@@ -48,8 +51,26 @@ fn test_integration() {
 
     // Clients
     sim.node("192.168.2.101", || async {
-        let lookup = dns_resolver("bob.example.org", 80).await;
-        tracing::warn!("{lookup:?}");
+        ClientResolver::default().launch()?;
+
+        let t0 = SimTime::now();
+        let _ = lookup_host(("bob.example.org.", 80)).await;
+        let resolve_1 = t0.elapsed();
+
+        let t0 = SimTime::now();
+        let _ = lookup_host(("bob.example.org.", 80)).await;
+        let resolve_2 = t0.elapsed();
+
+        assert_eq!(resolve_2, Duration::ZERO);
+
+        let t0 = SimTime::now();
+        let _ = lookup_host(("alice.example.org.", 80)).await;
+        let resolve_3 = t0.elapsed();
+
+        assert!(resolve_3 < resolve_1);
+
+        tracing::info!("DONE");
+
         Ok(())
     });
     sim.node("192.168.2.102", || async { Ok(()) });
