@@ -2,29 +2,26 @@
 
 use fxhash::FxBuildHasher;
 use fxhash::FxHashMap;
-use inet::extensions::load_ext;
 use inet::socket::Fd;
 
+mod addr;
 mod dgram;
-// mod stream;
+mod stream;
 
 pub use self::dgram::*;
-// pub use self::stream::*;
+pub use self::stream::*;
+pub use addr::SocketAddr;
 
 pub(crate) struct UdsExtension {
     dgrams: FxHashMap<Fd, UnixDatagramHandle>,
-    // binds: FxHashMap<Fd, UnixListenerHandle>,
+    listeners: FxHashMap<Fd, UnixListenerHandle>,
 }
 
-impl UdsExtension {
-    pub fn new() -> Self {
+impl Default for UdsExtension {
+    fn default() -> Self {
         Self {
             dgrams: FxHashMap::with_hasher(FxBuildHasher::default()),
-            // binds: FxHashMap::with_hasher(FxBuildHasher::default()),
+            listeners: FxHashMap::with_hasher(FxBuildHasher::default()),
         }
     }
-}
-
-pub fn enable_uds() {
-    load_ext(UdsExtension::new())
 }

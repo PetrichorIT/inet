@@ -11,7 +11,8 @@ use des::{
     runtime::random,
     time::{interval_at, SimTime},
 };
-use inet::{uds::UnixDatagram, UdpSocket};
+use inet::UdpSocket;
+use inet_uds::UnixDatagram;
 
 use crate::{
     core::{

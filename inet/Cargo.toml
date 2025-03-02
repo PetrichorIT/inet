@@ -4,10 +4,9 @@ name = "inet"
 version = "0.1.0"
 
 [features]
-full = ["uds", "dhcp"]
+full = ["dhcp"]
 
-default = ["uds", "test-util"]
-uds = ["types/uds"]
+default = []
 dhcp = []
 libpcap = []
 test-util = []

@@ -18,9 +18,6 @@ pub mod tcp;
 pub mod udp;
 pub mod util;
 
-#[cfg(feature = "uds")]
-pub mod uds;
-
 #[must_use]
 pub fn split_off_front(mut buf: Vec<u8>, pos: usize) -> Vec<u8> {
     buf.copy_within(pos.., 0);

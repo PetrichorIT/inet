@@ -1,13 +1,3 @@
-macro_rules! cfg_uds {
-    ($($item:item)*) => {
-        $(
-            #[cfg(feature = "uds")]
-            #[cfg_attr(docsrs, doc(cfg(feature = "uds")))]
-            $item
-        )*
-    }
-}
-
 macro_rules! cfg_dhcp {
     ($($item:item)*) => {
         $(

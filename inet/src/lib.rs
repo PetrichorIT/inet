@@ -4,6 +4,7 @@ mod macros;
 pub mod arp;
 pub mod dns;
 pub mod extensions;
+pub mod fs;
 pub mod icmp;
 pub mod interface;
 pub mod io;
@@ -18,11 +19,6 @@ cfg_libpcap! {
 
 cfg_dhcp! {
     pub mod dhcp;
-}
-
-cfg_uds! {
-    pub mod uds;
-    pub mod fs;
 }
 
 cfg_test_util! {

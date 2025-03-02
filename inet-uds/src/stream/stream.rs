@@ -1,4 +1,7 @@
-use inet::types::uds::SocketAddr;
+use inet::{
+    extensions::with_ext,
+    socket::{close, socket},
+};
 use std::{
     future::Future,
     io::{Error, ErrorKind, Result},
@@ -13,12 +16,11 @@ use tokio::{
     sync::{oneshot, Mutex},
 };
 
-use super::{buf::Buffer, listener::IncomingStream};
+use crate::{addr::SocketAddr, UdsExtension};
+
+use super::{buf::Buffer, establish_link, listener::IncomingStream};
 use inet::socket::Fd;
-use inet::{
-    ctx::IOContext,
-    socket::{SocketDomain, SocketType},
-};
+use inet::socket::{SocketDomain, SocketType};
 
 /// A stream-oriented unix domain socket.
 #[derive(Debug)]
@@ -41,13 +43,44 @@ impl UnixStream {
     where
         P: AsRef<Path>,
     {
-        let estab =
-            IOContext::with_current(|ctx: &mut IOContext| ctx.uds_stream_connect(path.as_ref()))?;
-        estab.await.map_err(|e| Error::new(ErrorKind::Other, e))
+        let socket = socket(SocketDomain::AF_UNIX, SocketType::SOCK_STREAM, 0)?;
+        let rx = with_ext::<UdsExtension, _>(|uds| {
+            let addr = SocketAddr::from(path.as_ref().to_path_buf());
+            let Some(listener) = uds.listeners.values().find(|s| s.addr == addr) else {
+                return Err(Error::new(
+                    ErrorKind::ConnectionRefused,
+                    "connection refused",
+                ));
+            };
+
+            let (tx, rx) = oneshot::channel();
+            let stream = IncomingStream {
+                fd: socket,
+                remote_addr: SocketAddr::unnamed(),
+                local_addr: listener.addr.clone(),
+                establish: tx,
+            };
+
+            listener
+                .tx
+                .try_send(stream)
+                .expect("failed to send to socket");
+
+            Ok(rx)
+        })?;
+
+        rx.await
+            .map_err(|_| Error::new(ErrorKind::Other, "onshot failure"))
     }
 
     pub fn pair() -> Result<(UnixStream, UnixStream)> {
-        IOContext::with_current(|ctx: &mut IOContext| ctx.uds_stream_pair())
+        let lhs = socket(SocketDomain::AF_UNIX, SocketType::SOCK_STREAM, 0)?;
+        let rhs = socket(SocketDomain::AF_UNIX, SocketType::SOCK_STREAM, 0)?;
+
+        Ok(establish_link(
+            (lhs, SocketAddr::unnamed()),
+            (rhs, SocketAddr::unnamed()),
+        ))
     }
 
     pub fn local_addr(&self) -> Result<SocketAddr> {
@@ -142,90 +175,7 @@ impl Drop for UnixStream {
     fn drop(&mut self) {
         self.tx_readable.lock().unwrap().take().map(|w| w.wake());
         self.rx_writable.lock().unwrap().take().map(|w| w.wake());
-        IOContext::try_with_current(|ctx| ctx.uds_stream_drop(self.fd));
-    }
-}
 
-impl IOContext {
-    fn uds_stream_connect(&mut self, path: &Path) -> Result<oneshot::Receiver<UnixStream>> {
-        let addr = SocketAddr::from(path.to_path_buf());
-
-        let fd: Fd = self.create_socket(SocketDomain::AF_UNIX, SocketType::SOCK_STREAM, 0)?;
-
-        let Some(lis) = self.uds.binds.iter().find(|s| s.1.addr == addr) else {
-            return Err(Error::new(ErrorKind::ConnectionRefused, "connection refused"));
-        };
-
-        let (tx, rx) = oneshot::channel();
-
-        let incoming = IncomingStream {
-            fd,
-            addr: SocketAddr::unnamed(),
-            establish: tx,
-        };
-        lis.1
-            .tx
-            .try_send(incoming)
-            .map_err(|e| Error::new(ErrorKind::Other, e))?;
-        Ok(rx)
-    }
-
-    fn uds_stream_pair(&mut self) -> Result<(UnixStream, UnixStream)> {
-        let client = self.create_socket(SocketDomain::AF_UNIX, SocketType::SOCK_STREAM, 0)?;
-        let server = self.create_socket(SocketDomain::AF_UNIX, SocketType::SOCK_STREAM, 0)?;
-
-        Ok(self.uds_stream_link(
-            (client, SocketAddr::unnamed()),
-            (server, SocketAddr::unnamed()),
-        ))
-    }
-
-    pub(super) fn uds_stream_link(
-        &mut self,
-        client: (Fd, SocketAddr),
-        server: (Fd, SocketAddr),
-    ) -> (UnixStream, UnixStream) {
-        // (1) create server socket
-        let server_buf = Arc::new(Mutex::new(Buffer::new(4096)));
-        let server_buf_readable = Arc::new(sync::Mutex::new(None));
-        let server_buf_writable = Arc::new(sync::Mutex::new(None));
-
-        let client_buf = Arc::new(Mutex::new(Buffer::new(4096)));
-        let client_buf_readable = Arc::new(sync::Mutex::new(None));
-        let client_buf_writable = Arc::new(sync::Mutex::new(None));
-
-        let server_stream = UnixStream {
-            fd: server.0,
-            addr: server.1.clone(),
-            peer: client.1.clone(),
-
-            rx_buf: server_buf.clone(),
-            rx_readable: server_buf_readable.clone(),
-            rx_writable: server_buf_writable.clone(),
-
-            tx_buf: client_buf.clone(),
-            tx_readable: client_buf_readable.clone(),
-            tx_writable: client_buf_writable.clone(),
-        };
-
-        let client_stream = UnixStream {
-            fd: client.0,
-            addr: client.1,
-            peer: server.1,
-
-            rx_buf: client_buf,
-            rx_readable: client_buf_readable,
-            rx_writable: client_buf_writable,
-
-            tx_buf: server_buf,
-            tx_readable: server_buf_readable,
-            tx_writable: server_buf_writable,
-        };
-
-        (client_stream, server_stream)
-    }
-
-    fn uds_stream_drop(&mut self, fd: Fd) -> Result<()> {
-        self.close_socket(fd)
+        let _ = close(self.fd);
     }
 }

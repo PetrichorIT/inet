@@ -1,7 +1,6 @@
 use inet::{
-    extensions::with_ext,
+    extensions::{try_with_ext, with_ext},
     socket::{close, socket},
-    types::uds::SocketAddr,
 };
 use std::{
     io::{Error, ErrorKind, Result},
@@ -14,7 +13,7 @@ use tokio::sync::{
 
 use inet::socket::{Fd, SocketDomain, SocketType};
 
-use crate::UdsExtension;
+use crate::{addr::SocketAddr, UdsExtension};
 
 /// An I/O object representing a Unix datagram socket.
 ///
@@ -25,7 +24,7 @@ use crate::UdsExtension;
 ///
 /// ## Examples
 ///
-/// Associating a
+#[derive(Debug)]
 pub struct UnixDatagram {
     fd: Fd,
     rx: Mutex<Receiver<(Vec<u8>, SocketAddr)>>,
@@ -58,7 +57,6 @@ impl UnixDatagram {
                 .map(|h| h.addr.clone())
                 .ok_or(Error::new(ErrorKind::Other, "socket dropped"))
         })
-        .unwrap()
     }
 
     /// Returns the peer addr of the socket, set through [`UnixDatagram::connect`].
@@ -77,8 +75,7 @@ impl UnixDatagram {
                         .ok_or(Error::new(ErrorKind::Other, "no peer"))
                 })
                 .ok_or(Error::new(ErrorKind::Other, "socket dropped"))
-        })
-        .unwrap()?
+        })?
     }
 
     /// Creates a new named socket bound to a given filename.
@@ -95,13 +92,50 @@ impl UnixDatagram {
         P: AsRef<Path>,
     {
         let fd: Fd = socket(SocketDomain::AF_UNIX, SocketType::SOCK_DGRAM, 0)?;
-        with_ext::<UdsExtension, _>(|uds| uds.uds_dgram_bind(fd, path.as_ref())).unwrap()
+        with_ext::<UdsExtension, _>(|uds| {
+            let path: &Path = path.as_ref();
+            let addr = SocketAddr::from(path.to_path_buf());
+
+            if uds.dgrams.values().any(|s| s.addr == addr) {
+                return Err(Error::new(ErrorKind::AddrInUse, "address already in use"));
+            }
+
+            let (tx, rx) = channel(64);
+            let handle = UnixDatagramHandle {
+                addr,
+                peer: None,
+                tx,
+            };
+            let socket = UnixDatagram {
+                fd,
+                rx: Mutex::new(rx),
+            };
+
+            uds.dgrams.insert(fd, handle);
+            Ok(socket)
+        })
     }
 
     /// Creates a new unnamed socket.
     pub fn unbound() -> Result<UnixDatagram> {
         let fd: Fd = socket(SocketDomain::AF_UNIX, SocketType::SOCK_DGRAM, 0)?;
-        with_ext::<UdsExtension, _>(|uds| uds.uds_dgram_unbound(fd)).unwrap()
+        with_ext::<UdsExtension, _>(|uds| {
+            let addr = SocketAddr::unnamed();
+
+            let (tx, rx) = channel(64);
+            let handle = UnixDatagramHandle {
+                addr,
+                peer: None,
+                tx,
+            };
+            let socket = UnixDatagram {
+                fd,
+                rx: Mutex::new(rx),
+            };
+
+            uds.dgrams.insert(fd, handle);
+            Ok(socket)
+        })
     }
 
     /// Creates a pair of unnamed socket, connected to each other
@@ -114,8 +148,8 @@ impl UnixDatagram {
         let a = Self::unbound()?;
         let b = Self::unbound()?;
 
-        with_ext::<UdsExtension, _>(|uds| uds.uds_dgram_connect_fd(a.fd, b.fd)).unwrap()?;
-        with_ext::<UdsExtension, _>(|uds| uds.uds_dgram_connect_fd(b.fd, a.fd)).unwrap()?;
+        with_ext::<UdsExtension, _>(|uds| uds.connect_dgram(a.fd, b.fd))?;
+        with_ext::<UdsExtension, _>(|uds| uds.connect_dgram(b.fd, a.fd))?;
 
         Ok((a, b))
     }
@@ -135,7 +169,16 @@ impl UnixDatagram {
     {
         let addr = SocketAddr::from(path.as_ref().to_path_buf());
 
-        with_ext::<UdsExtension, _>(|uds| uds.uds_dgram_connect(self.fd, addr)).unwrap()
+        with_ext::<UdsExtension, _>(|uds| {
+            let Some((peer, _)) = uds.dgrams.iter().find(|h| h.1.addr == addr) else {
+                return Err(Error::new(
+                    ErrorKind::ConnectionRefused,
+                    "connection refused",
+                ));
+            };
+
+            uds.connect_dgram(self.fd, *peer)
+        })
     }
 
     /// Sends a datagram to the peer.
@@ -146,8 +189,22 @@ impl UnixDatagram {
     /// no peer was connected.
     pub async fn send(&self, buf: &[u8]) -> Result<usize> {
         let addr = self.local_addr()?;
-        let sender = with_ext::<UdsExtension, _>(|uds| uds.uds_dgram_get_handle_for_peer(self.fd))
-            .unwrap()?;
+        let sender = with_ext::<UdsExtension, _>(|uds| {
+            let fd = self.fd;
+            let Some(handle) = uds.dgrams.get(&fd) else {
+                return Err(Error::new(ErrorKind::Other, "socket unbound"));
+            };
+
+            let Some(peer_fd) = handle.peer else {
+                return Err(Error::new(ErrorKind::Other, "no peer"));
+            };
+
+            let Some(peer) = uds.dgrams.get(&peer_fd) else {
+                return Err(Error::new(ErrorKind::Other, "peer dropped"));
+            };
+
+            Ok(peer.tx.clone())
+        })?;
         match sender.send((Vec::from(buf), addr)).await {
             Ok(_) => Ok(buf.len()),
             Err(e) => Err(Error::new(ErrorKind::Other, e)),
@@ -164,9 +221,17 @@ impl UnixDatagram {
         P: AsRef<Path>,
     {
         let addr = self.local_addr()?;
-        let sender =
-            with_ext::<UdsExtension, _>(|uds| uds.uds_dgram_get_handle_by_path(target.as_ref()))
-                .unwrap()?;
+        let sender = with_ext::<UdsExtension, _>(|uds| {
+            let target = SocketAddr::from(target.as_ref().to_path_buf());
+            if let Some((_, handle)) = uds.dgrams.iter().find(|(_, h)| h.addr == target) {
+                Ok(handle.tx.clone())
+            } else {
+                Err(Error::new(
+                    ErrorKind::AddrNotAvailable,
+                    "target addr not found",
+                ))
+            }
+        })?;
         match sender.send((Vec::from(buf), addr)).await {
             Ok(_) => Ok(buf.len()),
             Err(e) => Err(Error::new(ErrorKind::Other, e)),
@@ -182,7 +247,6 @@ impl UnixDatagram {
     pub async fn recv(&self, buf: &mut [u8]) -> Result<usize> {
         let peered =
             with_ext::<UdsExtension, _>(|uds| uds.dgrams.get(&self.fd).map(|v| v.peer.is_some()))
-                .unwrap()
                 .unwrap_or(false);
         if !peered {
             return Err(Error::new(ErrorKind::Other, "no peer"));
@@ -208,103 +272,243 @@ impl UnixDatagram {
 
 impl Drop for UnixDatagram {
     fn drop(&mut self) {
-        with_ext::<UdsExtension, _>(|uds| uds.uds_dgram_drop(self.fd));
+        try_with_ext::<UdsExtension, _>(|uds| uds.dgrams.remove(&self.fd));
         let _ = close(self.fd);
     }
 }
 
 impl UdsExtension {
-    fn uds_dgram_bind(&mut self, fd: Fd, path: &Path) -> Result<UnixDatagram> {
-        let addr = SocketAddr::from(path.to_path_buf());
-
-        let entry = self.dgrams.iter().any(|s| s.1.addr == addr);
-        if entry {
-            return Err(Error::new(ErrorKind::AddrInUse, "address already in use"));
-        }
-
-        let (tx, rx) = channel(64);
-        let handle = UnixDatagramHandle {
-            addr,
-            peer: None,
-            tx,
-        };
-        let socket = UnixDatagram {
-            fd,
-            rx: Mutex::new(rx),
-        };
-
-        self.dgrams.insert(fd, handle);
-        Ok(socket)
-    }
-
-    fn uds_dgram_unbound(&mut self, fd: Fd) -> Result<UnixDatagram> {
-        let addr = SocketAddr::unnamed();
-
-        let (tx, rx) = channel(64);
-        let handle = UnixDatagramHandle {
-            addr,
-            peer: None,
-            tx,
-        };
-        let socket = UnixDatagram {
-            fd,
-            rx: Mutex::new(rx),
-        };
-
-        self.dgrams.insert(fd, handle);
-        Ok(socket)
-    }
-
-    fn uds_dgram_connect(&mut self, fd: Fd, addr: SocketAddr) -> Result<()> {
-        let Some((peer, _)) = self.dgrams.iter().find(|h| h.1.addr == addr) else {
-            return Err(Error::new(ErrorKind::ConnectionRefused, "connection refused"))
-        };
-
-        self.uds_dgram_connect_fd(fd, *peer)
-    }
-
-    fn uds_dgram_connect_fd(&mut self, fd: Fd, peer: Fd) -> Result<()> {
+    fn connect_dgram(&mut self, fd: Fd, peer: Fd) -> Result<()> {
         let Some(handle) = self.dgrams.get_mut(&fd) else {
-            return Err(Error::new(ErrorKind::InvalidInput, "no such uds socket exists"))
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                "no such uds socket exists",
+            ));
         };
 
         handle.peer = Some(peer);
         Ok(())
     }
+}
 
-    fn uds_dgram_get_handle_by_path(
-        &mut self,
-        dst: &Path,
-    ) -> Result<Sender<(Vec<u8>, SocketAddr)>> {
-        let dst = SocketAddr::from(dst.to_path_buf());
+#[cfg(test)]
+mod tests {
+    use std::{iter::repeat_with, time::Duration};
 
-        if let Some((_fd, handle)) = self.dgrams.iter().find(|(_, h)| h.addr == dst) {
-            Ok(handle.tx.clone())
-        } else {
-            Err(Error::new(
-                ErrorKind::AddrNotAvailable,
-                "target addr not found",
-            ))
-        }
+    use super::*;
+
+    use des::{
+        net::{AsyncFn, Sim},
+        runtime::{random, Builder},
+        time::sleep,
+    };
+    use serial_test::serial;
+
+    #[serial]
+    #[test]
+    fn cannot_bind_to_same_addr() {
+        let mut sim = Sim::new(()).with_stack(inet::init);
+
+        sim.node(
+            "alice",
+            AsyncFn::io(|_| async move {
+                let _uds = UnixDatagram::bind("/usr/link")?;
+                let error = UnixDatagram::bind("/usr/link").unwrap_err();
+                assert_eq!(error.kind(), ErrorKind::AddrInUse);
+                assert_eq!(error.to_string(), "address already in use");
+
+                Ok(())
+            }),
+        );
+
+        let _ = Builder::seeded(123).max_time(100.0.into()).build(sim).run();
     }
 
-    fn uds_dgram_get_handle_for_peer(&mut self, fd: Fd) -> Result<Sender<(Vec<u8>, SocketAddr)>> {
-        let Some(handle) = self.dgrams.get(&fd) else {
-            return Err(Error::new(ErrorKind::Other, "socket unbound"))
-        };
+    #[serial]
+    #[test]
+    fn unnamed_pair_has_peer_addr() {
+        let mut sim = Sim::new(()).with_stack(inet::init);
 
-        let Some(peer_fd) = handle.peer else {
-            return Err(Error::new(ErrorKind::Other, "no peer"))
-        };
+        sim.node(
+            "alice",
+            AsyncFn::io(|_| async move {
+                let (lhs, rhs) = UnixDatagram::pair()?;
+                assert_eq!(lhs.peer_addr()?, SocketAddr::unnamed());
+                assert_eq!(rhs.peer_addr()?, SocketAddr::unnamed());
 
-        let Some(peer) = self.dgrams.get(&peer_fd) else {
-            return Err(Error::new(ErrorKind::Other, "peer dropped"))
-        };
+                Ok(())
+            }),
+        );
 
-        Ok(peer.tx.clone())
+        let _ = Builder::seeded(123).max_time(100.0.into()).build(sim).run();
     }
 
-    fn uds_dgram_drop(&mut self, fd: Fd) {
-        self.dgrams.remove(&fd);
+    #[serial]
+    #[test]
+    fn unamed_pair_connectivity() {
+        let mut app = Sim::new(()).with_stack(inet::init);
+        app.node(
+            "main",
+            AsyncFn::io(|_| async move {
+                let (a, b) = UnixDatagram::pair().unwrap();
+
+                let h1 = tokio::spawn(async move {
+                    for _i in 0..10 {
+                        a.send(&[1, 2, 3]).await.unwrap();
+                        sleep(Duration::from_secs_f64(random())).await;
+                    }
+
+                    for _i in 0..10 {
+                        a.recv(&mut [0; 500]).await.unwrap();
+                    }
+                });
+
+                let h2 = tokio::spawn(async move {
+                    for _i in 0..10 {
+                        b.send(&[1, 2, 3]).await.unwrap();
+                        sleep(Duration::from_secs_f64(random())).await;
+                    }
+
+                    for _i in 0..10 {
+                        b.recv(&mut [0; 500]).await.unwrap();
+                    }
+                });
+
+                h1.await?;
+                h2.await?;
+
+                Ok(())
+            })
+            .require_join(),
+        );
+        let _ = Builder::seeded(123).max_time(100.0.into()).build(app).run();
+    }
+
+    #[serial]
+    #[test]
+    fn connected_can_transmit_datagrams() {
+        let mut sim = Sim::new(()).with_stack(inet::init);
+
+        sim.node(
+            "alice",
+            AsyncFn::io(|_| async move {
+                let (lhs, rhs) = UnixDatagram::pair()?;
+
+                let h1 = tokio::spawn(async move {
+                    let mut buf = [0; 1024];
+                    let n = lhs.recv(&mut buf).await.unwrap();
+                    assert_eq!(buf[..n], [1, 2, 3, 4, 5, 6]);
+                });
+                let h2 = tokio::spawn(async move {
+                    rhs.send(&[1, 2, 3, 4, 5, 6]).await.unwrap();
+                });
+
+                h1.await.unwrap();
+                h2.await.unwrap();
+                Ok(())
+            }),
+        );
+
+        let _ = Builder::seeded(123).max_time(100.0.into()).build(sim).run();
+    }
+
+    #[serial]
+    #[test]
+    fn named_connectivity() {
+        let mut app = Sim::new(()).with_stack(inet::init);
+        app.node(
+            "main",
+            AsyncFn::io(|_| async move {
+                let h1 = tokio::spawn(async move {
+                    let sock = UnixDatagram::bind("/tmp/task1").unwrap();
+                    sleep(Duration::from_secs(1)).await;
+
+                    // Echo
+                    for _ in 0..10 {
+                        let mut buf = [0; 512];
+                        let (n, from) = sock.recv_from(&mut buf).await.unwrap();
+
+                        sock.send_to(&buf[..n], from.as_pathname().unwrap())
+                            .await
+                            .unwrap();
+                    }
+                });
+
+                let h2 = tokio::spawn(async move {
+                    let sock = UnixDatagram::bind("/tmp/task2").unwrap();
+                    for _i in 0..3 {
+                        let n = 200 + random::<usize>() % 200;
+                        let buf = repeat_with(|| random::<u8>()).take(n).collect::<Vec<_>>();
+
+                        sock.send_to(&buf, "/tmp/task1").await.unwrap();
+                        let mut rbuf = [0; 512];
+                        let (nn, _from) = sock.recv_from(&mut rbuf).await.unwrap();
+
+                        assert_eq!(n, nn);
+                        assert_eq!(buf[..n], rbuf[..n]);
+
+                        sleep(Duration::from_secs_f64(random())).await;
+                    }
+                });
+
+                let h3 = tokio::spawn(async move {
+                    let sock = UnixDatagram::bind("/tmp/task3").unwrap();
+                    for _i in 0..7 {
+                        let n = 200 + random::<usize>() % 200;
+                        let buf = repeat_with(|| random::<u8>()).take(n).collect::<Vec<_>>();
+
+                        sock.send_to(&buf, "/tmp/task1").await.unwrap();
+                        let mut rbuf = [0; 512];
+                        let (nn, _from) = sock.recv_from(&mut rbuf).await.unwrap();
+
+                        assert_eq!(n, nn);
+                        assert_eq!(buf[..n], rbuf[..n]);
+
+                        sleep(Duration::from_secs_f64(random())).await;
+                    }
+                });
+
+                h1.await?;
+                h2.await?;
+                h3.await?;
+                Ok(())
+            })
+            .require_join(),
+        );
+        let rt = Builder::seeded(123).max_time(100.0.into()).build(app);
+        let _ = rt.run().unwrap();
+    }
+
+    #[serial]
+    #[test]
+    fn named_tempdir() {
+        let mut app = Sim::new(()).with_stack(inet::init);
+        app.node(
+            "main",
+            AsyncFn::io(|_| async move {
+                let tmp = inet::fs::tempdir().unwrap();
+
+                // Bind each socket to a filesystem path
+                let tx_path = tmp.path().join("tx");
+                let tx = UnixDatagram::bind(&tx_path)?;
+                let rx_path = tmp.path().join("rx");
+                let rx = UnixDatagram::bind(&rx_path)?;
+
+                tracing::info!("tx: {tx_path:?} rx: {rx_path:?}");
+
+                let bytes = b"hello world";
+                tx.send_to(bytes, &rx_path).await?;
+
+                let mut buf = vec![0u8; 24];
+                let (size, addr) = rx.recv_from(&mut buf).await?;
+
+                let dgram = &buf[..size];
+                assert_eq!(dgram, bytes);
+                assert_eq!(addr.as_pathname().unwrap(), &tx_path);
+                Ok(())
+            })
+            .require_join(),
+        );
+        let _ = Builder::seeded(123).max_time(100.0.into()).build(app).run();
     }
 }

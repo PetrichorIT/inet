@@ -1,16 +1,20 @@
-use inet::types::uds::SocketAddr;
+use inet::{
+    extensions::{try_with_ext, with_ext},
+    socket::{close, socket},
+};
 use std::{
     io::{Error, ErrorKind, Result},
     path::Path,
+    sync::{self, Arc},
 };
 use tokio::sync::{
     mpsc::{channel, Receiver, Sender},
     oneshot, Mutex,
 };
 
-use crate::UdsExtension;
+use crate::{SocketAddr, UdsExtension};
 
-use super::UnixStream;
+use super::{buf::Buffer, UnixStream};
 use inet::socket::Fd;
 use inet::socket::{SocketDomain, SocketType};
 
@@ -30,7 +34,8 @@ pub(crate) struct UnixListenerHandle {
 #[derive(Debug)]
 pub(crate) struct IncomingStream {
     pub(super) fd: Fd,
-    pub(super) addr: SocketAddr,
+    pub(super) local_addr: SocketAddr,
+    pub(super) remote_addr: SocketAddr,
     pub(super) establish: oneshot::Sender<UnixStream>,
 }
 
@@ -39,7 +44,23 @@ impl UnixListener {
     where
         P: AsRef<Path>,
     {
-        IOContext::with_current(|ctx| ctx.uds_listener_bind(path.as_ref()))
+        let fd = socket(SocketDomain::AF_UNIX, SocketType::SOCK_STREAM, 0)?;
+
+        with_ext::<UdsExtension, _>(|uds| {
+            let addr = SocketAddr::from(path.as_ref().to_path_buf());
+            if uds.listeners.values().any(|v| v.addr == addr) {
+                return Err(Error::new(ErrorKind::AddrInUse, "address already in use"));
+            }
+
+            let (tx, rx) = channel(8);
+            let handle = UnixListenerHandle { addr, tx };
+            let listener = UnixListener {
+                fd,
+                rx: Mutex::new(rx),
+            };
+            uds.listeners.insert(fd, handle);
+            Ok(listener)
+        })
     }
 
     pub async fn accept(&self) -> Result<(UnixStream, SocketAddr)> {
@@ -47,63 +68,68 @@ impl UnixListener {
             return Err(Error::new(ErrorKind::Other, "socket closed"));
         };
 
-        IOContext::with_current(|ctx| ctx.uds_listener_accept(self.fd, incoming))
+        let fd = socket(SocketDomain::AF_UNIX, SocketType::SOCK_STREAM, 0)?;
+        let (client, server) = establish_link(
+            (incoming.fd, incoming.remote_addr.clone()),
+            (fd, incoming.local_addr),
+        );
+
+        incoming
+            .establish
+            .send(client)
+            .map_err(|_| Error::new(ErrorKind::Other, "failed to establish con"))?;
+
+        Ok((server, incoming.remote_addr))
     }
 }
 
 impl Drop for UnixListener {
     fn drop(&mut self) {
-        IOContext::try_with_current(|ctx| ctx.uds_listener_drop(self.fd));
+        let _ = close(self.fd);
+        let _ = try_with_ext::<UdsExtension, _>(|uds| uds.listeners.remove(&self.fd));
     }
 }
 
-impl UdsExtension {
-    fn uds_listener_bind(&mut self, path: &Path) -> Result<UnixListener> {
-        let addr = SocketAddr::from(path.to_path_buf());
+pub(super) fn establish_link(
+    client: (Fd, SocketAddr),
+    server: (Fd, SocketAddr),
+) -> (UnixStream, UnixStream) {
+    // (1) create server socket
+    let server_buf = Arc::new(Mutex::new(Buffer::new(4096)));
+    let server_buf_readable = Arc::new(sync::Mutex::new(None));
+    let server_buf_writable = Arc::new(sync::Mutex::new(None));
 
-        let entry = self.uds.binds.iter().any(|s| s.1.addr == addr);
-        if entry {
-            return Err(Error::new(ErrorKind::AddrInUse, "address already in use"));
-        }
+    let client_buf = Arc::new(Mutex::new(Buffer::new(4096)));
+    let client_buf_readable = Arc::new(sync::Mutex::new(None));
+    let client_buf_writable = Arc::new(sync::Mutex::new(None));
 
-        let fd: Fd = self.create_socket(SocketDomain::AF_UNIX, SocketType::SOCK_STREAM, 1)?;
+    let server_stream = UnixStream {
+        fd: server.0,
+        addr: server.1.clone(),
+        peer: client.1.clone(),
 
-        let (tx, rx) = channel(16);
-        let handle = UnixListenerHandle { tx, addr };
-        let socket = UnixListener {
-            fd,
-            rx: Mutex::new(rx),
-        };
+        rx_buf: server_buf.clone(),
+        rx_readable: server_buf_readable.clone(),
+        rx_writable: server_buf_writable.clone(),
 
-        self.uds.binds.insert(fd, handle);
-        Ok(socket)
-    }
+        tx_buf: client_buf.clone(),
+        tx_readable: client_buf_readable.clone(),
+        tx_writable: client_buf_writable.clone(),
+    };
 
-    fn uds_listener_accept(
-        &mut self,
-        lis_fd: Fd,
-        incoming: IncomingStream,
-    ) -> Result<(UnixStream, SocketAddr)> {
-        let Some(listener) = self.uds.binds.get(&lis_fd) else {
-            return Err(Error::new(ErrorKind::Other, "dropped"));
-        };
-        let l_addr = listener.addr.clone();
+    let client_stream = UnixStream {
+        fd: client.0,
+        addr: client.1,
+        peer: server.1,
 
-        // (0) create new local socket
-        let server_fd = self.create_socket(SocketDomain::AF_UNIX, SocketType::SOCK_STREAM, 0)?;
+        rx_buf: client_buf,
+        rx_readable: client_buf_readable,
+        rx_writable: client_buf_writable,
 
-        let (client, server) =
-            self.uds_stream_link((incoming.fd, incoming.addr.clone()), (server_fd, l_addr));
+        tx_buf: server_buf,
+        tx_readable: server_buf_readable,
+        tx_writable: server_buf_writable,
+    };
 
-        incoming
-            .establish
-            .send(client)
-            .map_err(|_| Error::new(ErrorKind::Other, "failed to establish stream, client died"))?;
-        Ok((server, incoming.addr))
-    }
-
-    fn uds_listener_drop(&mut self, fd: Fd) -> Result<()> {
-        self.uds.binds.remove(&fd);
-        self.close_socket(fd)
-    }
+    (client_stream, server_stream)
 }

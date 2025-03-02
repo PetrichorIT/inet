@@ -10,3 +10,8 @@ fxhash = "*"
 inet = { path = "../inet" }
 tokio = "*"
 rand = "*"
+des = { version = "*", features = ["full"] }
+tracing = "*"
+
+[dev-dependencies]
+serial_test = "*"

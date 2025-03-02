@@ -9,6 +9,7 @@ use inet::extensions::{load_ext, with_ext};
 
 #[test]
 fn basic_extension() {
+    #[derive(Default)]
     struct MyExt {
         value: usize,
     }

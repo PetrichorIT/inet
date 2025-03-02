@@ -27,9 +27,6 @@ use types::{
     ip::{IpPacket, IpPacketRef, Ipv4Packet, Ipv6Packet, KIND_IPV4, KIND_IPV6},
 };
 
-#[cfg(feature = "uds")]
-use crate::uds::Uds;
-
 use super::{socket::*, tcp::Tcp};
 use types::{tcp::PROTO_TCP, udp::PROTO_UDP};
 
@@ -55,9 +52,6 @@ pub(crate) struct IOContext {
     pub(super) udp: Udp,
     pub(super) tcp: Tcp,
     pub(super) tcp2: tcp2::Tcp,
-
-    #[cfg(feature = "uds")]
-    pub(super) uds: Uds,
 
     pub(super) fs: Fs,
 
@@ -105,8 +99,6 @@ impl IOContext {
             tcp: Tcp::new(),
             tcp2: tcp2::Tcp::new(),
 
-            #[cfg(feature = "uds")]
-            uds: Uds::new(),
             fs: Fs::new(),
 
             extensions: Extensions::new(),
