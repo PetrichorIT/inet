@@ -2,7 +2,7 @@ use std::io;
 
 use bytepack::{FromBytestream, ToBytestream};
 
-use crate::core::{types::DnsString, ZonefileLineRecord};
+use crate::core::{string::DnsString, ZonefileLineRecord};
 
 use super::{RawResourceRecord, ResourceRecord, ResourceRecordClass};
 

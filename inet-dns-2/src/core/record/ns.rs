@@ -1,5 +1,5 @@
 use super::{RawResourceRecord, ResourceRecord, ResourceRecordClass};
-use crate::core::{types::DnsString, ZonefileLineRecord};
+use crate::core::{string::DnsString, ZonefileLineRecord};
 use bytepack::{FromBytestream, ToBytestream};
 use std::io;
 

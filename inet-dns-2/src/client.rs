@@ -1,7 +1,8 @@
 use std::{
+    collections::HashMap,
     future::Future,
     io::{self, Result},
-    net::{Ipv4Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
+    net::{IpAddr, Ipv4Addr, SocketAddr},
     pin::Pin,
     time::Duration,
 };
@@ -11,121 +12,90 @@ use des::{
     runtime::random,
     time::{interval_at, SimTime},
 };
-use inet::UdpSocket;
-use inet_uds::UnixDatagram;
+use inet::{extensions::with_ext, UdpSocket};
+use tokio::sync::{mpsc, oneshot};
 
 use crate::{
-    core::{
-        AAAAResourceRecord, AResourceRecord, DnsQuestion, DnsResponseCode, DnsString,
-        QueryResponse, QuestionClass, QuestionTyp, Zonefile,
-    },
-    server::{all_root_ns, DnsMessage, DnsNameserver, DnsOpCode, DnsRecursiveNameserver},
+    core::{AAAAResourceRecord, AResourceRecord, DnsString, QueryResponse, ResponseCode, Zonefile},
+    server::{all_root_ns, DnsMessage, Nameserver, OpCode, RecursiveNameserver, TransactionResult},
 };
-
-pub fn dns_resolver(
-    host: &str,
-    port: u16,
-) -> Pin<Box<dyn Future<Output = Result<Vec<SocketAddr>>> + Send + '_>> {
-    Box::pin(async move {
-        // TODO: store the resolver, to preserve caching
-        let mut cr = ClientResolver::default();
-        let result = cr.query(host, port).await;
-        result
-    })
-}
-
-pub struct ClientResolver {
-    nameserver: DnsRecursiveNameserver,
-}
 
 pub fn resolve(
     host: &str,
     port: u16,
 ) -> Pin<Box<dyn Future<Output = Result<Vec<SocketAddr>>> + Send + 'static>> {
-    let host = host.to_string();
+    let tx = with_ext::<DnsExtension, _>(|ext| ext.tx.as_ref().map(|tx| tx.clone()));
+    let tx = tx.unwrap_or_else(|| {
+        let tx = ClientResolver::default().launch();
+        with_ext::<DnsExtension, _>(|ext| ext.tx = Some(tx.clone()));
+        tx
+    });
+
+    let host = host.parse::<DnsString>();
     Box::pin(async move {
-        // TODO: store the resolver, to preserve caching
+        let (req_tx, req_rx) = oneshot::channel();
+        tx.send((host?, req_tx)).await.unwrap();
 
-        let id = random::<u16>();
-        let dgram = UnixDatagram::bind(format!("/usr/lookup/{id}"))?;
-        dgram.connect("/sys/dns/lookup")?;
-
-        dgram
-            .send(
-                &DnsMessage {
-                    transaction: id,
-                    qr: false,
-                    opcode: DnsOpCode::Query,
-                    aa: false,
-                    tc: false,
-                    rd: true,
-                    ra: false,
-                    rcode: DnsResponseCode::NoError,
-                    response: QueryResponse {
-                        questions: vec![DnsQuestion {
-                            qname: host.parse().unwrap(),
-                            qtyp: QuestionTyp::A,
-                            qclass: QuestionClass::IN,
-                        }],
-                        ..Default::default()
-                    },
-                }
-                .to_vec()?,
-            )
-            .await?;
-
-        let mut buf = vec![0u8; 512];
-        let n = dgram.recv(&mut buf).await?;
-        let msg = DnsMessage::read_from_slice(&mut &buf[..n])?;
-
-        let mut addrs = Vec::new();
-        for anwser in msg.response.anwsers.iter().chain(&msg.response.additional) {
-            if let Some(record) = anwser.as_any().downcast_ref::<AResourceRecord>() {
-                addrs.push(SocketAddr::V4(SocketAddrV4::new(record.addr, port)));
-            }
-            if let Some(record) = anwser.as_any().downcast_ref::<AAAAResourceRecord>() {
-                addrs.push(SocketAddr::V6(SocketAddrV6::new(record.addr, port, 0, 0)));
-            }
-        }
-
-        addrs.dedup();
-        Ok(addrs)
+        Ok(req_rx
+            .await
+            .map_err(|_| io::Error::new(io::ErrorKind::Other, "broke pipe"))??
+            .into_iter()
+            .map(|ip| SocketAddr::new(ip, port))
+            .collect())
     })
 }
 
+pub fn launch_client_resolver() -> RequestTx {
+    ClientResolver::default().launch()
+}
+
+struct ClientResolver {
+    nameserver: RecursiveNameserver,
+}
+
+#[derive(Debug, Default)]
+pub struct DnsExtension {
+    tx: Option<RequestTx>,
+}
+
+type RequestTx = mpsc::Sender<(DnsString, ResponderTx)>;
+type RequestRx = mpsc::Receiver<(DnsString, ResponderTx)>;
+type ResponderTx = oneshot::Sender<Result<Vec<IpAddr>>>;
+
 impl ClientResolver {
-    pub fn launch(mut self) -> io::Result<()> {
-        // set_dns_resolver(resolve)?;
+    fn launch(mut self) -> RequestTx {
+        tracing::info!("launching client resolver");
 
         // binding the socket here, ensures that the listener is ready after this call, independent of
         // the scheduling tick of the spawned task
-        let uds_socket = UnixDatagram::bind("/sys/dns/lookup")?;
+        let (tx, rx) = mpsc::channel(8);
         tokio::spawn(async move {
-            self.run(uds_socket).await.expect("failed");
+            self.run(rx).await.expect("failed");
         });
-        Ok(())
+        tx
     }
 
-    pub async fn run(&mut self, uds_socket: UnixDatagram) -> io::Result<()> {
+    async fn run(&mut self, mut requests: RequestRx) -> io::Result<()> {
         let udp_socket = UdpSocket::bind(SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), 0)).await?;
 
-        let mut buf_uds = vec![0u8; 512];
-        let mut buf_udp = vec![0u8; 512];
+        let mut buf = vec![0u8; 512];
         let mut interval = interval_at(SimTime::now(), Duration::from_secs(5));
+
+        let mut mapping = HashMap::new();
 
         loop {
             tokio::select! {
-                frame = uds_socket.recv_from(&mut buf_uds) => {
-                    let Ok((n, _)) = frame else { break };
-                    let Ok(msg) = DnsMessage::read_from_slice(&mut &buf_uds[..n]) else { continue };
+                frame = requests.recv() => {
+                    let Some((hostname, resp_tx)) = frame else { break;};
 
-                    if !msg.qr {
-                        self.nameserver.incoming(SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), msg.transaction), msg);
-                    }
+                    let id = random::<u16>();
+                    mapping.insert(id, resp_tx);
+
+                    self.nameserver.incoming(SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), id), DnsMessage::question_a(id, hostname));
                 }
-                frame = udp_socket.recv_from(&mut buf_udp) => {
+                frame = udp_socket.recv_from(&mut buf) => {
                     let Ok((n, client)) = frame else { break };
-                    let Ok(msg) = DnsMessage::read_from_slice(&mut &buf_udp[..n]) else { continue };
+                    let Ok(msg) = DnsMessage::read_from_slice(&mut &buf[..n]) else { continue };
 
                     if msg.qr {
                         self.nameserver.incoming(client, msg);
@@ -135,33 +105,42 @@ impl ClientResolver {
             }
 
             for anwser in self.nameserver.anwsers() {
-                let msg = DnsMessage {
-                    transaction: anwser.transaction,
-                    qr: true,
-                    opcode: DnsOpCode::Query,
-                    aa: false,
-                    tc: false,
-                    rd: true,
-                    ra: false,
-                    rcode: DnsResponseCode::NoError,
-                    response: anwser.response,
+                let Some(responder) = mapping.remove(&anwser.transaction) else {
+                    break;
                 };
 
-                uds_socket
-                    .send_to(&msg.to_vec()?, format!("/usr/lookup/{}", msg.transaction))
-                    .await?;
+                match anwser.result {
+                    TransactionResult::Success(resp) => {
+                        let mut addrs = Vec::new();
+                        for record in resp.anwsers.iter().chain(&resp.additional) {
+                            if let Some(record) = record.as_any().downcast_ref::<AResourceRecord>()
+                            {
+                                addrs.push(record.addr.into());
+                            }
+                            if let Some(record) =
+                                record.as_any().downcast_ref::<AAAAResourceRecord>()
+                            {
+                                addrs.push(record.addr.into());
+                            }
+                        }
+                        let _ = responder.send(Ok(addrs));
+                    }
+                    TransactionResult::Failure(err) => {
+                        let _ = responder.send(Err(err.into()));
+                    }
+                }
             }
 
             for query in self.nameserver.queries() {
                 let msg = DnsMessage {
                     transaction: query.transaction,
                     qr: false,
-                    opcode: DnsOpCode::Query,
+                    opcode: OpCode::Query,
                     aa: false,
                     tc: false,
                     rd: true,
                     ra: false,
-                    rcode: DnsResponseCode::NoError,
+                    rcode: ResponseCode::NoError,
                     response: QueryResponse {
                         questions: vec![query.question],
                         ..Default::default()
@@ -176,101 +155,101 @@ impl ClientResolver {
 
         Ok(())
     }
-
-    pub async fn query(&mut self, host: &str, port: u16) -> io::Result<Vec<SocketAddr>> {
-        let addr = SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), 0);
-        let socket = UdpSocket::bind(addr).await?;
-
-        tracing::trace!("created socket {} for dns requrests", socket.local_addr()?);
-
-        let mut qname = host.parse::<DnsString>()?;
-        if qname.is_relative() {
-            qname = qname.with_root(&DnsString::empty());
-        }
-
-        self.nameserver.handle_query(
-            SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0)),
-            0,
-            DnsQuestion {
-                qname: qname.clone(),
-                qtyp: QuestionTyp::A,
-                qclass: QuestionClass::IN,
-            },
-        );
-
-        let mut addrs = Vec::new();
-        let mut interval = interval_at(SimTime::now(), Duration::from_secs(5));
-
-        let mut buf = vec![0u8; 512];
-        while !self.nameserver.active_transactions.is_empty() {
-            let timeout = interval.tick();
-
-            // Wait for incoming streams
-            tokio::select! {
-                frame = socket.recv_from(&mut buf) => {
-                    let Ok((n, client)) = frame else { break };
-                    let Ok(msg) = DnsMessage::read_from_slice(&mut &buf[..n]) else { continue };
-
-                    if msg.qr {
-                        self.nameserver.incoming(client, msg);
-                    }
-                }
-                _ = timeout => {}
-            }
-
-            // Process outgoing streams
-            for anwser in self.nameserver.anwsers() {
-                // let buf = anwser.
-                for anwser in anwser
-                    .response
-                    .anwsers
-                    .iter()
-                    .chain(&anwser.response.additional)
-                {
-                    if let Some(record) = anwser.as_any().downcast_ref::<AResourceRecord>() {
-                        addrs.push(SocketAddr::V4(SocketAddrV4::new(record.addr, port)));
-                    }
-                    if let Some(record) = anwser.as_any().downcast_ref::<AAAAResourceRecord>() {
-                        addrs.push(SocketAddr::V6(SocketAddrV6::new(record.addr, port, 0, 0)));
-                    }
-                }
-            }
-
-            for query in self.nameserver.queries() {
-                let msg = DnsMessage {
-                    transaction: query.transaction,
-                    qr: false,
-                    opcode: DnsOpCode::Query,
-                    aa: false,
-                    tc: false,
-                    rd: true,
-                    ra: false,
-                    rcode: DnsResponseCode::NoError,
-                    response: QueryResponse {
-                        questions: vec![query.question],
-                        ..Default::default()
-                    },
-                };
-
-                socket
-                    .send_to(&msg.to_vec()?, (query.nameserver_ip, 43))
-                    .await?;
-            }
-        }
-
-        tracing::trace!("closed socket {} for dns requrests", socket.local_addr()?);
-
-        addrs.dedup();
-        Ok(addrs)
-    }
 }
 
 impl Default for ClientResolver {
     fn default() -> Self {
         Self {
-            nameserver: DnsRecursiveNameserver::new(Zonefile::local())
+            nameserver: RecursiveNameserver::new(Zonefile::local())
                 .expect("cannot fail")
                 .with_roots(all_root_ns()),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::str::FromStr;
+
+    use inet::{
+        dns::{lookup_host, set_dns_resolver},
+        test_util::SimpleSim,
+    };
+    use serial_test::serial;
+
+    use crate::{
+        core::ZoneResolver,
+        server::{IterativeNameserver, UdpBased},
+    };
+
+    use super::*;
+
+    #[test]
+    #[serial]
+    fn test_full_client_resolver_integration() {
+        let mut sim = SimpleSim::new(inet::init);
+
+        const ZONEFILE_ROOT: &str = include_str!("examples/root.zone");
+        const ZONEFILE_ORG: &str = include_str!("examples/org.zone");
+        const ZONEFILE_EXAMPLE_ORG: &str = include_str!("examples/example.org.zone");
+
+        // Servers
+        sim.node("192.168.2.10", || async {
+            let zf = Zonefile::from_str(ZONEFILE_ROOT)?;
+            let zone = ZoneResolver::new(zf)?;
+            let ns = IterativeNameserver::new(vec![zone]);
+            let mut server = UdpBased::new(ns).set_root();
+
+            server.launch().await?;
+            Ok(())
+        });
+
+        sim.node("192.168.2.20", || async {
+            let zf = Zonefile::from_str(ZONEFILE_ORG)?;
+            let zone = ZoneResolver::new(zf)?;
+            let ns = IterativeNameserver::new(vec![zone]);
+            let mut server = UdpBased::new(ns);
+
+            server.launch().await?;
+            Ok(())
+        });
+
+        sim.node("192.168.2.30", || async {
+            let zf = Zonefile::from_str(ZONEFILE_EXAMPLE_ORG)?;
+            let zone = ZoneResolver::new(zf)?;
+            let ns = IterativeNameserver::new(vec![zone]);
+            let mut server = UdpBased::new(ns);
+
+            server.launch().await?;
+            Ok(())
+        });
+
+        // Clients
+        sim.node_require_join("192.168.2.101", || async {
+            set_dns_resolver(resolve)?;
+
+            let t0 = SimTime::now();
+            let _ = lookup_host(("bob.example.org.", 80)).await;
+            let resolve_1 = t0.elapsed();
+
+            let t0 = SimTime::now();
+            let _ = lookup_host(("bob.example.org.", 80)).await;
+            let resolve_2 = t0.elapsed();
+
+            assert_eq!(resolve_2, Duration::ZERO);
+
+            let t0 = SimTime::now();
+            let _ = lookup_host(("alice.example.org.", 80)).await;
+            let resolve_3 = t0.elapsed();
+
+            assert!(resolve_3 < resolve_1);
+
+            tracing::info!("DONE");
+
+            Ok(())
+        });
+        sim.node("192.168.2.102", || async { Ok(()) });
+
+        let _ = sim.run();
     }
 }

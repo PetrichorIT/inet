@@ -5,3 +5,8 @@ org. 7000 IN NS ns0.nameservers.org.
 example.org. 7000 IN NS ns1.example.org.
 
 ns1.example.org. 7000 IN A 192.168.2.30
+
+info.org. 7000 IN A 100.0.0.1
+info.org. 7000 IN AAAA fc00:db20:35b:7399::5
+
+rss.info.org. 7000 IN A 100.0.0.2

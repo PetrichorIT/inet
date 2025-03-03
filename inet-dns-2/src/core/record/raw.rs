@@ -1,6 +1,6 @@
 use std::io;
 
-use crate::core::{types::DnsString, ZonefileLineRecord};
+use crate::core::{string::DnsString, ZonefileLineRecord};
 
 use super::{ResourceRecord, ResourceRecordClass, ResourceRecordTyp};
 

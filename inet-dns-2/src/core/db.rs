@@ -2,7 +2,7 @@ use des::time::SimTime;
 
 use super::{
     record::{DnsResourceRecord, ResourceRecordTyp, SoaResourceRecord},
-    DnsQuestion, DnsString, ResourceRecordClass,
+    DnsString, Question, ResourceRecordClass,
 };
 use crate::core::QuestionTyp;
 use std::{cell::Cell, collections::HashMap, time::Duration};
@@ -86,7 +86,7 @@ impl RecordMap {
         None
     }
 
-    pub fn query(&self, question: &DnsQuestion) -> &[DnsResourceRecord] {
+    pub fn query(&self, question: &Question) -> &[DnsResourceRecord] {
         assert!(question.qclass.includes(self.class));
 
         match question.qtyp {
@@ -271,7 +271,7 @@ mail3         IN  A     192.0.2.5
         let db = db_example_org()?;
 
         assert_eq!(
-            db.query(&DnsQuestion {
+            db.query(&Question {
                 qname: DnsString::from_str("ns.example.com.")?,
                 qclass: QuestionClass::IN,
                 qtyp: QuestionTyp::ANY

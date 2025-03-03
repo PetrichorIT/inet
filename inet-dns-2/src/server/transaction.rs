@@ -1,31 +1,43 @@
-use crate::core::{DnsQuestion, NsResourceRecord, QueryResponse};
+use crate::core::{Error, NsResourceRecord, QueryResponse, Question};
 use des::time::SimTime;
-use std::net::SocketAddr;
+use std::{fmt::Display, net::SocketAddr};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DnsTransaction {
+pub struct ActiveTransaction {
     pub client: SocketAddr,
     pub client_transaction: u16,
     pub local_transaction: u16,
-
-    pub question: DnsQuestion,
+    pub question: Question,
     pub remote: Option<NsResourceRecord>,
-
     pub operation_counter: usize,
-
     pub deadline: SimTime,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DnsFinishedTransaction {
+#[derive(Debug, PartialEq, Eq)]
+pub struct FinishedTransaction {
     pub transaction: u16,
     pub client: SocketAddr,
-    pub question: DnsQuestion,
-    pub response: QueryResponse,
+    pub question: Question,
+    pub result: TransactionResult,
 }
 
-impl DnsTransaction {
+#[derive(Debug, PartialEq, Eq)]
+pub enum TransactionResult {
+    Success(QueryResponse),
+    Failure(Error),
+}
+
+impl ActiveTransaction {
     pub fn id(&self) -> String {
         format!("{}'{}", self.local_transaction, self.operation_counter)
+    }
+}
+
+impl Display for TransactionResult {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Success(resp) => resp.fmt(f),
+            Self::Failure(err) => err.fmt(f),
+        }
     }
 }

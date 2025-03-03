@@ -1,5 +1,5 @@
 use super::{RawResourceRecord, ResourceRecord, ResourceRecordClass, ResourceRecordTyp};
-use crate::core::{types::DnsString, ZonefileLineRecord};
+use crate::core::{string::DnsString, ZonefileLineRecord};
 use std::{
     io,
     net::{Ipv4Addr, Ipv6Addr},

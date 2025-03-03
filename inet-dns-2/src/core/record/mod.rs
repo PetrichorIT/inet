@@ -1,4 +1,4 @@
-use super::{types::DnsString, ZonefileLineRecord};
+use super::{string::DnsString, QuestionClass, QuestionTyp, ZonefileLineRecord};
 use bytepack::{
     raw_enum, BytestreamWriter, FromBytestream, ReadBytesExt, ToBytestream, WriteBytesExt, BE,
 };
@@ -25,6 +25,20 @@ pub use soa::*;
 pub use txt::*;
 
 pub(crate) use raw::*;
+
+pub trait ResourceRecord: Debug + Send {
+    fn name(&self) -> &DnsString;
+    fn ttl(&self) -> Option<u32>;
+    fn class(&self) -> Option<ResourceRecordClass>;
+    fn typ(&self) -> ResourceRecordTyp;
+
+    fn rdata(&self) -> Vec<u8>;
+    fn rdata_fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result;
+
+    fn as_any(&self) -> &dyn Any;
+}
+
+// # DnsResourceRecord (dyn)
 
 #[derive(Debug)]
 pub struct DnsResourceRecord {
@@ -174,17 +188,7 @@ impl Display for DnsResourceRecord {
     }
 }
 
-pub trait ResourceRecord: Debug + Send {
-    fn name(&self) -> &DnsString;
-    fn ttl(&self) -> Option<u32>;
-    fn class(&self) -> Option<ResourceRecordClass>;
-    fn typ(&self) -> ResourceRecordTyp;
-
-    fn rdata(&self) -> Vec<u8>;
-    fn rdata_fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result;
-
-    fn as_any(&self) -> &dyn Any;
-}
+// # ResourceRecordClass / ResourceRecordTyp
 
 raw_enum! {
     #[derive(Debug, Default,Clone, Copy, PartialEq, Eq, Hash)]
@@ -198,38 +202,10 @@ raw_enum! {
     }
 }
 
-raw_enum! {
-    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-    pub enum QuestionClass {
-        type Repr = u16 where BE;
-        IN = 1,
-        CS = 2,
-        CH = 3,
-        HS = 4,
-
-        ANY = 255,
-    }
-}
-
-impl QuestionClass {
-    pub fn includes(&self, class: ResourceRecordClass) -> bool {
-        match self {
-            QuestionClass::ANY => true,
-            v => *v == QuestionClass::from(class),
-        }
-    }
-}
-
 impl TryFrom<QuestionClass> for ResourceRecordClass {
     type Error = io::Error;
     fn try_from(value: QuestionClass) -> Result<Self, Self::Error> {
         Self::from_raw_repr(value.to_raw_repr())
-    }
-}
-
-impl From<ResourceRecordClass> for QuestionClass {
-    fn from(value: ResourceRecordClass) -> Self {
-        QuestionClass::from_raw_repr(value.to_raw_repr()).expect("should never fail")
     }
 }
 
@@ -288,66 +264,6 @@ raw_enum! {
     }
 }
 
-raw_enum! {
-    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-    pub enum QuestionTyp {
-        type Repr = u16 where BE;
-
-        A = 1,
-        AAAA = 28,
-        AFSDB = 18,
-        APL = 42,
-        CAA = 257,
-        CDNSKEY = 60,
-        CDS = 59,
-        CERT = 37,
-        CNAME = 5,
-        CSYNC = 62,
-        DHCID = 49,
-        DLV = 32769,
-        DNAME = 39,
-        DNSKEY = 48,
-        DS = 43,
-        EUI48 = 108,
-        EUI64 = 109,
-        HINFO = 13,
-        HIP = 55,
-        HTTPS = 65,
-        IPSECKEY = 45,
-        KEY = 25,
-        KX = 36,
-        LOC = 29,
-        MX = 15,
-        NAPTR = 35,
-        NS = 2,
-        NSEC = 47,
-        NSEC3 = 50,
-        NSEC3PARAM = 51,
-        OPENPGPKEY = 61,
-        PTR = 12,
-        RRSIG = 46,
-        RP = 17,
-        SIG = 24,
-        SMIMEA = 53,
-        SOA = 6,
-        SRV = 33,
-        SSHFP = 44,
-        SVCB = 64,
-        TA = 32768,
-        TKEY = 249,
-        TLSA = 52,
-        TSIG = 250,
-        TXT = 16,
-        URI = 256,
-        ZONEMD = 63,
-
-        AXFR = 252,
-        MAILB = 253,
-        MAILA = 254,
-        ANY = 255,
-    }
-}
-
 impl TryFrom<QuestionTyp> for ResourceRecordTyp {
     type Error = io::Error;
     fn try_from(value: QuestionTyp) -> Result<Self, Self::Error> {
@@ -355,8 +271,44 @@ impl TryFrom<QuestionTyp> for ResourceRecordTyp {
     }
 }
 
-impl From<ResourceRecordTyp> for QuestionTyp {
-    fn from(value: ResourceRecordTyp) -> Self {
-        QuestionTyp::from_raw_repr(value.to_raw_repr()).expect("should never fail")
+#[cfg(test)]
+mod tests {
+    use crate::core::Zonefile;
+    use std::str::FromStr;
+
+    use super::*;
+
+    const ZONEFILE_ROOT: &str = include_str!("../../examples/root.zone");
+    const ZONEFILE_ORG: &str = include_str!("../../examples/org.zone");
+    const ZONEFILE_EXAMPLE_ORG: &str = include_str!("../../examples/example.org.zone");
+
+    #[test]
+    fn encode_decode_rrs_as_bytestream() -> io::Result<()> {
+        let zf1 = Zonefile::from_str(ZONEFILE_ROOT)?;
+        let zf2 = Zonefile::from_str(ZONEFILE_ORG)?;
+        let zf3 = Zonefile::from_str(ZONEFILE_EXAMPLE_ORG)?;
+
+        for entry in zf1.records.iter().chain(&zf2.records).chain(&zf3.records) {
+            let buf = entry.to_vec()?;
+            let decoded = DnsResourceRecord::from_slice(&buf)?;
+            assert_eq!(entry, &decoded);
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn encode_decode_rrs_as_raw_records() -> io::Result<()> {
+        let zf1 = Zonefile::from_str(ZONEFILE_ROOT)?;
+        let zf2 = Zonefile::from_str(ZONEFILE_ORG)?;
+        let zf3 = Zonefile::from_str(ZONEFILE_EXAMPLE_ORG)?;
+
+        for entry in zf1.records.iter().chain(&zf2.records).chain(&zf3.records) {
+            let raw = entry.as_raw();
+            let decoded = DnsResourceRecord::from_raw(raw)?;
+            assert_eq!(entry, &decoded);
+        }
+
+        Ok(())
     }
 }

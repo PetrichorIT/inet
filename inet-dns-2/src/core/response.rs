@@ -1,10 +1,10 @@
 use std::fmt::Display;
 
-use super::{DnsQuestion, DnsResourceRecord};
+use super::{DnsResourceRecord, Question};
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct QueryResponse {
-    pub questions: Vec<DnsQuestion>,
+    pub questions: Vec<Question>,
     pub anwsers: Vec<DnsResourceRecord>,
     pub auths: Vec<DnsResourceRecord>,
     pub additional: Vec<DnsResourceRecord>,
@@ -18,6 +18,10 @@ pub enum QueryResponseKind {
 }
 
 impl QueryResponse {
+    pub fn is_reponse_empty(&self) -> bool {
+        self.anwsers.is_empty() && self.auths.is_empty()
+    }
+
     pub fn merged(mut self, mut other: Self) -> Self {
         self.questions.append(&mut other.questions);
         self.anwsers.append(&mut other.anwsers);

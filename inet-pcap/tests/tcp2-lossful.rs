@@ -1,7 +1,7 @@
 use std::{fs::File, net::Ipv4Addr, sync::Arc, time::Duration};
 
 use des::{
-    net::{AsyncFn, HandlerFn, ModuleFn, Sim},
+    net::{AsyncFn, HandlerFn, Sim},
     prelude::{send, Channel, ChannelDropBehaviour, ChannelMetrics},
     runtime::{random, Builder},
 };

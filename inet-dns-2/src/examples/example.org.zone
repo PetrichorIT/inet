@@ -1,0 +1,19 @@
+example.org. 7000 IN SOA ns1.example.org. admin@example.org (7000 7000 7000 7000 7000)
+
+example.org. 7000 IN NS ns1.example.org.
+ns1.example.org. 1800 IN A 100.78.43.100
+
+subdomain.example.org. 1800 IN NS ns0.subdomain.example.org.
+ns0.subdomain.example.org. 1800 IN A 4.5.6.7
+
+subdomain.example.org. 1800 IN NS ns1.subdomain.example.org.
+ns1.subdomain.example.org. 1800 IN A 8.9.10.11
+ns1.subdomain.example.org. 1800 IN AAAA f7bb:1234:5678:9abc:def0:1234:5678:9abc
+
+
+alice.example.org. 1800 IN A 192.168.0.101
+bob.example.org. 1800 IN A  192.168.0.102
+bob.example.org. 1800 IN AAAA 30ae:98dc:6ccf:595:1a0f:3680:d14e:a1f6
+
+www.example.org.    1800 IN CNAME alice.example.org.
+wwwalice.example.org 1800 IN CNAME www.example.org.

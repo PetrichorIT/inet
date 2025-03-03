@@ -1,21 +1,21 @@
-use std::fmt::Display;
+use std::{error::Error as StdError, fmt::Display, io};
 
 use bytepack::raw_enum;
 
 #[derive(Debug)]
-pub struct DnsError {
-    response_code: DnsResponseCode,
-    error: Box<dyn std::error::Error>,
+pub struct Error {
+    response_code: ResponseCode,
+    error: Box<dyn std::error::Error + Send + Sync>,
 }
 
-impl DnsError {
-    pub fn response_code(&self) -> DnsResponseCode {
+impl Error {
+    pub fn response_code(&self) -> ResponseCode {
         self.response_code
     }
 
-    pub fn new<E>(response_code: DnsResponseCode, error: E) -> Self
+    pub fn new<E>(response_code: ResponseCode, error: E) -> Self
     where
-        E: Into<Box<dyn std::error::Error>>,
+        E: Into<Box<dyn std::error::Error + Send + Sync>>,
     {
         Self {
             response_code,
@@ -24,17 +24,31 @@ impl DnsError {
     }
 }
 
-impl Display for DnsError {
+impl Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{:?}: {}", self.response_code, self.error)
     }
 }
 
-impl std::error::Error for DnsError {}
+impl PartialEq for Error {
+    fn eq(&self, other: &Self) -> bool {
+        self.response_code == other.response_code
+    }
+}
+
+impl Eq for Error {}
+
+impl StdError for Error {}
+
+impl From<Error> for io::Error {
+    fn from(value: Error) -> Self {
+        io::Error::new(io::ErrorKind::Other, value)
+    }
+}
 
 raw_enum! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-    pub enum DnsResponseCode {
+    pub enum ResponseCode {
         type Repr = u8 where BE;
 
         NoError = 0,

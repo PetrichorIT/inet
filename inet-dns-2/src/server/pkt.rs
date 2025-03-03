@@ -4,9 +4,10 @@ use bytepack::{
 };
 
 use crate::core::{
-    DnsQuestion, DnsResourceRecord, DnsResponseCode, DnsString, QueryResponse, QuestionClass,
-    QuestionTyp,
+    DnsResourceRecord, DnsString, QueryResponse, Question, QuestionClass, QuestionTyp, ResponseCode,
 };
+
+use super::transaction::{FinishedTransaction, TransactionResult};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[allow(clippy::struct_excessive_bools)]
@@ -14,12 +15,12 @@ pub struct DnsMessage {
     pub transaction: u16,
     // # Headers
     pub qr: bool,
-    pub opcode: DnsOpCode,
+    pub opcode: OpCode,
     pub aa: bool,
     pub tc: bool,
     pub rd: bool,
     pub ra: bool,
-    pub rcode: DnsResponseCode,
+    pub rcode: ResponseCode,
     // [u16; 4] lengths of all 4 question sections.
     // # Questions + Anwsers
     pub response: QueryResponse,
@@ -30,15 +31,15 @@ impl DnsMessage {
         Self {
             transaction,
             qr: false,
-            opcode: DnsOpCode::Query,
+            opcode: OpCode::Query,
             aa: false,
             tc: false,
             rd: false,
             ra: false,
 
-            rcode: DnsResponseCode::NoError,
+            rcode: ResponseCode::NoError,
             response: QueryResponse {
-                questions: vec![DnsQuestion {
+                questions: vec![Question {
                     qname: name.into(),
                     qtyp: QuestionTyp::A,
                     qclass: QuestionClass::IN,
@@ -52,21 +53,51 @@ impl DnsMessage {
         Self {
             transaction,
             qr: false,
-            opcode: DnsOpCode::Query,
+            opcode: OpCode::Query,
             aa: false,
             tc: false,
             rd: false,
             ra: false,
 
-            rcode: DnsResponseCode::NoError,
+            rcode: ResponseCode::NoError,
 
             response: QueryResponse {
-                questions: vec![DnsQuestion {
+                questions: vec![Question {
                     qname: name.into(),
                     qtyp: QuestionTyp::AAAA,
                     qclass: QuestionClass::IN,
                 }],
                 ..Default::default()
+            },
+        }
+    }
+
+    pub fn response_from_transaction(tx: FinishedTransaction) -> Self {
+        match tx.result {
+            TransactionResult::Success(response) => Self {
+                transaction: tx.transaction,
+                qr: true,
+                opcode: OpCode::Query,
+                aa: false,
+                tc: false,
+                rd: false,
+                ra: false,
+                rcode: ResponseCode::NoError,
+                response,
+            },
+            TransactionResult::Failure(error) => Self {
+                transaction: tx.transaction,
+                qr: true,
+                opcode: OpCode::Query,
+                aa: false,
+                tc: false,
+                rd: false,
+                ra: false,
+                rcode: error.response_code(),
+                response: QueryResponse {
+                    questions: vec![tx.question],
+                    ..Default::default()
+                },
             },
         }
     }
@@ -146,10 +177,10 @@ impl FromBytestream for DnsMessage {
         let aa = (0b0000_0100 & b0) != 0;
         let tc = (0b0000_0010 & b0) != 0;
         let rd = (0b0000_0001 & b0) != 0;
-        let opcode = DnsOpCode::from_raw_repr((b0 >> 3) & 0b1111).unwrap();
+        let opcode = OpCode::from_raw_repr((b0 >> 3) & 0b1111).unwrap();
 
         let ra = (0b1000_0000 & b1) != 0;
-        let rcode = DnsResponseCode::from_raw_repr(b1 & 0b1111u8).unwrap();
+        let rcode = ResponseCode::from_raw_repr(b1 & 0b1111u8).unwrap();
 
         let questions_len = stream.read_u16::<BE>()?;
         let anwsers_len = stream.read_u16::<BE>()?;
@@ -159,7 +190,7 @@ impl FromBytestream for DnsMessage {
         let mut questions = Vec::new();
 
         for _ in 0..questions_len {
-            let v = DnsQuestion::from_bytestream(stream)?;
+            let v = Question::from_bytestream(stream)?;
             questions.push(v);
         }
 
@@ -208,7 +239,7 @@ impl FromBytestream for DnsMessage {
 
 raw_enum! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-    pub enum DnsOpCode {
+    pub enum OpCode {
         type Repr = u8 where BE;
 
         Query = 0,

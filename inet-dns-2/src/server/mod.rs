@@ -15,28 +15,28 @@ mod transaction;
 mod types;
 
 use crate::core::QueryResponse;
-pub use iterative::DnsIterativeNameserver;
+pub use iterative::IterativeNameserver;
 pub use pkt::*;
-pub use recursive::DnsRecursiveNameserver;
+pub use recursive::RecursiveNameserver;
 pub use root::*;
-use transaction::DnsFinishedTransaction;
-use types::DnsNameserverQuery;
+pub use transaction::{ActiveTransaction, FinishedTransaction, TransactionResult};
+use types::NameserverQuery;
 
-use super::core::DnsResponseCode;
+use super::core::ResponseCode;
 
-pub trait DnsNameserver {
+pub trait Nameserver {
     fn incoming(&mut self, source: SocketAddr, msg: DnsMessage);
-    fn queries(&mut self) -> impl Iterator<Item = DnsNameserverQuery>;
-    fn anwsers(&mut self) -> impl Iterator<Item = DnsFinishedTransaction>;
+    fn queries(&mut self) -> impl Iterator<Item = NameserverQuery>;
+    fn anwsers(&mut self) -> impl Iterator<Item = FinishedTransaction>;
 }
 
-pub struct UdpBased<T: DnsNameserver> {
+pub struct UdpBased<T: Nameserver> {
     nameserver: T,
     port: u16,
     root: bool,
 }
 
-impl<T: DnsNameserver> UdpBased<T> {
+impl<T: Nameserver> UdpBased<T> {
     pub const fn new(nameserver: T) -> Self {
         Self {
             nameserver,
@@ -81,30 +81,21 @@ impl<T: DnsNameserver> UdpBased<T> {
 
             // Process outgoing streams
             for anwser in self.nameserver.anwsers() {
-                let msg = DnsMessage {
-                    transaction: anwser.transaction,
-                    qr: true,
-                    opcode: DnsOpCode::Query,
-                    aa: false,
-                    tc: false,
-                    rd: true,
-                    ra: false,
-                    rcode: DnsResponseCode::NoError,
-                    response: anwser.response,
-                };
-                socket.send_to(&msg.to_vec()?, anwser.client).await?;
+                let target = anwser.client;
+                let msg = DnsMessage::response_from_transaction(anwser);
+                socket.send_to(&msg.to_vec()?, target).await?;
             }
 
             for query in self.nameserver.queries() {
                 let msg = DnsMessage {
                     transaction: query.transaction,
                     qr: false,
-                    opcode: DnsOpCode::Query,
+                    opcode: OpCode::Query,
                     aa: false,
                     tc: false,
                     rd: true,
                     ra: false,
-                    rcode: DnsResponseCode::NoError,
+                    rcode: ResponseCode::NoError,
                     response: QueryResponse {
                         questions: vec![query.question],
                         ..Default::default()

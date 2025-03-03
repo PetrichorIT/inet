@@ -1,10 +1,10 @@
 use std::net::IpAddr;
 
-use crate::core::DnsQuestion;
+use crate::core::Question;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DnsNameserverQuery {
+pub struct NameserverQuery {
     pub nameserver_ip: IpAddr,
     pub transaction: u16,
-    pub question: DnsQuestion,
+    pub question: Question,
 }

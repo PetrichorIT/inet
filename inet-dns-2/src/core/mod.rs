@@ -6,7 +6,7 @@ mod error;
 mod question;
 mod record;
 mod response;
-mod types;
+mod string;
 mod zonefile;
 
 pub use db::*;
@@ -14,15 +14,15 @@ pub use error::*;
 pub use question::*;
 pub use record::*;
 pub use response::*;
-pub use types::*;
+pub use string::*;
 pub use zonefile::*;
 
-pub struct DnsZoneResolver {
+pub struct ZoneResolver {
     db: RecordMap,
     zone: DnsString,
 }
 
-impl DnsZoneResolver {
+impl ZoneResolver {
     pub fn zone(&self) -> &DnsString {
         &self.zone
     }
@@ -44,7 +44,7 @@ impl DnsZoneResolver {
         })
     }
 
-    pub fn accepts_query(&self, question: &DnsQuestion) -> bool {
+    pub fn accepts_query(&self, question: &Question) -> bool {
         question.qname.has_parent(&self.zone)
     }
 
@@ -52,10 +52,10 @@ impl DnsZoneResolver {
         self.db.add(record, SimTime::now())
     }
 
-    pub fn query(&self, question: &DnsQuestion) -> Result<QueryResponse, DnsError> {
+    pub fn query(&self, question: &Question) -> Result<QueryResponse, Error> {
         if !question.qname.has_parent(&self.zone) {
-            return Err(DnsError::new(
-                DnsResponseCode::NotZone,
+            return Err(Error::new(
+                ResponseCode::NotZone,
                 "question was directed at wrong zone".to_string(),
             ));
         }
@@ -64,7 +64,7 @@ impl DnsZoneResolver {
         self.query_inner(question)
     }
 
-    fn query_inner(&self, question: DnsQuestion) -> Result<QueryResponse, DnsError> {
+    fn query_inner(&self, question: Question) -> Result<QueryResponse, Error> {
         let mut response = QueryResponse {
             questions: vec![question.clone()],
             ..Default::default()
@@ -81,6 +81,13 @@ impl DnsZoneResolver {
                     }
                 }
             }
+
+            if response.is_reponse_empty() {
+                return Err(Error::new(
+                    ResponseCode::NxDomain,
+                    "query could not be resolved",
+                ));
+            }
         } else {
             response.anwsers.extend(results.iter().cloned());
             for (additional, kind) in question.on_anwsered(results) {
@@ -94,92 +101,142 @@ impl DnsZoneResolver {
 
 #[cfg(test)]
 mod tests {
-    use std::{net::Ipv4Addr, str::FromStr};
-
     use super::*;
 
-    const ZONEFILE_ORG: &str = r#"
-org. 7000 IN SOA ns0.namservers.org admin@org.org (7000 7000 7000 7000 7000)
+    use std::{net::Ipv4Addr, str::FromStr};
 
-org. 7000 IN NS ns0.nameservers.org.
-example.org. 7000 IN NS ns1.example.org.
-example.org. 7000 IN NS ns2.example.org.
-
-ns1.example.org. 7000 IN A 100.78.43.100
-ns2.example.org. 7000 IN A 100.78.43.200
-    "#;
+    const ZONEFILE_ORG: &str = include_str!("../examples/org.zone");
 
     #[test]
-    fn unanwsered_a_returns_ns_with_addrs() -> io::Result<()> {
-        let zone = DnsZoneResolver::new(Zonefile::from_str(ZONEFILE_ORG)?)?;
-        let respone = zone
-            .query(&DnsQuestion {
-                qname: DnsString::from_str("www.example.org.")?,
-                qclass: QuestionClass::IN,
-                qtyp: QuestionTyp::A,
-            })
-            .unwrap();
+    fn query_can_be_anwsered_directly() -> io::Result<()> {
+        let zone = ZoneResolver::new(Zonefile::from_str(ZONEFILE_ORG)?)?;
+        let response = zone.query(&Question {
+            qname: "info.org.".parse()?,
+            qclass: QuestionClass::IN,
+            qtyp: QuestionTyp::A,
+        })?;
+
+        assert_eq!(
+            response.anwsers,
+            [AResourceRecord {
+                name: "info.org.".parse()?,
+                ttl: 7000,
+                class: ResourceRecordClass::IN,
+                addr: Ipv4Addr::new(100, 0, 0, 1),
+            }
+            .into()]
+        );
+        assert_eq!(response.auths, []);
+        assert_eq!(
+            response.additional,
+            [AAAAResourceRecord {
+                name: "info.org.".parse()?,
+                ttl: 7000,
+                class: ResourceRecordClass::IN,
+                addr: "fc00:db20:35b:7399::5".parse().unwrap(),
+            }
+            .into()]
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn query_in_deeper_level_can_be_anwesered_directly() -> io::Result<()> {
+        let zone = ZoneResolver::new(Zonefile::from_str(ZONEFILE_ORG)?)?;
+        let response = zone.query(&Question {
+            qname: "rss.info.org.".parse()?,
+            qclass: QuestionClass::IN,
+            qtyp: QuestionTyp::A,
+        })?;
+
+        assert_eq!(
+            response.anwsers,
+            [AResourceRecord {
+                name: "rss.info.org.".parse()?,
+                ttl: 7000,
+                class: ResourceRecordClass::IN,
+                addr: Ipv4Addr::new(100, 0, 0, 2),
+            }
+            .into()]
+        );
+        assert_eq!(response.auths, []);
+        assert_eq!(response.additional, []);
+
+        Ok(())
+    }
+
+    #[test]
+    fn query_can_delegate_to_ns_authority() -> io::Result<()> {
+        let zone = ZoneResolver::new(Zonefile::from_str(ZONEFILE_ORG)?)?;
+        let respone = zone.query(&Question {
+            qname: "www.example.org.".parse()?,
+            qclass: QuestionClass::IN,
+            qtyp: QuestionTyp::A,
+        })?;
 
         assert_eq!(respone.anwsers, []);
         assert_eq!(
             respone.auths,
-            [
-                NsResourceRecord {
-                    domain: DnsString::from_str("example.org.")?,
-                    ttl: 7000,
-                    class: ResourceRecordClass::IN,
-                    nameserver: DnsString::from_str("ns1.example.org.")?,
-                }
-                .into(),
-                NsResourceRecord {
-                    domain: DnsString::from_str("example.org.")?,
-                    ttl: 7000,
-                    class: ResourceRecordClass::IN,
-                    nameserver: DnsString::from_str("ns2.example.org.")?,
-                }
-                .into()
-            ]
+            [NsResourceRecord {
+                domain: "example.org.".parse()?,
+                ttl: 7000,
+                class: ResourceRecordClass::IN,
+                nameserver: "ns1.example.org.".parse()?,
+            }
+            .into()]
         );
         assert_eq!(
             respone.additional,
-            [
-                AResourceRecord {
-                    name: DnsString::from_str("ns1.example.org.")?,
-                    ttl: 7000,
-                    class: ResourceRecordClass::IN,
-                    addr: Ipv4Addr::new(100, 78, 43, 100)
-                }
-                .into(),
-                AResourceRecord {
-                    name: DnsString::from_str("ns2.example.org.")?,
-                    ttl: 7000,
-                    class: ResourceRecordClass::IN,
-                    addr: Ipv4Addr::new(100, 78, 43, 200)
-                }
-                .into()
-            ]
+            [AResourceRecord {
+                name: "ns1.example.org.".parse()?,
+                ttl: 7000,
+                class: ResourceRecordClass::IN,
+                addr: Ipv4Addr::new(192, 168, 2, 30)
+            }
+            .into(),]
         );
         Ok(())
     }
 
-    const ZONEFILE_EXAMPLE_ORG: &str = r#"
-example.org. 7000 IN SOA ns1.example.org. admin@example.org (7000 7000 7000 7000 7000)
+    #[test]
+    fn error_no_such_name() -> io::Result<()> {
+        let zone = ZoneResolver::new(Zonefile::from_str(ZONEFILE_ORG)?)?;
+        let response = zone
+            .query(&Question {
+                qname: "www.does-not-exist.org.".parse()?,
+                qclass: QuestionClass::IN,
+                qtyp: QuestionTyp::A,
+            })
+            .expect_err("query must result in error, since neither anwsers nor auths can exist");
 
-example.org. 7000 IN NS ns1.example.org.
+        assert_eq!(response.response_code(), ResponseCode::NxDomain);
+        Ok(())
+    }
 
-ns1.example.org. 1800 IN A 100.78.43.100
+    #[test]
+    fn error_not_zone() -> io::Result<()> {
+        let zone = ZoneResolver::new(Zonefile::from_str(ZONEFILE_ORG)?)?;
+        let response = zone
+            .query(&Question {
+                qname: "www.does-not-exist.net.".parse()?,
+                qclass: QuestionClass::IN,
+                qtyp: QuestionTyp::A,
+            })
+            .expect_err("query must result in error, since neither anwsers nor auths can exist");
 
-www.example.org.        1800 IN A 9.9.9.9
-wwwtest.example.org.    1800 IN CNAME www.example.org.
-testwwwtest.example.org 1800 IN CNAME wwwtest.example.org.
-    "#;
+        assert_eq!(response.response_code(), ResponseCode::NotZone);
+        Ok(())
+    }
+
+    const ZONEFILE_EXAMPLE_ORG: &str = include_str!("../examples/example.org.zone");
 
     #[test]
     fn cname_resolved_to_addr() -> io::Result<()> {
-        let zone = DnsZoneResolver::new(Zonefile::from_str(ZONEFILE_EXAMPLE_ORG)?)?;
+        let zone = ZoneResolver::new(Zonefile::from_str(ZONEFILE_EXAMPLE_ORG)?)?;
         let respone = zone
-            .query(&DnsQuestion {
-                qname: DnsString::from_str("wwwtest.example.org.")?,
+            .query(&Question {
+                qname: DnsString::from_str("www.example.org.")?,
                 qclass: QuestionClass::IN,
                 qtyp: QuestionTyp::A,
             })
@@ -187,10 +244,10 @@ testwwwtest.example.org 1800 IN CNAME wwwtest.example.org.
         assert_eq!(
             respone.anwsers,
             [AResourceRecord {
-                name: DnsString::from_str("www.example.org.")?,
+                name: DnsString::from_str("alice.example.org.")?,
                 ttl: 1800,
                 class: ResourceRecordClass::IN,
-                addr: Ipv4Addr::new(9, 9, 9, 9)
+                addr: Ipv4Addr::new(192, 168, 0, 101)
             }
             .into(),]
         );
@@ -200,10 +257,10 @@ testwwwtest.example.org 1800 IN CNAME wwwtest.example.org.
 
     #[test]
     fn cname_multi_step() -> io::Result<()> {
-        let zone = DnsZoneResolver::new(Zonefile::from_str(ZONEFILE_EXAMPLE_ORG)?)?;
+        let zone = ZoneResolver::new(Zonefile::from_str(ZONEFILE_EXAMPLE_ORG)?)?;
         let respone = zone
-            .query(&DnsQuestion {
-                qname: DnsString::from_str("testwwwtest.example.org.")?,
+            .query(&Question {
+                qname: DnsString::from_str("wwwalice.example.org.")?,
                 qclass: QuestionClass::IN,
                 qtyp: QuestionTyp::A,
             })
@@ -211,14 +268,29 @@ testwwwtest.example.org 1800 IN CNAME wwwtest.example.org.
         assert_eq!(
             respone.anwsers,
             [AResourceRecord {
-                name: DnsString::from_str("www.example.org.")?,
+                name: DnsString::from_str("alice.example.org.")?,
                 ttl: 1800,
                 class: ResourceRecordClass::IN,
-                addr: Ipv4Addr::new(9, 9, 9, 9)
+                addr: Ipv4Addr::new(192, 168, 0, 101)
             }
             .into(),]
         );
 
+        Ok(())
+    }
+
+    #[test]
+    fn multi_authorative_referall() -> io::Result<()> {
+        let zone = ZoneResolver::new(Zonefile::from_str(ZONEFILE_EXAMPLE_ORG)?)?;
+        let response = zone
+            .query(&Question {
+                qname: DnsString::from_str("www.subdomain.example.org.")?,
+                qclass: QuestionClass::IN,
+                qtyp: QuestionTyp::A,
+            })
+            .unwrap();
+        assert_eq!(response.auths.len(), 2, "was {:#?}", response);
+        assert_eq!(response.additional.len(), 3, "was {:#?}", response);
         Ok(())
     }
 }
