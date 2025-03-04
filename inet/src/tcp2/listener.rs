@@ -102,7 +102,7 @@ impl TcpListener {
 
     /// Returns the local address that this socket is bound to.
     pub fn local_addr(&self) -> Result<SocketAddr, Error> {
-        IOContext::with_current(|ctx| ctx.get_socket_addr(self.fd))
+        IOContext::with_current(|ctx| ctx.socket_get_addr(self.fd))
     }
     /// Gets the value of the IP_TTL option for this socket.
     ///

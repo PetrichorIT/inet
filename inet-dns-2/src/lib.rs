@@ -8,6 +8,7 @@
 //! *Nameserver -> Manager of multiple zones, dispatching queries, managing caching
 //! UdpBased -> Impl of Connection over a dyn DnsNameserver
 
+pub mod adapters;
 pub mod client;
 pub mod core;
 pub mod server;

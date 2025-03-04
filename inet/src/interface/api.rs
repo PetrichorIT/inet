@@ -13,12 +13,12 @@ use des::{
     net::{module::current, par, ParError},
     time::SimTime,
 };
-use types::ip::Ipv6AddrExt;
 use std::{
     io::{self, Error, ErrorKind},
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
 };
 use tracing::Level;
+use types::ip::Ipv6AddrExt;
 
 /// Declares and activiates an new network interface on the current module
 pub fn add_interface(iface: Interface) -> io::Result<()> {
@@ -63,7 +63,7 @@ impl InterfaceState {
 }
 
 impl IOContext {
-    pub fn add_interface(&mut self, mut iface: Interface) -> io::Result<()> {
+    pub fn add_interface(&mut self, iface: Interface) -> io::Result<()> {
         if self.ifaces.get(&iface.name.id).is_some() {
             return Err(Error::new(
                 ErrorKind::Other,
@@ -175,6 +175,7 @@ impl IOContext {
         let loopback = iface.flags.loopback;
         let mac = iface.device.addr;
 
+        let mut iface = iface;
         let mut addrs = InterfaceAddrsV6::default();
         std::mem::swap(&mut addrs, &mut iface.addrs.v6);
 

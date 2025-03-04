@@ -1,15 +1,22 @@
 use crate::core::{Error, NsResourceRecord, QueryResponse, Question};
 use des::time::SimTime;
-use std::{fmt::Display, net::SocketAddr};
+use std::{
+    fmt::Display,
+    net::{IpAddr, SocketAddr},
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ActiveTransaction {
+    // source request
     pub client: SocketAddr,
     pub client_transaction: u16,
-    pub local_transaction: u16,
     pub question: Question,
-    pub remote: Option<NsResourceRecord>,
+
     pub operation_counter: usize,
+
+    // request info
+    pub local_transaction: u16,
+    pub remote: Vec<(NsResourceRecord, IpAddr)>,
     pub deadline: SimTime,
 }
 

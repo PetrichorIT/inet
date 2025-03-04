@@ -457,3 +457,33 @@ fn e2e_active_close_can_still_recv_data_beyond_buffer_space() -> io::Result<()> 
 
     Ok(())
 }
+
+#[test]
+fn rcv_closed_after_fin_received() -> io::Result<()> {
+    let mut test = TcpTestUnit::new(
+        SocketAddr::new(Ipv4Addr::new(10, 0, 1, 104).into(), 80), // local
+        SocketAddr::new(Ipv4Addr::new(20, 0, 2, 204).into(), 1808), // peer
+    );
+
+    test.handshake(4000, WIN_4KB)?;
+
+    test.incoming(TcpPacket::new(
+        1808,
+        80,
+        4001,
+        1,
+        WIN_4KB,
+        vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+    ))?;
+    test.clear_outgoing();
+
+    test.incoming(TcpPacket::new(1808, 80, 4011, 1, WIN_4KB, Vec::new()).fin(true))?;
+    test.clear_outgoing();
+
+    assert_eq!(test.state, State::CloseWait);
+    assert_eq!(10, test.read(&mut [0; 10])?); // can read remaining data
+    assert_eq!(0, test.read(&mut [0; 10])?); // then Ok(0)
+    assert_eq!(0, test.read(&mut [0; 10])?); // then Ok(0) repeatable
+
+    Ok(())
+}

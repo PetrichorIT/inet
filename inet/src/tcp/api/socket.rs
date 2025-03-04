@@ -23,7 +23,7 @@ impl TcpSocket {
         IOContext::with_current(|ctx| {
             Ok(TcpSocket {
                 config: RefCell::new(ctx.tcp.config.socket_v4()),
-                fd: ctx.create_socket(SocketDomain::AF_INET, SocketType::SOCK_STREAM, 0)?,
+                fd: ctx.socket(SocketDomain::AF_INET, SocketType::SOCK_STREAM, 0)?,
             })
         })
     }
@@ -33,7 +33,7 @@ impl TcpSocket {
         IOContext::with_current(|ctx| {
             Ok(TcpSocket {
                 config: RefCell::new(ctx.tcp.config.socket_v6()),
-                fd: ctx.create_socket(SocketDomain::AF_INET6, SocketType::SOCK_STREAM, 0)?,
+                fd: ctx.socket(SocketDomain::AF_INET6, SocketType::SOCK_STREAM, 0)?,
             })
         })
     }
@@ -145,7 +145,7 @@ impl TcpSocket {
     ///
     /// Will fail on windows if called before bind
     pub fn local_addr(&self) -> Result<SocketAddr> {
-        IOContext::with_current(|ctx| ctx.get_socket_addr(self.fd))
+        IOContext::with_current(|ctx| ctx.socket_get_addr(self.fd))
     }
 
     /// Returns the value of the SO_ERROR option.
@@ -164,7 +164,7 @@ impl TcpSocket {
         }
         drop(brw);
 
-        let addr = IOContext::with_current(|ctx| ctx.bind_socket(self.fd, addr))?;
+        let addr = IOContext::with_current(|ctx| ctx.socket_bind(self.fd, addr))?;
         self.config.borrow_mut().addr = addr;
         Ok(())
     }
@@ -236,7 +236,7 @@ impl TcpSocket {
 impl Drop for TcpSocket {
     fn drop(&mut self) {
         if self.fd != 0 {
-            IOContext::try_with_current(|ctx| ctx.close_socket(self.fd));
+            IOContext::try_with_current(|ctx| ctx.socket_close(self.fd));
         }
     }
 }

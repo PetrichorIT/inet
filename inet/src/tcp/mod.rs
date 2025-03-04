@@ -399,12 +399,12 @@ impl IOContext {
         config: TcpSocketConfig,
         pkt: (IpAddr, IpAddr, TcpPacket),
     ) -> Result<(TcpStream, SocketAddr)> {
-        let stream_socket = self.dup_socket(fd)?;
-        self.bind_peer(stream_socket, src)?;
+        let stream_socket = self.socket_duplicate(fd)?;
+        self.socket_set_peer(stream_socket, src)?;
 
         let mut ctrl = TransmissionControlBlock::new(
             stream_socket,
-            self.get_socket_addr(stream_socket)?,
+            self.socket_get_addr(stream_socket)?,
             config,
         );
 
@@ -592,7 +592,7 @@ impl IOContext {
             //     ctrl.debug_rto.collect(ctrl.rto as f64);
             //     ctrl.debug_rto.finish();
             // }
-            self.close_socket(fd);
+            self.socket_close(fd);
         } else {
             self.tcp.streams.insert(fd, ctrl);
         }
@@ -615,7 +615,7 @@ impl IOContext {
                 ctrl.span.record("local", debug(ctrl.local_addr));
                 ctrl.span.record("peer", debug(ctrl.peer_addr));
 
-                self.bind_peer(ctrl.fd, peer);
+                self.socket_set_peer(ctrl.fd, peer);
 
                 ctrl.tx_state = TcpSenderState::Opening;
                 ctrl.rx_state = TcpReceiverState::Opening;

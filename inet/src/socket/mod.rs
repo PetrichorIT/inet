@@ -4,7 +4,7 @@ use fxhash::{FxBuildHasher, FxHashMap};
 use tokio::sync::mpsc::Sender;
 use types::ip::IpPacket;
 
-use crate::interface::{IfId, InterfaceAddr};
+use crate::interface::IfId;
 
 use super::{
     interface::{InterfaceName, InterfaceStatus},
@@ -30,6 +30,9 @@ pub use self::fd::*;
 
 mod raw;
 pub use self::raw::*;
+
+use SocketDomain::*;
+use SocketType::*;
 
 #[derive(Debug)]
 pub(super) struct Sockets {
@@ -150,7 +153,7 @@ impl IOContext {
         }
     }
 
-    pub(super) fn create_socket(
+    pub(super) fn socket(
         &mut self,
         domain: SocketDomain,
         typ: SocketType,
@@ -183,7 +186,7 @@ impl IOContext {
         Ok(fd)
     }
 
-    pub(super) fn dup_socket(&mut self, fd: Fd) -> Result<Fd> {
+    pub(super) fn socket_duplicate(&mut self, fd: Fd) -> Result<Fd> {
         let Some(socket) = self.sockets.get(&fd) else {
             return Err(Error::new(
                 ErrorKind::InvalidInput,
@@ -208,40 +211,117 @@ impl IOContext {
         Ok(new_fd)
     }
 
-    pub(super) fn close_socket(&mut self, fd: Fd) -> Result<()> {
+    pub(super) fn socket_close(&mut self, fd: Fd) -> Result<()> {
         tracing::trace!("closing '0x{:x}", fd);
-        let socket = self.sockets.remove(&fd);
-        if socket.is_some() {
+        if self.sockets.remove(&fd).is_some() {
             Ok(())
         } else {
             Err(Error::new(ErrorKind::InvalidInput, "invalid fd"))
         }
     }
 
-    pub(super) fn bind_socket(&mut self, fd: Fd, addr: SocketAddr) -> Result<SocketAddr> {
+    pub(super) fn socket_bind(&mut self, fd: Fd, addr: SocketAddr) -> Result<SocketAddr> {
         let unspecified = match addr {
             SocketAddr::V4(v4) => v4.ip().is_unspecified(),
             SocketAddr::V6(v6) => v6.ip().is_unspecified(),
         };
 
         if unspecified {
-            self.bind_socket_unspecified(fd, addr)
+            self.socket_bind_unspecified(fd, addr)
         } else {
-            self.bind_socket_specified(fd, addr)
+            self.socket_bind_specified(fd, addr)
         }
     }
 
-    fn bind_socket_unspecified(&mut self, fd: Fd, addr: SocketAddr) -> Result<SocketAddr> {
-        let mut interfaces = self
-            .ifaces
+    fn socket_bind_unspecified(&mut self, fd: Fd, addr: SocketAddr) -> Result<SocketAddr> {
+        let Some(socket) = self.sockets.get(&fd) else {
+            return Err(Error::new(ErrorKind::InvalidInput, "invalid fd"));
+        };
+
+        let mut available_ifaces = self.ifaces.iter().collect::<Vec<_>>();
+        available_ifaces.sort_by_key(|(_, iface)| iface.prio);
+
+        let valid_ifaces = available_ifaces
             .iter()
-            .map(|(ifid, i)| (ifid, i, i.prio))
+            .filter_map(|(&ifid, iface)| {
+                if let InterfaceStatus::Inactive = iface.status {
+                    return None;
+                }
+                if !iface.flags.up {
+                    return None;
+                }
+
+                if addr.is_ipv4() {
+                    iface.addrs.has_v4_capability().then(|| ifid)
+                } else {
+                    (iface.addrs.has_v4_capability() || iface.addrs.has_v6_capability())
+                        .then(|| ifid)
+                }
+            })
             .collect::<Vec<_>>();
 
-        interfaces.sort_by(|(_, _, l), (_, _, r)| l.cmp(r));
+        if valid_ifaces.is_empty() {
+            return Err(Error::new(
+                ErrorKind::AddrNotAvailable,
+                "address not available",
+            ));
+        }
 
-        let mut valid_ifaces = Vec::new();
-        for (ifid, interface, _) in interfaces {
+        let mut port = addr.port();
+        if port == 0 {
+            port = self.port;
+            while self
+                .sockets
+                .values()
+                .any(|other| other.addr.port() == port && other.typ == socket.typ)
+            {
+                port = port.wrapping_add(1);
+            }
+            self.port = port.wrapping_add(1);
+        } else {
+            if self
+                .sockets
+                .values()
+                .any(|other| other.addr.port() == port && other.typ == socket.typ)
+            {
+                return Err(Error::new(ErrorKind::AddrInUse, "port already in use"));
+            }
+        }
+
+        let socket = self.sockets.get_mut(&fd).expect("unreachable");
+        socket.addr = SocketAddr::new(addr.ip(), port);
+        socket.interface = SocketIfaceBinding::Any(valid_ifaces);
+
+        tracing::trace!(
+            "binding '0x{:x} to {} at {} (zero-bind)",
+            fd,
+            socket.addr,
+            socket.interface
+        );
+
+        Ok(socket.addr)
+    }
+
+    fn socket_bind_specified(&mut self, fd: Fd, addr: SocketAddr) -> Result<SocketAddr> {
+        let Some(socket) = self.sockets.get(&fd) else {
+            return Err(Error::new(ErrorKind::InvalidInput, "invalid fd"));
+        };
+
+        if self
+            .sockets
+            .values()
+            .any(|other| other.addr == addr && other.typ == socket.typ)
+        {
+            return Err(Error::new(ErrorKind::AddrInUse, "address already in use"));
+        }
+
+        // Find right interface
+        for (ifid, interface) in self
+            .ifaces
+            .iter()
+            .filter(|(_, iface)| iface.addrs.iter().any(|iaddr| iaddr.matches(addr.ip())))
+        {
+            // Found the right interface
             if interface.status == InterfaceStatus::Inactive {
                 continue;
             }
@@ -250,126 +330,51 @@ impl IOContext {
                 continue;
             }
 
-            if addr.is_ipv4() {
-                // 0.0.0.0 binding
-                let v4capable = interface
-                    .addrs
-                    .iter()
-                    .any(|addr| matches!(addr, InterfaceAddr::Inet { .. }));
-                if v4capable {
-                    valid_ifaces.push(*ifid);
-                }
-            } else {
-                let ipcapable = interface.addrs.iter().any(|addr| {
-                    matches!(
-                        addr,
-                        InterfaceAddr::Inet { .. } | InterfaceAddr::Inet6 { .. }
-                    )
-                });
-
-                if ipcapable {
-                    valid_ifaces.push(*ifid);
-                }
-            }
-        }
-
-        if valid_ifaces.is_empty() {
-            Err(Error::new(
-                ErrorKind::AddrNotAvailable,
-                "Address not available",
-            ))
-        } else {
+            let next = addr.ip();
             let mut port = addr.port();
             if port == 0 {
-                port = self.port;
-                while self.sockets.iter().any(|(_, s)| s.addr.port() == port) {
-                    port = port.wrapping_add(1);
+                // Unspecified port
+                let mut naddr = SocketAddr::new(next, port);
+                loop {
+                    naddr.set_port(self.port);
+                    self.port += 1;
+
+                    if !self
+                        .sockets
+                        .values()
+                        .any(|other| other.addr == naddr && other.typ == socket.typ)
+                    {
+                        break;
+                    }
                 }
-                self.port = port.wrapping_add(1);
+
+                port = naddr.port();
             } else {
+                // Check direct port
+                let naddr = SocketAddr::new(next, port);
                 if self
                     .sockets
-                    .iter()
-                    .any(|socket| socket.1.addr.port() == port)
+                    .values()
+                    .any(|other| other.addr == naddr && other.typ == socket.typ)
                 {
-                    return Err(Error::new(ErrorKind::AddrInUse, "Port allready in use"));
+                    // E_INUSE
+                    continue;
                 }
             }
 
-            let socket = self.sockets.get_mut(&fd).expect("invalid socket fd");
-            socket.addr = SocketAddr::new(addr.ip(), port);
-            socket.interface = SocketIfaceBinding::Any(valid_ifaces);
+            // Successful bind
+            let socket = self.sockets.get_mut(&fd).expect("unreachable");
+            socket.addr = SocketAddr::new(next, port);
+            socket.interface = SocketIfaceBinding::Bound(*ifid);
 
             tracing::trace!(
-                "binding '0x{:x} to {} at {} (zero-bind)",
+                "binding '0x{:x} to {} at {} (directed-bind)",
                 fd,
                 socket.addr,
-                socket.interface
+                interface.name
             );
 
-            Ok(socket.addr)
-        }
-    }
-
-    fn bind_socket_specified(&mut self, fd: Fd, addr: SocketAddr) -> Result<SocketAddr> {
-        if self.sockets.values().any(|socket| socket.addr == addr) {
-            return Err(Error::new(ErrorKind::AddrInUse, "Address allready in use"));
-        }
-
-        // Find right interface
-        for (ifid, interface) in self.ifaces.iter() {
-            if let Some(_) = interface
-                .addrs
-                .iter()
-                .find(|iaddr| iaddr.matches(addr.ip()))
-            {
-                // Found the right interface
-                if interface.status == InterfaceStatus::Inactive {
-                    return Err(Error::new(ErrorKind::NotFound, "Interface inactive"));
-                }
-
-                if !interface.flags.up {
-                    return Err(Error::new(ErrorKind::NotFound, "Interface down"));
-                }
-
-                let next = addr.ip();
-                let mut port = addr.port();
-                if port == 0 {
-                    // Unspecified port
-                    let mut naddr = SocketAddr::new(next, port);
-                    loop {
-                        naddr.set_port(self.port);
-                        self.port += 1;
-
-                        if !self.sockets.values().any(|socket| socket.addr == naddr) {
-                            break;
-                        }
-                    }
-
-                    port = naddr.port();
-                } else {
-                    // Check direct port
-                    let naddr = SocketAddr::new(next, port);
-                    if self.sockets.values().any(|socket| socket.addr == naddr) {
-                        // E_INUSE
-                        continue;
-                    }
-                }
-
-                // Successful bind
-                let socket = self.sockets.get_mut(&fd).expect("Invalid socket FD");
-                socket.addr = SocketAddr::new(next, port);
-                socket.interface = SocketIfaceBinding::Bound(*ifid);
-
-                tracing::trace!(
-                    "binding '0x{:x} to {} at {} (directed-bind)",
-                    fd,
-                    socket.addr,
-                    interface.name
-                );
-
-                return Ok(socket.addr);
-            }
+            return Ok(socket.addr);
         }
 
         Err(Error::new(
@@ -378,7 +383,7 @@ impl IOContext {
         ))
     }
 
-    pub(super) fn bind_peer(&mut self, fd: Fd, peer: SocketAddr) -> Result<()> {
+    pub(super) fn socket_set_peer(&mut self, fd: Fd, peer: SocketAddr) -> Result<()> {
         let Some(socket) = self.sockets.get_mut(&fd) else {
             return Err(Error::new(
                 ErrorKind::InvalidInput,
@@ -397,7 +402,7 @@ impl IOContext {
         Ok(())
     }
 
-    pub(super) fn get_socket_addr(&self, fd: Fd) -> Result<SocketAddr> {
+    pub(super) fn socket_get_addr(&self, fd: Fd) -> Result<SocketAddr> {
         let Some(socket) = self.sockets.get(&fd) else {
             return Err(Error::new(
                 ErrorKind::InvalidInput,
@@ -407,7 +412,7 @@ impl IOContext {
         Ok(socket.addr)
     }
 
-    pub(super) fn get_socket_peer(&self, fd: Fd) -> Result<SocketAddr> {
+    pub(super) fn socket_get_peer(&self, fd: Fd) -> Result<SocketAddr> {
         let Some(socket) = self.sockets.get(&fd) else {
             return Err(Error::new(
                 ErrorKind::InvalidInput,
@@ -415,16 +420,16 @@ impl IOContext {
             ));
         };
         if socket.peer.ip().is_unspecified() {
-            Err(Error::new(ErrorKind::Other, "invalid peer addr - no peer"))
+            Err(Error::new(
+                ErrorKind::NotConnected,
+                "invalid peer addr - no peer",
+            ))
         } else {
             Ok(socket.peer)
         }
     }
 
     pub(super) fn socket_link_update(&mut self, fd: Fd, _ifid: IfId) {
-        use SocketDomain::*;
-        use SocketType::*;
-
         let Some(socket) = self.sockets.get(&fd) else {
             return;
         };
@@ -477,5 +482,324 @@ impl IOContext {
                 Ok(Some(interface.name.clone()))
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use crate::interface::{Interface, NetworkDevice};
+    use des::prelude::ModuleId;
+    use std::net::Ipv6Addr;
+
+    #[test]
+    fn create_supported() {
+        let mut ctx = IOContext::new(ModuleId::NULL);
+        for (domain, typ) in IOContext::POSIX_ALLOWED_COMBI {
+            let sock = ctx.socket(domain, typ, 0);
+            assert!(sock.is_ok());
+        }
+    }
+
+    #[test]
+    fn create_not_supported() {
+        let mut ctx = IOContext::new(ModuleId::NULL);
+        assert_eq!(
+            ctx.socket(AF_UNIX, SOCK_RDM, 0)
+                .expect_err("must fail")
+                .kind(),
+            ErrorKind::Unsupported
+        );
+    }
+
+    #[test]
+    fn duplicate() -> Result<()> {
+        let mut ctx = IOContext::new(ModuleId::NULL);
+        let fd = ctx.socket(AF_INET, SOCK_DGRAM, 0)?;
+        let dup = ctx.socket_duplicate(fd)?;
+
+        assert_ne!(fd, dup);
+        let mut sock = ctx.sockets.get(&fd).unwrap().clone();
+        let mut dup_sock = ctx.sockets.get(&dup).unwrap().clone();
+        sock.fd = 0;
+        dup_sock.fd = 0;
+
+        assert_eq!(sock, dup_sock);
+
+        Ok(())
+    }
+
+    #[test]
+    fn duplicate_socket_does_not_exist() -> Result<()> {
+        let mut ctx = IOContext::new(ModuleId::NULL);
+        let fd = ctx.socket(AF_INET, SOCK_DGRAM, 0)?;
+        let dup = ctx.socket_duplicate(fd + 1);
+        assert_eq!(dup.unwrap_err().kind(), ErrorKind::InvalidInput);
+
+        Ok(())
+    }
+
+    #[test]
+    fn close() -> Result<()> {
+        let mut ctx = IOContext::new(ModuleId::NULL);
+        let fd = ctx.socket(AF_INET, SOCK_DGRAM, 0)?;
+        assert!(ctx.sockets.get(&fd).is_some());
+        ctx.socket_close(fd)?;
+        assert!(ctx.sockets.get(&fd).is_none());
+        Ok(())
+    }
+
+    #[test]
+    fn close_socket_does_not_exist() -> Result<()> {
+        let mut ctx = IOContext::new(ModuleId::NULL);
+        let fd = ctx.socket(AF_INET, SOCK_DGRAM, 0)?;
+        assert!(ctx.sockets.get(&fd).is_some());
+        let error = ctx.socket_close(fd + 1).expect_err("must be an error");
+        assert_eq!(error.kind(), ErrorKind::InvalidInput);
+        assert!(ctx.sockets.get(&fd).is_some());
+        Ok(())
+    }
+
+    impl IOContext {
+        fn mock_add_interface(&mut self, iface: Interface) -> Result<()> {
+            self.ifaces.insert(iface.name.id(), iface);
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn bind_specified() -> Result<()> {
+        let mut ctx = IOContext::new(ModuleId::NULL);
+        ctx.mock_add_interface(
+            Interface::ethv4(NetworkDevice::loopback(), Ipv4Addr::new(192, 168, 2, 101))
+                .named("en0"),
+        )?;
+        ctx.mock_add_interface(
+            Interface::ethv4(NetworkDevice::loopback(), Ipv4Addr::new(10, 100, 28, 101))
+                .named("en1"),
+        )?;
+
+        // port0 bind
+        let fd = ctx.socket(AF_INET, SOCK_DGRAM, 0)?;
+        let addr = SocketAddr::new(Ipv4Addr::new(192, 168, 2, 101).into(), 0);
+        ctx.socket_bind(fd, addr)?;
+
+        let fd = ctx.socket(AF_INET, SOCK_DGRAM, 0)?;
+        let addr = SocketAddr::new(Ipv4Addr::new(10, 100, 28, 101).into(), 0);
+        ctx.socket_bind(fd, addr)?;
+
+        // portx bind
+        let fd = ctx.socket(AF_INET, SOCK_DGRAM, 0)?;
+        let addr = SocketAddr::new(Ipv4Addr::new(192, 168, 2, 101).into(), 9314);
+        ctx.socket_bind(fd, addr)?;
+
+        let fd = ctx.socket(AF_INET, SOCK_DGRAM, 0)?;
+        let addr = SocketAddr::new(Ipv4Addr::new(10, 100, 28, 101).into(), 8351);
+        ctx.socket_bind(fd, addr)?;
+
+        Ok(())
+    }
+
+    #[test]
+    fn bind_specifed_socket_does_not_exist() -> Result<()> {
+        let mut ctx = IOContext::new(ModuleId::NULL);
+        ctx.mock_add_interface(
+            Interface::ethv4(NetworkDevice::loopback(), Ipv4Addr::new(192, 168, 2, 101))
+                .named("en0"),
+        )?;
+
+        let fd = ctx.socket(AF_INET, SOCK_DGRAM, 0)?;
+        let addr = SocketAddr::new(Ipv4Addr::new(192, 168, 2, 101).into(), 2000);
+        let error = ctx.socket_bind(fd + 1, addr).expect_err("must be an error");
+        assert_eq!(error.kind(), ErrorKind::InvalidInput);
+
+        Ok(())
+    }
+
+    #[test]
+    fn bind_specifed_address_already_exist() -> Result<()> {
+        let mut ctx = IOContext::new(ModuleId::NULL);
+        ctx.mock_add_interface(
+            Interface::ethv4(NetworkDevice::loopback(), Ipv4Addr::new(192, 168, 2, 101))
+                .named("en0"),
+        )?;
+
+        let fd = ctx.socket(AF_INET, SOCK_DGRAM, 0)?;
+        let addr = SocketAddr::new(Ipv4Addr::new(192, 168, 2, 101).into(), 2000);
+        ctx.socket_bind(fd, addr)?;
+
+        let fd = ctx.socket(AF_INET, SOCK_DGRAM, 0)?;
+        let error = ctx.socket_bind(fd, addr).expect_err("must fail");
+        assert_eq!(error.kind(), ErrorKind::AddrInUse);
+
+        Ok(())
+    }
+
+    #[test]
+    fn bind_specifed_address_not_available() -> Result<()> {
+        let mut ctx = IOContext::new(ModuleId::NULL);
+        ctx.mock_add_interface(
+            Interface::ethv4(NetworkDevice::loopback(), Ipv4Addr::new(192, 168, 2, 101))
+                .named("en0"),
+        )?;
+
+        let fd = ctx.socket(AF_INET, SOCK_DGRAM, 0)?;
+        let addr = SocketAddr::new(Ipv4Addr::new(10, 1, 1, 2).into(), 2000);
+        let error = ctx.socket_bind(fd, addr).expect_err("must be an error");
+        assert_eq!(error.kind(), ErrorKind::AddrNotAvailable);
+
+        Ok(())
+    }
+
+    #[test]
+    fn bind_unspecifed() -> Result<()> {
+        let mut ctx = IOContext::new(ModuleId::NULL);
+        ctx.mock_add_interface(
+            Interface::ethv4(NetworkDevice::loopback(), Ipv4Addr::new(192, 168, 2, 101))
+                .named("en0"),
+        )?;
+
+        let fd = ctx.socket(AF_INET, SOCK_DGRAM, 0)?;
+        let addr = SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), 2000);
+        ctx.socket_bind(fd, addr)?;
+
+        assert_eq!(
+            ctx.sockets.sockets.get(&fd).map(|s| &s.interface),
+            Some(&SocketIfaceBinding::Any(vec![
+                InterfaceName::new("en0").id()
+            ]))
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn bind_unspecified_socket_does_not_exist() -> Result<()> {
+        let mut ctx = IOContext::new(ModuleId::NULL);
+        ctx.mock_add_interface(
+            Interface::ethv4(NetworkDevice::loopback(), Ipv4Addr::new(192, 168, 2, 101))
+                .named("en0"),
+        )?;
+
+        let fd = ctx.socket(AF_INET, SOCK_DGRAM, 0)?;
+        let addr = SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), 2000);
+        let error = ctx.socket_bind(fd + 1, addr).expect_err("must be an error");
+        assert_eq!(error.kind(), ErrorKind::InvalidInput);
+
+        Ok(())
+    }
+
+    #[test]
+    fn bind_unspecified_address_not_available() -> Result<()> {
+        let mut ctx = IOContext::new(ModuleId::NULL);
+        ctx.mock_add_interface(Interface::ethv6_autocfg(NetworkDevice::loopback()).named("en0"))?;
+
+        let fd = ctx.socket(AF_INET, SOCK_DGRAM, 0)?;
+        let addr = SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), 2000);
+        let error = ctx.socket_bind(fd, addr).expect_err("must be an error");
+        assert_eq!(error.kind(), ErrorKind::AddrNotAvailable);
+
+        Ok(())
+    }
+
+    #[test]
+    fn bind_unspecified_address_already_in_use() -> Result<()> {
+        let mut ctx = IOContext::new(ModuleId::NULL);
+        ctx.mock_add_interface(
+            Interface::ethv4(NetworkDevice::loopback(), Ipv4Addr::new(192, 168, 2, 101))
+                .named("en0"),
+        )?;
+        let fd = ctx.socket(AF_INET, SOCK_DGRAM, 0)?;
+        let addr = SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), 2000);
+        ctx.socket_bind(fd, addr)?;
+
+        let fd = ctx.socket(AF_INET, SOCK_DGRAM, 0)?;
+        let error = ctx.socket_bind(fd, addr).expect_err("must be an error");
+        assert_eq!(error.kind(), ErrorKind::AddrInUse);
+
+        Ok(())
+    }
+
+    #[test]
+    fn bind_different_sockets_bind_to_same_port() -> Result<()> {
+        let mut ctx = IOContext::new(ModuleId::NULL);
+        ctx.mock_add_interface(
+            Interface::ethv4(NetworkDevice::loopback(), Ipv4Addr::new(192, 168, 2, 101))
+                .named("en0"),
+        )?;
+
+        let addr = SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), 2000);
+
+        let fd = ctx.socket(AF_INET, SOCK_STREAM, 0)?;
+        let bind1 = ctx.socket_bind(fd, addr)?;
+
+        let fd = ctx.socket(AF_INET, SOCK_DGRAM, 0)?;
+        let bind2 = ctx.socket_bind(fd, addr)?;
+
+        assert_eq!(bind1, bind2);
+
+        Ok(())
+    }
+
+    #[test]
+    fn set_peer() -> Result<()> {
+        let mut ctx = IOContext::new(ModuleId::NULL);
+        ctx.mock_add_interface(
+            Interface::ethv4(NetworkDevice::loopback(), Ipv4Addr::new(192, 168, 2, 101))
+                .named("en0"),
+        )?;
+
+        let addr = SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), 2000);
+
+        let fd = ctx.socket(AF_INET, SOCK_STREAM, 0)?;
+        ctx.socket_bind(fd, addr)?;
+
+        let peer = SocketAddr::new(Ipv4Addr::new(10, 1, 1, 10).into(), 9713);
+        ctx.socket_set_peer(fd, peer)?;
+
+        assert_eq!(ctx.sockets.sockets.get(&fd).map(|s| s.peer), Some(peer));
+        assert_eq!(ctx.socket_get_peer(fd)?, peer);
+
+        Ok(())
+    }
+
+    #[test]
+    fn set_peer_ip_missmatch() -> Result<()> {
+        let mut ctx = IOContext::new(ModuleId::NULL);
+        ctx.mock_add_interface(
+            Interface::ethv4(NetworkDevice::loopback(), Ipv4Addr::new(192, 168, 2, 101))
+                .named("en0"),
+        )?;
+
+        let addr = SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), 2000);
+
+        let fd = ctx.socket(AF_INET, SOCK_STREAM, 0)?;
+        ctx.socket_bind(fd, addr)?;
+
+        let peer = SocketAddr::new(Ipv6Addr::new(0xfe80, 0, 0, 3, 3, 31, 73, 1).into(), 9713);
+        let error = ctx.socket_set_peer(fd, peer).expect_err("must be an error");
+        assert_eq!(error.kind(), ErrorKind::AddrNotAvailable);
+
+        Ok(())
+    }
+
+    #[test]
+    fn get_peer_no_peer() -> Result<()> {
+        let mut ctx = IOContext::new(ModuleId::NULL);
+        ctx.mock_add_interface(
+            Interface::ethv4(NetworkDevice::loopback(), Ipv4Addr::new(192, 168, 2, 101))
+                .named("en0"),
+        )?;
+
+        let addr = SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), 2000);
+
+        let fd = ctx.socket(AF_INET, SOCK_STREAM, 0)?;
+        ctx.socket_bind(fd, addr)?;
+
+        let error = ctx.socket_get_peer(fd).expect_err("must be an error");
+        assert_eq!(error.kind(), ErrorKind::NotConnected);
+
+        Ok(())
     }
 }

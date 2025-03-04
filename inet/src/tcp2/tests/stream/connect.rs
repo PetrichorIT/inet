@@ -24,7 +24,7 @@ fn connect_without_interface() {
             let stream = TcpStream::connect("69.0.0.69:8000").await;
             let err = stream.unwrap_err();
             assert_eq!(err.kind(), ErrorKind::AddrNotAvailable);
-            assert_eq!(err.to_string(), "Address not available");
+            assert_eq!(err.to_string(), "address not available");
             Ok(())
         })
         .require_join(),

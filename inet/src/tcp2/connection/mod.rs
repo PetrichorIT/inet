@@ -103,12 +103,10 @@ pub struct Connection {
 
 impl Connection {
     pub fn is_rcv_closed(&self) -> bool {
-        if let State::TimeWait = self.state {
-            // TODO: any state after rcvd FIN, so also CLOSE-WAIT, LAST-ACK, CLOSED, CLOSING
-            true
-        } else {
-            false
-        }
+        matches!(
+            self.state,
+            State::TimeWait | State::CloseWait | State::LastAck | State::Closed | State::Closing
+        )
     }
 
     pub fn is_flushed(&self) -> bool {
@@ -175,6 +173,7 @@ impl Connection {
     pub fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         let n = self.peek(buf)?;
         self.consume(n);
+        tracing::trace!("Connection::read({}) = {n}", buf.len());
         return Ok(n);
     }
 
@@ -209,6 +208,7 @@ impl Connection {
             }
 
             if self.received.is_empty() {
+                tracing::trace!("Connection::peek({}) = E_WOULD_BLOCK", buf.len());
                 return Err(Error::new(
                     ErrorKind::WouldBlock,
                     "no bytes in rx buffer yet",

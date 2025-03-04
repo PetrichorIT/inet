@@ -87,12 +87,12 @@ impl TcpStream {
 
     /// Returns the local address that this stream is bound to.
     pub fn local_addr(&self) -> Result<SocketAddr> {
-        IOContext::with_current(|ctx| ctx.get_socket_addr(self.inner.fd))
+        IOContext::with_current(|ctx| ctx.socket_get_addr(self.inner.fd))
     }
 
     /// Returns the peer address that this stream is bound to.
     pub fn peer_addr(&self) -> Result<SocketAddr> {
-        IOContext::with_current(|ctx| ctx.get_socket_peer(self.inner.fd))
+        IOContext::with_current(|ctx| ctx.socket_get_peer(self.inner.fd))
     }
 
     /// Waits for any of the requested ready states.
@@ -287,7 +287,7 @@ impl IOContext {
                     }
                     _ => unreachable!(),
                 };
-                self.bind_socket(fd, unspecified)?;
+                self.socket_bind(fd, unspecified)?;
             }
 
             (fd, config.unwrap())
@@ -303,15 +303,15 @@ impl IOContext {
                 SocketAddr::V6(SocketAddrV6::new(Ipv6Addr::UNSPECIFIED, 0, 0, 0))
             };
 
-            let fd = self.create_socket(domain, SocketType::SOCK_STREAM, 0)?;
-            let addr = self.bind_socket(fd, unspecified)?;
+            let fd = self.socket(domain, SocketType::SOCK_STREAM, 0)?;
+            let addr = self.socket_bind(fd, unspecified)?;
 
             let config = config.unwrap_or(self.tcp.config.listener(addr));
             (fd, config)
         };
 
-        self.bind_peer(fd, peer);
-        let mut ctrl = TransmissionControlBlock::new(fd, self.get_socket_addr(fd)?, config);
+        self.socket_set_peer(fd, peer);
+        let mut ctrl = TransmissionControlBlock::new(fd, self.socket_get_addr(fd)?, config);
         let span = ctrl.span.clone();
         let _g = span.entered();
 

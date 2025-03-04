@@ -16,6 +16,7 @@ use inet::{extensions::with_ext, UdpSocket};
 use tokio::sync::{mpsc, oneshot};
 
 use crate::{
+    adapters::DEFAULT_PORT,
     core::{AAAAResourceRecord, AResourceRecord, DnsString, QueryResponse, ResponseCode, Zonefile},
     server::{all_root_ns, DnsMessage, Nameserver, OpCode, RecursiveNameserver, TransactionResult},
 };
@@ -64,13 +65,15 @@ type ResponderTx = oneshot::Sender<Result<Vec<IpAddr>>>;
 
 impl ClientResolver {
     fn launch(mut self) -> RequestTx {
-        tracing::info!("launching client resolver");
+        tracing::trace!("launching client resolver");
 
         // binding the socket here, ensures that the listener is ready after this call, independent of
         // the scheduling tick of the spawned task
         let (tx, rx) = mpsc::channel(8);
         tokio::spawn(async move {
-            self.run(rx).await.expect("failed");
+            if let Err(error) = self.run(rx).await {
+                tracing::error!("client resolver crashed: {error}");
+            }
         });
         tx
     }
@@ -104,6 +107,8 @@ impl ClientResolver {
                 _ = interval.tick() => {}
             }
 
+            self.nameserver.tick();
+
             for anwser in self.nameserver.anwsers() {
                 let Some(responder) = mapping.remove(&anwser.transaction) else {
                     break;
@@ -131,7 +136,7 @@ impl ClientResolver {
                 }
             }
 
-            for query in self.nameserver.queries() {
+            for query in self.nameserver.queries().collect::<Vec<_>>() {
                 let msg = DnsMessage {
                     transaction: query.transaction,
                     qr: false,
@@ -147,9 +152,23 @@ impl ClientResolver {
                     },
                 };
 
-                udp_socket
-                    .send_to(&msg.to_vec()?, (query.nameserver_ip, 43))
-                    .await?;
+                if let Err(error) = udp_socket
+                    .send_to(&msg.to_vec()?, (query.nameserver_ip, DEFAULT_PORT))
+                    .await
+                {
+                    tracing::error!("cannot send query: {error}");
+
+                    let Some(i) = self
+                        .nameserver
+                        .active_transactions
+                        .iter()
+                        .position(|p| p.local_transaction == query.transaction)
+                    else {
+                        continue;
+                    };
+                    let tx = self.nameserver.active_transactions.remove(i);
+                    self.nameserver.on_query_failure(tx);
+                }
             }
         }
 
@@ -178,20 +197,21 @@ mod tests {
     use serial_test::serial;
 
     use crate::{
-        core::ZoneResolver,
-        server::{IterativeNameserver, UdpBased},
+        adapters::UdpBased,
+        core::{Error, ZoneResolver},
+        server::IterativeNameserver,
     };
 
     use super::*;
 
+    const ZONEFILE_ROOT: &str = include_str!("examples/root.zone");
+    const ZONEFILE_ORG: &str = include_str!("examples/org.zone");
+    const ZONEFILE_EXAMPLE_ORG: &str = include_str!("examples/example.org.zone");
+
     #[test]
     #[serial]
-    fn test_full_client_resolver_integration() {
+    fn resolver_integration_with_caching() {
         let mut sim = SimpleSim::new(inet::init);
-
-        const ZONEFILE_ROOT: &str = include_str!("examples/root.zone");
-        const ZONEFILE_ORG: &str = include_str!("examples/org.zone");
-        const ZONEFILE_EXAMPLE_ORG: &str = include_str!("examples/example.org.zone");
 
         // Servers
         sim.node("192.168.2.10", || async {
@@ -245,6 +265,65 @@ mod tests {
             assert!(resolve_3 < resolve_1);
 
             tracing::info!("DONE");
+
+            Ok(())
+        });
+        sim.node("192.168.2.102", || async { Ok(()) });
+
+        let _ = sim.run();
+    }
+
+    #[test]
+    #[serial]
+    fn resolver_will_fail_after_timeouts() {
+        let mut sim = SimpleSim::new(inet::init);
+
+        // Servers
+        sim.node("192.168.2.10", || async {
+            let zf = Zonefile::from_str(ZONEFILE_ROOT)?;
+            let zone = ZoneResolver::new(zf)?;
+            let ns = IterativeNameserver::new(vec![zone]);
+            let mut server = UdpBased::new(ns).set_root();
+
+            server.launch().await?;
+            Ok(())
+        });
+
+        sim.node("192.168.2.20", || async {
+            let zf = Zonefile::from_str(ZONEFILE_ORG)?;
+            let zone = ZoneResolver::new(zf)?;
+            let ns = IterativeNameserver::new(vec![zone]);
+            let mut server = UdpBased::new(ns);
+
+            server.launch().await?;
+            Ok(())
+        });
+
+        sim.node("192.168.2.30", || async {
+            let zf = Zonefile::from_str(ZONEFILE_EXAMPLE_ORG)?;
+            let zone = ZoneResolver::new(zf)?;
+            let ns = IterativeNameserver::new(vec![zone]);
+            let mut server = UdpBased::new(ns);
+
+            server.launch().await?;
+            Ok(())
+        });
+
+        // Clients
+        sim.node_require_join("192.168.2.101", || async {
+            set_dns_resolver(resolve)?;
+
+            let result = lookup_host(("www.subdomain.example.org.", 80)).await;
+            tracing::info!("{}", result.is_err());
+
+            if let Err(e) = result {
+                assert_eq!(
+                    e.downcast::<Error>().unwrap(),
+                    Error::new(ResponseCode::NxDomain, "")
+                )
+            } else {
+                panic!("there must be an error");
+            }
 
             Ok(())
         });

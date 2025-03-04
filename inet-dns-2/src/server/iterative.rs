@@ -10,7 +10,7 @@ use crate::{
 use super::{transaction::FinishedTransaction, types::NameserverQuery, DnsMessage, Nameserver};
 
 pub struct IterativeNameserver {
-    zones: Vec<ZoneResolver>,
+    authoratative: Vec<ZoneResolver>,
     cache: Option<ZoneResolver>,
 
     responses: Vec<FinishedTransaction>,
@@ -20,7 +20,7 @@ impl IterativeNameserver {
     pub fn new(mut zones: Vec<ZoneResolver>) -> Self {
         zones.sort_by_key(|resolver| resolver.zone().labels().len());
         Self {
-            zones,
+            authoratative: zones,
             cache: None,
             responses: Vec::new(),
         }
@@ -42,7 +42,7 @@ impl IterativeNameserver {
 
         let mut last_err = None;
         for zone in self
-            .zones
+            .authoratative
             .iter()
             .chain(self.cache.iter())
             .filter(|z| z.accepts_query(question))
@@ -61,6 +61,8 @@ impl IterativeNameserver {
 }
 
 impl Nameserver for IterativeNameserver {
+    fn tick(&mut self) {}
+
     fn incoming(&mut self, source: SocketAddr, msg: DnsMessage) {
         info_span!("tx", req = msg.transaction).in_scope(|| {
             for question in msg.response.questions {
@@ -95,6 +97,10 @@ impl Nameserver for IterativeNameserver {
     }
 
     fn queries(&mut self) -> impl Iterator<Item = NameserverQuery> {
+        std::iter::empty()
+    }
+
+    fn active_queries(&mut self) -> impl Iterator<Item = NameserverQuery> {
         std::iter::empty()
     }
 }

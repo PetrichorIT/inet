@@ -4,8 +4,8 @@ use std::{
     net::{Ipv4Addr, Ipv6Addr, SocketAddrV4, SocketAddrV6},
 };
 
-use types::ip::IpPacket;
 use tokio::sync::mpsc::{self, Receiver, Sender};
+use types::ip::IpPacket;
 
 use crate::IOContext;
 
@@ -69,7 +69,7 @@ impl Drop for RawIpSocket {
 
 impl IOContext {
     fn create_raw_ip_socket(&mut self, domain: SocketDomain) -> Result<RawIpSocket> {
-        let fd = self.create_socket(domain, super::SocketType::SOCK_RAW, 0)?;
+        let fd = self.socket(domain, super::SocketType::SOCK_RAW, 0)?;
 
         let saddr = if domain == SocketDomain::AF_INET {
             SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0).into()
@@ -77,8 +77,8 @@ impl IOContext {
             SocketAddrV6::new(Ipv6Addr::UNSPECIFIED, 0, 0, 0).into()
         };
 
-        if let Err(e) = self.bind_socket(fd, saddr) {
-            self.close_socket(fd)?;
+        if let Err(e) = self.socket_bind(fd, saddr) {
+            self.socket_close(fd)?;
             return Err(e);
         }
 
@@ -129,6 +129,6 @@ impl IOContext {
 
     fn drop_raw_ip_socket(&mut self, fd: Fd) {
         self.sockets.handlers.retain(|_, h| h.0 != fd);
-        let _ = self.close_socket(fd);
+        let _ = self.socket_close(fd);
     }
 }

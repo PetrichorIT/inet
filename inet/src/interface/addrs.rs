@@ -49,6 +49,14 @@ impl InterfaceAddrs {
         }
     }
 
+    pub fn has_v4_capability(&self) -> bool {
+        !self.v4.bindings.is_empty()
+    }
+
+    pub fn has_v6_capability(&self) -> bool {
+        !self.v6.unicast.is_empty()
+    }
+
     pub fn iter(&self) -> impl Iterator<Item = InterfaceAddr> + '_ {
         self.v4
             .bindings

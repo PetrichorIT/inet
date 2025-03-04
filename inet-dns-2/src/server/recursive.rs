@@ -1,15 +1,21 @@
 use std::{
     io,
     net::{IpAddr, SocketAddr},
+    time::Duration,
 };
 
-use des::{runtime::random, time::SimTime};
+use des::{
+    runtime::{self, random},
+    time::SimTime,
+};
+use rand::seq::SliceRandom;
 use tracing::info_span;
 
 use crate::{
     core::{
         AAAAResourceRecord, AResourceRecord, DnsString, Error, NsResourceRecord, Question,
-        QuestionClass, QuestionTyp, ResourceRecordTyp, ResponseCode, ZoneResolver, Zonefile,
+        QuestionClass, QuestionTyp, ResourceRecordClass, ResourceRecordTyp, ResponseCode,
+        ZoneResolver, Zonefile,
     },
     server::transaction::TransactionResult,
 };
@@ -24,12 +30,14 @@ use super::{
 pub struct RecursiveNameserver {
     pub inner: IterativeNameserver,
 
-    pub queries: Vec<NameserverQuery>,
     pub roots: Vec<(IpAddr, String)>,
 
     pub active_transactions: Vec<ActiveTransaction>,
-    pub finished_transactions: Vec<FinishedTransaction>,
     pub transaction_num: u16,
+
+    // trait out
+    pub queries: Vec<NameserverQuery>,
+    pub finished_transactions: Vec<FinishedTransaction>,
 }
 
 impl RecursiveNameserver {
@@ -51,7 +59,7 @@ impl RecursiveNameserver {
         self
     }
 
-    pub fn handle_query(
+    pub fn on_incoming_query_request(
         &mut self,
         client: SocketAddr,
         client_transaction: u16,
@@ -62,8 +70,8 @@ impl RecursiveNameserver {
             client_transaction,
             local_transaction: self.transaction_num,
             question,
-            remote: None,
-            deadline: SimTime::MAX,
+            remote: Vec::new(),
+            deadline: SimTime::now() + Duration::from_secs(2),
             operation_counter: 0,
         };
         self.transaction_num += 1;
@@ -72,7 +80,7 @@ impl RecursiveNameserver {
             req = tx.client_transaction,
             resolve = tx.local_transaction
         )
-        .in_scope(|| self.query(tx));
+        .in_scope(|| self.on_query_request(tx));
     }
 
     pub fn get_addr_of(&self, domain: &DnsString) -> Option<IpAddr> {
@@ -111,7 +119,7 @@ impl RecursiveNameserver {
         }
     }
 
-    pub fn query(&mut self, mut tx: ActiveTransaction) {
+    pub fn on_query_request(&mut self, mut tx: ActiveTransaction) {
         tracing::trace!("querying '{}'", tx.question);
         tx.operation_counter += 1;
         match self.inner.query(&tx.question) {
@@ -135,15 +143,23 @@ impl RecursiveNameserver {
 
                 // Referral to other NS
                 if !resp.auths.is_empty() {
-                    let ns = resp.auths[random::<usize>() % resp.auths.len()]
-                        .as_any()
-                        .downcast_ref::<NsResourceRecord>()
-                        .expect("Auths must be NS records")
-                        .clone();
+                    let mut nameservers = resp
+                        .auths
+                        .iter()
+                        .map(|rr| {
+                            rr.as_any()
+                                .downcast_ref::<NsResourceRecord>()
+                                .expect("auths must be NS record")
+                                .clone()
+                        })
+                        .filter_map(|ns| {
+                            let ns_addr = self.get_addr_of(&ns.nameserver)?;
+                            Some((ns, ns_addr))
+                        })
+                        .collect::<Vec<_>>();
+                    nameservers.shuffle(runtime::rng());
 
-                    let ns_addr = self
-                        .get_addr_of(&ns.nameserver)
-                        .expect("no NS name resoultion");
+                    let (ns, ns_addr) = &nameservers[0];
 
                     tracing::trace!(
                         "delegating '{}' to {} ({})",
@@ -154,31 +170,18 @@ impl RecursiveNameserver {
 
                     self.queries.push(NameserverQuery {
                         transaction: tx.local_transaction,
-                        nameserver_ip: ns_addr,
+                        nameserver_ip: *ns_addr,
                         question: tx.question.clone(),
                     });
 
-                    tx.remote = Some(ns);
+                    tx.remote = nameservers;
+                    assert!(!tx.remote.is_empty());
                     self.active_transactions.push(tx);
 
                     return;
                 }
 
-                // no anweser, and now extra info
-                // refer to root servers
-                let root = &self.roots[random::<usize>() % self.roots.len()];
-                self.queries.push(NameserverQuery {
-                    transaction: tx.local_transaction,
-                    nameserver_ip: root.0,
-                    question: tx.question.clone(),
-                });
-                tracing::trace!(
-                    "delegating '{}' to root nameserver {:?} ",
-                    tx.question,
-                    root
-                );
-
-                self.active_transactions.push(tx);
+                unreachable!("no anwsers, no auths would result in NxDomain")
             }
             Err(e) if e.response_code() == ResponseCode::NxDomain => {
                 let root = &self.roots[random::<usize>() % self.roots.len()];
@@ -193,6 +196,17 @@ impl RecursiveNameserver {
                     root
                 );
 
+                tx.remote = vec![(
+                    NsResourceRecord {
+                        domain: DnsString::empty(),
+                        ttl: 7000,
+                        class: ResourceRecordClass::IN, // TODO: make tx dependen
+                        nameserver: DnsString::empty(),
+                    }
+                    .into(),
+                    root.0,
+                )];
+
                 self.active_transactions.push(tx);
             }
 
@@ -202,13 +216,13 @@ impl RecursiveNameserver {
         }
     }
 
-    pub fn handle_response(&mut self, source: SocketAddr, msg: DnsMessage) {
+    pub fn on_query_response(&mut self, source: SocketAddr, msg: DnsMessage) {
         let Some(active_transaction_idx) = self
             .active_transactions
             .iter()
             .position(|t| t.local_transaction == msg.transaction)
         else {
-            panic!("Unknown query");
+            return;
         };
 
         let tx = self.active_transactions.remove(active_transaction_idx);
@@ -237,22 +251,95 @@ impl RecursiveNameserver {
             }
 
             //  Restate questions
-            self.query(tx);
+            self.on_query_request(tx);
+        });
+    }
+
+    pub fn on_query_failure(&mut self, mut tx: ActiveTransaction) {
+        info_span!(
+            "tx",
+            req = tx.client_transaction,
+            remote = tx.local_transaction
+        )
+        .in_scope(|| {
+            tx.local_transaction += 1;
+            tx.operation_counter += 1;
+
+            tracing::error!("{:?}", tx.remote);
+
+            tx.remote.remove(0);
+
+            if tx.remote.is_empty() {
+                self.finished_transactions.push(FinishedTransaction {
+                    transaction: tx.client_transaction,
+                    client: tx.client,
+                    question: tx.question,
+                    result: TransactionResult::Failure(Error::new(ResponseCode::NxDomain, "")),
+                });
+            } else {
+                let (ns, ns_addr) = &tx.remote[0];
+
+                tracing::trace!(
+                    "delegating '{}' to other {} ({})",
+                    tx.question,
+                    ns.nameserver,
+                    ns_addr
+                );
+
+                self.queries.push(NameserverQuery {
+                    transaction: tx.local_transaction,
+                    nameserver_ip: *ns_addr,
+                    question: tx.question.clone(),
+                });
+                self.active_transactions.push(tx);
+            }
         });
     }
 }
 
 impl Nameserver for RecursiveNameserver {
-    fn incoming(&mut self, source: SocketAddr, mut msg: DnsMessage) {
-        if msg.qr {
-            self.handle_response(source, msg);
-        } else {
-            self.handle_query(source, msg.transaction, msg.response.questions.remove(0));
+    fn tick(&mut self) {
+        let now = SimTime::now();
+
+        let expired: Vec<ActiveTransaction>;
+        (expired, self.active_transactions) = self
+            .active_transactions
+            .iter()
+            .cloned()
+            .partition(|tx| tx.deadline <= now);
+
+        for tx in expired {
+            self.on_query_failure(tx);
         }
     }
+
+    fn incoming(&mut self, source: SocketAddr, mut msg: DnsMessage) {
+        if msg.qr {
+            self.on_query_response(source, msg);
+        } else {
+            self.on_incoming_query_request(
+                source,
+                msg.transaction,
+                msg.response.questions.remove(0),
+            );
+        }
+    }
+
     fn queries(&mut self) -> impl Iterator<Item = NameserverQuery> {
         self.queries.drain(..)
     }
+
+    fn active_queries(&mut self) -> impl Iterator<Item = NameserverQuery> {
+        self.active_transactions
+            .iter()
+            .filter(|tx| !tx.remote.is_empty())
+            .map(|tx| NameserverQuery {
+                nameserver_ip: tx.remote[0].1,
+                transaction: tx.local_transaction,
+                question: tx.question.clone(),
+            })
+    }
+
     fn anwsers(&mut self) -> impl Iterator<Item = FinishedTransaction> {
         self.finished_transactions.drain(..)
     }
@@ -265,6 +352,7 @@ mod tests {
     use des::{
         net::{AsyncFn, Sim},
         runtime::Builder,
+        time::sleep,
     };
     use serial_test::serial;
 
@@ -406,6 +494,87 @@ mod tests {
                     }]
                 );
                 assert_eq!(server.queries().collect::<Vec<_>>(), []);
+
+                Ok(())
+            }),
+        );
+        let _ = Builder::seeded(123).max_time(100.0.into()).build(sim).run();
+    }
+
+    #[test]
+    #[serial]
+    fn timeout_will_end_in_error() {
+        let mut sim = Sim::new(()).with_stack(inet::init);
+        sim.node(
+            "alice",
+            AsyncFn::io(|_| async move {
+                let zone = Zonefile::from_str(ZONEFILE_ORG)?;
+                let mut server = RecursiveNameserver::new(zone)?;
+
+                let addr = "2.2.2.2:2".parse().unwrap();
+                server.incoming(
+                    addr,
+                    DnsMessage::question_a(1, "alice.example.org.".parse::<DnsString>()?),
+                );
+
+                assert_eq!(server.anwsers().count(), 0);
+                assert_eq!(server.queries().count(), 1);
+
+                sleep(Duration::from_secs(2)).await;
+
+                server.tick();
+                assert_eq!(
+                    server.anwsers().collect::<Vec<_>>(),
+                    [FinishedTransaction {
+                        transaction: 1,
+                        client: addr,
+                        question: Question {
+                            qname: "alice.example.org.".parse()?,
+                            qclass: QuestionClass::IN,
+                            qtyp: QuestionTyp::A
+                        },
+                        result: TransactionResult::Failure(Error::new(ResponseCode::NxDomain, ""))
+                    }]
+                );
+
+                Ok(())
+            }),
+        );
+        let _ = Builder::seeded(123).max_time(100.0.into()).build(sim).run();
+    }
+
+    const ZONEFILE_EXAMPLE_ORG: &str = include_str!("../examples/example.org.zone");
+
+    #[test]
+    #[serial]
+    fn timeout_will_retransmit_to_other_ns() {
+        let mut sim = Sim::new(()).with_stack(inet::init);
+        sim.node(
+            "alice",
+            AsyncFn::io(|_| async move {
+                let zone = Zonefile::from_str(ZONEFILE_EXAMPLE_ORG)?;
+                let mut server = RecursiveNameserver::new(zone)?;
+
+                let addr = "2.2.2.2:2".parse().unwrap();
+                server.incoming(
+                    addr,
+                    DnsMessage::question_a(1, "www.subdomain.example.org.".parse::<DnsString>()?),
+                );
+
+                assert_eq!(server.anwsers().count(), 0);
+                assert_eq!(server.queries().count(), 1);
+
+                sleep(Duration::from_secs(2)).await;
+                server.tick();
+
+                assert_eq!(server.anwsers().count(), 0);
+                assert_eq!(server.queries().count(), 1);
+
+                sleep(Duration::from_secs(2)).await;
+                server.tick();
+
+                assert_eq!(server.anwsers().count(), 1);
+                assert_eq!(server.queries().count(), 0);
 
                 Ok(())
             }),

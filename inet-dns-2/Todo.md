@@ -1,6 +1,7 @@
 ToDo
 ===
 
-- implement resolver as a extension DnsResolver { Option<Sender> }
-- resolve() checks where there is a sender, if not then spawn a tokio::task with the resolver and the (rx, tx) pair
-- use extension as hook
+- RR timeouts for cached entries
+- RR timeouts for slave nodes
+- better request multiplexing / timeout management per query
+- iterative resolver: allow auth+cache combined queries

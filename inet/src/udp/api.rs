@@ -59,12 +59,12 @@ impl UdpSocket {
 
     /// Returns the local address that this socket is bound to.
     pub fn local_addr(&self) -> Result<SocketAddr> {
-        IOContext::with_current(|ctx| ctx.get_socket_addr(self.fd))
+        IOContext::with_current(|ctx| ctx.socket_get_addr(self.fd))
     }
 
     /// Returns the peer address that this socket is bound to.
     pub fn peer_addr(&self) -> Result<SocketAddr> {
-        IOContext::with_current(|ctx| ctx.get_socket_peer(self.fd))
+        IOContext::with_current(|ctx| ctx.socket_get_peer(self.fd))
     }
 
     /// Connects the UDP socket setting the default destination for send() and

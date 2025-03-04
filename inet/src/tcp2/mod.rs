@@ -430,10 +430,10 @@ impl IOContext {
             } else {
                 SocketDomain::AF_INET6
             };
-            let fd = self.create_socket(domain, SocketType::SOCK_STREAM, 0)?;
+            let fd = self.socket(domain, SocketType::SOCK_STREAM, 0)?;
 
-            addr = self.bind_socket(fd, addr).map_err(|e| {
-                self.close_socket(self.fd).expect("cannot handle error");
+            addr = self.socket_bind(fd, addr).map_err(|e| {
+                self.socket_close(self.fd).expect("cannot handle error");
                 e
             })?;
             fd
@@ -456,7 +456,7 @@ impl IOContext {
 
     fn tcp2_unbind(&mut self, fd: Fd) {
         self.tcp.listeners.remove(&fd);
-        self.close_socket(fd).expect("failed to unbind");
+        self.socket_close(fd).expect("failed to unbind");
     }
 
     ///
@@ -502,10 +502,10 @@ impl IOContext {
         pkt: TcpPacket,
         cfg: Config,
     ) -> Result<Fd, Error> {
-        let stream_socket = self.dup_socket(fd)?;
-        self.bind_peer(stream_socket, src)?;
+        let stream_socket = self.socket_duplicate(fd)?;
+        self.socket_set_peer(stream_socket, src)?;
         let quad = Quad {
-            src: self.get_socket_addr(stream_socket)?,
+            src: self.socket_get_addr(stream_socket)?,
             dst: src,
         };
         let con = Connection::accept(quad, pkt, cfg)?;
@@ -548,7 +548,7 @@ impl IOContext {
                     }
                     _ => unreachable!(),
                 };
-                self.bind_socket(fd, unspecified)?;
+                self.socket_bind(fd, unspecified)?;
             }
 
             (fd, cfg.unwrap())
@@ -564,16 +564,16 @@ impl IOContext {
                 SocketAddr::V6(SocketAddrV6::new(Ipv6Addr::UNSPECIFIED, 0, 0, 0))
             };
 
-            let fd = self.create_socket(domain, SocketType::SOCK_STREAM, 0)?;
-            let addr = self.bind_socket(fd, unspecified)?;
+            let fd = self.socket(domain, SocketType::SOCK_STREAM, 0)?;
+            let addr = self.socket_bind(fd, unspecified)?;
 
             let config = cfg.unwrap_or(self.tcp2.config.for_listener(addr));
             (fd, config)
         };
 
-        self.bind_peer(fd, peer)?;
+        self.socket_set_peer(fd, peer)?;
 
-        let local_addr = self.get_socket_addr(fd)?;
+        let local_addr = self.socket_get_addr(fd)?;
         let quad = Quad {
             src: local_addr,
             dst: peer,
@@ -600,7 +600,7 @@ impl IOContext {
             .remove(&fd)
             .ok_or(Error::new(ErrorKind::BrokenPipe, "no such fd"))?;
 
-        self.close_socket(fd)?;
+        self.socket_close(fd)?;
 
         Ok(())
     }

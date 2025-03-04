@@ -88,6 +88,11 @@ impl SimpleSim {
         let rt = Builder::seeded(123).max_time(100.0.into()).build(self.sim);
         rt.run()
     }
+
+    pub fn run_max_time(self, f: f64) -> RuntimeResult<Sim<()>> {
+        let rt = Builder::seeded(123).max_time(f.into()).build(self.sim);
+        rt.run()
+    }
 }
 
 impl Default for SimpleSim {

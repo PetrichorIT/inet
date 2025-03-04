@@ -124,6 +124,12 @@ impl Interface {
         Self::ethv6_named("en1", device, v6)
     }
 
+    /// Sets the name of the interface.
+    pub fn named(mut self, name: impl AsRef<str>) -> Self {
+        self.name = InterfaceName::new(name);
+        self
+    }
+
     /// Creates a new ethernet interface using the provided parameters.
     pub fn ethv4_named(
         name: impl AsRef<str>,

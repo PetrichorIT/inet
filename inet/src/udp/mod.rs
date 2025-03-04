@@ -176,10 +176,10 @@ impl IOContext {
             SocketDomain::AF_INET6
         };
 
-        let socket: Fd = self.create_socket(domain, SocketType::SOCK_DGRAM, 0)?;
+        let socket: Fd = self.socket(domain, SocketType::SOCK_DGRAM, 0)?;
 
-        let baddr = self.bind_socket(socket, addr).map_err(|e| {
-            let _ = self.close_socket(socket);
+        let baddr = self.socket_bind(socket, addr).map_err(|e| {
+            let _ = self.socket_close(socket);
             e
         })?;
 
@@ -208,7 +208,7 @@ impl IOContext {
         };
 
         socket.state = UdpSocketState::Connected(peer);
-        self.bind_peer(fd, peer)?;
+        self.socket_set_peer(fd, peer)?;
         Ok(())
     }
 
@@ -319,6 +319,6 @@ impl IOContext {
 
     pub(super) fn udp_drop(&mut self, fd: Fd) {
         self.udp.binds.remove(&fd);
-        let _ = self.close_socket(fd);
+        let _ = self.socket_close(fd);
     }
 }
