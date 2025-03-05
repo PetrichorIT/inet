@@ -7,7 +7,10 @@ use crate::core::{
     DnsResourceRecord, DnsString, QueryResponse, Question, QuestionClass, QuestionTyp, ResponseCode,
 };
 
-use super::transaction::{FinishedTransaction, TransactionResult};
+use super::{
+    transaction::{FinishedTransaction, TransactionResult},
+    NameserverQuery,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[allow(clippy::struct_excessive_bools)]
@@ -27,7 +30,7 @@ pub struct DnsMessage {
 }
 
 impl DnsMessage {
-    pub fn question_a(transaction: u16, name: impl Into<DnsString>) -> Self {
+    pub fn question_a(transaction: u16, name: DnsString) -> Self {
         Self {
             transaction,
             qr: false,
@@ -75,7 +78,7 @@ impl DnsMessage {
     pub fn response_from_transaction(tx: FinishedTransaction) -> Self {
         match tx.result {
             TransactionResult::Success(response) => Self {
-                transaction: tx.transaction,
+                transaction: tx.query.transaction,
                 qr: true,
                 opcode: OpCode::Query,
                 aa: false,
@@ -86,7 +89,7 @@ impl DnsMessage {
                 response,
             },
             TransactionResult::Failure(error) => Self {
-                transaction: tx.transaction,
+                transaction: tx.query.transaction,
                 qr: true,
                 opcode: OpCode::Query,
                 aa: false,
@@ -95,9 +98,26 @@ impl DnsMessage {
                 ra: false,
                 rcode: error.response_code(),
                 response: QueryResponse {
-                    questions: vec![tx.question],
+                    questions: vec![tx.query.question.clone()],
                     ..Default::default()
                 },
+            },
+        }
+    }
+
+    pub fn request_from_ns_query(ns_query: NameserverQuery) -> Self {
+        Self {
+            transaction: ns_query.transaction,
+            qr: false,
+            opcode: OpCode::Query,
+            aa: false,
+            tc: false,
+            rd: false,
+            ra: false,
+            rcode: ResponseCode::NoError,
+            response: QueryResponse {
+                questions: vec![ns_query.query.question.clone()],
+                ..Default::default()
             },
         }
     }

@@ -1,13 +1,15 @@
-use std::net::SocketAddr;
+use std::{mem, net::SocketAddr, sync::Arc};
 
 use tracing::info_span;
 
 use crate::{
     core::{DnsResourceRecord, Error, QueryResponse, Question, ResponseCode, ZoneResolver},
-    server::transaction::TransactionResult,
+    server::transaction::{SourceQuery, TransactionResult},
 };
 
-use super::{transaction::FinishedTransaction, types::NameserverQuery, DnsMessage, Nameserver};
+use super::{
+    transaction::FinishedTransaction, DnsMessage, Nameserver, NameserverQuery, TransportMedium,
+};
 
 pub struct IterativeNameserver {
     authoratative: Vec<ZoneResolver>,
@@ -63,45 +65,50 @@ impl IterativeNameserver {
 impl Nameserver for IterativeNameserver {
     fn tick(&mut self) {}
 
-    fn incoming(&mut self, source: SocketAddr, msg: DnsMessage) {
-        info_span!("tx", req = msg.transaction).in_scope(|| {
-            for question in msg.response.questions {
-                tracing::trace!("querying '{}'", question);
-                match self.query(&question) {
-                    Ok(result) => self.responses.push(FinishedTransaction {
-                        transaction: msg.transaction,
-                        result: TransactionResult::Success(result),
-                        question,
-                        client: source,
-                    }),
+    fn incoming(&mut self, medium: TransportMedium, source: SocketAddr, msg: DnsMessage) {
+        for question in msg.response.questions {
+            let query = Arc::new(SourceQuery {
+                medium,
+                addr: source,
+                transaction: msg.transaction,
+                question,
+            });
+
+            info_span!("tx", query = %query).in_scope(|| {
+                tracing::trace!("querying");
+                match self.query(&query.question) {
+                    Ok(result) => {
+                        tracing::trace!("anwsered with:{}", result);
+                        self.responses.push(FinishedTransaction {
+                            query,
+                            result: TransactionResult::Success(result),
+                        })
+                    }
                     Err(error) => {
                         tracing::error!("query error: {error}");
                         self.responses.push(FinishedTransaction {
-                            transaction: msg.transaction,
+                            query,
                             result: TransactionResult::Failure(error),
-                            question,
-                            client: source,
                         });
                         return;
                     }
                 };
-            }
-        });
+            });
+        }
     }
 
-    fn anwsers(&mut self) -> impl Iterator<Item = FinishedTransaction> {
-        self.responses.drain(..).map(|v| {
-            tracing::trace!("responding to '{}' with:{}", v.question, v.result);
-            v
-        })
+    fn anwsers(&mut self) -> Vec<FinishedTransaction> {
+        let mut vec = Vec::new();
+        mem::swap(&mut vec, &mut self.responses);
+        vec
     }
 
-    fn queries(&mut self) -> impl Iterator<Item = NameserverQuery> {
-        std::iter::empty()
+    fn ns_queries(&mut self) -> Vec<NameserverQuery> {
+        Vec::new()
     }
 
-    fn active_queries(&mut self) -> impl Iterator<Item = NameserverQuery> {
-        std::iter::empty()
+    fn active_queries(&self) -> Vec<NameserverQuery> {
+        Vec::new()
     }
 }
 
@@ -164,21 +171,25 @@ mod tests {
         let addr = "200.0.0.2:80".parse().unwrap();
 
         server.incoming(
+            TransportMedium::Udp,
             addr,
             DnsMessage::question_a(1, "does-not-exist.org.".parse::<DnsString>()?),
         );
 
-        let anwsers = server.anwsers().collect::<Vec<_>>();
+        let anwsers = server.anwsers();
         assert_eq!(
             anwsers,
             [FinishedTransaction {
-                transaction: 1,
-                client: addr,
-                question: Question {
-                    qname: "does-not-exist.org.".parse()?,
-                    qclass: QuestionClass::IN,
-                    qtyp: QuestionTyp::A
-                },
+                query: Arc::new(SourceQuery {
+                    medium: TransportMedium::Udp,
+                    addr,
+                    transaction: 1,
+                    question: Question {
+                        qname: "does-not-exist.org.".parse()?,
+                        qclass: QuestionClass::IN,
+                        qtyp: QuestionTyp::A
+                    },
+                }),
                 result: TransactionResult::Failure(Error::new(
                     ResponseCode::NxDomain,
                     "query could not be resolved"

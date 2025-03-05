@@ -1,167 +1,152 @@
-use crate::{
-    core::{QueryResponse, ResponseCode},
-    server::{declare_root, DnsMessage, Nameserver, OpCode},
+use crate::server::{
+    DnsMessage, FinishedTransaction, Nameserver, NameserverQuery, TransportMedium,
 };
 use bytepack::{FromBytestream, ToBytestream};
-use des::time::interval;
-use inet::{
-    tcp2::{TcpListener, TcpStream},
-    utils::get_ip,
-};
+use inet::tcp2::{OwnedWriteHalf, TcpListener, TcpStream};
 use std::{
     collections::HashMap,
+    future::Future,
     io,
     net::{Ipv4Addr, SocketAddr},
-    time::Duration,
+    pin::Pin,
+    sync::Arc,
 };
 use tokio::{
     io::{AsyncRead, AsyncReadExt, AsyncWriteExt},
-    sync::mpsc::{channel, Sender},
+    sync::{mpsc::Sender, Mutex},
+    task::JoinHandle,
 };
 
-use super::DEFAULT_PORT;
+use super::{TransportAdapter, DEFAULT_PORT};
 
-pub struct TcpBased<T: Nameserver> {
-    nameserver: T,
+pub struct TcpAdapter {
     port: u16,
-    root: bool,
+    tx: Option<Sender<(TransportMedium, SocketAddr, DnsMessage)>>,
+
+    // client managment
+    query_responders: Arc<Mutex<HashMap<SocketAddr, OwnedWriteHalf>>>,
+    query_handles: Arc<Mutex<HashMap<SocketAddr, JoinHandle<io::Result<()>>>>>,
+
+    // request management
+    senders: HashMap<SocketAddr, OwnedWriteHalf>,
 }
 
-impl<T: Nameserver> TcpBased<T> {
-    pub fn new(nameserver: T) -> Self {
-        TcpBased {
-            nameserver,
-            port: DEFAULT_PORT,
-            root: false,
-        }
-    }
+#[async_trait::async_trait]
+impl TransportAdapter for TcpAdapter {
+    async fn deploy(
+        &mut self,
+        tx: Sender<(TransportMedium, SocketAddr, DnsMessage)>,
+    ) -> io::Result<()> {
+        self.tx = Some(tx.clone());
+        let query_responders = self.query_responders.clone();
+        let query_handles = self.query_handles.clone();
 
-    pub const fn with_port(mut self, port: u16) -> Self {
-        self.port = port;
-        self
-    }
-
-    pub fn set_root(mut self) -> Self {
-        self.root = true;
-        self
-    }
-
-    pub async fn launch(&mut self) -> io::Result<()> {
         let addr = SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), self.port);
-        let listener = TcpListener::bind(addr).await?;
+        tokio::spawn(async move {
+            let listener = TcpListener::bind(addr).await?;
+            while let Ok((stream, from)) = listener.accept().await {
+                let (read, write) = stream.into_split();
 
-        tracing::trace!(
-            "created socket {} for dns requrests",
-            listener.local_addr()?
-        );
-        if self.root {
-            declare_root(get_ip().unwrap(), ".".to_string());
-        }
-
-        let mut readers = HashMap::new();
-        let mut responders = HashMap::new();
-
-        let mut querying = HashMap::new();
-
-        let (tx, mut rx) = channel(8);
-        let mut interval = interval(Duration::from_secs(2));
-
-        loop {
-            tokio::select! {
-                frame = rx.recv() => {
-                    let (from, msg) = frame.ok_or_else(|| io::Error::new(io::ErrorKind::Other, "broke pipe"))?;
-                    self.nameserver.incoming(from, msg);
-                }
-
-                frame = listener.accept() => {
-                    let (stream, from) = frame?;
-                    let (read, write) = stream.into_split();
-                    let read_handle = tokio::spawn(dispatch_incoming_from(
-                        tx.clone(),
-                        from,
-                        read,
-                    ));
-                    readers.insert(from, read_handle);
-                    responders.insert(from, write);
-                }
-                _ = interval.tick() => {}
+                query_responders.lock().await.insert(from, write);
+                let handle = tokio::spawn(dispatch_incoming_events_from(tx.clone(), from, read));
+                query_handles.lock().await.insert(from, handle);
             }
 
-            self.nameserver.tick();
+            Ok::<(), io::Error>(())
+        });
 
-            for anwser in self.nameserver.anwsers() {
-                // close tcp connection
-                let Some(responder) = responders.get_mut(&anwser.client) else {
-                    tracing::error!("could not find responder for tx fin: {anwser:?}");
-                    continue;
-                };
+        Ok(())
+    }
 
-                tracing::info!("responding to {} with:{}", anwser.client, anwser.result);
+    async fn send_anwser(&mut self, tx: FinishedTransaction) -> io::Result<()> {
+        let mut lock = self.query_responders.lock().await;
+        let Some(responder) = lock.get_mut(&tx.query.addr) else {
+            tracing::error!("could not find responder for tx fin: {tx:?}");
+            return Ok(());
+        };
 
-                let msg = DnsMessage::response_from_transaction(anwser);
-                responder.write_all(&msg.to_vec()?).await?;
+        let msg = DnsMessage::response_from_transaction(tx);
+        responder.write_all(&msg.to_vec()?).await?;
+
+        Ok(())
+    }
+
+    async fn send_ns_query(&mut self, ns_query: NameserverQuery) -> io::Result<()> {
+        let nsaddr = SocketAddr::new(ns_query.nameserver_ip, DEFAULT_PORT);
+        let write = match self.senders.get_mut(&nsaddr) {
+            Some(write) => write,
+            None => {
+                let stream = TcpStream::connect(nsaddr).await?;
+                let (read, write) = stream.into_split();
+
+                tokio::spawn(dispatch_incoming_events_from(
+                    self.tx.as_ref().unwrap().clone(),
+                    nsaddr,
+                    read,
+                ));
+
+                self.senders.insert(nsaddr, write);
+                self.senders.get_mut(&nsaddr).unwrap()
             }
+        };
 
-            for query in self.nameserver.queries() {
-                let addr = SocketAddr::new(query.nameserver_ip, DEFAULT_PORT);
+        let msg = DnsMessage::request_from_ns_query(ns_query);
+        write.write_all(&msg.to_vec()?).await?;
 
-                let write = match querying.get_mut(&addr) {
-                    Some(write) => write,
-                    None => {
-                        let socket = TcpStream::connect(addr).await?;
+        Ok(())
+    }
 
-                        let (read, write) = socket.into_split();
-                        tokio::spawn(dispatch_incoming_from(tx.clone(), addr, read));
+    fn tick<'life0, 'life1, 'async_trait>(
+        &'life0 mut self,
+        nameserver: &'life1 dyn Nameserver,
+    ) -> Pin<Box<dyn Future<Output = io::Result<()>> + Send + 'async_trait>>
+    where
+        'life0: 'async_trait,
+        'life1: 'async_trait,
+        Self: 'async_trait,
+    {
+        let active = nameserver.active_queries();
+        Box::pin(async move {
+            let mut query_responders = self.query_responders.lock().await;
+            let mut query_handles = self.query_handles.lock().await;
 
-                        querying.insert(addr, write);
-                        querying.get_mut(&addr).expect("unreachable")
-                    }
-                };
-
-                let msg = DnsMessage {
-                    transaction: query.transaction,
-                    qr: false,
-                    opcode: OpCode::Query,
-                    aa: false,
-                    tc: false,
-                    rd: true,
-                    ra: false,
-                    rcode: ResponseCode::NoError,
-                    response: QueryResponse {
-                        questions: vec![query.question],
-                        ..Default::default()
-                    },
-                };
-                write.write_all(&msg.to_vec()?).await?;
-            }
-
-            // Close connections towards clients (we act as the server)
-            readers.retain(|addr, handle| {
+            query_handles.retain(|addr, handle| {
                 let retain = !handle.is_finished();
                 if !retain {
-                    tracing::info!("removing client connection {addr}");
-                    responders.remove(addr);
+                    tracing::trace!("removing client connection {addr}");
+                    query_responders.remove(addr);
                 }
                 retain
             });
 
-            // Close connection towards other servers (we act as a client)
-            let active = self.nameserver.active_queries().collect::<Vec<_>>();
-            querying.retain(|addr, _| {
+            self.senders.retain(|addr, _| {
                 // There is some connection currently using this ns query
                 let retain = active.iter().any(|query| query.nameserver_ip == addr.ip());
                 if !retain {
                     tracing::info!("removing server connection {addr}");
                 }
                 retain
-            })
+            });
+            Ok(())
+        })
+    }
+}
+
+impl Default for TcpAdapter {
+    fn default() -> Self {
+        Self {
+            port: DEFAULT_PORT,
+            tx: None,
+            query_responders: Arc::default(),
+            query_handles: Arc::default(),
+            senders: HashMap::default(),
         }
     }
 }
 
 #[tracing::instrument(name = "con", skip(tx, stream))]
-async fn dispatch_incoming_from<R: AsyncRead + Unpin>(
-    tx: Sender<(SocketAddr, DnsMessage)>,
+async fn dispatch_incoming_events_from<R: AsyncRead + Unpin>(
+    tx: Sender<(TransportMedium, SocketAddr, DnsMessage)>,
     peer: SocketAddr,
     mut stream: R,
 ) -> io::Result<()> {
@@ -181,7 +166,7 @@ async fn dispatch_incoming_from<R: AsyncRead + Unpin>(
             match DnsMessage::read_from_vec(&mut buf) {
                 Ok(msg) => {
                     // consumed the bytes from the buf, msg no ready
-                    tx.send((peer, msg))
+                    tx.send((TransportMedium::Tcp, peer, msg))
                         .await
                         .expect("msg tx failed: dns server must have failed, failing too");
                 }
@@ -215,6 +200,7 @@ mod tests {
     use serial_test::serial;
 
     use crate::{
+        adapters::Base,
         core::{DnsString, ZoneResolver, Zonefile},
         server::{IterativeNameserver, RecursiveNameserver},
     };
@@ -234,9 +220,9 @@ mod tests {
             let zf = Zonefile::from_str(ZONEFILE_EXAMPLE_ORG)?;
             let zone = ZoneResolver::new(zf)?;
             let ns = IterativeNameserver::new(vec![zone]);
-            let mut server = TcpBased::new(ns);
+            let server = Base::new(ns).with_adapter(TransportMedium::Tcp, TcpAdapter::default());
 
-            server.launch().await?;
+            server.deploy().await?;
             Ok(())
         });
 
@@ -269,30 +255,30 @@ mod tests {
             let zf = Zonefile::from_str(ZONEFILE_ROOT)?;
             let zone = ZoneResolver::new(zf)?;
             let ns = IterativeNameserver::new(vec![zone]);
-            let mut server = TcpBased::new(ns);
-
-            server.launch().await?;
-            Ok(())
+            Base::new(ns)
+                .with_adapter(TransportMedium::Tcp, TcpAdapter::default())
+                .deploy()
+                .await
         });
 
         sim.node("192.168.2.20", || async {
             let zf = Zonefile::from_str(ZONEFILE_ORG)?;
             let zone = ZoneResolver::new(zf)?;
             let ns = IterativeNameserver::new(vec![zone]);
-            let mut server = TcpBased::new(ns);
-
-            server.launch().await?;
-            Ok(())
+            Base::new(ns)
+                .with_adapter(TransportMedium::Tcp, TcpAdapter::default())
+                .deploy()
+                .await
         });
 
         // REsolver
         sim.node("192.168.2.100", || async {
             let ns = RecursiveNameserver::new(Zonefile::local())?
                 .with_roots(vec![(Ipv4Addr::new(192, 168, 2, 10).into(), String::new())]);
-            let mut server = TcpBased::new(ns);
-
-            server.launch().await?;
-            Ok(())
+            Base::new(ns)
+                .with_adapter(TransportMedium::Tcp, TcpAdapter::default())
+                .deploy()
+                .await
         });
 
         // Clients

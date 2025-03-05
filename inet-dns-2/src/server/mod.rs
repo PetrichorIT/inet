@@ -5,20 +5,18 @@ mod pkt;
 mod recursive;
 mod root;
 mod transaction;
-mod types;
 
 pub use iterative::IterativeNameserver;
 pub use pkt::*;
 pub use recursive::RecursiveNameserver;
 pub use root::*;
-pub use transaction::{ActiveTransaction, FinishedTransaction, TransactionResult};
-pub use types::NameserverQuery;
+pub use transaction::*;
 
-pub trait Nameserver: 'static {
+pub trait Nameserver: Send + 'static {
     fn tick(&mut self);
-    fn incoming(&mut self, source: SocketAddr, msg: DnsMessage);
-    fn queries(&mut self) -> impl Iterator<Item = NameserverQuery>;
-    fn active_queries(&mut self) -> impl Iterator<Item = NameserverQuery>;
+    fn incoming(&mut self, medium: TransportMedium, source: SocketAddr, msg: DnsMessage);
 
-    fn anwsers(&mut self) -> impl Iterator<Item = FinishedTransaction>;
+    fn ns_queries(&mut self) -> Vec<NameserverQuery>;
+    fn active_queries(&self) -> Vec<NameserverQuery>;
+    fn anwsers(&mut self) -> Vec<FinishedTransaction>;
 }

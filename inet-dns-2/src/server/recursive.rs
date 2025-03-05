@@ -1,6 +1,7 @@
 use std::{
-    io,
+    io, mem,
     net::{IpAddr, SocketAddr},
+    sync::Arc,
     time::Duration,
 };
 
@@ -22,9 +23,8 @@ use crate::{
 
 use super::{
     iterative::IterativeNameserver,
-    transaction::{ActiveTransaction, FinishedTransaction},
-    types::NameserverQuery,
-    DnsMessage, Nameserver,
+    transaction::{ActiveTransaction, FinishedTransaction, SourceQuery},
+    DnsMessage, Nameserver, NameserverQuery, TransportMedium,
 };
 
 pub struct RecursiveNameserver {
@@ -59,28 +59,17 @@ impl RecursiveNameserver {
         self
     }
 
-    pub fn on_incoming_query_request(
-        &mut self,
-        client: SocketAddr,
-        client_transaction: u16,
-        question: Question,
-    ) {
+    pub fn on_incoming_query_request(&mut self, query: SourceQuery) {
         let tx = ActiveTransaction {
-            client,
-            client_transaction,
+            query: Arc::new(query),
+
             local_transaction: self.transaction_num,
-            question,
             remote: Vec::new(),
             deadline: SimTime::now() + Duration::from_secs(2),
             operation_counter: 0,
         };
         self.transaction_num += 1;
-        info_span!(
-            "tx",
-            req = tx.client_transaction,
-            resolve = tx.local_transaction
-        )
-        .in_scope(|| self.on_query_request(tx));
+        info_span!("tx", query = %tx.query).in_scope(|| self.on_query_request(tx));
     }
 
     pub fn get_addr_of(&self, domain: &DnsString) -> Option<IpAddr> {
@@ -120,22 +109,19 @@ impl RecursiveNameserver {
     }
 
     pub fn on_query_request(&mut self, mut tx: ActiveTransaction) {
-        tracing::trace!("querying '{}'", tx.question);
+        tracing::trace!("querying");
         tx.operation_counter += 1;
-        match self.inner.query(&tx.question) {
+        match self.inner.query(&tx.query.question) {
             Ok(resp) => {
                 // Direct anwser
                 if !resp.anwsers.is_empty() {
                     tracing::trace!(
-                        "anwsered query '{}' with {} anwsers: \n{}",
-                        tx.question,
+                        "anwsered with {} anwsers: \n{}",
                         resp.anwsers.len(),
                         resp.anwsers[0]
                     );
                     self.finished_transactions.push(FinishedTransaction {
-                        transaction: tx.client_transaction,
-                        client: tx.client,
-                        question: tx.question,
+                        query: tx.query.clone(),
                         result: TransactionResult::Success(resp),
                     });
                     return;
@@ -161,17 +147,12 @@ impl RecursiveNameserver {
 
                     let (ns, ns_addr) = &nameservers[0];
 
-                    tracing::trace!(
-                        "delegating '{}' to {} ({})",
-                        tx.question,
-                        ns.nameserver,
-                        ns_addr
-                    );
+                    tracing::trace!("delegating to {} ({})", ns.nameserver, ns_addr);
 
                     self.queries.push(NameserverQuery {
                         transaction: tx.local_transaction,
                         nameserver_ip: *ns_addr,
-                        question: tx.question.clone(),
+                        query: tx.query.clone(),
                     });
 
                     tx.remote = nameservers;
@@ -184,17 +165,22 @@ impl RecursiveNameserver {
                 unreachable!("no anwsers, no auths would result in NxDomain")
             }
             Err(e) if e.response_code() == ResponseCode::NxDomain => {
+                if self.roots.is_empty() {
+                    tracing::error!("no root nameserver available");
+                    self.finished_transactions.push(FinishedTransaction {
+                        query: tx.query.clone(),
+                        result: TransactionResult::Failure(Error::new(ResponseCode::NxDomain, "")),
+                    });
+                    return;
+                }
+
                 let root = &self.roots[random::<usize>() % self.roots.len()];
                 self.queries.push(NameserverQuery {
                     transaction: tx.local_transaction,
                     nameserver_ip: root.0,
-                    question: tx.question.clone(),
+                    query: tx.query.clone(),
                 });
-                tracing::trace!(
-                    "delegating '{}' to root nameserver {:?} ",
-                    tx.question,
-                    root
-                );
+                tracing::trace!("delegating to root nameserver {:?} ", root);
 
                 tx.remote = vec![(
                     NsResourceRecord {
@@ -216,7 +202,7 @@ impl RecursiveNameserver {
         }
     }
 
-    pub fn on_query_response(&mut self, source: SocketAddr, msg: DnsMessage) {
+    pub fn on_query_response(&mut self, _source: SocketAddr, msg: DnsMessage) {
         let Some(active_transaction_idx) = self
             .active_transactions
             .iter()
@@ -227,18 +213,11 @@ impl RecursiveNameserver {
 
         let tx = self.active_transactions.remove(active_transaction_idx);
 
-        info_span!(
-            "tx",
-            req = tx.client_transaction,
-            resolve = tx.local_transaction
-        )
-        .in_scope(|| {
+        info_span!("tx", query = %tx.query).in_scope(|| {
             if msg.rcode != ResponseCode::NoError {
-                tracing::warn!("got response with errors {:?} from {}", msg.rcode, source);
+                tracing::warn!("got response with errors {:?}", msg.rcode);
                 self.finished_transactions.push(FinishedTransaction {
-                    client: tx.client,
-                    question: tx.question,
-                    transaction: tx.client_transaction,
+                    query: tx.query.clone(),
                     result: TransactionResult::Failure(Error::new(msg.rcode, "")),
                 });
                 return;
@@ -256,40 +235,26 @@ impl RecursiveNameserver {
     }
 
     pub fn on_query_failure(&mut self, mut tx: ActiveTransaction) {
-        info_span!(
-            "tx",
-            req = tx.client_transaction,
-            remote = tx.local_transaction
-        )
-        .in_scope(|| {
+        info_span!("tx", query = %tx.query).in_scope(|| {
             tx.local_transaction += 1;
             tx.operation_counter += 1;
-
-            tracing::error!("{:?}", tx.remote);
 
             tx.remote.remove(0);
 
             if tx.remote.is_empty() {
                 self.finished_transactions.push(FinishedTransaction {
-                    transaction: tx.client_transaction,
-                    client: tx.client,
-                    question: tx.question,
+                    query: tx.query.clone(),
                     result: TransactionResult::Failure(Error::new(ResponseCode::NxDomain, "")),
                 });
             } else {
                 let (ns, ns_addr) = &tx.remote[0];
 
-                tracing::trace!(
-                    "delegating '{}' to other {} ({})",
-                    tx.question,
-                    ns.nameserver,
-                    ns_addr
-                );
+                tracing::trace!("delegating to fallback {} ({})", ns.nameserver, ns_addr);
 
                 self.queries.push(NameserverQuery {
                     transaction: tx.local_transaction,
                     nameserver_ip: *ns_addr,
-                    question: tx.question.clone(),
+                    query: tx.query.clone(),
                 });
                 self.active_transactions.push(tx);
             }
@@ -313,35 +278,43 @@ impl Nameserver for RecursiveNameserver {
         }
     }
 
-    fn incoming(&mut self, source: SocketAddr, mut msg: DnsMessage) {
+    fn incoming(&mut self, medium: TransportMedium, addr: SocketAddr, msg: DnsMessage) {
         if msg.qr {
-            self.on_query_response(source, msg);
+            self.on_query_response(addr, msg);
         } else {
-            self.on_incoming_query_request(
-                source,
-                msg.transaction,
-                msg.response.questions.remove(0),
-            );
+            for question in &msg.response.questions {
+                self.on_incoming_query_request(SourceQuery {
+                    medium,
+                    addr,
+                    transaction: msg.transaction,
+                    question: question.clone(),
+                });
+            }
         }
     }
 
-    fn queries(&mut self) -> impl Iterator<Item = NameserverQuery> {
-        self.queries.drain(..)
+    fn anwsers(&mut self) -> Vec<FinishedTransaction> {
+        let mut vec = Vec::new();
+        mem::swap(&mut vec, &mut self.finished_transactions);
+        vec
     }
 
-    fn active_queries(&mut self) -> impl Iterator<Item = NameserverQuery> {
+    fn ns_queries(&mut self) -> Vec<NameserverQuery> {
+        let mut vec = Vec::new();
+        mem::swap(&mut vec, &mut self.queries);
+        vec
+    }
+
+    fn active_queries(&self) -> Vec<NameserverQuery> {
         self.active_transactions
             .iter()
             .filter(|tx| !tx.remote.is_empty())
             .map(|tx| NameserverQuery {
                 nameserver_ip: tx.remote[0].1,
                 transaction: tx.local_transaction,
-                question: tx.question.clone(),
+                query: tx.query.clone(),
             })
-    }
-
-    fn anwsers(&mut self) -> impl Iterator<Item = FinishedTransaction> {
-        self.finished_transactions.drain(..)
+            .collect()
     }
 }
 
@@ -377,6 +350,7 @@ mod tests {
 
                 let addr = "2.2.2.2:2".parse().unwrap();
                 server.incoming(
+                    TransportMedium::Udp,
                     addr,
                     DnsMessage::question_a(1, "alice.example.org.".parse::<DnsString>()?),
                 );
@@ -386,15 +360,22 @@ mod tests {
                     qclass: QuestionClass::IN,
                     qtyp: QuestionTyp::A,
                 };
+                let query = Arc::new(SourceQuery {
+                    medium: TransportMedium::Udp,
+                    question: question.clone(),
+                    transaction: 1,
+                    addr,
+                });
+
                 let nsaddr = Ipv4Addr::new(192, 168, 2, 30).into();
 
-                assert_eq!(server.anwsers().collect::<Vec<_>>(), []);
+                assert_eq!(server.anwsers(), []);
                 assert_eq!(
-                    server.queries().collect::<Vec<_>>(),
+                    server.ns_queries(),
                     [NameserverQuery {
                         nameserver_ip: nsaddr,
                         transaction: 1,
-                        question: question.clone()
+                        query: query.clone()
                     }]
                 );
 
@@ -410,6 +391,7 @@ mod tests {
                     ..Default::default()
                 };
                 server.incoming(
+                    TransportMedium::Udp,
                     SocketAddr::new(nsaddr, 43),
                     DnsMessage {
                         transaction: 1,
@@ -425,15 +407,13 @@ mod tests {
                 );
 
                 assert_eq!(
-                    server.anwsers().collect::<Vec<_>>(),
+                    server.anwsers(),
                     [FinishedTransaction {
-                        transaction: 1,
-                        client: addr,
-                        question,
+                        query,
                         result: TransactionResult::Success(resp)
                     }]
                 );
-                assert_eq!(server.queries().collect::<Vec<_>>(), []);
+                assert_eq!(server.ns_queries(), []);
 
                 Ok(())
             }),
@@ -453,6 +433,7 @@ mod tests {
 
                 let addr = "2.2.2.2:2".parse().unwrap();
                 server.incoming(
+                    TransportMedium::Udp,
                     addr,
                     DnsMessage::question_a(1, "alice.example.org.".parse::<DnsString>()?),
                 );
@@ -462,38 +443,52 @@ mod tests {
                     qclass: QuestionClass::IN,
                     qtyp: QuestionTyp::A,
                 };
+                let query = Arc::new(SourceQuery {
+                    medium: TransportMedium::Udp,
+                    question: question.clone(),
+                    transaction: 1,
+                    addr,
+                });
+
                 let nsaddr = Ipv4Addr::new(192, 168, 2, 30).into();
 
-                assert_eq!(server.anwsers().collect::<Vec<_>>(), []);
+                assert_eq!(server.anwsers(), []);
                 assert_eq!(
-                    server.queries().collect::<Vec<_>>(),
+                    server.ns_queries(),
                     [NameserverQuery {
                         nameserver_ip: nsaddr,
                         transaction: 1,
-                        question: question.clone()
+                        query: query.clone()
                     }]
                 );
 
                 server.incoming(
+                    TransportMedium::Udp,
                     SocketAddr::new(nsaddr, 43),
                     DnsMessage::response_from_transaction(FinishedTransaction {
-                        transaction: 1,
-                        client: SocketAddr::new(nsaddr, 43),
-                        question: question.clone(),
+                        query: Arc::new(SourceQuery {
+                            medium: TransportMedium::Udp,
+                            question: question.clone(),
+                            transaction: 1,
+                            addr: SocketAddr::new(nsaddr, 43),
+                        }),
                         result: TransactionResult::Failure(Error::new(ResponseCode::NxDomain, "")),
                     }),
                 );
 
                 assert_eq!(
-                    server.anwsers().collect::<Vec<_>>(),
+                    server.anwsers(),
                     [FinishedTransaction {
-                        transaction: 1,
-                        client: addr,
-                        question: question.clone(),
+                        query: Arc::new(SourceQuery {
+                            medium: TransportMedium::Udp,
+                            question: question.clone(),
+                            transaction: 1,
+                            addr,
+                        }),
                         result: TransactionResult::Failure(Error::new(ResponseCode::NxDomain, "")),
                     }]
                 );
-                assert_eq!(server.queries().collect::<Vec<_>>(), []);
+                assert_eq!(server.ns_queries(), []);
 
                 Ok(())
             }),
@@ -513,26 +508,30 @@ mod tests {
 
                 let addr = "2.2.2.2:2".parse().unwrap();
                 server.incoming(
+                    TransportMedium::Udp,
                     addr,
                     DnsMessage::question_a(1, "alice.example.org.".parse::<DnsString>()?),
                 );
 
-                assert_eq!(server.anwsers().count(), 0);
-                assert_eq!(server.queries().count(), 1);
+                assert_eq!(server.anwsers().len(), 0);
+                assert_eq!(server.ns_queries().len(), 1);
 
                 sleep(Duration::from_secs(2)).await;
 
                 server.tick();
                 assert_eq!(
-                    server.anwsers().collect::<Vec<_>>(),
+                    server.anwsers(),
                     [FinishedTransaction {
-                        transaction: 1,
-                        client: addr,
-                        question: Question {
-                            qname: "alice.example.org.".parse()?,
-                            qclass: QuestionClass::IN,
-                            qtyp: QuestionTyp::A
-                        },
+                        query: Arc::new(SourceQuery {
+                            medium: TransportMedium::Udp,
+                            question: Question {
+                                qname: "alice.example.org.".parse()?,
+                                qclass: QuestionClass::IN,
+                                qtyp: QuestionTyp::A
+                            },
+                            transaction: 1,
+                            addr,
+                        }),
                         result: TransactionResult::Failure(Error::new(ResponseCode::NxDomain, ""))
                     }]
                 );
@@ -557,24 +556,25 @@ mod tests {
 
                 let addr = "2.2.2.2:2".parse().unwrap();
                 server.incoming(
+                    TransportMedium::Udp,
                     addr,
                     DnsMessage::question_a(1, "www.subdomain.example.org.".parse::<DnsString>()?),
                 );
 
-                assert_eq!(server.anwsers().count(), 0);
-                assert_eq!(server.queries().count(), 1);
+                assert_eq!(server.anwsers().len(), 0);
+                assert_eq!(server.ns_queries().len(), 1);
 
                 sleep(Duration::from_secs(2)).await;
                 server.tick();
 
-                assert_eq!(server.anwsers().count(), 0);
-                assert_eq!(server.queries().count(), 1);
+                assert_eq!(server.anwsers().len(), 0);
+                assert_eq!(server.ns_queries().len(), 1);
 
                 sleep(Duration::from_secs(2)).await;
                 server.tick();
 
-                assert_eq!(server.anwsers().count(), 1);
-                assert_eq!(server.queries().count(), 0);
+                assert_eq!(server.anwsers().len(), 1);
+                assert_eq!(server.ns_queries().len(), 0);
 
                 Ok(())
             }),
