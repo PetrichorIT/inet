@@ -43,7 +43,7 @@ impl DnsMessage {
             rcode: ResponseCode::NoError,
             response: QueryResponse {
                 questions: vec![Question {
-                    qname: name.into(),
+                    qname: name,
                     qtyp: QuestionTyp::A,
                     qclass: QuestionClass::IN,
                 }],
@@ -134,8 +134,8 @@ impl DnsMessage {
         self.response
             .anwsers
             .into_iter()
-            .chain(self.response.auths.into_iter())
-            .chain(self.response.additional.into_iter())
+            .chain(self.response.auths)
+            .chain(self.response.additional)
     }
 }
 

@@ -50,7 +50,7 @@ impl DnsString {
     pub fn has_parent(&self, parent: &DnsString) -> bool {
         assert!(self.labels().len() >= parent.labels().len());
         let len = parent.labels().len();
-        &self.labels[(self.labels().len() - len)..] == &parent.labels
+        self.labels[(self.labels().len() - len)..] == parent.labels
     }
 
     pub fn truncated(&self, new_len: usize) -> DnsString {
@@ -81,7 +81,7 @@ impl DnsString {
 
         for cmp_size in (1..=root.labels().len()).rev() {
             let suffix_index = self.labels().len().saturating_sub(cmp_size);
-            let is_match = &self.labels[suffix_index..] == &root.labels[..cmp_size];
+            let is_match = self.labels[suffix_index..] == root.labels[..cmp_size];
             if is_match {
                 return DnsString {
                     labels: self
@@ -192,7 +192,7 @@ impl Display for DnsString {
 
 impl PartialOrd for DnsString {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        self.to_string().partial_cmp(&other.to_string())
+        Some(self.to_string().cmp(&other.to_string()))
     }
 }
 

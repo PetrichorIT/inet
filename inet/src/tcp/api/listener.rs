@@ -91,20 +91,18 @@ impl TcpListener {
     /// This function will yield once a new TCP connection is established.
     /// When established, the corresponding `TcpStream` and the remote peer’s address will be returned
     pub async fn accept(&self) -> Result<(TcpStream, SocketAddr)> {
-        loop {
-            let mut rx = self.rx.lock().await;
-            let Some(con) = rx.recv().await else {
-                return Err(Error::new(ErrorKind::BrokenPipe, "listener closed"));
-            };
+        let mut rx = self.rx.lock().await;
+        let Some(con) = rx.recv().await else {
+            return Err(Error::new(ErrorKind::BrokenPipe, "listener closed"));
+        };
 
-            self.backlog.fetch_sub(1, Ordering::SeqCst);
+        self.backlog.fetch_sub(1, Ordering::SeqCst);
 
-            let (stream, ready) = con?;
-            ready.await.expect("Did not expect recv error")?;
+        let (stream, ready) = con?;
+        ready.await.expect("Did not expect recv error")?;
 
-            let peer = stream.peer_addr()?;
-            return Ok((stream, peer));
-        }
+        let peer = stream.peer_addr()?;
+        Ok((stream, peer))
     }
 
     /// DEPRECATED

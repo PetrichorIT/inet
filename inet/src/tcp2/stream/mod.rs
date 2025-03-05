@@ -46,24 +46,29 @@ impl TcpStream {
     /// the error returned from the last connection attempt (the last address) is returned.
     pub async fn connect<A: ToSocketAddrs>(addr: A) -> Result<TcpStream, Error> {
         let addrs = lookup_host(addr).await?;
-        let last_err = None;
+        let mut last_err = None;
 
         for peer in addrs {
             let fd = IOContext::with_current(|ctx| ctx.tcp2_connect(peer, None, None))?;
 
-            while !IOContext::with_current(|ctx| {
-                ctx.tcp2_connection(fd, |c| c.state == State::Estab)
-            })? {
+            if IOContext::with_current(|ctx| ctx.tcp2_connection(fd, |c| c.state != State::Estab))?
+            {
                 let interest = TcpInterest::write(fd);
-                interest.await.map_err(|e| {
+                match interest.await.map_err(|e| {
                     let _ = IOContext::with_current(|ctx| ctx.tcp2_drop(fd));
                     e
-                })?;
+                }) {
+                    Ok(_) => {
+                        return Ok(TcpStream {
+                            inner: Arc::new(Inner { fd }),
+                        })
+                    }
+                    Err(e) => {
+                        last_err = Some(e);
+                        break;
+                    }
+                };
             }
-
-            return Ok(TcpStream {
-                inner: Arc::new(Inner { fd }),
-            });
         }
 
         Err(last_err.unwrap_or(Error::new(ErrorKind::Other, "No address worked")))

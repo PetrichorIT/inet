@@ -18,7 +18,7 @@ impl TryFrom<ZonefileLineRecord> for RawResourceRecord {
     fn try_from(raw: ZonefileLineRecord) -> Result<Self, Self::Error> {
         Ok(Self {
             name: raw.name.clone(),
-            ttl: raw.ttl as u32,
+            ttl: raw.ttl,
             typ: raw.typ,
             class: raw.class,
             rdata: raw.rdata.as_bytes().to_vec(),

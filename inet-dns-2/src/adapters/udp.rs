@@ -42,8 +42,8 @@ impl TransportAdapter for UdpAdapter {
                     continue;
                 };
 
-                if let Err(_) = tx.send((TransportMedium::Udp, from, msg)).await {
-                    tracing::error!("failed to dispatch event");
+                if let Err(err) = tx.send((TransportMedium::Udp, from, msg)).await {
+                    tracing::error!("failed to dispatch event: {}", err);
                     return;
                 }
             }

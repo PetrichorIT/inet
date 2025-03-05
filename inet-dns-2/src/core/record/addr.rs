@@ -18,7 +18,7 @@ impl TryFrom<ZonefileLineRecord> for AResourceRecord {
     fn try_from(raw: ZonefileLineRecord) -> Result<Self, Self::Error> {
         Ok(Self {
             name: raw.name.clone(),
-            ttl: raw.ttl as u32,
+            ttl: raw.ttl,
             class: raw.class,
             addr: raw.rdata.parse().map_err(io::Error::other)?,
         })
@@ -82,7 +82,7 @@ impl TryFrom<ZonefileLineRecord> for AAAAResourceRecord {
     fn try_from(raw: ZonefileLineRecord) -> Result<Self, Self::Error> {
         Ok(Self {
             name: raw.name.clone(),
-            ttl: raw.ttl as u32,
+            ttl: raw.ttl,
             class: raw.class,
             addr: raw.rdata.parse().map_err(io::Error::other)?,
         })

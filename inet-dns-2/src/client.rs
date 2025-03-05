@@ -21,7 +21,7 @@ pub fn resolve(
     host: &str,
     port: u16,
 ) -> Pin<Box<dyn Future<Output = Result<Vec<SocketAddr>>> + Send + 'static>> {
-    let tx = with_ext::<DnsExtension, _>(|ext| ext.tx.as_ref().map(|tx| tx.clone()));
+    let tx = with_ext::<DnsExtension, _>(|ext| ext.tx.clone());
     let tx = tx.unwrap_or_else(|| {
         let (tx, rx) = mpsc::channel(8);
         let ns = RecursiveNameserver::new(Zonefile::local())
@@ -54,8 +54,11 @@ pub fn resolve(
 
 #[derive(Debug, Default)]
 pub struct DnsExtension {
-    tx: Option<Sender<(DnsString, oneshot::Sender<Result<Vec<IpAddr>>>)>>,
+    tx: Option<Sender<Request>>,
 }
+
+type Request = (DnsString, oneshot::Sender<Response>);
+type Response = Result<Vec<IpAddr>>;
 
 #[cfg(test)]
 mod tests {

@@ -16,7 +16,7 @@ impl TryFrom<ZonefileLineRecord> for NsResourceRecord {
     fn try_from(raw: ZonefileLineRecord) -> Result<Self, Self::Error> {
         Ok(Self {
             domain: raw.name.clone(),
-            ttl: raw.ttl as u32,
+            ttl: raw.ttl,
             class: raw.class,
             nameserver: DnsString::from_zonefile(&raw.rdata, &raw.origin)?,
         })

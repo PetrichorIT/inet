@@ -188,8 +188,7 @@ impl RecursiveNameserver {
                         ttl: 7000,
                         class: ResourceRecordClass::IN, // TODO: make tx dependen
                         nameserver: DnsString::empty(),
-                    }
-                    .into(),
+                    },
                     root.0,
                 )];
 

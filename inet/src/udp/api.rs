@@ -282,7 +282,7 @@ impl UdpSocket {
 
                     return Ok((wrt, src));
                 }
-                None => return Err(Error::new(ErrorKind::WouldBlock, "Would block")),
+                None => {}
             }
         }
     }

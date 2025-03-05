@@ -37,10 +37,10 @@ impl TryFrom<ZonefileLineRecord> for SoaResourceRecord {
 
         Ok(Self {
             name: raw.name.clone(),
-            ttl: raw.ttl as u32,
+            ttl: raw.ttl,
             class: raw.class,
-            mname: DnsString::from_zonefile(&splits[0], &raw.origin)?,
-            rname: DnsString::from_zonefile(&splits[1], &raw.origin)?,
+            mname: DnsString::from_zonefile(splits[0], &raw.origin)?,
+            rname: DnsString::from_zonefile(splits[1], &raw.origin)?,
             serial: numbers[0],
             refresh: numbers[1],
             retry: numbers[2],

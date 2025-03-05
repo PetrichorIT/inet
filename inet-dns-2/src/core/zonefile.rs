@@ -100,7 +100,7 @@ impl FromStr for Zonefile {
                 reader.name()
             } else {
                 let raw = parts.remove(0);
-                DnsString::from_zonefile(&raw, &*reader.origin)?
+                DnsString::from_zonefile(&raw, &reader.origin)?
             };
 
             reader.last_name = Some(name.clone());
@@ -172,7 +172,7 @@ fn read_directive(line: String, reader: &mut Reader) -> io::Result<()> {
         return Err(io::Error::other("invalid stmt"));
     }
 
-    match *&parts[0] {
+    match parts[0] {
         "$TTL" => reader.default_ttl = Some(parts[1].parse().map_err(io::Error::other)?),
         "$ORIGIN" => reader.origin = Rc::new(DnsString::from_str(parts[1])?),
         _ => {}

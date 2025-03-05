@@ -36,6 +36,7 @@ impl TryFrom<RawResourceRecord> for PtrResourceRecord {
 }
 
 impl ResourceRecord for PtrResourceRecord {
+    #[allow(clippy::misnamed_getters)]
     fn name(&self) -> &DnsString {
         &self.addr
     }

@@ -90,7 +90,6 @@ impl Nameserver for IterativeNameserver {
                             query,
                             result: TransactionResult::Failure(error),
                         });
-                        return;
                     }
                 };
             });
