@@ -4,6 +4,7 @@ use super::{
     DnsResourceRecord, DnsString, ResourceRecordClass, ResourceRecordTyp, SoaResourceRecord,
 };
 
+/// A zonefile represents a DNS zone in a human-readable format.
 pub struct Zonefile {
     pub records: Vec<DnsResourceRecord>,
 }

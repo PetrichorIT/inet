@@ -2,14 +2,20 @@ use std::fmt::Display;
 
 use super::{DnsResourceRecord, Question};
 
+/// The data sections of a DNS query response
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct QueryResponse {
+    /// The questions section of the response
     pub questions: Vec<Question>,
+    /// The answers section of the response
     pub anwsers: Vec<DnsResourceRecord>,
+    /// The authority section of the response
     pub auths: Vec<DnsResourceRecord>,
+    /// The additional section of the response
     pub additional: Vec<DnsResourceRecord>,
 }
 
+/// The kind of DNS query response
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum QueryResponseKind {
     Anwser,

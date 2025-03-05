@@ -6,6 +6,7 @@ use crate::core::{string::DnsString, ZonefileLineRecord};
 
 use super::{RawResourceRecord, ResourceRecord, ResourceRecordClass};
 
+/// A resource record representing the start of a zone.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SoaResourceRecord {
     pub name: DnsString,

@@ -10,14 +10,19 @@ use bytepack::{
     WriteBytesExt, BE,
 };
 
+/// A DNS query.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Question {
+    /// The name of queried objects.
     pub qname: DnsString,
+    /// The class of queried objects.
     pub qclass: QuestionClass,
+    /// The type of queried objects.
     pub qtyp: QuestionTyp,
 }
 
 impl Question {
+    /// Derives other queries using the CNAME records in thhe zone resolver
     pub fn mutate_query(&self, ctx: &ZoneResolver) -> Question {
         use QuestionTyp::*;
         let mut this = self.clone();
@@ -45,6 +50,7 @@ impl Question {
         }
     }
 
+    /// Derives queries if no matching entries to this one were found.
     pub fn on_unanwsered(&self, ctx: &ZoneResolver) -> Vec<(Question, QueryResponseKind)> {
         use QuestionTyp::*;
         match self.qtyp {
@@ -67,6 +73,7 @@ impl Question {
         }
     }
 
+    /// Derives queries if matching entries to this one were found, either anwsers or auths.
     pub fn on_anwsered(&self, anwsers: &[DnsResourceRecord]) -> Vec<(Question, QueryResponseKind)> {
         use QuestionTyp::*;
         match self.qtyp {
@@ -150,6 +157,7 @@ impl Display for Question {
 }
 
 raw_enum! {
+    /// DNS question class.
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
     pub enum QuestionClass {
         type Repr = u16 where BE;
@@ -178,6 +186,7 @@ impl From<ResourceRecordClass> for QuestionClass {
 }
 
 raw_enum! {
+    /// DNS question type.
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
     pub enum QuestionTyp {
         type Repr = u16 where BE;

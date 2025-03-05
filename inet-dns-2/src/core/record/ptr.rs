@@ -3,6 +3,7 @@ use crate::core::{DnsString, ZonefileLineRecord};
 use bytepack::{FromBytestream, ToBytestream};
 use std::io;
 
+/// A resource record used for inverse name resolution.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PtrResourceRecord {
     pub addr: DnsString,

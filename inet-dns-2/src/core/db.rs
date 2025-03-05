@@ -7,6 +7,7 @@ use super::{
 use crate::core::QuestionTyp;
 use std::{cell::Cell, collections::HashMap, time::Duration};
 
+/// An optimized data structures of DNS records within a class that can be queried.
 #[derive(Debug, Clone, Default)]
 pub struct RecordMap {
     class: ResourceRecordClass,
@@ -75,6 +76,7 @@ impl Ord for Entry {
 }
 
 impl RecordMap {
+    /// Retrieves the SOA record for the domain.
     pub fn soa(&self) -> Option<&SoaResourceRecord> {
         for entry in &self.entries {
             for record in &entry.records {
@@ -86,6 +88,7 @@ impl RecordMap {
         None
     }
 
+    /// Queries all records matching a question directly.
     pub fn query(&self, question: &Question) -> &[DnsResourceRecord] {
         assert!(question.qclass.includes(self.class));
 
@@ -102,6 +105,7 @@ impl RecordMap {
         }
     }
 
+    /// Retrieves all records matching a name and type.
     pub fn get(&self, name: &DnsString, typ: ResourceRecordTyp) -> &[DnsResourceRecord] {
         if let Ok(i) = self.entries.binary_search_by_key(&name, |r| &r.name) {
             self.cached_hit.set(i);
@@ -132,6 +136,7 @@ impl RecordMap {
         }
     }
 
+    /// Addss a new record to the map.
     pub fn add(&mut self, record: DnsResourceRecord, now: SimTime) {
         // FIXME: use default parameters
         let timeout = now + Duration::from_secs(record.ttl().unwrap_or(4242) as u64);
@@ -148,6 +153,7 @@ impl RecordMap {
         }
     }
 
+    /// Ticks the map and returns all expired records.
     pub fn tick(&mut self, now: SimTime) -> Vec<DnsResourceRecord> {
         self.entries
             .iter_mut()

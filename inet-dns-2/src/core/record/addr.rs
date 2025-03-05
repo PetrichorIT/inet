@@ -5,6 +5,7 @@ use std::{
     net::{Ipv4Addr, Ipv6Addr},
 };
 
+/// A resource record representing an IPv4 address.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AResourceRecord {
     pub name: DnsString,
@@ -69,6 +70,7 @@ impl ResourceRecord for AResourceRecord {
     }
 }
 
+/// A resource record representing an IPv6 address.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AAAAResourceRecord {
     pub name: DnsString,

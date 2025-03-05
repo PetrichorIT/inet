@@ -27,6 +27,11 @@ use super::{
     DnsMessage, Nameserver, NameserverQuery, TransportMedium,
 };
 
+/// A recursive nameserver.
+///
+/// This nameserver is responsible for resolving DNS queries recursively, starting from the root
+/// nameservers and following the chain of referrals until the final answer is obtained.
+#[derive(Debug)]
 pub struct RecursiveNameserver {
     pub inner: IterativeNameserver,
 
@@ -41,6 +46,7 @@ pub struct RecursiveNameserver {
 }
 
 impl RecursiveNameserver {
+    /// Creates a new recursive nameserver.
     pub fn new(zone: Zonefile) -> io::Result<Self> {
         Ok(Self {
             inner: IterativeNameserver::new(vec![ZoneResolver::new(zone)?]).with_cache(),
@@ -54,12 +60,13 @@ impl RecursiveNameserver {
         })
     }
 
+    /// Adds a list of root nameservers to the recursive nameserver.
     pub fn with_roots(mut self, roots: Vec<(IpAddr, String)>) -> Self {
         self.roots = roots;
         self
     }
 
-    pub fn on_incoming_query_request(&mut self, query: SourceQuery) {
+    fn on_incoming_query_request(&mut self, query: SourceQuery) {
         let tx = ActiveTransaction {
             query: Arc::new(query),
 
@@ -72,8 +79,8 @@ impl RecursiveNameserver {
         info_span!("tx", query = %tx.query).in_scope(|| self.on_query_request(tx));
     }
 
-    pub fn get_addr_of(&self, domain: &DnsString) -> Option<IpAddr> {
-        let response = self
+    fn get_addr_of(&self, domain: &DnsString) -> Option<IpAddr> {
+        let (_, response) = self
             .inner
             .query(&Question {
                 qname: domain.clone(),
@@ -108,11 +115,11 @@ impl RecursiveNameserver {
         }
     }
 
-    pub fn on_query_request(&mut self, mut tx: ActiveTransaction) {
+    fn on_query_request(&mut self, mut tx: ActiveTransaction) {
         tracing::trace!("querying");
         tx.operation_counter += 1;
         match self.inner.query(&tx.query.question) {
-            Ok(resp) => {
+            Ok((authoratative, resp)) => {
                 // Direct anwser
                 if !resp.anwsers.is_empty() {
                     tracing::trace!(
@@ -122,6 +129,8 @@ impl RecursiveNameserver {
                     );
                     self.finished_transactions.push(FinishedTransaction {
                         query: tx.query.clone(),
+                        ra: true,
+                        aa: authoratative,
                         result: TransactionResult::Success(resp),
                     });
                     return;
@@ -169,6 +178,8 @@ impl RecursiveNameserver {
                     tracing::error!("no root nameserver available");
                     self.finished_transactions.push(FinishedTransaction {
                         query: tx.query.clone(),
+                        ra: true,
+                        aa: true,
                         result: TransactionResult::Failure(Error::new(ResponseCode::NxDomain, "")),
                     });
                     return;
@@ -201,7 +212,7 @@ impl RecursiveNameserver {
         }
     }
 
-    pub fn on_query_response(&mut self, _source: SocketAddr, msg: DnsMessage) {
+    fn on_query_response(&mut self, _source: SocketAddr, msg: DnsMessage) {
         let Some(active_transaction_idx) = self
             .active_transactions
             .iter()
@@ -216,6 +227,8 @@ impl RecursiveNameserver {
             if msg.rcode != ResponseCode::NoError {
                 tracing::warn!("got response with errors {:?}", msg.rcode);
                 self.finished_transactions.push(FinishedTransaction {
+                    ra: true,
+                    aa: false,
                     query: tx.query.clone(),
                     result: TransactionResult::Failure(Error::new(msg.rcode, "")),
                 });
@@ -233,7 +246,7 @@ impl RecursiveNameserver {
         });
     }
 
-    pub fn on_query_failure(&mut self, mut tx: ActiveTransaction) {
+    fn on_query_failure(&mut self, mut tx: ActiveTransaction) {
         info_span!("tx", query = %tx.query).in_scope(|| {
             tx.local_transaction += 1;
             tx.operation_counter += 1;
@@ -243,6 +256,8 @@ impl RecursiveNameserver {
             if tx.remote.is_empty() {
                 self.finished_transactions.push(FinishedTransaction {
                     query: tx.query.clone(),
+                    ra: true,
+                    aa: false,
                     result: TransactionResult::Failure(Error::new(ResponseCode::NxDomain, "")),
                 });
             } else {
@@ -282,12 +297,42 @@ impl Nameserver for RecursiveNameserver {
             self.on_query_response(addr, msg);
         } else {
             for question in &msg.response.questions {
-                self.on_incoming_query_request(SourceQuery {
+                let query = SourceQuery {
                     medium,
                     addr,
                     transaction: msg.transaction,
                     question: question.clone(),
-                });
+                };
+                if msg.rd {
+                    // dispatch to recursive resolver
+                    self.on_incoming_query_request(query);
+                } else {
+                    // use default iterative resolver
+                    let query = Arc::new(query);
+                    info_span!("tx", query = %query).in_scope(|| {
+                        tracing::trace!("querying");
+                        match self.inner.query(&query.question) {
+                            Ok((authoratative, result)) => {
+                                tracing::trace!("anwsered with:{}", result);
+                                self.finished_transactions.push(FinishedTransaction {
+                                    query,
+                                    ra: false,
+                                    aa: authoratative,
+                                    result: TransactionResult::Success(result),
+                                })
+                            }
+                            Err(error) => {
+                                tracing::error!("query error: {error}");
+                                self.finished_transactions.push(FinishedTransaction {
+                                    query,
+                                    ra: false,
+                                    aa: true,
+                                    result: TransactionResult::Failure(error),
+                                });
+                            }
+                        };
+                    });
+                }
             }
         }
     }
@@ -395,11 +440,11 @@ mod tests {
                     DnsMessage {
                         transaction: 1,
                         qr: true,
-                        opcode: OpCode::Query,
+                        ra: false,
+                        rd: false,
                         aa: false,
                         tc: false,
-                        rd: false,
-                        ra: false,
+                        opcode: OpCode::Query,
                         rcode: ResponseCode::NoError,
                         response: resp.clone(),
                     },
@@ -409,6 +454,8 @@ mod tests {
                     server.anwsers(),
                     [FinishedTransaction {
                         query,
+                        ra: true,
+                        aa: false,
                         result: TransactionResult::Success(resp)
                     }]
                 );
@@ -471,6 +518,8 @@ mod tests {
                             transaction: 1,
                             addr: SocketAddr::new(nsaddr, 43),
                         }),
+                        ra: true,
+                        aa: false,
                         result: TransactionResult::Failure(Error::new(ResponseCode::NxDomain, "")),
                     }),
                 );
@@ -484,6 +533,8 @@ mod tests {
                             transaction: 1,
                             addr,
                         }),
+                        ra: true,
+                        aa: false,
                         result: TransactionResult::Failure(Error::new(ResponseCode::NxDomain, "")),
                     }]
                 );
@@ -531,6 +582,8 @@ mod tests {
                             transaction: 1,
                             addr,
                         }),
+                        ra: true,
+                        aa: false,
                         result: TransactionResult::Failure(Error::new(ResponseCode::NxDomain, ""))
                     }]
                 );

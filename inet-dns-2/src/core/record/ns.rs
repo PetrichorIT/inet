@@ -3,6 +3,7 @@ use crate::core::{string::DnsString, ZonefileLineRecord};
 use bytepack::{FromBytestream, ToBytestream};
 use std::io;
 
+/// A resource record used to assign a subzone to a nameserver.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NsResourceRecord {
     pub domain: DnsString,

@@ -2,6 +2,7 @@ use super::{RawResourceRecord, ResourceRecord, ResourceRecordClass};
 use crate::core::{DnsString, ZonefileLineRecord};
 use std::io;
 
+/// A resource record representing a text string.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TxtResourceRecord {
     pub name: DnsString,

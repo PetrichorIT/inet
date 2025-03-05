@@ -6,6 +6,7 @@ use std::{
     sync::Arc,
 };
 
+/// The original client query, initiating a transaction in a nameserver.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SourceQuery {
     pub medium: TransportMedium,
@@ -14,23 +15,16 @@ pub struct SourceQuery {
     pub question: Question,
 }
 
+/// Represents the medium used for communication between the nameserver and the client.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[repr(usize)]
 pub enum TransportMedium {
-    Local,
-    Udp,
-    Tcp,
+    Udp = 0,
+    Tcp = 1,
+    Local = 255,
 }
 
-impl TransportMedium {
-    pub fn fallback(self) -> Option<Self> {
-        match self {
-            Self::Local => Some(Self::Udp),
-            Self::Tcp => Some(Self::Udp),
-            Self::Udp => None,
-        }
-    }
-}
-
+/// Represents the active transaction in a nameserver.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ActiveTransaction {
     // source request
@@ -44,6 +38,7 @@ pub struct ActiveTransaction {
     pub deadline: SimTime,
 }
 
+/// Represents a query to a nameserver.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NameserverQuery {
     pub query: Arc<SourceQuery>,
@@ -51,12 +46,16 @@ pub struct NameserverQuery {
     pub nameserver_ip: IpAddr,
 }
 
+/// Represents a finished transaction in a nameserver, that can be send a DNS response to the client.
 #[derive(Debug, PartialEq, Eq)]
 pub struct FinishedTransaction {
     pub query: Arc<SourceQuery>,
+    pub aa: bool,
+    pub ra: bool,
     pub result: TransactionResult,
 }
 
+/// The valid results of a DNS transaction.
 #[derive(Debug, PartialEq, Eq)]
 pub enum TransactionResult {
     Success(QueryResponse),

@@ -26,6 +26,7 @@ pub use txt::*;
 
 pub(crate) use raw::*;
 
+/// A trait for arbitrary Resource Records
 pub trait ResourceRecord: Debug + Send {
     fn name(&self) -> &DnsString;
     fn ttl(&self) -> Option<u32>;
@@ -40,6 +41,7 @@ pub trait ResourceRecord: Debug + Send {
 
 // # DnsResourceRecord (dyn)
 
+/// A trait object for arbitrary Resource Records.
 #[derive(Debug)]
 pub struct DnsResourceRecord {
     inner: Box<dyn ResourceRecord>,
@@ -191,6 +193,7 @@ impl Display for DnsResourceRecord {
 // # ResourceRecordClass / ResourceRecordTyp
 
 raw_enum! {
+    /// The class of a Resource Record.
     #[derive(Debug, Default,Clone, Copy, PartialEq, Eq, Hash)]
     pub enum ResourceRecordClass {
         type Repr = u16 where BE;
@@ -210,6 +213,7 @@ impl TryFrom<QuestionClass> for ResourceRecordClass {
 }
 
 raw_enum! {
+    /// The type of a Resource Record.
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
     pub enum ResourceRecordTyp {
         type Repr = u16 where BE;

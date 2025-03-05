@@ -8,6 +8,7 @@ use bytepack::{
     BytestreamReader, BytestreamWriter, FromBytestream, ReadBytesExt, ToBytestream, WriteBytesExt,
 };
 
+/// The string representation of a DNS name, in DNS packet encoding
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub struct DnsString {
     labels: Vec<String>,

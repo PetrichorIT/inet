@@ -19,6 +19,9 @@ use tokio::{
 
 use super::{TransportAdapter, DEFAULT_PORT};
 
+/// A TCP transport adapter for DNS queries.
+///
+/// This adapter implements conventional DNS over TCP as specified in RFC 7766
 pub struct TcpAdapter {
     port: u16,
     tx: Option<Sender<(TransportMedium, SocketAddr, DnsMessage)>>,
@@ -86,7 +89,7 @@ impl TransportAdapter for TcpAdapter {
                 ));
 
                 self.senders.insert(nsaddr, write);
-                self.senders.get_mut(&nsaddr).unwrap()
+                self.senders.get_mut(&nsaddr).expect("unreachable")
             }
         };
 

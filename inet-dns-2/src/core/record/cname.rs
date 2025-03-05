@@ -4,6 +4,9 @@ use super::{RawResourceRecord, ResourceRecord, ResourceRecordClass};
 use crate::core::{DnsString, ZonefileLineRecord};
 use bytepack::{FromBytestream, ToBytestream};
 
+/// A resource record representing a canonical name mapping.
+///
+/// This record type is used to map a domain name to another domain name.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CNameResourceRecord {
     pub name: DnsString,

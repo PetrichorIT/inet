@@ -2,10 +2,11 @@ use std::{error::Error as StdError, fmt::Display, io};
 
 use bytepack::raw_enum;
 
+/// A DNS error.
 #[derive(Debug)]
 pub struct Error {
     response_code: ResponseCode,
-    error: Box<dyn std::error::Error + Send + Sync>,
+    error: Box<dyn StdError + Send + Sync>,
 }
 
 impl Error {
@@ -15,7 +16,7 @@ impl Error {
 
     pub fn new<E>(response_code: ResponseCode, error: E) -> Self
     where
-        E: Into<Box<dyn std::error::Error + Send + Sync>>,
+        E: Into<Box<dyn StdError + Send + Sync>>,
     {
         Self {
             response_code,
@@ -47,6 +48,7 @@ impl From<Error> for io::Error {
 }
 
 raw_enum! {
+    /// The response code of a DNS message.
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
     pub enum ResponseCode {
         type Repr = u8 where BE;

@@ -21,6 +21,10 @@ use crate::{
 
 use super::TransportAdapter;
 
+/// A local transport adapter for DNS queries.
+///
+/// This adapter allows for queries from a local sender. Used in client resolvers
+/// and the [`lookup_host`](inet::dns::lookup_host) function.
 pub struct LocalAdapter {
     // caller
     rx: Option<Receiver<Request>>,

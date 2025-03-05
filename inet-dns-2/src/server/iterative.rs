@@ -11,6 +11,11 @@ use super::{
     transaction::FinishedTransaction, DnsMessage, Nameserver, NameserverQuery, TransportMedium,
 };
 
+/// Iterative authoritative nameserver managing multiple zones
+/// and caching.
+///
+/// Can be used as a standalone nameserver or as a part of a larger system, e.g. a recursive nameserver.
+#[derive(Debug)]
 pub struct IterativeNameserver {
     authoratative: Vec<ZoneResolver>,
     cache: Option<ZoneResolver>,
@@ -19,6 +24,7 @@ pub struct IterativeNameserver {
 }
 
 impl IterativeNameserver {
+    /// Creates a new iterative nameserver with the given zones.
     pub fn new(mut zones: Vec<ZoneResolver>) -> Self {
         zones.sort_by_key(|resolver| resolver.zone().labels().len());
         Self {
@@ -28,37 +34,57 @@ impl IterativeNameserver {
         }
     }
 
+    /// Adds a cache to the nameserver. Entries in cache will be
+    /// used only as a secondary source of information.
     pub fn with_cache(mut self) -> Self {
         self.cache = Some(ZoneResolver::cache());
         self
     }
 
+    /// Adds a cached record to the nameserver.
     pub fn add_cached(&mut self, record: DnsResourceRecord) {
         if let Some(ref mut cache) = self.cache {
             cache.add_cached(record);
         }
     }
 
-    pub fn query(&self, question: &Question) -> Result<QueryResponse, Error> {
+    /// Queries the nameserver for the given question.
+    ///
+    /// Returns a tuple containing a boolean indicating whether the response is authoritative,
+    /// and the response itself.
+    pub fn query(&self, question: &Question) -> Result<(bool, QueryResponse), Error> {
         // TODO: db tick
 
+        tracing::debug!("{:?}", self.cache);
+
         let mut last_err = None;
+        let mut last_delegate = None;
+
         for zone in self
             .authoratative
             .iter()
-            .chain(self.cache.iter())
             .filter(|z| z.accepts_query(question))
-            .rev()
         {
             match zone.query(question) {
-                Ok(anwser) => return Ok(anwser),
+                Ok(anwser) if !anwser.anwsers.is_empty() => return Ok((true, anwser)),
+                Ok(delegate) => last_delegate = Some(delegate),
                 Err(e) => last_err = Some(e),
             }
         }
 
-        Err(last_err.take().unwrap_or_else(|| {
-            Error::new(ResponseCode::NotZone, "request directed to invalid zone")
-        }))
+        if let Some(ref cache) = self.cache {
+            match cache.query(question) {
+                Ok(anwser) if !anwser.anwsers.is_empty() => return Ok((false, anwser)),
+                Ok(delegate) => last_delegate = Some(delegate),
+                Err(e) => last_err = Some(e),
+            }
+        }
+
+        last_delegate.map(|v| (false, v)).ok_or_else(|| {
+            last_err.take().unwrap_or_else(|| {
+                Error::new(ResponseCode::NotZone, "request directed to invalid zone")
+            })
+        })
     }
 }
 
@@ -77,10 +103,12 @@ impl Nameserver for IterativeNameserver {
             info_span!("tx", query = %query).in_scope(|| {
                 tracing::trace!("querying");
                 match self.query(&query.question) {
-                    Ok(result) => {
+                    Ok((authoratative, result)) => {
                         tracing::trace!("anwsered with:{}", result);
                         self.responses.push(FinishedTransaction {
                             query,
+                            ra: false,
+                            aa: authoratative,
                             result: TransactionResult::Success(result),
                         })
                     }
@@ -88,6 +116,8 @@ impl Nameserver for IterativeNameserver {
                         tracing::error!("query error: {error}");
                         self.responses.push(FinishedTransaction {
                             query,
+                            ra: false,
+                            aa: true,
                             result: TransactionResult::Failure(error),
                         });
                     }
@@ -132,7 +162,7 @@ mod tests {
             qclass: QuestionClass::IN,
             qtyp: QuestionTyp::A,
         };
-        let response = server.query(&question)?;
+        let (_, response) = server.query(&question)?;
         assert_eq!(
             response.anwsers,
             [AResourceRecord {
@@ -189,6 +219,8 @@ mod tests {
                         qtyp: QuestionTyp::A
                     },
                 }),
+                ra: false,
+                aa: true,
                 result: TransactionResult::Failure(Error::new(
                     ResponseCode::NxDomain,
                     "query could not be resolved"
@@ -211,7 +243,7 @@ mod tests {
             qclass: QuestionClass::IN,
             qtyp: QuestionTyp::A,
         };
-        let response = server.query(&question)?;
+        let (_, response) = server.query(&question)?;
         assert_eq!(
             response.anwsers,
             [AResourceRecord {

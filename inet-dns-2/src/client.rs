@@ -1,3 +1,5 @@
+//! A client resolver, to bind to [`inet::dns::set_resolver`]
+
 use std::{
     future::Future,
     io::{self, Result},
@@ -17,6 +19,7 @@ use crate::{
     server::{all_root_ns, RecursiveNameserver, TransportMedium},
 };
 
+/// A client resolver, using a locac adapter on a recursive DNS server
 pub fn resolve(
     host: &str,
     port: u16,

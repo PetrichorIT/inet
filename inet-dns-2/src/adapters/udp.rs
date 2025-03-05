@@ -14,6 +14,9 @@ use std::{
 
 use super::{TransportAdapter, DEFAULT_PORT};
 
+/// A UDP transport adapter for DNS queries.
+///
+/// This adapter implements conventional DNS over UDP as specified in RFC 1035
 pub struct UdpAdapter {
     port: u16,
     socket: Option<Arc<UdpSocket>>,

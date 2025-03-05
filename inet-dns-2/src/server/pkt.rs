@@ -12,20 +12,27 @@ use super::{
     NameserverQuery,
 };
 
+/// A DNS message.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[allow(clippy::struct_excessive_bools)]
 pub struct DnsMessage {
+    /// The transaction ID that uniquely identifies this message per client-server pair.
     pub transaction: u16,
-    // # Headers
+    /// A flag indicating whether this message is a query (false) or a response (true).
     pub qr: bool,
+    /// The opcode of the message.
     pub opcode: OpCode,
+    /// The authoritative answer flag.
     pub aa: bool,
+    /// The truncation flag.
     pub tc: bool,
+    /// The recursion desired flag.
     pub rd: bool,
+    /// The recursion available flag.
     pub ra: bool,
+    /// The response code.
     pub rcode: ResponseCode,
-    // [u16; 4] lengths of all 4 question sections.
-    // # Questions + Anwsers
+    /// The data section of the message, containing resource records.
     pub response: QueryResponse,
 }
 
@@ -37,7 +44,7 @@ impl DnsMessage {
             opcode: OpCode::Query,
             aa: false,
             tc: false,
-            rd: false,
+            rd: true,
             ra: false,
 
             rcode: ResponseCode::NoError,
@@ -59,7 +66,7 @@ impl DnsMessage {
             opcode: OpCode::Query,
             aa: false,
             tc: false,
-            rd: false,
+            rd: true,
             ra: false,
 
             rcode: ResponseCode::NoError,
@@ -81,10 +88,10 @@ impl DnsMessage {
                 transaction: tx.query.transaction,
                 qr: true,
                 opcode: OpCode::Query,
-                aa: false,
+                aa: tx.aa,
                 tc: false,
                 rd: false,
-                ra: false,
+                ra: tx.ra,
                 rcode: ResponseCode::NoError,
                 response,
             },
@@ -92,10 +99,10 @@ impl DnsMessage {
                 transaction: tx.query.transaction,
                 qr: true,
                 opcode: OpCode::Query,
-                aa: false,
+                aa: tx.aa,
                 tc: false,
                 rd: false,
-                ra: false,
+                ra: tx.ra,
                 rcode: error.response_code(),
                 response: QueryResponse {
                     questions: vec![tx.query.question.clone()],
@@ -112,7 +119,7 @@ impl DnsMessage {
             opcode: OpCode::Query,
             aa: false,
             tc: false,
-            rd: false,
+            rd: true,
             ra: false,
             rcode: ResponseCode::NoError,
             response: QueryResponse {
@@ -258,6 +265,7 @@ impl FromBytestream for DnsMessage {
 // # DNSOpCode
 
 raw_enum! {
+    /// The operation code of a DNS message.
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
     pub enum OpCode {
         type Repr = u8 where BE;

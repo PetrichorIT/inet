@@ -1,3 +1,5 @@
+//! Base components to manage and query resource records (RR)
+
 use des::time::SimTime;
 use std::io;
 
@@ -17,16 +19,21 @@ pub use response::*;
 pub use string::*;
 pub use zonefile::*;
 
+/// A zone resolver that manages and queries resource records (RR)
+/// within one zone.
+#[derive(Debug)]
 pub struct ZoneResolver {
     db: RecordMap,
     zone: DnsString,
 }
 
 impl ZoneResolver {
+    /// The zone this resolver is responsible for.
     pub fn zone(&self) -> &DnsString {
         &self.zone
     }
 
+    /// Create a new resolver that caches records.
     pub fn cache() -> Self {
         Self {
             zone: DnsString::empty(),
@@ -34,6 +41,7 @@ impl ZoneResolver {
         }
     }
 
+    /// Create a new resolver that loads records from a zonefile.
     pub fn new(zf: Zonefile) -> io::Result<Self> {
         let db = zf.records.into_iter().collect::<RecordMap>();
 
@@ -44,14 +52,19 @@ impl ZoneResolver {
         })
     }
 
+    /// Check if this resolver accepts a query.
     pub fn accepts_query(&self, question: &Question) -> bool {
         question.qname.has_parent(&self.zone)
     }
 
+    /// Add a record to the cache.
     pub fn add_cached(&mut self, record: DnsResourceRecord) {
         self.db.add(record, SimTime::now())
     }
 
+    /// Query the resolver for a given question. This will retrieve
+    /// all RRs that match the query, including dependent queries
+    /// that can be derived from the original query.
     pub fn query(&self, question: &Question) -> Result<QueryResponse, Error> {
         if !question.qname.has_parent(&self.zone) {
             return Err(Error::new(

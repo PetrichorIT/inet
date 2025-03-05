@@ -4,6 +4,7 @@ use crate::core::{string::DnsString, ZonefileLineRecord};
 
 use super::{ResourceRecord, ResourceRecordClass, ResourceRecordTyp};
 
+/// A unknown raw resource record.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RawResourceRecord {
     pub name: DnsString,
