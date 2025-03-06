@@ -1,0 +1,12 @@
+com. 7000 IN SOA ns0.namservers.com admin@com.com (7000 7000 7000 7000 7000)
+
+com. 7000 IN NS ns0.nameservers.com.
+
+example.com. 7000 IN NS ns1.example.com.
+
+ns1.example.com. 7000 IN A 192.168.2.30
+
+info.com. 7000 IN A 100.0.0.1
+info.com. 7000 IN AAAA fc00:db20:35b:7399::5
+
+rss.info.com. 7000 IN A 100.0.0.2

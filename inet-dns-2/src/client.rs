@@ -95,7 +95,7 @@ mod tests {
         sim.node("192.168.2.10", || async {
             let zf = Zonefile::from_str(ZONEFILE_ROOT)?;
             let zone = ZoneResolver::new(zf)?;
-            let ns = IterativeNameserver::new(vec![zone]);
+            let ns = IterativeNameserver::primary(vec![zone]);
             Base::new(ns)
                 .with_adapter(TransportMedium::Udp, UdpAdapter::default())
                 .set_root(true)
@@ -106,7 +106,7 @@ mod tests {
         sim.node("192.168.2.20", || async {
             let zf = Zonefile::from_str(ZONEFILE_ORG)?;
             let zone = ZoneResolver::new(zf)?;
-            let ns = IterativeNameserver::new(vec![zone]);
+            let ns = IterativeNameserver::primary(vec![zone]);
 
             Base::new(ns)
                 .with_adapter(TransportMedium::Udp, UdpAdapter::default())
@@ -117,7 +117,7 @@ mod tests {
         sim.node("192.168.2.30", || async {
             let zf = Zonefile::from_str(ZONEFILE_EXAMPLE_ORG)?;
             let zone = ZoneResolver::new(zf)?;
-            let ns = IterativeNameserver::new(vec![zone]);
+            let ns = IterativeNameserver::primary(vec![zone]);
             Base::new(ns)
                 .with_adapter(TransportMedium::Udp, UdpAdapter::default())
                 .deploy()
@@ -162,7 +162,7 @@ mod tests {
         sim.node("192.168.2.10", || async {
             let zf = Zonefile::from_str(ZONEFILE_ROOT)?;
             let zone = ZoneResolver::new(zf)?;
-            let ns = IterativeNameserver::new(vec![zone]);
+            let ns = IterativeNameserver::primary(vec![zone]);
             Base::new(ns)
                 .with_adapter(TransportMedium::Udp, UdpAdapter::default())
                 .set_root(true)
@@ -173,7 +173,7 @@ mod tests {
         sim.node("192.168.2.20", || async {
             let zf = Zonefile::from_str(ZONEFILE_ORG)?;
             let zone = ZoneResolver::new(zf)?;
-            let ns = IterativeNameserver::new(vec![zone]);
+            let ns = IterativeNameserver::primary(vec![zone]);
             Base::new(ns)
                 .with_adapter(TransportMedium::Udp, UdpAdapter::default())
                 .deploy()
@@ -183,7 +183,7 @@ mod tests {
         sim.node("192.168.2.30", || async {
             let zf = Zonefile::from_str(ZONEFILE_EXAMPLE_ORG)?;
             let zone = ZoneResolver::new(zf)?;
-            let ns = IterativeNameserver::new(vec![zone]);
+            let ns = IterativeNameserver::primary(vec![zone]);
             Base::new(ns)
                 .with_adapter(TransportMedium::Udp, UdpAdapter::default())
                 .deploy()

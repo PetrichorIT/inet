@@ -42,6 +42,7 @@ pub struct ActiveTransaction {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NameserverQuery {
     pub query: Arc<SourceQuery>,
+    pub preferred: Option<TransportMedium>,
     pub transaction: u16,
     pub nameserver_ip: IpAddr,
 }

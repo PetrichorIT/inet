@@ -124,7 +124,7 @@ mod tests {
         let mut sim = SimpleSim::new(inet::init);
         sim.node("192.168.2.10", || async move {
             let zone = ZoneResolver::new(ZONEFILE_ORG.parse()?)?;
-            let recu = IterativeNameserver::new(vec![zone]);
+            let recu = IterativeNameserver::primary(vec![zone]);
             let server = Base::new(recu).with_adapter(TransportMedium::Udp, UdpAdapter::default());
             tokio::spawn(server.deploy());
 
@@ -156,7 +156,7 @@ mod tests {
         let mut sim = SimpleSim::new(inet::init);
         sim.node("192.168.2.10", || async move {
             let zone = ZoneResolver::new(ZONEFILE_ORG.parse()?)?;
-            let recu = IterativeNameserver::new(vec![zone]);
+            let recu = IterativeNameserver::primary(vec![zone]);
             let server = Base::new(recu).with_adapter(TransportMedium::Udp, UdpAdapter::default());
             tokio::spawn(server.deploy());
 
@@ -188,7 +188,7 @@ mod tests {
         let mut sim = SimpleSim::new(inet::init);
         sim.node("192.168.2.10", || async move {
             let zone = ZoneResolver::new(ZONEFILE_ORG.parse()?)?;
-            let recu = IterativeNameserver::new(vec![zone]);
+            let recu = IterativeNameserver::primary(vec![zone]);
             let server = Base::new(recu).with_adapter(TransportMedium::Udp, UdpAdapter::default());
             tokio::spawn(server.deploy());
 
@@ -223,7 +223,7 @@ mod tests {
 
         sim.node("192.168.2.10", || async move {
             let zone = ZoneResolver::new(ZONEFILE_ROOT.parse()?)?;
-            let auth = IterativeNameserver::new(vec![zone]);
+            let auth = IterativeNameserver::primary(vec![zone]);
             let server = Base::new(auth)
                 .set_root(true)
                 .with_adapter(TransportMedium::Udp, UdpAdapter::default());
@@ -232,14 +232,14 @@ mod tests {
 
         sim.node("192.168.2.20", || async move {
             let zone = ZoneResolver::new(ZONEFILE_ORG.parse()?)?;
-            let auth = IterativeNameserver::new(vec![zone]);
+            let auth = IterativeNameserver::primary(vec![zone]);
             let server = Base::new(auth).with_adapter(TransportMedium::Udp, UdpAdapter::default());
             server.deploy().await
         });
 
         sim.node("192.168.2.30", || async move {
             let zone = ZoneResolver::new(ZONEFILE_EXAMPLE_ORG.parse()?)?;
-            let auth = IterativeNameserver::new(vec![zone]);
+            let auth = IterativeNameserver::primary(vec![zone]);
             let server = Base::new(auth).with_adapter(TransportMedium::Udp, UdpAdapter::default());
             server.deploy().await
         });

@@ -14,8 +14,8 @@ use tracing::info_span;
 
 use crate::{
     core::{
-        AAAAResourceRecord, AResourceRecord, DnsString, Error, NsResourceRecord, Question,
-        QuestionClass, QuestionTyp, ResourceRecordClass, ResourceRecordTyp, ResponseCode,
+        AAAAResourceRecord, AResourceRecord, DnsString, Error, NsResourceRecord, QueryResponse,
+        Question, QuestionClass, QuestionTyp, ResourceRecordClass, ResourceRecordTyp, ResponseCode,
         ZoneResolver, Zonefile,
     },
     server::transaction::TransactionResult,
@@ -34,6 +34,7 @@ use super::{
 #[derive(Debug)]
 pub struct RecursiveNameserver {
     pub inner: IterativeNameserver,
+    pub cache: ZoneResolver,
 
     pub roots: Vec<(IpAddr, String)>,
 
@@ -49,7 +50,8 @@ impl RecursiveNameserver {
     /// Creates a new recursive nameserver.
     pub fn new(zone: Zonefile) -> io::Result<Self> {
         Ok(Self {
-            inner: IterativeNameserver::new(vec![ZoneResolver::new(zone)?]).with_cache(),
+            inner: IterativeNameserver::primary(vec![ZoneResolver::new(zone)?]),
+            cache: ZoneResolver::new(Zonefile::local())?,
 
             queries: Vec::new(),
             roots: Vec::new(),
@@ -64,6 +66,35 @@ impl RecursiveNameserver {
     pub fn with_roots(mut self, roots: Vec<(IpAddr, String)>) -> Self {
         self.roots = roots;
         self
+    }
+
+    fn query(&self, query: &Question) -> Result<(bool, QueryResponse), Error> {
+        match self.inner.query(query) {
+            // only delegate anwsers are possible
+            Ok((authorative, response)) if response.anwsers.is_empty() => {
+                // try cache
+                tracing::info!("cannot anwser, using cache info {:?}", self.cache);
+                match self.cache.query(query) {
+                    Ok(cache_response) if cache_response.anwsers.is_empty() => {
+                        Ok((authorative, response))
+                    }
+                    Ok(anwser) => Ok((false, anwser)),
+                    Err(_) => Ok((authorative, response)),
+                }
+            }
+            Ok((authorative, response)) => Ok((authorative, response)),
+            Err(err) if err.response_code() == ResponseCode::NxDomain => {
+                tracing::info!("NX domain bypass, querying {query}");
+                if let Ok(response) = self.cache.query(query) {
+                    tracing::info!("succ: {response}");
+                    Ok((false, response))
+                } else {
+                    tracing::info!("fail");
+                    Err(err)
+                }
+            }
+            Err(err) => Err(err),
+        }
     }
 
     fn on_incoming_query_request(&mut self, query: SourceQuery) {
@@ -81,7 +112,6 @@ impl RecursiveNameserver {
 
     fn get_addr_of(&self, domain: &DnsString) -> Option<IpAddr> {
         let (_, response) = self
-            .inner
             .query(&Question {
                 qname: domain.clone(),
                 qclass: QuestionClass::IN,
@@ -118,7 +148,7 @@ impl RecursiveNameserver {
     fn on_query_request(&mut self, mut tx: ActiveTransaction) {
         tracing::trace!("querying");
         tx.operation_counter += 1;
-        match self.inner.query(&tx.query.question) {
+        match self.query(&tx.query.question) {
             Ok((authoratative, resp)) => {
                 // Direct anwser
                 if !resp.anwsers.is_empty() {
@@ -161,6 +191,7 @@ impl RecursiveNameserver {
                     self.queries.push(NameserverQuery {
                         transaction: tx.local_transaction,
                         nameserver_ip: *ns_addr,
+                        preferred: None,
                         query: tx.query.clone(),
                     });
 
@@ -189,6 +220,7 @@ impl RecursiveNameserver {
                 self.queries.push(NameserverQuery {
                     transaction: tx.local_transaction,
                     nameserver_ip: root.0,
+                    preferred: None,
                     query: tx.query.clone(),
                 });
                 tracing::trace!("delegating to root nameserver {:?} ", root);
@@ -238,7 +270,7 @@ impl RecursiveNameserver {
             tracing::trace!("got response: {} elements", msg.response().count());
 
             for record in msg.response() {
-                self.inner.add_cached(record.clone());
+                self.cache.add_cached(record.clone());
             }
 
             //  Restate questions
@@ -268,6 +300,7 @@ impl RecursiveNameserver {
                 self.queries.push(NameserverQuery {
                     transaction: tx.local_transaction,
                     nameserver_ip: *ns_addr,
+                    preferred: None,
                     query: tx.query.clone(),
                 });
                 self.active_transactions.push(tx);
@@ -311,7 +344,7 @@ impl Nameserver for RecursiveNameserver {
                     let query = Arc::new(query);
                     info_span!("tx", query = %query).in_scope(|| {
                         tracing::trace!("querying");
-                        match self.inner.query(&query.question) {
+                        match self.query(&query.question) {
                             Ok((authoratative, result)) => {
                                 tracing::trace!("anwsered with:{}", result);
                                 self.finished_transactions.push(FinishedTransaction {
@@ -356,6 +389,7 @@ impl Nameserver for RecursiveNameserver {
             .map(|tx| NameserverQuery {
                 nameserver_ip: tx.remote[0].1,
                 transaction: tx.local_transaction,
+                preferred: None,
                 query: tx.query.clone(),
             })
             .collect()
@@ -419,6 +453,7 @@ mod tests {
                     [NameserverQuery {
                         nameserver_ip: nsaddr,
                         transaction: 1,
+                        preferred: None,
                         query: query.clone()
                     }]
                 );
@@ -504,6 +539,7 @@ mod tests {
                     [NameserverQuery {
                         nameserver_ip: nsaddr,
                         transaction: 1,
+                        preferred: None,
                         query: query.clone()
                     }]
                 );

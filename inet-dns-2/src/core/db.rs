@@ -88,6 +88,14 @@ impl RecordMap {
         None
     }
 
+    pub fn all(&self) -> Vec<DnsResourceRecord> {
+        self.entries
+            .iter()
+            .flat_map(|e| e.records.iter())
+            .cloned()
+            .collect()
+    }
+
     /// Queries all records matching a question directly.
     pub fn query(&self, question: &Question) -> &[DnsResourceRecord] {
         assert!(question.qclass.includes(self.class));

@@ -52,6 +52,13 @@ impl ZoneResolver {
         })
     }
 
+    pub fn secondary(zone: DnsString) -> Self {
+        Self {
+            zone,
+            db: RecordMap::from_iter([]),
+        }
+    }
+
     /// Check if this resolver accepts a query.
     pub fn accepts_query(&self, question: &Question) -> bool {
         question.qname.has_parent(&self.zone)
@@ -60,6 +67,20 @@ impl ZoneResolver {
     /// Add a record to the cache.
     pub fn add_cached(&mut self, record: DnsResourceRecord) {
         self.db.add(record, SimTime::now())
+    }
+
+    pub fn all(&self) -> Result<QueryResponse, Error> {
+        let response = QueryResponse {
+            questions: vec![Question {
+                qname: self.zone.clone(),
+                qtyp: QuestionTyp::AXFR,
+                qclass: QuestionClass::IN,
+            }],
+            anwsers: self.db.all(),
+            ..Default::default()
+        };
+
+        Ok(response)
     }
 
     /// Query the resolver for a given question. This will retrieve

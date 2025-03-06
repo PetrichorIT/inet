@@ -5,6 +5,7 @@ use super::{
 };
 
 /// A zonefile represents a DNS zone in a human-readable format.
+#[derive(Debug, Clone)]
 pub struct Zonefile {
     pub records: Vec<DnsResourceRecord>,
 }

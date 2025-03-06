@@ -131,7 +131,7 @@ mod tests {
         let mut sim = SimpleSim::new(inet::init);
         sim.node("192.168.2.10", || async move {
             let zone = ZoneResolver::new(ZONEFILE_ORG.parse()?)?;
-            let recu = IterativeNameserver::new(vec![zone]);
+            let recu = IterativeNameserver::primary(vec![zone]);
             let server = Base::new(recu).with_adapter(TransportMedium::Udp, UdpAdapter::default());
             tokio::spawn(server.deploy());
 

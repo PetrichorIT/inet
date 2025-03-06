@@ -37,29 +37,29 @@ pub struct DnsMessage {
 }
 
 impl DnsMessage {
-    pub fn question_a(transaction: u16, name: DnsString) -> Self {
-        Self {
+    pub fn question_a(transaction: u16, qname: DnsString) -> Self {
+        Self::query(
             transaction,
-            qr: false,
-            opcode: OpCode::Query,
-            aa: false,
-            tc: false,
-            rd: true,
-            ra: false,
-
-            rcode: ResponseCode::NoError,
-            response: QueryResponse {
-                questions: vec![Question {
-                    qname: name,
-                    qtyp: QuestionTyp::A,
-                    qclass: QuestionClass::IN,
-                }],
-                ..Default::default()
+            Question {
+                qname,
+                qclass: QuestionClass::IN,
+                qtyp: QuestionTyp::A,
             },
-        }
+        )
     }
 
-    pub fn question_aaaa(transaction: u16, name: impl Into<DnsString>) -> Self {
+    pub fn question_aaaa(transaction: u16, qname: DnsString) -> Self {
+        Self::query(
+            transaction,
+            Question {
+                qname,
+                qclass: QuestionClass::IN,
+                qtyp: QuestionTyp::AAAA,
+            },
+        )
+    }
+
+    pub fn query(transaction: u16, question: Question) -> Self {
         Self {
             transaction,
             qr: false,
@@ -68,15 +68,9 @@ impl DnsMessage {
             tc: false,
             rd: true,
             ra: false,
-
             rcode: ResponseCode::NoError,
-
             response: QueryResponse {
-                questions: vec![Question {
-                    qname: name.into(),
-                    qtyp: QuestionTyp::AAAA,
-                    qclass: QuestionClass::IN,
-                }],
+                questions: vec![question],
                 ..Default::default()
             },
         }

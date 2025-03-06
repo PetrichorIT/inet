@@ -1,6 +1,6 @@
 //! Adapters for connecting DNS nameserver to communication resources
 
-use std::{collections::HashMap, io, net::SocketAddr, time::Duration};
+use std::{cmp::Reverse, collections::HashMap, io, net::SocketAddr, time::Duration};
 
 use des::time::interval;
 use inet::utils::get_ip;
@@ -119,6 +119,10 @@ impl<T: Nameserver> Base<T> {
             }
 
             for ns_query in self.nameserver.ns_queries() {
+                if let Some(preferred) = ns_query.preferred {
+                    available_media.sort_by_key(|k| Reverse(*k == preferred));
+                }
+
                 for medium in &available_media {
                     let Some(adapter) = self.adapters.get_mut(medium) else {
                         break;
