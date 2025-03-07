@@ -74,11 +74,6 @@ impl Module for Connector {
             _ => unreachable!(),
         }
     }
-
-    fn at_sim_end(&mut self) {
-        // self.debug.finish();
-        // self.debug_p.finish();
-    }
 }
 
 #[derive(Default)]
@@ -165,7 +160,7 @@ impl Module for Server {
     }
 }
 
-fn main() {
+fn main() -> Result<(), RuntimeError> {
     // des::tracing::Subscriber::default().init().unwrap();
     // Logger::new().policy(Policy).set_logger();
 
@@ -181,5 +176,5 @@ fn main() {
     app.include_par_file("inet/src/bin/tcp.par").unwrap();
 
     let rt = Builder::seeded(123).build(app);
-    let _ = rt.run().unwrap();
+    rt.run().map(|_| ())
 }

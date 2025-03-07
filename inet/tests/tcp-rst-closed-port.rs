@@ -32,8 +32,9 @@ impl Module for OneAttemptClient {
         });
     }
 
-    fn at_sim_end(&mut self) {
+    fn at_sim_end(&mut self) -> Result<(), RuntimeError> {
         assert!(self.done.load(Ordering::SeqCst));
+        Ok(())
     }
 }
 
@@ -64,8 +65,9 @@ impl<const EXPECT: bool> Module for MultipleAttemptClient<EXPECT> {
         });
     }
 
-    fn at_sim_end(&mut self) {
+    fn at_sim_end(&mut self) -> Result<(), RuntimeError> {
         assert!(self.done.load(Ordering::SeqCst));
+        Ok(())
     }
 }
 
@@ -106,7 +108,7 @@ impl Module for BoundServer {
 
 #[test]
 #[serial_test::serial]
-fn tcp_rst_for_closed_port() {
+fn tcp_rst_for_closed_port() -> Result<(), RuntimeError> {
     type Server = EmptyServer;
     type Client = OneAttemptClient;
 
@@ -119,12 +121,12 @@ fn tcp_rst_for_closed_port() {
         .unwrap();
     let rt = Builder::seeded(233).build(app);
 
-    let _ = rt.run().unwrap();
+    rt.run().map(|_| ())
 }
 
 #[test]
 #[serial_test::serial]
-fn tcp_rst_on_multiple_tries() {
+fn tcp_rst_on_multiple_tries() -> Result<(), RuntimeError> {
     type Server = EmptyServer;
     type Client = MultipleAttemptClient<false>;
 
@@ -137,12 +139,12 @@ fn tcp_rst_on_multiple_tries() {
         .unwrap();
     let rt = Builder::seeded(233).build(app);
 
-    let _ = rt.run().unwrap();
+    rt.run().map(|_| ())
 }
 
 #[test]
 #[serial_test::serial]
-fn tcp_rst_on_multiple_tries_with_success() {
+fn tcp_rst_on_multiple_tries_with_success() -> Result<(), RuntimeError> {
     type Server = BoundServer;
     type Client = MultipleAttemptClient<true>;
 
@@ -155,5 +157,5 @@ fn tcp_rst_on_multiple_tries_with_success() {
         .unwrap();
     let rt = Builder::seeded(233).build(app);
 
-    let _ = rt.run().unwrap();
+    rt.run().map(|_| ())
 }

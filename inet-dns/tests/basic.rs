@@ -98,11 +98,12 @@ impl Module for Client {
         });
     }
 
-    fn at_sim_end(&mut self) {
+    fn at_sim_end(&mut self) -> Result<(), RuntimeError> {
         assert!(
             self.suc.load(Ordering::SeqCst),
             "Did not finish succesfully"
-        )
+        );
+        Ok(())
     }
 }
 
@@ -239,7 +240,7 @@ impl Module for Router {
 }
 
 #[test]
-fn dns_basic() {
+fn dns_basic() -> Result<(), RuntimeError> {
     let mut rt = Sim::new(())
         .with_stack(inet::init)
         .with_ndl(
@@ -250,5 +251,5 @@ fn dns_basic() {
         .unwrap();
     rt.include_par_file("tests/dns-basic/main.par.yml").unwrap();
     let rt = Builder::seeded(123).build(rt);
-    let _ = rt.run();
+    rt.run().map(|_| ())
 }

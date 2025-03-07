@@ -84,8 +84,9 @@ impl Module for Node {
         2
     }
 
-    fn at_sim_end(&mut self) {
+    fn at_sim_end(&mut self) -> Result<(), RuntimeError> {
         assert_eq!(self.done.load(Ordering::SeqCst), 2);
+        Ok(())
     }
 
     fn handle_message(&mut self, _: Message) {
@@ -124,7 +125,7 @@ impl Module for Main {
 }
 
 #[test]
-fn udp_zerobind() {
+fn udp_zerobind() -> Result<(), RuntimeError> {
     // Logger::new()
     // .interal_max_log_level(tracing::LevelFilter::Trace)
     // .set_logger();
@@ -137,7 +138,7 @@ fn udp_zerobind() {
     app.include_par_file("tests/udp-zerobind/main.par.yml")
         .unwrap();
     let rt = Builder::seeded(123).build(app);
-    let _ = rt.run();
+    rt.run().map(|_| ())
 }
 
 /*

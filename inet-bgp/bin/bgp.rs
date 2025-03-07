@@ -210,7 +210,7 @@ impl Module for Router {
     }
 }
 
-fn main() {
+fn main() -> Result<(), RuntimeError> {
     // des::tracing::init();
 
     type Switch = LinkLayerSwitch;
@@ -228,5 +228,5 @@ fn main() {
         .max_itr(100)
         .build(app);
 
-    let _ = rt.run();
+    rt.run().map(|_| ())
 }

@@ -32,7 +32,7 @@ pub fn resolve(
             .with_roots(all_root_ns());
         let server = Base::new(ns)
             .with_adapter(TransportMedium::Local, LocalAdapter::new(rx))
-            .with_adapter(TransportMedium::Udp, UdpAdapter::default());
+            .with_adapter(TransportMedium::Udp, UdpAdapter::default().with_port(0));
 
         tracing::trace!("starting client resolver");
         tokio::spawn(server.deploy());

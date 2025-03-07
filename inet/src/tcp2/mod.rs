@@ -7,7 +7,7 @@ use crate::{
 
 use bytepack::{FromBytestream, ToBytestream};
 use des::{
-    prelude::{schedule_at, Message},
+    prelude::{current, schedule_at, Message},
     time::SimTime,
 };
 use fxhash::FxHashMap;
@@ -449,14 +449,18 @@ impl IOContext {
             config: cfg.unwrap_or(self.tcp2.config.for_listener(addr)),
         };
 
+        tracing::error!("adding {fd}");
         self.tcp2.listeners.insert(fd, handle);
 
         Ok(TcpListener::from_raw(fd, rx, backlog))
     }
 
     fn tcp2_unbind(&mut self, fd: Fd) {
-        self.tcp.listeners.remove(&fd);
-        self.socket_close(fd).expect("failed to unbind");
+        tracing::error!("removing {fd}");
+        self.tcp2
+            .listeners
+            .remove(&fd)
+            .expect(&format!("failed to unbind tcp listener"));
     }
 
     ///

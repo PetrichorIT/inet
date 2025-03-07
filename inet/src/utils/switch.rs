@@ -96,8 +96,9 @@ impl Module for LinkLayerSwitch {
         }
     }
 
-    fn at_sim_end(&mut self) {
-        assert!(self.queues.iter().all(|q| q.is_empty()))
+    fn at_sim_end(&mut self) -> Result<(), RuntimeError> {
+        assert!(self.queues.iter().all(|q| q.is_empty()));
+        Ok(())
     }
 }
 
@@ -146,6 +147,7 @@ impl LinkLayerSwitch {
                 }
             } else {
                 // (4) Send the message directly (onto the original gate though)
+                tracing::debug!("send({}, {})", msg.str(), self.info.ports[i].output.path());
                 send(msg, self.info.ports[i].output.clone())
             }
         } else {

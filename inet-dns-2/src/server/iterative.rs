@@ -85,7 +85,7 @@ impl IterativeNameserver {
     ///
     /// Returns a tuple containing a boolean indicating whether the response is authoritative,
     /// and the response itself.
-    pub fn query(&self, question: &Question) -> Result<(bool, QueryResponse), Error> {
+    pub fn query(&self, question: &Question) -> Result<QueryResponse, Error> {
         if let QuestionTyp::AXFR = question.qtyp {
             if let Role::Secondary { .. } = self.role {
                 return Err(Error::new(ResponseCode::NotAuth, "no auth primary"));
@@ -96,7 +96,7 @@ impl IterativeNameserver {
                 .iter()
                 .find(|zone| zone.zone() == &question.qname)
             {
-                Ok((true, zone.all()?))
+                zone.all()
             } else {
                 Err(Error::new(ResponseCode::NotZone, "no auth zone"))
             };
@@ -111,13 +111,13 @@ impl IterativeNameserver {
             .filter(|z| z.accepts_query(question))
         {
             match zone.query(question) {
-                Ok(anwser) if !anwser.anwsers.is_empty() => return Ok((true, anwser)),
+                Ok(anwser) if !anwser.anwsers.is_empty() => return Ok(anwser),
                 Ok(delegate) => last_delegate = Some(delegate),
                 Err(e) => last_err = Some(e),
             }
         }
 
-        last_delegate.map(|v| (false, v)).ok_or_else(|| {
+        last_delegate.map(|v| v).ok_or_else(|| {
             last_err.take().unwrap_or_else(|| {
                 Error::new(ResponseCode::NotZone, "request directed to invalid zone")
             })
@@ -152,12 +152,12 @@ impl IterativeNameserver {
                 }
 
                 match self.query(&query.question) {
-                    Ok((authoratative, result)) => {
+                    Ok(result) => {
                         tracing::trace!("anwsered with:{}", result);
                         self.responses.push(FinishedTransaction {
                             query,
                             ra: false,
-                            aa: authoratative,
+                            aa: true,
                             result: TransactionResult::Success(result),
                         })
                     }
@@ -311,7 +311,7 @@ mod tests {
             qclass: QuestionClass::IN,
             qtyp: QuestionTyp::A,
         };
-        let (_, response) = server.query(&question)?;
+        let response = server.query(&question)?;
         assert_eq!(
             response.anwsers,
             [AResourceRecord {
@@ -392,7 +392,7 @@ mod tests {
             qclass: QuestionClass::IN,
             qtyp: QuestionTyp::A,
         };
-        let (_, response) = server.query(&question)?;
+        let response = server.query(&question)?;
         assert_eq!(
             response.anwsers,
             [AResourceRecord {
@@ -418,7 +418,7 @@ mod tests {
             qclass: QuestionClass::IN,
             qtyp: QuestionTyp::AXFR,
         };
-        let (_, response) = server.query(&question)?;
+        let response = server.query(&question)?;
         assert_eq!(
             response
                 .anwsers

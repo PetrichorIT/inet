@@ -26,9 +26,13 @@ impl Question {
     pub fn mutate_query(&self, ctx: &ZoneResolver) -> Question {
         use QuestionTyp::*;
         let mut this = self.clone();
+        if this.qname.is_relative() {
+            this.qname = this.qname.with_root(&DnsString::empty());
+        }
+
         match self.qtyp {
             A | AAAA => {
-                let mut name = &self.qname;
+                let mut name = &this.qname;
                 let mut i = 0;
                 while let Some(cname) = ctx.db.get(name, ResourceRecordTyp::CNAME).first() {
                     name = &cname
@@ -56,7 +60,7 @@ impl Question {
         match self.qtyp {
             A | AAAA => {
                 let mut buf = Vec::new();
-                for k in (ctx.zone.labels().len() + 1)..self.qname.labels().len() {
+                for k in ((ctx.zone.labels().len() + 1)..self.qname.labels().len()).rev() {
                     let qname = self.qname.truncated(k);
                     buf.push((
                         Question {

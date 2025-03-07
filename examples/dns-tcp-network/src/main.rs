@@ -244,7 +244,7 @@ fn main() {
         .unwrap();
     app.include_par_file("main.par.yml").unwrap();
     let rt = Builder::seeded(123).max_time(200.0.into()).build(app);
-    let _app = rt.run().into_app();
+    let _app = rt.run().unwrap().0;
 
     // app.globals()
     //     .topology

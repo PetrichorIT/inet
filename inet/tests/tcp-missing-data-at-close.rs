@@ -124,11 +124,12 @@ impl Module for TcpServer {
         tracing::error!("HM?");
     }
 
-    fn at_sim_end(&mut self) {
+    fn at_sim_end(&mut self) -> Result<(), RuntimeError> {
         use inet::socket::bsd_socket_info;
 
         assert!(self.done.load(SeqCst));
         assert!(bsd_socket_info(self.fd.load(SeqCst)).is_err());
+        Ok(())
     }
 }
 
@@ -185,17 +186,18 @@ impl Module for TcpClient {
         panic!()
     }
 
-    fn at_sim_end(&mut self) {
+    fn at_sim_end(&mut self) -> Result<(), RuntimeError> {
         use inet::socket::bsd_socket_info;
 
         assert!(self.done.load(SeqCst));
         assert!(bsd_socket_info(self.fd.load(SeqCst)).is_err());
+        Ok(())
     }
 }
 
 #[test]
 #[serial_test::serial]
-fn tcp_missing_data_at_close() {
+fn tcp_missing_data_at_close() -> Result<(), RuntimeError> {
     // Subscriber::default()
     //     .with_max_level(LevelFilter::TRACE)
     //     .init()
@@ -212,5 +214,5 @@ fn tcp_missing_data_at_close() {
     let rt = Builder::seeded(1263431312323)
         .max_time(10.0.into())
         .build(app);
-    let _ = rt.run().unwrap();
+    rt.run().map(|_| ())
 }

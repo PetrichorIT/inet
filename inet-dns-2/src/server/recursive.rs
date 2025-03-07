@@ -71,25 +71,22 @@ impl RecursiveNameserver {
     fn query(&self, query: &Question) -> Result<(bool, QueryResponse), Error> {
         match self.inner.query(query) {
             // only delegate anwsers are possible
-            Ok((authorative, response)) if response.anwsers.is_empty() => {
+            Ok(response) if response.anwsers.is_empty() => {
                 // try cache
-                tracing::info!("cannot anwser, using cache info {:?}", self.cache);
+
+                tracing::info!("cache entry");
                 match self.cache.query(query) {
-                    Ok(cache_response) if cache_response.anwsers.is_empty() => {
-                        Ok((authorative, response))
-                    }
+                    Ok(cache_response) if cache_response.anwsers.is_empty() => Ok((true, response)),
                     Ok(anwser) => Ok((false, anwser)),
-                    Err(_) => Ok((authorative, response)),
+                    Err(_) => Ok((true, response)),
                 }
             }
-            Ok((authorative, response)) => Ok((authorative, response)),
+            Ok(response) => Ok((true, response)),
             Err(err) if err.response_code() == ResponseCode::NxDomain => {
-                tracing::info!("NX domain bypass, querying {query}");
                 if let Ok(response) = self.cache.query(query) {
-                    tracing::info!("succ: {response}");
+                    // tracing::info!("cache entry: {response}");
                     Ok((false, response))
                 } else {
-                    tracing::info!("fail");
                     Err(err)
                 }
             }
@@ -146,7 +143,6 @@ impl RecursiveNameserver {
     }
 
     fn on_query_request(&mut self, mut tx: ActiveTransaction) {
-        tracing::trace!("querying");
         tx.operation_counter += 1;
         match self.query(&tx.query.question) {
             Ok((authoratative, resp)) => {
@@ -211,7 +207,10 @@ impl RecursiveNameserver {
                         query: tx.query.clone(),
                         ra: true,
                         aa: true,
-                        result: TransactionResult::Failure(Error::new(ResponseCode::NxDomain, "")),
+                        result: TransactionResult::Failure(Error::new(
+                            ResponseCode::NxDomain,
+                            format!("no root for query {}", tx.query.question),
+                        )),
                     });
                     return;
                 }
@@ -290,7 +289,13 @@ impl RecursiveNameserver {
                     query: tx.query.clone(),
                     ra: true,
                     aa: false,
-                    result: TransactionResult::Failure(Error::new(ResponseCode::NxDomain, "")),
+                    result: TransactionResult::Failure(Error::new(
+                        ResponseCode::NxDomain,
+                        format!(
+                            "query '{}' could not be resolved: no more delegates",
+                            tx.query
+                        ),
+                    )),
                 });
             } else {
                 let (ns, ns_addr) = &tx.remote[0];
@@ -343,7 +348,6 @@ impl Nameserver for RecursiveNameserver {
                     // use default iterative resolver
                     let query = Arc::new(query);
                     info_span!("tx", query = %query).in_scope(|| {
-                        tracing::trace!("querying");
                         match self.query(&query.question) {
                             Ok((authoratative, result)) => {
                                 tracing::trace!("anwsered with:{}", result);

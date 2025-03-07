@@ -4,7 +4,7 @@ use bytepack::ToBytestream;
 use des::{
     net::{module::Module, Sim},
     registry,
-    runtime::Builder,
+    runtime::{Builder, RuntimeError},
 };
 use inet::{
     interface::{add_interface, Interface, NetworkDevice},
@@ -131,7 +131,7 @@ impl Module for Router {
 type Switch = utils::LinkLayerSwitch;
 
 #[test]
-fn ipv6_autcfg() {
+fn ipv6_autcfg() -> Result<(), RuntimeError> {
     // des::tracing::init();
 
     let app = Sim::new(())
@@ -146,5 +146,5 @@ fn ipv6_autcfg() {
         // .max_itr(30)
         .max_time(10.0.into())
         .build(app);
-    let _ = rt.run();
+    rt.run().map(|_| ())
 }

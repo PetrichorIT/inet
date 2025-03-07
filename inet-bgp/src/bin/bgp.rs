@@ -103,10 +103,11 @@ impl Module for BgpNode {
         });
     }
 
-    fn at_sim_end(&mut self) {
+    fn at_sim_end(&mut self) -> Result<(), RuntimeError> {
         for route in route().unwrap() {
             tracing::debug!("{route}")
         }
+        Ok(())
     }
 }
 
@@ -123,7 +124,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         .max_time(500.0.into())
         .build(app)
         .run()
-        .into_app();
+        .unwrap()
+        .0;
     // r.globals().topology.borrow().write_to_svg("src/bin/topo")?;
 
     Ok(())

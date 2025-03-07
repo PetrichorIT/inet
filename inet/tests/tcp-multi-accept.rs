@@ -38,8 +38,9 @@ impl Module for Client {
         });
     }
 
-    fn at_sim_end(&mut self) {
+    fn at_sim_end(&mut self) -> Result<(), RuntimeError> {
         assert!(self.done.load(Ordering::SeqCst));
+        Ok(())
     }
 }
 
@@ -71,8 +72,9 @@ impl Module for Server {
         });
     }
 
-    fn at_sim_end(&mut self) {
+    fn at_sim_end(&mut self) -> Result<(), RuntimeError> {
         assert!(self.done.load(Ordering::SeqCst));
+        Ok(())
     }
 }
 

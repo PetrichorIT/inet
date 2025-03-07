@@ -89,8 +89,8 @@ impl Module for Reader {
     }
 }
 
-fn main() {
-    des::tracing::init();
+fn main() -> Result<(), RuntimeError> {
+    // des::tracing::init();
 
     let app = Sim::new(())
         .with_stack(inet::init)
@@ -101,5 +101,5 @@ fn main() {
         .map_err(|e| println!("{e}"))
         .unwrap();
     let rt = Builder::seeded(123).build(app);
-    let _ = rt.run().unwrap();
+    rt.run().map(|_| ())
 }

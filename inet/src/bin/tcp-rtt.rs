@@ -53,12 +53,6 @@ impl Module for Connector {
             _ => unreachable!(),
         }
     }
-
-    fn at_sim_end(&mut self) {
-        // self.debug.finish();
-        // self.debug_g.finish();
-        // self.debug_p.finish();
-    }
 }
 
 #[derive(Default)]
@@ -160,9 +154,7 @@ impl Module for Server {
     }
 }
 
-fn main() {
-    des::tracing::init();
-
+fn main() -> Result<(), RuntimeError> {
     let mut app = Sim::new(())
         .with_stack(inet::init)
         .with_ndl(
@@ -174,5 +166,5 @@ fn main() {
     app.include_par_file("inet/src/bin/tcp.par").unwrap();
 
     let rt = Builder::seeded(123).build(app);
-    let _ = rt.run().unwrap();
+    rt.run().map(|_| ())
 }

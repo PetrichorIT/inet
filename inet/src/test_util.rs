@@ -3,7 +3,7 @@ use std::{future::Future, io, net::Ipv4Addr, time::Duration};
 use des::{
     net::{processing::ProcessingStack, AsyncFn, Sim},
     prelude::{Channel, ChannelDropBehaviour, ChannelMetrics},
-    runtime::{Builder, RuntimeResult},
+    runtime::{Builder, RuntimeError},
 };
 
 use crate::{
@@ -12,6 +12,7 @@ use crate::{
 };
 
 pub struct SimpleSim {
+    clients: Vec<Ipv4Addr>,
     sim: Sim<()>,
 }
 
@@ -20,7 +21,30 @@ impl SimpleSim {
         let mut sim = Sim::new(()).with_stack(stack);
         sim.node("switch", LinkLayerSwitch::default());
 
-        Self { sim }
+        Self {
+            sim,
+            clients: Vec::new(),
+        }
+    }
+
+    fn add_client(&mut self, key: &str) -> Ipv4Addr {
+        match key.parse() {
+            Ok(addr) => {
+                self.clients.push(addr);
+                addr
+            }
+            Err(_) => {
+                for i in 100..255 {
+                    let addr = Ipv4Addr::new(192, 168, 2, i);
+                    if !self.clients.contains(&addr.into()) {
+                        self.clients.push(addr.into());
+                        return addr.into();
+                    }
+                }
+
+                panic!("no address available")
+            }
+        }
     }
 
     pub fn node<F, Fut>(&mut self, key: &str, f: F)
@@ -30,7 +54,17 @@ impl SimpleSim {
         Fut: Future<Output = io::Result<()>> + Send,
         Fut: 'static,
     {
-        let addr: Ipv4Addr = key.parse().expect("key is not an ip");
+        self.node_with_addr(key, key, f);
+    }
+
+    pub fn node_with_addr<F, Fut>(&mut self, key: &str, addr: &str, f: F)
+    where
+        F: Fn() -> Fut,
+        F: Send + 'static,
+        Fut: Future<Output = io::Result<()>> + Send,
+        Fut: 'static,
+    {
+        let addr = self.add_client(addr);
         let key = key.replace(".", "_");
         self.sim.node(
             &key,
@@ -60,7 +94,7 @@ impl SimpleSim {
         Fut: Future<Output = io::Result<()>> + Send,
         Fut: 'static,
     {
-        let addr: Ipv4Addr = key.parse().expect("key is not an ip");
+        let addr = self.add_client(key);
         let key = key.replace(".", "_");
         self.sim.node(
             &key,
@@ -84,14 +118,14 @@ impl SimpleSim {
         );
     }
 
-    pub fn run(self) -> RuntimeResult<Sim<()>> {
+    pub fn run(self) -> Result<(), RuntimeError> {
         let rt = Builder::seeded(123).max_time(100.0.into()).build(self.sim);
-        rt.run()
+        rt.run().map(|_| ())
     }
 
-    pub fn run_max_time(self, f: f64) -> RuntimeResult<Sim<()>> {
+    pub fn run_max_time(self, f: f64) -> Result<(), RuntimeError> {
         let rt = Builder::seeded(123).max_time(f.into()).build(self.sim);
-        rt.run()
+        rt.run().map(|_| ())
     }
 }
 
@@ -100,6 +134,9 @@ impl Default for SimpleSim {
         let mut sim = Sim::new(()).with_stack(crate::init);
         sim.node("switch", LinkLayerSwitch::default());
 
-        Self { sim }
+        Self {
+            sim,
+            clients: Vec::new(),
+        }
     }
 }

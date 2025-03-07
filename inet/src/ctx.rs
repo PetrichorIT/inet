@@ -11,7 +11,7 @@ use crate::{
     Udp,
 };
 use des::{
-    net::module::current,
+    net::module::{current, try_current},
     prelude::{Message, ModuleId},
 };
 use fxhash::{FxBuildHasher, FxHashMap};
@@ -115,17 +115,18 @@ impl IOContext {
         CURRENT.with(|ctx| {
             let mut ctx = ctx.borrow_mut();
             let ret = ctx.take();
-            *ctx = ingoing;
+            *ctx = ingoing.map(|mut ctx| {
+                ctx.id = current().id();
+                ctx
+            });
             ret
         })
     }
 
     pub(super) fn with_current<R>(f: impl FnOnce(&mut IOContext) -> R) -> R {
         CURRENT.with(|cell| {
-            f(cell
-                .borrow_mut()
-                .as_mut()
-                .unwrap_or_else(|| panic!("Missing IOContext")))
+            let mut brw = cell.borrow_mut();
+            f(brw.as_mut().unwrap_or_else(|| panic!("Missing IOContext")))
         })
     }
 
@@ -135,20 +136,29 @@ impl IOContext {
             let Some(ctx) = ctx.as_mut() else {
                 return Err(Error::new(ErrorKind::Other, "Missing IOContext"));
             };
+            if try_current().map_or(false, |m| m.id() != ctx.id) {
+                return Err(Error::new(ErrorKind::Other, "Drop chain"));
+            }
             f(ctx)
         })
     }
 
     pub(super) fn try_with_current<R>(f: impl FnOnce(&mut IOContext) -> R) -> Option<R> {
-        match CURRENT.try_with(|cell| {
-            Some(f(cell
-                .try_borrow_mut()
-                .expect("BorrowMut at IOContext")
-                .as_mut()?))
-        }) {
-            Ok(v) => v,
-            Err(_) => None,
-        }
+        CURRENT
+            .try_with(|cell| {
+                let mut brw = cell.try_borrow_mut().expect("BorrowMut at IOContext");
+                brw.as_mut()
+                    .map(|brw| {
+                        if try_current().map_or(false, |m| m.id() == brw.id) {
+                            Some(f(brw))
+                        } else {
+                            None
+                        }
+                    })
+                    .flatten()
+            })
+            .ok()
+            .flatten()
     }
 }
 

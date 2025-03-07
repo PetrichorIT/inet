@@ -1,7 +1,7 @@
 use des::{
     net::{module::Module, Sim},
     registry,
-    runtime::Builder,
+    runtime::{Builder, RuntimeError},
 };
 use inet::{
     interface::{add_interface, Interface, InterfaceAddr, NetworkDevice},
@@ -23,9 +23,10 @@ impl Module for Expect3Addrs {
         add_interface(Interface::empty("en0", NetworkDevice::eth())).unwrap();
     }
 
-    fn at_sim_end(&mut self) {
+    fn at_sim_end(&mut self) -> Result<(), RuntimeError> {
         let addrs = getaddrinfo().unwrap();
         assert_eq!(addrs.len(), 3, "see: {addrs:?}");
+        Ok(())
     }
 }
 
@@ -39,9 +40,10 @@ impl Module for Expect3Then1Addrs {
         add_interface(Interface::empty("en0", NetworkDevice::eth())).unwrap();
     }
 
-    fn at_sim_end(&mut self) {
+    fn at_sim_end(&mut self) -> Result<(), RuntimeError> {
         let addrs = getaddrinfo().unwrap();
         assert_eq!(addrs.len(), 1);
+        Ok(())
     }
 }
 
@@ -99,7 +101,7 @@ type Switch = utils::LinkLayerSwitch;
 
 #[test]
 #[serial]
-fn ipv6_timeouts_with_ra() {
+fn ipv6_timeouts_with_ra() -> Result<(), RuntimeError> {
     // des::tracing::init();
 
     type Router = RouterWithAdv;
@@ -118,12 +120,12 @@ fn ipv6_timeouts_with_ra() {
         // .max_itr(30)
         .max_time(10_000.0.into())
         .build(app);
-    let _ = rt.run();
+    rt.run().map(|_| ())
 }
 
 #[test]
 #[serial]
-fn ipv6_timeouts_without_ra() {
+fn ipv6_timeouts_without_ra() -> Result<(), RuntimeError> {
     // des::tracing::init();
 
     type Router = RouterWithoutAdv;
@@ -142,5 +144,5 @@ fn ipv6_timeouts_without_ra() {
         // .max_itr(30)
         .max_time(10_000.0.into())
         .build(app);
-    let _ = rt.run();
+    rt.run().map(|_| ())
 }

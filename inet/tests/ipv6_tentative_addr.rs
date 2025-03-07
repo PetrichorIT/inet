@@ -7,7 +7,7 @@ use des::{
         module::Module,
         Sim,
     },
-    runtime::Builder,
+    runtime::{Builder, RuntimeError},
 };
 use inet::{
     interface::{add_interface, interface_status, Interface, NetworkDevice},
@@ -28,10 +28,11 @@ impl Module for WithChecks {
         assert_eq!(state.addrs.multicast_scopes().len(), 1); // sol-multicast (delayed) + all nodes multicast
     }
 
-    fn at_sim_end(&mut self) {
+    fn at_sim_end(&mut self) -> Result<(), RuntimeError> {
         let state = interface_status("en0").unwrap();
         assert_eq!(state.addrs.iter().count(), 1);
         assert_eq!(state.addrs.multicast_scopes().len(), 2); // sol-multicast (delayed) + all nodes multicast
+        Ok(())
     }
 }
 
@@ -52,10 +53,11 @@ impl Module for WithoutChecks {
         assert_eq!(state.addrs.multicast_scopes().len(), 2); // sol-multicast + all nodes multicast
     }
 
-    fn at_sim_end(&mut self) {
+    fn at_sim_end(&mut self) -> Result<(), RuntimeError> {
         let state = interface_status("en0").unwrap();
         assert_eq!(state.addrs.iter().count(), 1);
         assert_eq!(state.addrs.multicast_scopes().len(), 2); // sol-multicast + all nodes multicast
+        Ok(())
     }
 }
 
@@ -75,10 +77,11 @@ impl Module for ManualAssignWithoutDedup {
         assert_eq!(state.addrs.multicast_scopes().len(), 2); // sol-multicast + all nodes multicast
     }
 
-    fn at_sim_end(&mut self) {
+    fn at_sim_end(&mut self) -> Result<(), RuntimeError> {
         let state = interface_status("en0").unwrap();
         assert_eq!(state.addrs.iter().count(), 1);
         assert_eq!(state.addrs.multicast_scopes().len(), 2); // sol-multicast + all nodes multicast
+        Ok(())
     }
 }
 
@@ -108,19 +111,20 @@ impl Module for AssignSameAddr {
         add_interface(Interface::empty("en0", device)).unwrap();
     }
 
-    fn at_sim_end(&mut self) {
+    fn at_sim_end(&mut self) -> Result<(), RuntimeError> {
         assert!(interface_status("en0")
             .unwrap()
             .addrs
             .iter()
             .collect::<Vec<_>>()
             .is_empty());
+        Ok(())
     }
 }
 
 #[test]
 #[serial]
-fn tentative_addr_with_checks() {
+fn tentative_addr_with_checks() -> Result<(), RuntimeError> {
     // des::tracing::init();
 
     let mut app = Sim::new(()).with_stack(inet::init);
@@ -139,12 +143,12 @@ fn tentative_addr_with_checks() {
     ag.connect(bg, Some(chan));
 
     let rt = Builder::seeded(123).build(app);
-    let _ = rt.run();
+    rt.run().map(|_| ())
 }
 
 #[test]
 #[serial]
-fn tentative_addr_without_checks() {
+fn tentative_addr_without_checks() -> Result<(), RuntimeError> {
     // des::tracing::init();
 
     let mut app = Sim::new(()).with_stack(inet::init);
@@ -163,12 +167,12 @@ fn tentative_addr_without_checks() {
     ag.connect(bg, Some(chan));
 
     let rt = Builder::seeded(123).build(app);
-    let _ = rt.run();
+    rt.run().map(|_| ())
 }
 
 #[test]
 #[serial]
-fn tentative_addr_no_checks_on_manual_no_dedup() {
+fn tentative_addr_no_checks_on_manual_no_dedup() -> Result<(), RuntimeError> {
     // des::tracing::init();
 
     let mut app = Sim::new(()).with_stack(inet::init);
@@ -187,12 +191,12 @@ fn tentative_addr_no_checks_on_manual_no_dedup() {
     ag.connect(bg, Some(chan));
 
     let rt = Builder::seeded(123).build(app);
-    let _ = rt.run();
+    rt.run().map(|_| ())
 }
 
 #[test]
 #[serial]
-fn tentative_addr_collision() {
+fn tentative_addr_collision() -> Result<(), RuntimeError> {
     // des::tracing::init();
 
     let mut app = Sim::new(()).with_stack(inet::init);
@@ -211,5 +215,5 @@ fn tentative_addr_collision() {
     ag.connect(bg, Some(chan));
 
     let rt = Builder::seeded(123).build(app);
-    let _ = rt.run();
+    rt.run().map(|_| ())
 }

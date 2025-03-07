@@ -3,7 +3,7 @@ use inet::{
     socket::{close, socket},
 };
 use std::{
-    io::{Error, ErrorKind, Result},
+    io::{Error, ErrorKind},
     path::Path,
 };
 use tokio::sync::{
@@ -50,7 +50,7 @@ impl UnixDatagram {
     /// # Errors
     ///
     /// Returns an error if the socket is invalid.
-    pub fn local_addr(&self) -> Result<SocketAddr> {
+    pub fn local_addr(&self) -> Result<SocketAddr, Error> {
         with_ext::<UdsExtension, _>(|uds| {
             uds.dgrams
                 .get(&self.fd)
@@ -64,7 +64,7 @@ impl UnixDatagram {
     /// # Errors
     ///
     /// Returns an error if the socket is invalid or has no peer addr.
-    pub fn peer_addr(&self) -> Result<SocketAddr> {
+    pub fn peer_addr(&self) -> Result<SocketAddr, Error> {
         with_ext::<UdsExtension, _>(|uds| {
             uds.dgrams
                 .get(&self.fd)
@@ -87,7 +87,7 @@ impl UnixDatagram {
     /// # Errors
     ///
     /// Returns an error if the file objecct is exclusivly controlled by another socket.
-    pub fn bind<P>(path: P) -> Result<UnixDatagram>
+    pub fn bind<P>(path: P) -> Result<UnixDatagram, Error>
     where
         P: AsRef<Path>,
     {
@@ -117,7 +117,7 @@ impl UnixDatagram {
     }
 
     /// Creates a new unnamed socket.
-    pub fn unbound() -> Result<UnixDatagram> {
+    pub fn unbound() -> Result<UnixDatagram, Error> {
         let fd: Fd = socket(SocketDomain::AF_UNIX, SocketType::SOCK_DGRAM, 0)?;
         with_ext::<UdsExtension, _>(|uds| {
             let addr = SocketAddr::unnamed();
@@ -144,7 +144,7 @@ impl UnixDatagram {
     /// # Errors
     ///
     /// May fail because of internal inconsistency.
-    pub fn pair() -> Result<(UnixDatagram, UnixDatagram)> {
+    pub fn pair() -> Result<(UnixDatagram, UnixDatagram), Error> {
         let a = Self::unbound()?;
         let b = Self::unbound()?;
 
@@ -163,7 +163,7 @@ impl UnixDatagram {
     /// # Errors
     ///
     /// May fail if no named socket is found under the given path.
-    pub fn connect<P>(&self, path: P) -> Result<()>
+    pub fn connect<P>(&self, path: P) -> Result<(), Error>
     where
         P: AsRef<Path>,
     {
@@ -187,7 +187,7 @@ impl UnixDatagram {
     ///
     /// May fail if either the peer is dead, or
     /// no peer was connected.
-    pub async fn send(&self, buf: &[u8]) -> Result<usize> {
+    pub async fn send(&self, buf: &[u8]) -> Result<usize, Error> {
         let addr = self.local_addr()?;
         let sender = with_ext::<UdsExtension, _>(|uds| {
             let fd = self.fd;
@@ -216,7 +216,7 @@ impl UnixDatagram {
     /// # Errors
     ///
     /// May fail if no socket was found under the given address.
-    pub async fn send_to<P>(&self, buf: &[u8], target: P) -> Result<usize>
+    pub async fn send_to<P>(&self, buf: &[u8], target: P) -> Result<usize, Error>
     where
         P: AsRef<Path>,
     {
@@ -244,7 +244,7 @@ impl UnixDatagram {
     ///
     /// May fail if either the peer is dead, or
     /// no peer was connected.
-    pub async fn recv(&self, buf: &mut [u8]) -> Result<usize> {
+    pub async fn recv(&self, buf: &mut [u8]) -> Result<usize, Error> {
         let peered =
             with_ext::<UdsExtension, _>(|uds| uds.dgrams.get(&self.fd).map(|v| v.peer.is_some()))
                 .unwrap_or(false);
@@ -258,7 +258,7 @@ impl UnixDatagram {
     }
 
     /// Sends a datagram from any other socket.
-    pub async fn recv_from(&self, buf: &mut [u8]) -> Result<(usize, SocketAddr)> {
+    pub async fn recv_from(&self, buf: &mut [u8]) -> Result<(usize, SocketAddr), Error> {
         let (bytes, src) = match self.rx.lock().await.recv().await {
             Some(dgram) => dgram,
             None => return Err(Error::new(ErrorKind::Other, "socket closed somehow")),
@@ -278,7 +278,7 @@ impl Drop for UnixDatagram {
 }
 
 impl UdsExtension {
-    fn connect_dgram(&mut self, fd: Fd, peer: Fd) -> Result<()> {
+    fn connect_dgram(&mut self, fd: Fd, peer: Fd) -> Result<(), Error> {
         let Some(handle) = self.dgrams.get_mut(&fd) else {
             return Err(Error::new(
                 ErrorKind::InvalidInput,
@@ -299,7 +299,7 @@ mod tests {
 
     use des::{
         net::{AsyncFn, Sim},
-        runtime::{random, Builder},
+        runtime::{random, Builder, RuntimeError},
         time::sleep,
     };
     use serial_test::serial;
@@ -345,7 +345,7 @@ mod tests {
 
     #[serial]
     #[test]
-    fn unamed_pair_connectivity() {
+    fn unamed_pair_connectivity() -> Result<(), RuntimeError> {
         let mut app = Sim::new(()).with_stack(inet::init);
         app.node(
             "main",
@@ -381,12 +381,16 @@ mod tests {
             })
             .require_join(),
         );
-        let _ = Builder::seeded(123).max_time(100.0.into()).build(app).run();
+        Builder::seeded(123)
+            .max_time(100.0.into())
+            .build(app)
+            .run()
+            .map(|_| ())
     }
 
     #[serial]
     #[test]
-    fn connected_can_transmit_datagrams() {
+    fn connected_can_transmit_datagrams() -> Result<(), RuntimeError> {
         let mut sim = Sim::new(()).with_stack(inet::init);
 
         sim.node(
@@ -409,12 +413,16 @@ mod tests {
             }),
         );
 
-        let _ = Builder::seeded(123).max_time(100.0.into()).build(sim).run();
+        Builder::seeded(123)
+            .max_time(100.0.into())
+            .build(sim)
+            .run()
+            .map(|_| ())
     }
 
     #[serial]
     #[test]
-    fn named_connectivity() {
+    fn named_connectivity() -> Result<(), RuntimeError> {
         let mut app = Sim::new(()).with_stack(inet::init);
         app.node(
             "main",
@@ -476,7 +484,7 @@ mod tests {
             .require_join(),
         );
         let rt = Builder::seeded(123).max_time(100.0.into()).build(app);
-        let _ = rt.run().unwrap();
+        rt.run().map(|_| ())
     }
 
     #[serial]

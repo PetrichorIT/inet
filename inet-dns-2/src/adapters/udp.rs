@@ -23,6 +23,13 @@ pub struct UdpAdapter {
     handle: Option<JoinHandle<()>>,
 }
 
+impl UdpAdapter {
+    pub fn with_port(mut self, port: u16) -> Self {
+        self.port = port;
+        self
+    }
+}
+
 #[async_trait::async_trait]
 impl TransportAdapter for UdpAdapter {
     async fn deploy(
@@ -42,6 +49,7 @@ impl TransportAdapter for UdpAdapter {
                 };
 
                 let Ok(msg) = DnsMessage::from_slice(&buf[..n]) else {
+                    tracing::error!("invalid packet");
                     continue;
                 };
 

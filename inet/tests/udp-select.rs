@@ -60,8 +60,9 @@ impl Module for A {
         });
     }
 
-    fn at_sim_end(&mut self) {
+    fn at_sim_end(&mut self) -> Result<(), RuntimeError> {
         assert!(self.done.load(Ordering::SeqCst));
+        Ok(())
     }
 }
 
@@ -116,15 +117,16 @@ impl Module for C {
         });
     }
 
-    fn at_sim_end(&mut self) {
+    fn at_sim_end(&mut self) -> Result<(), RuntimeError> {
         assert!(self.done.load(Ordering::SeqCst));
+        Ok(())
     }
 }
 
 type Main = inet::utils::LinkLayerSwitch;
 
 #[test]
-fn udp_select() {
+fn udp_select() -> Result<(), RuntimeError> {
     // Logger::new()
     // .interal_max_log_level(tracing::LevelFilter::Info)
     // .set_logger();
@@ -135,5 +137,5 @@ fn udp_select() {
         .map_err(|e| println!("{e}"))
         .unwrap();
     let rt = Builder::seeded(123).max_time(100.0.into()).build(app);
-    let _ = rt.run().unwrap();
+    rt.run().map(|_| ())
 }

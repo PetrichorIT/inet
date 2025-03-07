@@ -92,8 +92,9 @@ impl Module for Node {
         2
     }
 
-    fn at_sim_end(&mut self) {
+    fn at_sim_end(&mut self) -> Result<(), RuntimeError> {
         assert_eq!(self.done.load(Ordering::SeqCst), 2);
+        Ok(())
     }
 
     fn handle_message(&mut self, msg: Message) {
@@ -136,7 +137,7 @@ impl Module for Main {
 }
 
 #[test]
-fn tcp_lan_v6() {
+fn tcp_lan_v6() -> Result<(), RuntimeError> {
     // des::tracing::Subscriber::default().init().unwrap();
 
     let mut app = Sim::new(())
@@ -146,5 +147,5 @@ fn tcp_lan_v6() {
         .unwrap();
     app.include_par_file("tests/tcp-lan/v6.par.yml").unwrap();
     let rt = Builder::seeded(123).build(app);
-    let _ = rt.run();
+    rt.run().map(|_| ())
 }

@@ -152,5 +152,5 @@ fn main() {
         .map_err(|e| println!("{e}"))
         .unwrap();
     let rt = Builder::seeded(123).max_time(50.0.into()).build(app);
-    let _ = rt.run();
+    let _ = rt.run().unwrap();
 }

@@ -84,12 +84,13 @@ impl Module for TcpServer {
         tracing::error!("All packet should have been caught by the plugins");
     }
 
-    fn at_sim_end(&mut self) {
+    fn at_sim_end(&mut self) -> Result<(), RuntimeError> {
         assert!(self.done.load(SeqCst));
 
         let fd: Fd = self.fd.load(SeqCst);
         assert!(fd != 0);
-        assert!(inet::socket::bsd_socket_info(fd).is_err())
+        assert!(inet::socket::bsd_socket_info(fd).is_err());
+        Ok(())
     }
 }
 
@@ -143,12 +144,13 @@ impl Module for TcpClient {
         panic!("All packet should have been caught by the plugins")
     }
 
-    fn at_sim_end(&mut self) {
+    fn at_sim_end(&mut self) -> Result<(), RuntimeError> {
         assert!(self.done.load(SeqCst));
 
         let fd: Fd = self.fd.load(SeqCst);
         assert!(fd != 0);
-        assert!(inet::socket::bsd_socket_info(fd).is_err())
+        assert!(inet::socket::bsd_socket_info(fd).is_err());
+        Ok(())
     }
 }
 

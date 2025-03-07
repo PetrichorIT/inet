@@ -111,7 +111,7 @@ impl Module for Main {
     }
 }
 
-fn main() {
+fn main() -> Result<(), RuntimeError> {
     des::tracing::init();
 
     let mut app = Sim::new(())
@@ -121,5 +121,5 @@ fn main() {
         .unwrap();
     app.include_par_file("inet/src/bin/ping.par").unwrap();
     let rt = Builder::seeded(123).max_itr(50).build(app);
-    let _ = rt.run().unwrap();
+    rt.run().map(|_| ())
 }

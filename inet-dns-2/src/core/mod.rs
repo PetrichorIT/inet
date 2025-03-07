@@ -113,13 +113,14 @@ impl ZoneResolver {
                     for (additional, kind) in follow_up.on_anwsered(follow_up_result) {
                         response.include(self.db.query(&additional), kind);
                     }
+                    break;
                 }
             }
 
             if response.is_reponse_empty() {
                 return Err(Error::new(
                     ResponseCode::NxDomain,
-                    "query could not be resolved",
+                    format!("query '{question}' could not be resolved"),
                 ));
             }
         } else {

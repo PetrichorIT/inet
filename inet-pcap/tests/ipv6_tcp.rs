@@ -3,7 +3,7 @@ use std::{fs::File, time::Duration};
 use des::{
     net::{module::Module, Sim},
     registry,
-    runtime::Builder,
+    runtime::{Builder, RuntimeError},
 };
 use inet::{
     interface::{add_interface, Interface, NetworkDevice},
@@ -77,7 +77,7 @@ impl Module for Router {
 type Switch = utils::LinkLayerSwitch;
 
 #[test]
-fn ipv6_tcp() {
+fn ipv6_tcp() -> Result<(), RuntimeError> {
     // des::tracing::init();
 
     let app = Sim::new(())
@@ -92,5 +92,5 @@ fn ipv6_tcp() {
         // .max_itr(30)
         .max_time(10.0.into())
         .build(app);
-    let _ = rt.run();
+    rt.run().map(|_| ())
 }

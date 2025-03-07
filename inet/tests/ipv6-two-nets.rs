@@ -6,7 +6,7 @@ use des::{
         par, par_for, Sim,
     },
     registry,
-    runtime::Builder,
+    runtime::{Builder, RuntimeError},
 };
 use inet::{
     interface::{add_interface, interface_status, Interface, NetworkDevice},
@@ -112,7 +112,7 @@ impl Module for Router {
 type Switch = utils::LinkLayerSwitch;
 
 #[test]
-fn ipv6_two_nets() -> Result<(), Box<dyn Error>> {
+fn ipv6_two_nets() -> Result<(), RuntimeError> {
     // des::tracing::init();
 
     let mut app = Sim::new(()).with_stack(inet::init).with_ndl(
@@ -121,7 +121,5 @@ fn ipv6_two_nets() -> Result<(), Box<dyn Error>> {
     )?;
     app.include_par_file("tests/ipv6_two_nets.par.yml").unwrap();
     let rt = Builder::seeded(123).max_time(10.0.into()).build(app);
-    let _ = rt.run();
-
-    Ok(())
+    rt.run().map(|_| ())
 }

@@ -143,7 +143,7 @@ impl Module for Router {
 //     let mut app = ndl.into_app();
 //     app.include_par_file("tests/icmpv6_traceroute.par");
 //     let rt = Builder::seeded(123).max_time(10.0.into()).build(app);
-//     let _ = rt.run();
+//     rt.run()
 
 //     Ok(())
 // }

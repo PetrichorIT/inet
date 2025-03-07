@@ -81,9 +81,10 @@ impl Module for Emitter {
         });
     }
 
-    fn at_sim_end(&mut self) {
+    fn at_sim_end(&mut self) -> Result<(), RuntimeError> {
         assert_eq!(V4.load(Ordering::SeqCst), 0);
         assert_eq!(V6.load(Ordering::SeqCst), 0);
+        Ok(())
     }
 }
 
@@ -124,7 +125,7 @@ impl Module for Receiver {
 }
 
 #[test]
-fn raw_ip_socket() {
+fn raw_ip_socket() -> Result<(), RuntimeError> {
     // Logger::new()
     // .interal_max_log_level(tracing::LevelFilter::Trace)
     // .set_logger();
@@ -135,5 +136,5 @@ fn raw_ip_socket() {
         .map_err(|e| println!("{e}"))
         .unwrap();
     let rt = Builder::seeded(123).build(rt);
-    let _ = rt.run();
+    rt.run().map(|_| ())
 }

@@ -80,7 +80,7 @@ fn routing_info() {
         .unwrap();
     let rt = Builder::seeded(123).max_time(100.0.into()).build(app);
     match rt.run() {
-        RuntimeResult::EmptySimulation { .. } => {}
+        Ok((_, _, p)) if p.event_count == 0 => {}
         _ => panic!("unexpected runtime result"),
     }
 }

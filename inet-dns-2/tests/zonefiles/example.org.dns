@@ -1,0 +1,10 @@
+example.org.    7000    IN    SOA ns.example.org. admin@example.org (7000 7000 7000 7000 7000)
+
+example.org.    7000    IN    NS    ns.example.org.
+ns.example.org. 1800    IN    A     192.168.2.110
+
+www.example.org         7000    IN    A     192.168.2.111
+ftp.example.org         7000    IN    A     192.168.2.112
+info.example.org        7000    IN    A     192.168.2.113
+status.info.example.org 7000    IN    A     192.168.2.114
+stats.example.org       7000    IN    A     192.168.2.115

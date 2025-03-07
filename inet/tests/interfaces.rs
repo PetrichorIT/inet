@@ -72,21 +72,22 @@ impl Module for SocketBind {
         });
     }
 
-    fn at_sim_end(&mut self) {
+    fn at_sim_end(&mut self) -> Result<(), RuntimeError> {
         assert!(self.done.load(Ordering::SeqCst));
+        Ok(())
     }
 }
 
 #[test]
 #[serial]
-fn udp_empty_socket_bind() {
+fn udp_empty_socket_bind() -> Result<(), RuntimeError> {
     // des::tracing::init();
 
     let mut app = Sim::new(()).with_stack(inet::init);
     app.node("root", SocketBind::default());
 
     let rt = Builder::seeded(123).build(app);
-    let _ = rt.run();
+    rt.run().map(|_| ())
 }
 
 #[derive(Default)]
@@ -161,8 +162,9 @@ impl Module for UdpSingleEchoSender {
         });
     }
 
-    fn at_sim_end(&mut self) {
+    fn at_sim_end(&mut self) -> Result<(), RuntimeError> {
         assert!(self.done.load(Ordering::SeqCst));
+        Ok(())
     }
 }
 
@@ -188,7 +190,7 @@ fn udp_echo_single_client() {
     so.connect(co, Some(chan));
 
     let rt = Builder::seeded(123).build(app);
-    let RuntimeResult::Finished { time, .. } = rt.run() else {
+    let Ok((_, time, _)) = rt.run() else {
         panic!("Unexpected runtime result")
     };
 
@@ -241,8 +243,9 @@ impl Module for UdpSingleClusteredSender {
         });
     }
 
-    fn at_sim_end(&mut self) {
+    fn at_sim_end(&mut self) -> Result<(), RuntimeError> {
         assert!(self.done.load(Ordering::SeqCst));
+        Ok(())
     }
 }
 
@@ -268,7 +271,7 @@ fn udp_echo_clustered_echo() {
     so.connect(co, Some(chan));
 
     let rt = Builder::seeded(123).build(app);
-    let RuntimeResult::Finished { time, .. } = rt.run() else {
+    let Ok((_, time, _)) = rt.run() else {
         panic!("Unexpected runtime result")
     };
 
@@ -354,8 +357,9 @@ impl Module for UdpConcurrentClients {
         });
     }
 
-    fn at_sim_end(&mut self) {
+    fn at_sim_end(&mut self) -> Result<(), RuntimeError> {
         assert!(self.done.load(Ordering::SeqCst));
+        Ok(())
     }
 }
 
@@ -379,7 +383,7 @@ fn udp_echo_concurrent_clients() {
     so.connect(co, Some(chan));
 
     let rt = Builder::seeded(123).build(app);
-    let RuntimeResult::Finished { time, .. } = rt.run() else {
+    let Ok((_, time, _)) = rt.run() else {
         panic!("Unexpected runtime result")
     };
 
@@ -388,7 +392,7 @@ fn udp_echo_concurrent_clients() {
 
 #[test]
 #[serial]
-fn interface_does_not_use_busy_channel() {
+fn interface_does_not_use_busy_channel() -> Result<(), RuntimeError> {
     // des::tracing::init();
 
     static DONE: AtomicBool = AtomicBool::new(false);
@@ -473,14 +477,15 @@ fn interface_does_not_use_busy_channel() {
     );
 
     let rt = Builder::seeded(123).build(sim);
-    let _ = rt.run();
+    let result = rt.run().map(|_| ());
 
     assert!(DONE.load(std::sync::atomic::Ordering::SeqCst));
+    result
 }
 
 #[test]
 #[serial]
-fn interface_will_use_idle_channel_fcfs() {
+fn interface_will_use_idle_channel_fcfs() -> Result<(), RuntimeError> {
     // des::tracing::init();
 
     static DONE: AtomicBool = AtomicBool::new(false);
@@ -564,7 +569,8 @@ fn interface_will_use_idle_channel_fcfs() {
     );
 
     let rt = Builder::seeded(123).build(sim);
-    let _ = rt.run();
+    let result = rt.run().map(|_| ());
 
     assert!(DONE.load(std::sync::atomic::Ordering::SeqCst));
+    result
 }
