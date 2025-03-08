@@ -24,7 +24,7 @@ impl DNSNameserver {
     pub fn one_root_ns(&self) -> (IpAddr, String) {
         ROOT_NS.with(|root_ns| {
             let root_ns = root_ns.borrow();
-            root_ns[random::<usize>() % root_ns.len()].clone()
+            root_ns[random::<u64>() as usize % root_ns.len()].clone()
         })
     }
 }

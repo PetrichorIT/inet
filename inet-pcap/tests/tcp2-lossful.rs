@@ -18,7 +18,7 @@ fn lossfull_stream() {
     des::tracing::init();
 
     let mut bytes = vec![0; 10_000]; // 8MB;
-    rand::thread_rng().fill_bytes(&mut bytes);
+    rand::rng().fill_bytes(&mut bytes);
 
     let bytes = Arc::new(bytes);
     let bytes2 = bytes.clone();

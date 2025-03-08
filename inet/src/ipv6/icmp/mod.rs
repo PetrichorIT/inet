@@ -6,6 +6,9 @@ use crate::{
 };
 use bytepack::{FromBytestream, ToBytestream};
 use des::{runtime::sample, time::SimTime};
+use rand::distr::Uniform;
+use std::{io, net::Ipv6Addr, time::Duration};
+use tracing::Level;
 use types::{
     icmpv6::{
         IcmpV6DestinationUnreachable, IcmpV6DestinationUnreachableCode, IcmpV6Echo,
@@ -17,9 +20,6 @@ use types::{
     },
     ip::{IpPacket, Ipv6AddrExt, Ipv6Packet, Ipv6Prefix},
 };
-use rand::distributions::Uniform;
-use std::{io, net::Ipv6Addr, time::Duration};
-use tracing::Level;
 
 use super::{mld, ndp::QueryType};
 
@@ -333,10 +333,9 @@ impl IOContext {
         // TODO:
         // Delay advertisment response, only send singe adv to multiple solicitations
         let delay_time = SimTime::now()
-            + Duration::from_secs_f64(sample(Uniform::new(
-                0.0,
-                NDP_MAX_RA_DELAY_TIME.as_secs_f64(),
-            )));
+            + Duration::from_secs_f64(sample(
+                Uniform::new(0.0, NDP_MAX_RA_DELAY_TIME.as_secs_f64()).unwrap(),
+            ));
 
         // TODO:
         // Rate limit sendings to MULTICAST:ALLNODES according to NDP_MIN_DELAY_BETWEEN_RAS
@@ -471,10 +470,9 @@ impl IOContext {
         if adv.reachable_time != 0 {
             iface_cfg.base_reachable_time = Duration::from_millis(adv.reachable_time as u64);
             let r64 = iface_cfg.base_reachable_time.as_secs_f64();
-            iface_cfg.reachable_time = Duration::from_secs_f64(sample(Uniform::new(
-                NDP_MIN_RANDOM_FACTOR * r64,
-                NDP_MAX_RANDOM_FACTOR * r64,
-            )));
+            iface_cfg.reachable_time = Duration::from_secs_f64(sample(
+                Uniform::new(NDP_MIN_RANDOM_FACTOR * r64, NDP_MAX_RANDOM_FACTOR * r64).unwrap(),
+            ));
         }
         if adv.retransmit_time != 0 {
             iface_cfg.retrans_timer = Duration::from_millis(adv.retransmit_time as u64);

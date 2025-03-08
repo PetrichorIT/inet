@@ -1,5 +1,5 @@
 use des::time::SimTime;
-use rand::distributions::Uniform;
+use rand::distr::Uniform;
 use std::{io, net::Ipv6Addr, time::Duration};
 use types::{
     icmpv6::{NDP_MAX_DELAY_BETWEEN_RAS, NDP_MIN_DELAY_BETWEEN_RAS},
@@ -80,10 +80,13 @@ impl IOContext {
         let token = TimerToken::RouterAdvertismentUnsolicited { ifid };
         if self.ipv6.timer.active(&token).is_none() {
             let timeout = SimTime::now()
-                + Duration::from_secs_f64(des::runtime::sample(Uniform::new(
-                    NDP_MIN_DELAY_BETWEEN_RAS.as_secs_f64(),
-                    NDP_MAX_DELAY_BETWEEN_RAS.as_secs_f64(),
-                )));
+                + Duration::from_secs_f64(des::runtime::sample(
+                    Uniform::new(
+                        NDP_MIN_DELAY_BETWEEN_RAS.as_secs_f64(),
+                        NDP_MAX_DELAY_BETWEEN_RAS.as_secs_f64(),
+                    )
+                    .unwrap(),
+                ));
             self.ipv6.timer.schedule(token, timeout);
         }
         Ok(())

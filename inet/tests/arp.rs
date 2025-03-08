@@ -45,7 +45,7 @@ impl Module for Node {
                 RawIpSocket::new_v6().unwrap()
             };
 
-            let mut index = random::<usize>() % 5;
+            let mut index = random::<u64>() as usize % 5;
             loop {
                 sleep(Duration::from_secs_f64(random())).await;
 

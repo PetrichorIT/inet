@@ -39,7 +39,7 @@ impl Module for Client {
             sleep(Duration::from_secs(1)).await;
 
             for _ in 0..100 {
-                let domain = DOMAINS[random::<usize>() % DOMAINS.len()];
+                let domain = DOMAINS[random::<u64>() as usize % DOMAINS.len()];
                 let mut stream = TcpStream::connect((domain, 80)).await.unwrap();
                 stream.write_all(domain.as_bytes()).await.unwrap();
                 let mut buf = [0; 64];

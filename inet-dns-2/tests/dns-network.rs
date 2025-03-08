@@ -170,7 +170,7 @@ fn run() -> Result<(), RuntimeError> {
             sleep(Duration::from_secs(1)).await;
 
             for i in 0..100 {
-                let domain = DOMAINS[random::<usize>() % DOMAINS.len()];
+                let domain = DOMAINS[random::<u64>() as usize % DOMAINS.len()];
                 let mut stream = TcpStream::connect((domain, 80)).await?;
                 stream.write_all(domain.as_bytes()).await?;
                 let mut buf = [0; 64];

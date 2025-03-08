@@ -3,7 +3,7 @@
 use crate::IOContext;
 use des::runtime::rng;
 use fxhash::{FxBuildHasher, FxHashMap};
-use rand::{distributions::Alphanumeric, Rng};
+use rand::{distr::Alphanumeric, Rng};
 use std::{
     io::{Error, ErrorKind, Result},
     path::{Component, Path, PathBuf},

@@ -66,13 +66,13 @@ mod tests {
         while i < 4096 || o < 4096 {
             assert_eq!(buf.len, i - o);
 
-            let w: usize = rng.gen::<usize>() % 1024 + 400;
+            let w: usize = rng.random::<u64>() as usize % 1024 + 400;
             let n = buf.write(&input[i..(i + w).min(4096)]);
             i += n;
 
             assert_eq!(buf.len, i - o);
 
-            let r = rng.gen::<usize>() % 1024 + 100;
+            let r = rng.random::<u64>() as usize % 1024 + 100;
             let n = buf.read(&mut output[o..(o + r).min(4096)]);
             o += n;
 

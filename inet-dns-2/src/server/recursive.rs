@@ -119,7 +119,7 @@ impl RecursiveNameserver {
         if response.anwsers.is_empty() {
             None
         } else {
-            let record = &response.anwsers[random::<usize>() % response.anwsers.len()];
+            let record = &response.anwsers[random::<u64>() as usize % response.anwsers.len()];
             match record.typ() {
                 ResourceRecordTyp::A => Some(
                     record
@@ -215,7 +215,7 @@ impl RecursiveNameserver {
                     return;
                 }
 
-                let root = &self.roots[random::<usize>() % self.roots.len()];
+                let root = &self.roots[random::<u64>() as usize % self.roots.len()];
                 self.queries.push(NameserverQuery {
                     transaction: tx.local_transaction,
                     nameserver_ip: root.0,

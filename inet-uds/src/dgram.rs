@@ -445,7 +445,7 @@ mod tests {
                 let h2 = tokio::spawn(async move {
                     let sock = UnixDatagram::bind("/tmp/task2").unwrap();
                     for _i in 0..3 {
-                        let n = 200 + random::<usize>() % 200;
+                        let n = 200 + random::<u64>() as usize % 200;
                         let buf = repeat_with(|| random::<u8>()).take(n).collect::<Vec<_>>();
 
                         sock.send_to(&buf, "/tmp/task1").await.unwrap();
@@ -462,7 +462,7 @@ mod tests {
                 let h3 = tokio::spawn(async move {
                     let sock = UnixDatagram::bind("/tmp/task3").unwrap();
                     for _i in 0..7 {
-                        let n = 200 + random::<usize>() % 200;
+                        let n = 200 + random::<u64>() as usize % 200;
                         let buf = repeat_with(|| random::<u8>()).take(n).collect::<Vec<_>>();
 
                         sock.send_to(&buf, "/tmp/task1").await.unwrap();

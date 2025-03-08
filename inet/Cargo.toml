@@ -18,10 +18,10 @@ des = { version = "*", features = ["full"] }
 tokio = "1.37.0"
 tracing = { version = "*" }
 bytes = "1.4.0"
-rand = "0.8.5"
+rand = "*"
 types = { path = "../util/types" }
 bytepack = { path = "../util/bytepack" }
-bitflags = "*"
+bitflags = ">2.6.0"
 
 [dev-dependencies]
 serial_test = "2.0.0"

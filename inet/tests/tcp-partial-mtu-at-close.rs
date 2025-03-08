@@ -86,7 +86,7 @@ impl Module for TcpServer {
             assert_ne!(t0, t1);
 
             // This seed is generated on the run of tcp_partial_mtu_at_simultaneous_close
-            let seed_derived = random::<usize>();
+            let seed_derived = random::<u64>() as usize;
             if seed_derived == 5270976807191845495 {
                 // NOP
                 // causes sim close

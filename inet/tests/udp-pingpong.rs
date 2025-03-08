@@ -35,7 +35,7 @@ fn udp_ping_pong() {
             let mut c = 0;
             while cursor < out.len() {
                 let remaning = out.len() - cursor;
-                let size = random::<usize>() % (1024.min(remaning));
+                let size = random::<u64>() as usize % (1024.min(remaning));
                 let size = size.max(256).min(remaning);
 
                 socket.send(&out[cursor..(cursor + size)]).await.unwrap();

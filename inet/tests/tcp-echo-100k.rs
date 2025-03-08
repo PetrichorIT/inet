@@ -121,7 +121,7 @@ impl Module for TcpClient {
             // let mut waiting_to_confirm = VecDeque::with_capacity(4096);
 
             while acc < LIMIT {
-                let k = (random::<usize>() % 4096).min(LIMIT - acc);
+                let k = (random::<u64>() as usize % 4096).min(LIMIT - acc);
                 let buf = std::iter::repeat_with(|| random::<u8>())
                     .take(k)
                     .collect::<Vec<_>>();

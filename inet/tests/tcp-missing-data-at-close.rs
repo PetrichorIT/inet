@@ -17,7 +17,7 @@ struct Link {}
 impl Module for Link {
     fn handle_message(&mut self, msg: Message) {
         // random packet drop 10 %
-        if (random::<usize>() % 10) == 7 {
+        if (random::<u64>() as usize % 10) == 7 {
             let ippacket = msg.content::<Ipv4Packet>();
             let tcp = TcpPacket::from_slice(&ippacket.content).unwrap();
 

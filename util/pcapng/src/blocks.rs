@@ -292,6 +292,7 @@ bitflags! {
     ///  link-layer information about the packet.
     ///
     /// See 4.3.1.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub struct EnhancedPacketOptionFlags: u32 {
         /// Inbound packets, recevied by an interface from a channel.
         const INBOUND       = 0b01;
@@ -302,7 +303,7 @@ bitflags! {
         /// Link-layer multicast.
         const MULTICAST     = 0b01000;
         /// Link-layer broadcast.
-        const BROADCAST     = Self::UNICAST.bits | Self::MULTICAST.bits;
+        const BROADCAST     = Self::UNICAST.bits() | Self::MULTICAST.bits();
         /// Link-layer PROMISCUOUS.
         const PROMISCUOUS   = 0b10000;
     }
@@ -651,7 +652,7 @@ impl ToBytestream for EnhancedPacketOption {
     fn to_bytestream(&self, stream: &mut BytestreamWriter) -> Result<(), Self::Error> {
         match self {
             Self::Flags(flags) => write_option(stream, EPB_OPTION_FLAGS, |stream| {
-                stream.write_u32::<LE>(flags.bits)
+                stream.write_u32::<LE>(flags.bits())
             }),
             Self::Hash(hash) => {
                 write_option(stream, EPB_OPTION_HASH, |stream| stream.write_all(hash))

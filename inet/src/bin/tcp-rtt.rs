@@ -88,7 +88,7 @@ impl Module for Client {
                 tracing::info!("[{k}] opening stream");
                 let mut acc = 0;
                 for i in 0..1 {
-                    let n = (random::<usize>() % 2000) + 1000;
+                    let n = (random::<u64>() as usize % 2000) + 1000;
                     let x = ((i ^ n) & 0xff) as u8;
                     acc += n;
                     tracing::info!("[{k}] sending new byte stack [{x:x}; {n}]");

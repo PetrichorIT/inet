@@ -114,16 +114,23 @@ impl DNSNameserver {
                         let mut nsip = Vec::new();
                         for ns in nameservers {
                             let domain = domain_of_record!(&ns);
-                            let Some(ip) = self.db.find(|r| *r.name == *domain && (r.typ == DNSType::A || r.typ == DNSType::AAAA)).next() else {
-                            continue;
-                        };
+                            let Some(ip) = self
+                                .db
+                                .find(|r| {
+                                    *r.name == *domain
+                                        && (r.typ == DNSType::A || r.typ == DNSType::AAAA)
+                                })
+                                .next()
+                            else {
+                                continue;
+                            };
                             nsip.push((ns, addr_of_record!(ip)))
                         }
                         if nsip.is_empty() {
                             continue;
                         }
 
-                        let choose_ns = nsip.remove(random::<usize>() % nsip.len());
+                        let choose_ns = nsip.remove(random::<u64>() as usize % nsip.len());
                         ns = Some(choose_ns);
                         break;
                     }
@@ -194,8 +201,17 @@ impl DNSNameserver {
     ) {
         // (0) Resolver is in recursive mode
         // (1) Find corresponding transaction
-        let Some((i, _)) = self.active_transactions.iter().enumerate().find(|(_, t)| t.local_transaction == msg.transaction) else {
-            tracing::warn!("[0x{:x}] Got response to transaction not owned by this resolver from {}", msg.transaction, source);
+        let Some((i, _)) = self
+            .active_transactions
+            .iter()
+            .enumerate()
+            .find(|(_, t)| t.local_transaction == msg.transaction)
+        else {
+            tracing::warn!(
+                "[0x{:x}] Got response to transaction not owned by this resolver from {}",
+                msg.transaction,
+                source
+            );
             return;
         };
         let transaction = self.active_transactions.remove(i);
@@ -223,7 +239,7 @@ impl DNSNameserver {
         if msg.anwsers.is_empty() {
             // (2.1) Got referalll must continue iterativly
 
-            let c_ns = &msg.auths[random::<usize>() % msg.auths.len()];
+            let c_ns = &msg.auths[random::<u64>() as usize % msg.auths.len()];
             let c_ns_domain = domain_of_record!(c_ns);
             let addr = msg
                 .additional

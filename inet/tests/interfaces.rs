@@ -146,7 +146,7 @@ impl Module for UdpSingleEchoSender {
             sock.connect("1.1.1.42:42").await.unwrap();
 
             for _ in 0..100 {
-                let size = random::<usize>() % 800 + 200;
+                let size = random::<u64>() as usize % 800 + 200;
                 let msg = std::iter::from_fn(|| Some(random::<u8>()))
                     .take(size)
                     .collect::<Vec<_>>();
@@ -221,7 +221,7 @@ impl Module for UdpSingleClusteredSender {
 
             for i in 0..103 {
                 if i < 100 {
-                    let size = random::<usize>() % 800 + 200;
+                    let size = random::<u64>() as usize % 800 + 200;
                     let msg = std::iter::from_fn(|| Some(random::<u8>()))
                         .take(size)
                         .collect::<Vec<_>>();
@@ -300,7 +300,7 @@ impl Module for UdpConcurrentClients {
                 sock.connect("1.1.1.42:42").await.unwrap();
 
                 for _ in 0..100 {
-                    let size = random::<usize>() % 800 + 200;
+                    let size = random::<u64>() as usize % 800 + 200;
                     let msg = std::iter::from_fn(|| Some(random::<u8>()))
                         .take(size)
                         .collect::<Vec<_>>();
@@ -318,7 +318,7 @@ impl Module for UdpConcurrentClients {
                 sock.connect("1.1.1.42:42").await.unwrap();
 
                 for _ in 0..100 {
-                    let size = random::<usize>() % 800 + 200;
+                    let size = random::<u64>() as usize % 800 + 200;
                     let msg = std::iter::from_fn(|| Some(random::<u8>()))
                         .take(size)
                         .collect::<Vec<_>>();
@@ -335,7 +335,7 @@ impl Module for UdpConcurrentClients {
                 let sock = UdpSocket::bind("0.0.0.0:0").await.unwrap();
 
                 for _ in 0..100 {
-                    let size = random::<usize>() % 800 + 200;
+                    let size = random::<u64>() as usize % 800 + 200;
                     let msg = std::iter::from_fn(|| Some(random::<u8>()))
                         .take(size)
                         .collect::<Vec<_>>();

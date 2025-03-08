@@ -61,7 +61,7 @@ impl Module for Connector {
         let prob = (self.freq / 400_000.0).min(1.0) * msg.header().length as f64 / 2000.0;
         let prob = prob.powi(5).min(1.0);
         // self.debug_p.collect(prob);
-        let distr = rand::distributions::Bernoulli::new(prob).unwrap();
+        let distr = rand::distr::Bernoulli::new(prob).unwrap();
         if sample(distr) {
             tracing::error!("### droping packet {}", msg.str());
             self.drops.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
@@ -100,7 +100,7 @@ impl Module for Client {
                 tracing::info!("[{k}] opening stream");
                 let mut acc = 0;
                 for i in 0..1000 {
-                    let n = (random::<usize>() % 2000) + 1000;
+                    let n = (random::<u64>() as usize % 2000) + 1000;
                     let x = ((i ^ n) & 0xff) as u8;
                     acc += n;
                     tracing::info!("[{k}] sending new byte stack [{x:x}; {n}]");
