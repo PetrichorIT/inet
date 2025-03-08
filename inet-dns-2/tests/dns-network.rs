@@ -6,7 +6,10 @@ use std::{
 };
 
 use des::{prelude::*, time::sleep};
-use inet::{dns::lookup_host, tcp2::TcpListener, test_util::SimpleSim};
+use inet::{
+    tcp2::{TcpListener, TcpStream},
+    test_util::SimpleSim,
+};
 use inet_dns_2::{
     adapters::{Base, UdpAdapter},
     client::resolve,
@@ -162,19 +165,18 @@ fn run() -> Result<(), RuntimeError> {
         });
     }
 
-    for client in &["alice", "bob"] {
+    for client in &["alice", "bob", "eve"] {
         sim.node_require_join(client, move || async move {
             sleep(Duration::from_secs(1)).await;
 
-            for i in 0..50 {
+            for i in 0..100 {
                 let domain = DOMAINS[random::<usize>() % DOMAINS.len()];
-                let _ = lookup_host((domain, 80)).await;
-                // let mut stream = TcpStream::connect((domain, 80)).await?;
-                // stream.write_all(domain.as_bytes()).await?;
-                // let mut buf = [0; 64];
-                // let n = stream.read(&mut buf).await?;
-                // assert_eq!(n, 1);
-                // assert_eq!(buf[0], 42);
+                let mut stream = TcpStream::connect((domain, 80)).await?;
+                stream.write_all(domain.as_bytes()).await?;
+                let mut buf = [0; 64];
+                let n = stream.read(&mut buf).await?;
+                assert_eq!(n, 1);
+                assert_eq!(buf[0], 42);
 
                 tracing::info!("completed request {i}:'{domain}'");
             }

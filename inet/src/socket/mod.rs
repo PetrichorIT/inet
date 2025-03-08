@@ -440,12 +440,7 @@ impl IOContext {
                     return;
                 };
 
-                if let Some(interest) = &udp.interest {
-                    if interest.is_writable() {
-                        let interest = udp.interest.take().unwrap();
-                        interest.wake()
-                    }
-                }
+                udp.on_write_ready();
             }
             (AF_INET, SOCK_STREAM) | (AF_INET6, SOCK_STREAM) => {
                 self.tcp_socket_link_update(fd);

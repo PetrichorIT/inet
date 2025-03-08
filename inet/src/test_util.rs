@@ -34,7 +34,7 @@ impl SimpleSim {
                 addr
             }
             Err(_) => {
-                for i in 100..255 {
+                for i in 1..255 {
                     let addr = Ipv4Addr::new(192, 168, 2, i);
                     if !self.clients.contains(&addr.into()) {
                         self.clients.push(addr.into());

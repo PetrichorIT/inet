@@ -147,7 +147,6 @@ impl LinkLayerSwitch {
                 }
             } else {
                 // (4) Send the message directly (onto the original gate though)
-                tracing::debug!("send({}, {})", msg.str(), self.info.ports[i].output.path());
                 send(msg, self.info.ports[i].output.clone())
             }
         } else {

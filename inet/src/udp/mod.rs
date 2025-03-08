@@ -40,7 +40,9 @@ pub(super) struct UdpControlBlock {
     pub(super) broadcast: bool,
 
     pub(super) error: Option<Error>,
-    pub(super) interest: Option<UdpInterestGuard>,
+
+    pub(super) read_interest: Vec<UdpInterestGuard>,
+    pub(super) write_interest: Vec<UdpInterestGuard>,
 }
 
 /// A public info over UDP sockets.
@@ -64,11 +66,16 @@ pub(super) enum UdpSocketState {
 impl UdpControlBlock {
     pub(super) fn push_incoming(&mut self, src: SocketAddr, dest: SocketAddr, udp: UdpPacket) {
         self.incoming.push_back((src, dest, udp));
-        if let Some(interest) = &self.interest {
-            if interest.is_readable() {
-                self.interest.take().unwrap().wake();
-            }
-        }
+
+        self.read_interest
+            .drain(..)
+            .for_each(UdpInterestGuard::wake);
+    }
+
+    pub fn on_write_ready(&mut self) {
+        self.write_interest
+            .drain(..)
+            .for_each(UdpInterestGuard::wake);
     }
 }
 
@@ -192,7 +199,8 @@ impl IOContext {
             broadcast: false,
             error: None,
 
-            interest: None,
+            read_interest: Vec::new(),
+            write_interest: Vec::new(),
         };
         self.udp.binds.insert(socket, manager);
 
