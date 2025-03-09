@@ -1,5 +1,4 @@
 use bytepack::{FromBytestream, ToBytestream};
-use des::net::panic;
 
 use super::{
     Block, BlockReader, BlockWriter, DefaultBlockWriter, EnhancedPacketOptionFlags,
@@ -47,22 +46,20 @@ impl<I: PartialEq + Clone> TestBlockWriter<I> {
                 let total = slice.len();
 
                 let Ok(block) = Block::read_from_slice(&mut slice) else {
-                    panic("block parsing error: writer");
+                    panic!("block parsing error: writer");
                 };
 
                 let n = total - slice.len();
                 self.write_offset += n;
 
                 let Some(expected) = self.reader.next() else {
-                    panic("no further block was expected, but one was found");
+                    panic!("no further block was expected, but one was found");
                 };
                 let Ok(expected) = expected else {
-                    panic("block parsing error: reader");
+                    panic!("block parsing error: reader");
                 };
                 if block != expected {
-                    panic(format!(
-                        "values not equal 'lhs != rhs'\nlhs: {block:#?}\nrhs: {expected:#?}"
-                    ));
+                    panic!("values not equal 'lhs != rhs'\nlhs: {block:#?}\nrhs: {expected:#?}");
                 }
             }
         }));

@@ -230,7 +230,7 @@ impl Module for LAN {
 }
 
 fn main() {
-    des::tracing::init();
+    // des::tracing::init();
 
     type Switch = LinkLayerSwitch;
 

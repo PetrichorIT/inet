@@ -1,4 +1,4 @@
-use std::{error::Error, io, net::Ipv6Addr, time::Duration};
+use std::{io, net::Ipv6Addr, time::Duration};
 
 use des::{
     net::{

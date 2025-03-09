@@ -54,7 +54,7 @@ mod tests {
     fn buf_to_limits() {
         let mut rng = StdRng::seed_from_u64(rand::random());
 
-        let input = repeat_with(|| rng.gen::<u8>())
+        let input = repeat_with(|| rng.random::<u8>())
             .take(4096)
             .collect::<Vec<_>>();
         let mut i = 0;

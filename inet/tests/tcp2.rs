@@ -61,7 +61,7 @@ impl Module for Server {
 
 #[test]
 fn main() -> Result<(), Box<dyn Error>> {
-    des::tracing::init();
+    // des::tracing::init();
 
     let sim = Sim::new(())
         .with_stack(inet::init)

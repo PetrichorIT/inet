@@ -125,9 +125,11 @@ impl IterativeNameserver {
     }
 
     fn on_request(&mut self, medium: TransportMedium, source: SocketAddr, msg: DnsMessage) {
+        let edns = msg.edns().cloned();
         for question in msg.response.questions {
             let query = Arc::new(SourceQuery {
                 medium,
+                edns: edns.clone(),
                 addr: source,
                 transaction: msg.transaction,
                 question,
@@ -231,6 +233,8 @@ impl Nameserver for IterativeNameserver {
                     let query = NameserverQuery {
                         query: Arc::new(SourceQuery {
                             medium: TransportMedium::Tcp,
+                            edns: None, // TCP does not require EDNS
+
                             addr: SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), 0),
                             transaction: 0,
                             question: Question {
@@ -360,6 +364,8 @@ mod tests {
             [FinishedTransaction {
                 query: Arc::new(SourceQuery {
                     medium: TransportMedium::Udp,
+                    edns: None,
+
                     addr,
                     transaction: 1,
                     question: Question {

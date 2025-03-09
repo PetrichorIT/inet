@@ -82,7 +82,7 @@ impl ReorderBuffer {
 
 #[cfg(test)]
 mod tests {
-    use rand::{seq::SliceRandom, thread_rng};
+    use rand::{rng, seq::SliceRandom};
 
     use super::*;
 
@@ -133,7 +133,7 @@ mod tests {
                 TcpPacket::new(80, 1808, 4050, 1, WIN_4KB, vec![2; 50]),
                 TcpPacket::new(80, 1808, 4100, 1, WIN_4KB, vec![3; 50]),
             ];
-            pkts.shuffle(&mut thread_rng());
+            pkts.shuffle(&mut rng());
             for pkt in pkts {
                 buf.enqueue(pkt, 0.0.into());
             }

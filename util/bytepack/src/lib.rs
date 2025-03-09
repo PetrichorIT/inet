@@ -10,6 +10,7 @@
 //!
 
 use std::{
+    fmt::Debug,
     io::{self, Read, Write},
     mem,
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
@@ -74,7 +75,7 @@ pub trait ToBytestream {
 /// non-end-of-stream updates, using `Marker`.
 #[derive(Debug)]
 pub struct BytestreamWriter<'a> {
-    buf: &'a mut Vec<u8>,
+    buf: &'a mut dyn BytestreamWritable,
 }
 
 /// A allready written subslice of a `BytestreamWriter`, that
@@ -95,12 +96,7 @@ impl BytestreamWriter<'_> {
     /// The length of the underlying buffer.
     #[must_use]
     pub fn len(&self) -> usize {
-        self.buf.len()
-    }
-
-    /// Reserves at least `additional` many bytes in the underlying buffer.
-    pub fn reserve(&mut self, additional: usize) {
-        self.buf.reserve(additional);
+        self.buf.pos()
     }
 
     /// Allocates and writes a `Marker` on the bytestream of the given `len`.
@@ -109,7 +105,7 @@ impl BytestreamWriter<'_> {
     ///
     /// May fail, if the bytestream cannot hold `len` more bytes.
     pub fn create_maker(&mut self, len: usize) -> io::Result<Marker> {
-        let pos = self.buf.len();
+        let pos = self.buf.pos();
         self.write_all(&vec![0; len])?;
         Ok(Marker { pos, len })
     }
@@ -131,7 +127,7 @@ impl BytestreamWriter<'_> {
     /// writes to this subslice cannot depend on any other
     /// datapoints.
     pub fn update_marker(&mut self, marker: &Marker) -> &mut [u8] {
-        &mut self.buf[marker.pos..(marker.pos + marker.len)]
+        self.buf.subslice(marker.pos, marker.len)
     }
 
     /// Messures the number of bytes written since the creation of the marker.
@@ -141,7 +137,7 @@ impl BytestreamWriter<'_> {
     ///
     /// May panic if the marker does not belong to this bytestream.
     pub fn len_since_marker(&mut self, marker: &Marker) -> usize {
-        let pos = self.buf.len();
+        let pos = self.buf.pos();
         if let Some(len) = pos.checked_sub(marker.pos + marker.len) {
             len
         } else {
@@ -156,6 +152,29 @@ impl Write for BytestreamWriter<'_> {
     }
     fn flush(&mut self) -> std::io::Result<()> {
         self.buf.flush()
+    }
+}
+
+trait BytestreamWritable: Write + Debug {
+    fn pos(&self) -> usize;
+    fn subslice(&mut self, pos: usize, len: usize) -> &mut [u8];
+}
+
+impl BytestreamWritable for Vec<u8> {
+    fn pos(&self) -> usize {
+        self.len()
+    }
+    fn subslice(&mut self, pos: usize, len: usize) -> &mut [u8] {
+        &mut self[pos..pos + len]
+    }
+}
+impl BytestreamWritable for &mut [u8] {
+    fn pos(&self) -> usize {
+        let slice: &[u8] = self;
+        slice.len()
+    }
+    fn subslice(&mut self, pos: usize, len: usize) -> &mut [u8] {
+        &mut self[pos..pos + len]
     }
 }
 
@@ -337,6 +356,65 @@ macro_rules! raw_enum {
 
             $vis fn to_raw_repr(&self) -> $repr {
                 *self as $repr
+            }
+        }
+    };
+}
+
+/// With default entries
+#[macro_export]
+macro_rules! raw_enum_default {
+    ($(#[$outer:meta])*
+    $vis: vis enum $ident: ident {
+        type Repr = $repr:ty where $order:ty;
+        $(
+            $(#[$inner:meta])*
+            $variant:ident = $prim:literal,
+        )+
+        = default $default_variant:ident
+    }) => {
+        $(#[$outer])*
+        #[repr($repr)]
+        $vis enum $ident {
+            $(
+                $(#[$inner])*
+                $variant = $prim,
+            )+
+            $default_variant($repr),
+        }
+
+        impl ::std::str::FromStr for $ident {
+            type Err = ::std::io::Error;
+            fn from_str(s: &str) -> Result<Self, Self::Err> {
+                match s {
+                    $(
+                        stringify!($variant) => Ok(Self::$variant),
+                    )+
+                    _ => Err(::std::io::Error::new(
+                        ::std::io::ErrorKind::InvalidInput,
+                        "unknown string: ".to_string() + s
+                    ))
+                }
+            }
+        }
+
+        impl $ident {
+            $vis fn from_raw_repr(repr: $repr) -> ::std::io::Result<Self> {
+                match repr {
+                    $(
+                        $prim => Ok(Self::$variant),
+                    )+
+                    _ => Ok(Self::$default_variant(repr))
+                }
+            }
+
+            $vis fn to_raw_repr(&self) -> $repr {
+                match self {
+                    $(
+                        Self::$variant => $prim,
+                    )+
+                    Self::$default_variant(repr) => *repr,
+                }
             }
         }
     };

@@ -1,5 +1,5 @@
 use super::{tx, TcpTestUnit, WIN_4KB};
-use rand::{thread_rng, RngCore};
+use rand::{rng, RngCore};
 use std::{
     io,
     net::{Ipv4Addr, SocketAddr},
@@ -37,7 +37,7 @@ fn loss_of_data_packets() -> io::Result<()> {
     client.handshake_pipe(&mut server)?;
 
     let mut bytes = vec![0; WIN_4KB as usize * 4];
-    thread_rng().fill_bytes(&mut bytes);
+    rng().fill_bytes(&mut bytes);
 
     let n = client.write(&bytes)?;
     assert_eq!(n, WIN_4KB as usize * 4);

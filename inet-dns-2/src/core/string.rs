@@ -16,7 +16,7 @@ pub struct DnsString {
 }
 
 impl DnsString {
-    pub fn empty() -> Self {
+    pub const fn empty() -> Self {
         Self {
             labels: Vec::new(),
             relative: false,

@@ -1,4 +1,4 @@
-use crate::core::{Error, NsResourceRecord, QueryResponse, Question};
+use crate::core::{Error, NsResourceRecord, OptResourceRecord, QueryResponse, Question};
 use des::time::SimTime;
 use std::{
     fmt::Display,
@@ -10,6 +10,8 @@ use std::{
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SourceQuery {
     pub medium: TransportMedium,
+    pub edns: Option<OptResourceRecord>,
+
     pub addr: SocketAddr,
     pub transaction: u16,
     pub question: Question,

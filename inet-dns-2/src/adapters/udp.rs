@@ -19,6 +19,7 @@ use super::{TransportAdapter, DEFAULT_PORT};
 /// This adapter implements conventional DNS over UDP as specified in RFC 1035
 pub struct UdpAdapter {
     port: u16,
+    edns: bool,
     socket: Option<Arc<UdpSocket>>,
     handle: Option<JoinHandle<()>>,
 }
@@ -26,6 +27,11 @@ pub struct UdpAdapter {
 impl UdpAdapter {
     pub fn with_port(mut self, port: u16) -> Self {
         self.port = port;
+        self
+    }
+
+    pub fn with_edns(mut self, edns: bool) -> Self {
+        self.edns = edns;
         self
     }
 }
@@ -72,9 +78,9 @@ impl TransportAdapter for UdpAdapter {
         };
 
         let target = anwser.query.addr;
-        let msg = DnsMessage::response_from_transaction(anwser);
+        let msg = DnsMessage::response_from_transaction(anwser).with_edns(self.edns);
+        // TODO: packet trunc, dep on EDNS
         socket.send_to(&msg.to_vec()?, target).await?;
-
         Ok(())
     }
 
@@ -87,7 +93,8 @@ impl TransportAdapter for UdpAdapter {
         };
 
         let target = SocketAddr::new(ns_query.nameserver_ip, DEFAULT_PORT);
-        let msg = DnsMessage::request_from_ns_query(ns_query);
+        let msg = DnsMessage::request_from_ns_query(ns_query).with_edns(self.edns);
+        // TODO: packet trunc, dep on EDNS
         socket.send_to(&msg.to_vec()?, target).await?;
 
         Ok(())
@@ -102,6 +109,7 @@ impl Default for UdpAdapter {
     fn default() -> Self {
         Self {
             port: DEFAULT_PORT,
+            edns: true,
             socket: None,
             handle: None,
         }
@@ -110,7 +118,6 @@ impl Default for UdpAdapter {
 
 #[cfg(test)]
 mod tests {
-
     use inet::test_util::SimpleSim;
     use serial_test::serial;
 

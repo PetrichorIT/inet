@@ -4,7 +4,8 @@ use bytepack::{
 };
 
 use crate::core::{
-    DnsResourceRecord, DnsString, QueryResponse, Question, QuestionClass, QuestionTyp, ResponseCode,
+    DnsResourceRecord, DnsString, OptResourceRecord, QueryResponse, Question, QuestionClass,
+    QuestionTyp, ResourceRecordTyp, ResponseCode,
 };
 
 use super::{
@@ -123,12 +124,41 @@ impl DnsMessage {
         }
     }
 
+    pub fn with_edns(mut self, edns: bool) -> Self {
+        if edns {
+            self.response.additional.push(
+                OptResourceRecord {
+                    name: DnsString::empty(),
+                    udp_payload_size: 1200,
+                    rcode: 0,
+                    version: true,
+                    options: Vec::new(),
+                }
+                .into(),
+            );
+        }
+        self
+    }
+
+    pub fn edns(&self) -> Option<&OptResourceRecord> {
+        self.response.additional.iter().find_map(|v| {
+            (v.typ() == ResourceRecordTyp::OPT)
+                .then(|| v.as_any().downcast_ref::<OptResourceRecord>())
+                .flatten()
+        })
+    }
+
     pub fn response(&self) -> impl Iterator<Item = &DnsResourceRecord> {
         self.response
             .anwsers
             .iter()
             .chain(self.response.auths.iter())
-            .chain(self.response.additional.iter())
+            .chain(
+                self.response
+                    .additional
+                    .iter()
+                    .filter(|rr| rr.typ() != ResourceRecordTyp::OPT),
+            )
     }
 
     pub fn into_records(self) -> impl Iterator<Item = DnsResourceRecord> {

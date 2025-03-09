@@ -5,7 +5,7 @@ use des::{
     prelude::{send, Channel, ChannelDropBehaviour, ChannelMetrics},
     runtime::{random, Builder},
 };
-use rand::{thread_rng, RngCore};
+use rand::{rng, RngCore};
 use serial_test::serial;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
@@ -21,7 +21,7 @@ fn large_stream() {
 
     let mut sim = Sim::new(()).with_stack(crate::init);
     let mut bytes = vec![0; 8_000_000]; // 8MB;
-    thread_rng().fill_bytes(&mut bytes);
+    rng().fill_bytes(&mut bytes);
 
     let bytes = Arc::new(bytes);
     let bytes2 = bytes.clone();
@@ -125,7 +125,7 @@ fn lossful_stream() {
 
     let mut sim = Sim::new(()).with_stack(crate::init);
     let mut bytes = vec![0; 100_000]; // 8MB;
-    thread_rng().fill_bytes(&mut bytes);
+    rng().fill_bytes(&mut bytes);
 
     let bytes = Arc::new(bytes);
     let bytes2 = bytes.clone();

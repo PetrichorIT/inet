@@ -1,7 +1,9 @@
 use super::{string::DnsString, QuestionClass, QuestionTyp, ZonefileLineRecord};
 use bytepack::{
-    raw_enum, BytestreamWriter, FromBytestream, ReadBytesExt, ToBytestream, WriteBytesExt, BE,
+    raw_enum, raw_enum_default, BytestreamWriter, FromBytestream, ReadBytesExt, ToBytestream,
+    WriteBytesExt, BE,
 };
+
 use std::{
     any::Any,
     fmt::{self, Debug, Display},
@@ -12,6 +14,7 @@ use std::{
 mod addr;
 mod cname;
 mod ns;
+mod opt;
 mod ptr;
 mod raw;
 mod soa;
@@ -20,6 +23,7 @@ mod txt;
 pub use addr::*;
 pub use cname::*;
 pub use ns::*;
+pub use opt::*;
 pub use ptr::*;
 pub use soa::*;
 pub use txt::*;
@@ -68,6 +72,7 @@ impl DnsResourceRecord {
             SOA => SoaResourceRecord::try_from(raw).map(DnsResourceRecord::from),
             PTR => PtrResourceRecord::try_from(raw).map(DnsResourceRecord::from),
             TXT => TxtResourceRecord::try_from(raw).map(DnsResourceRecord::from),
+            OPT => OptResourceRecord::try_from(raw).map(DnsResourceRecord::from),
 
             _ => Ok(DnsResourceRecord::from(raw)),
         }
@@ -141,7 +146,12 @@ impl ToBytestream for DnsResourceRecord {
         self.inner.name().to_bytestream(stream)?;
 
         stream.write_u16::<BE>(self.inner.typ() as u16)?;
-        stream.write_u16::<BE>(self.inner.class().expect("no class no support") as u16)?;
+        stream.write_u16::<BE>(
+            self.inner
+                .class()
+                .expect("no class no support")
+                .to_raw_repr(),
+        )?;
         stream.write_u32::<BE>(self.inner.ttl().expect("no ttl no support"))?;
 
         stream.write_u16::<BE>(self.inner.rdata().len() as u16)?;
@@ -192,7 +202,7 @@ impl Display for DnsResourceRecord {
 
 // # ResourceRecordClass / ResourceRecordTyp
 
-raw_enum! {
+raw_enum_default! {
     /// The class of a Resource Record.
     #[derive(Debug, Default,Clone, Copy, PartialEq, Eq, Hash)]
     pub enum ResourceRecordClass {
@@ -202,6 +212,8 @@ raw_enum! {
         CS = 2,
         CH = 3,
         HS = 4,
+
+        = default OTHER
     }
 }
 
@@ -265,6 +277,8 @@ raw_enum! {
         TXT = 16,
         URI = 256,
         ZONEMD = 63,
+
+        OPT = 41,
     }
 }
 

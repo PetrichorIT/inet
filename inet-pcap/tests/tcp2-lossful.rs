@@ -15,7 +15,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 #[test]
 fn lossfull_stream() {
-    des::tracing::init();
+    // des::tracing::init();
 
     let mut bytes = vec![0; 10_000]; // 8MB;
     rand::rng().fill_bytes(&mut bytes);
