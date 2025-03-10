@@ -9,6 +9,7 @@ use bytepack::{
     raw_enum, BytestreamReader, BytestreamWriter, FromBytestream, ReadBytesExt, ToBytestream,
     WriteBytesExt, BE,
 };
+use bytes_io::{BytesReader, BytesWriter, FromBytes, ToBytes};
 
 /// A DNS query.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -138,10 +139,36 @@ impl ToBytestream for Question {
     }
 }
 
+impl ToBytes for Question {
+    type Error = std::io::Error;
+    fn to_bytes(&self, stream: &mut BytesWriter) -> Result<(), Self::Error> {
+        self.qname.to_bytes(stream)?;
+        stream.write_u16::<BE>(self.qtyp.to_raw_repr())?;
+        stream.write_u16::<BE>(self.qclass.to_raw_repr())?;
+        Ok(())
+    }
+}
+
 impl FromBytestream for Question {
     type Error = std::io::Error;
     fn from_bytestream(stream: &mut BytestreamReader) -> Result<Self, Self::Error> {
         let qname = DnsString::from_bytestream(stream)?;
+
+        let qtyp = QuestionTyp::from_raw_repr(stream.read_u16::<BE>()?).unwrap();
+        let qclass = QuestionClass::from_raw_repr(stream.read_u16::<BE>()?).unwrap();
+
+        Ok(Question {
+            qname,
+            qtyp,
+            qclass,
+        })
+    }
+}
+
+impl FromBytes for Question {
+    type Error = std::io::Error;
+    fn from_bytes(stream: &mut BytesReader) -> Result<Self, Self::Error> {
+        let qname = DnsString::from_bytes(stream)?;
 
         let qtyp = QuestionTyp::from_raw_repr(stream.read_u16::<BE>()?).unwrap();
         let qclass = QuestionClass::from_raw_repr(stream.read_u16::<BE>()?).unwrap();

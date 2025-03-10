@@ -998,9 +998,8 @@ impl FromBytes for EnhancedPacketBlock {
             let cap_len = body.read_u32::<LE>()? as usize;
             let org_len = body.read_u32::<LE>()?;
 
-            let mut data_stream = body.extract(cap_len)?;
-            let mut data = Vec::with_capacity(cap_len);
-            data_stream.read_to_end(&mut data)?;
+            let mut data = vec![0; cap_len];
+            body.read_exact(&mut data)?;
 
             let pad = (4 - (cap_len % 4)) % 4;
             body.read_exact(&mut vec![0; pad])?;
@@ -1052,9 +1051,8 @@ impl FromBytes for DecryptionSecretsBlock {
             let secrets_typ = body.read_u32::<LE>()?;
             let len = body.read_u32::<LE>()? as usize;
 
-            let mut data_stream = body.extract(len)?;
-            let mut secrets_data = Vec::new();
-            data_stream.read_to_end(&mut secrets_data)?;
+            let mut secrets_data = vec![0; len];
+            body.read_exact(&mut secrets_data)?;
 
             let pad = (4 - (len % 4)) % 4;
             body.read_exact(&mut vec![0; pad])?;
@@ -1079,21 +1077,19 @@ fn read_block<R>(
 
     let block_len = stream.read_u32::<LE>()?;
     let pad = block_len % 4;
-    let mut body = stream.extract((block_len + pad - 12) as usize)?;
-
-    let result = f(&mut body);
+    let result = stream.extract((block_len + pad - 12) as usize, f)?;
 
     let block_len_redundant = stream.read_u32::<LE>()?;
     if block_len != block_len_redundant {
         return Err(Error::new(ErrorKind::Other, "total block len error"));
     }
 
-    result
+    Ok(result)
 }
 
 fn read_options<T: FromBytes<Error = Error>>(stream: &mut BytesReader) -> Result<Vec<T>, Error> {
     let mut options = Vec::new();
-    while !stream.is_empty() {
+    while stream.has_remaining() {
         match T::from_bytes(stream) {
             Ok(v) => options.push(v),
             Err(e) if e.kind() == ErrorKind::UnexpectedEof => break,
@@ -1114,8 +1110,7 @@ fn read_option<R>(
         return Err(Error::new(ErrorKind::UnexpectedEof, "EOO"));
     }
 
-    let mut body = stream.extract(len as usize)?;
-    let result = f(typ, &mut body)?;
+    let result = stream.extract(len as usize, |body| f(typ, body))?;
 
     let pad = (4 - (len % 4)) % 4;
     stream.read_exact(&mut vec![0; pad as usize])?;

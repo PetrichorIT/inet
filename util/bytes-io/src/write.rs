@@ -5,7 +5,7 @@ use std::{
     ops::{Deref, DerefMut},
 };
 
-use bytes::{BufMut, BytesMut};
+use bytes::{Buf, BufMut, BytesMut};
 
 /// A
 pub trait ToBytes {
@@ -19,6 +19,19 @@ pub trait ToBytes {
     fn write_to(&self, bytes: &mut BytesMut) -> Result<usize, Self::Error> {
         let mut writer = BytesWriter {
             limit: usize::MAX,
+            markers: 0,
+            bytes: bytes.split(),
+        };
+        self.to_bytes(&mut writer)?;
+        let n = writer.bytes.len();
+        bytes.unsplit(writer.finish());
+        Ok(n)
+    }
+
+    /// A
+    fn write_to_limit(&self, bytes: &mut BytesMut, limit: usize) -> Result<usize, Self::Error> {
+        let mut writer = BytesWriter {
+            limit,
             markers: 0,
             bytes: bytes.split(),
         };
@@ -43,6 +56,8 @@ pub struct BytesWriter {
     markers: usize,
     bytes: BytesMut,
 }
+
+trait Writable: BufMut + Buf {}
 
 /// A
 #[derive(Debug)]

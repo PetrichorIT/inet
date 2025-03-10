@@ -20,6 +20,7 @@ tracing = { version = "*" }
 bytes = "1.4.0"
 rand = "*"
 types = { path = "../util/types" }
+bytes-io = { path = "../util/bytes-io" }
 bytepack = { path = "../util/bytepack" }
 bitflags = ">2.6.0"
 

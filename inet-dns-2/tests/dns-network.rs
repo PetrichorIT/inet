@@ -44,8 +44,6 @@ const DOMAINS: [&str; 15] = [
 
 #[test]
 fn run() -> Result<(), RuntimeError> {
-    // des::tracing::init();
-
     let zonefiles = read_dir("tests/zonefiles")?
         .flatten()
         .flat_map(|path| {

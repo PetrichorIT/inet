@@ -3,6 +3,7 @@ use bytepack::{
     raw_enum, raw_enum_default, BytestreamWriter, FromBytestream, ReadBytesExt, ToBytestream,
     WriteBytesExt, BE,
 };
+use bytes_io::{BytesReader, BytesWriter, FromBytes, ToBytes};
 
 use std::{
     any::Any,
@@ -161,10 +162,56 @@ impl ToBytestream for DnsResourceRecord {
     }
 }
 
+impl ToBytes for DnsResourceRecord {
+    type Error = io::Error;
+    fn to_bytes(&self, stream: &mut BytesWriter) -> Result<(), Self::Error> {
+        self.inner.name().to_bytes(stream)?;
+
+        stream.write_u16::<BE>(self.inner.typ() as u16)?;
+        stream.write_u16::<BE>(
+            self.inner
+                .class()
+                .expect("no class no support")
+                .to_raw_repr(),
+        )?;
+        stream.write_u32::<BE>(self.inner.ttl().expect("no ttl no support"))?;
+
+        stream.write_u16::<BE>(self.inner.rdata().len() as u16)?;
+        stream.write_all(&self.inner.rdata())?;
+
+        Ok(())
+    }
+}
+
 impl FromBytestream for DnsResourceRecord {
     type Error = io::Error;
     fn from_bytestream(stream: &mut bytepack::BytestreamReader) -> Result<Self, Self::Error> {
         let name = DnsString::from_bytestream(stream)?;
+
+        let typ = ResourceRecordTyp::from_raw_repr(stream.read_u16::<BE>()?)?;
+        let class = ResourceRecordClass::from_raw_repr(stream.read_u16::<BE>()?)?;
+        let ttl = stream.read_u32::<BE>()?;
+
+        let len = stream.read_u16::<BE>()?;
+        let mut rdata = vec![0; len as usize];
+        stream.read_exact(&mut rdata)?;
+
+        let raw = RawResourceRecord {
+            name,
+            ttl,
+            typ,
+            class,
+            rdata,
+        };
+
+        Self::from_raw(raw)
+    }
+}
+
+impl FromBytes for DnsResourceRecord {
+    type Error = io::Error;
+    fn from_bytes(stream: &mut BytesReader) -> Result<Self, Self::Error> {
+        let name = DnsString::from_bytes(stream)?;
 
         let typ = ResourceRecordTyp::from_raw_repr(stream.read_u16::<BE>()?)?;
         let class = ResourceRecordClass::from_raw_repr(stream.read_u16::<BE>()?)?;

@@ -7,6 +7,7 @@ use std::{
 use bytepack::{
     BytestreamReader, BytestreamWriter, FromBytestream, ReadBytesExt, ToBytestream, WriteBytesExt,
 };
+use bytes_io::{BytesReader, BytesWriter, FromBytes, ToBytes};
 
 /// The string representation of a DNS name, in DNS packet encoding
 #[derive(Clone, PartialEq, Eq, Hash)]
@@ -215,9 +216,42 @@ impl ToBytestream for DnsString {
     }
 }
 
+impl ToBytes for DnsString {
+    type Error = std::io::Error;
+    fn to_bytes(&self, bytestream: &mut BytesWriter) -> Result<(), Self::Error> {
+        for label in self.labels() {
+            bytestream.write_u8(label.len() as u8)?;
+            bytestream.write_all(label.as_bytes())?;
+        }
+        bytestream.write_u8(0)?;
+        Ok(())
+    }
+}
+
 impl FromBytestream for DnsString {
     type Error = std::io::Error;
     fn from_bytestream(stream: &mut BytestreamReader) -> Result<Self, Self::Error> {
+        let mut labels = Vec::new();
+        loop {
+            let label_len = stream.read_u8()?;
+            if label_len == 0 {
+                break;
+            }
+            let mut bytes = vec![0; label_len as usize];
+            stream.read_exact(&mut bytes)?;
+            labels.push(String::from_utf8(bytes).map_err(io::Error::other)?);
+        }
+
+        Ok(Self {
+            labels,
+            relative: false,
+        })
+    }
+}
+
+impl FromBytes for DnsString {
+    type Error = std::io::Error;
+    fn from_bytes(stream: &mut BytesReader) -> Result<Self, Self::Error> {
         let mut labels = Vec::new();
         loop {
             let label_len = stream.read_u8()?;

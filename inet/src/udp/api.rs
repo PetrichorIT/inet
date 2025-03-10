@@ -1,3 +1,5 @@
+use bytes::BufMut;
+
 use crate::io::{Interest, Ready};
 use crate::{
     dns::{lookup_host, ToSocketAddrs},
@@ -6,6 +8,7 @@ use crate::{
     udp::UdpPacket,
     IOContext,
 };
+use std::mem::MaybeUninit;
 use std::{
     io::{Error, ErrorKind, Result},
     net::SocketAddr,
@@ -220,6 +223,46 @@ impl UdpSocket {
         }
     }
 
+    /// Receives a single datagram message on the socket from the remote address to
+    /// which it is connected. On success, returns the number of bytes read.
+    pub async fn recv_buf<B: BufMut>(&self, buf: &mut B) -> Result<usize> {
+        let peer = self.peer_addr()?;
+        loop {
+            self.readable().await?;
+
+            let r = IOContext::with_current(|ctx| {
+                if let Some(handle) = ctx.udp.binds.get_mut(&self.fd) {
+                    handle.incoming.pop_front()
+                } else {
+                    panic!("SimContext lost socket")
+                }
+            });
+
+            match r {
+                Some((src, _, msg)) => {
+                    if src != peer {
+                        continue;
+                    }
+
+                    let chunk = unsafe {
+                        &mut *(buf.chunk_mut().as_uninit_slice_mut() as *mut [MaybeUninit<u8>]
+                            as *mut [u8])
+                    };
+
+                    let n = msg.content.len().min(chunk.len());
+                    chunk[..n].copy_from_slice(&msg.content[..n]);
+
+                    unsafe {
+                        buf.advance_mut(n);
+                    }
+
+                    return Ok(n);
+                }
+                None => {}
+            }
+        }
+    }
+
     /// Tries to receive a single datagram message on the socket from the remote address to which it is connected.
     /// On success, returns the number of bytes read.
     ///
@@ -250,6 +293,48 @@ impl UdpSocket {
                     }
 
                     return Ok(wrt);
+                }
+                None => return Err(Error::new(ErrorKind::WouldBlock, "Would block")),
+            }
+        }
+    }
+
+    /// Tries to receive a single datagram message on the socket from the remote address to which it is connected.
+    /// On success, returns the number of bytes read.
+    ///
+    /// The function must be called with valid byte array buf of sufficient size to hold the message bytes.
+    /// If a message is too long to fit in the supplied buffer, excess bytes may be discarded.
+    pub fn try_recv_buf<B: BufMut>(&self, buf: &mut B) -> Result<usize> {
+        loop {
+            let peer = self.peer_addr()?;
+            let (peer, r) = IOContext::with_current(|ctx| {
+                if let Some(handle) = ctx.udp.binds.get_mut(&self.fd) {
+                    Ok::<(SocketAddr, Option<(SocketAddr, SocketAddr, UdpPacket)>), std::io::Error>(
+                        (peer, handle.incoming.pop_front()),
+                    )
+                } else {
+                    panic!("SimContext lost socket")
+                }
+            })?;
+
+            match r {
+                Some((src, _, msg)) => {
+                    if src != peer {
+                        continue;
+                    }
+                    let chunk = unsafe {
+                        &mut *(buf.chunk_mut().as_uninit_slice_mut() as *mut [MaybeUninit<u8>]
+                            as *mut [u8])
+                    };
+
+                    let n = msg.content.len().min(chunk.len());
+                    chunk[..n].copy_from_slice(&msg.content[..n]);
+
+                    unsafe {
+                        buf.advance_mut(n);
+                    }
+
+                    return Ok(n);
                 }
                 None => return Err(Error::new(ErrorKind::WouldBlock, "Would block")),
             }
@@ -311,6 +396,82 @@ impl UdpSocket {
                     }
 
                     return Ok((wrt, src));
+                }
+                None => {}
+            }
+        }
+    }
+
+    /// Receives a single datagram message on the socket. On success,
+    /// returns the number of bytes read and the origin.
+    ///
+    /// The function must be called with valid byte array buf of sufficient size to hold the message bytes.
+    /// If a message is too long to fit in the supplied buffer, excess bytes may be discarded.
+    pub async fn recv_buf_from<B: BufMut>(&self, buf: &mut B) -> Result<(usize, SocketAddr)> {
+        loop {
+            self.readable().await?;
+
+            let r = IOContext::with_current(|ctx| {
+                if let Some(handle) = ctx.udp.binds.get_mut(&self.fd) {
+                    handle.incoming.pop_front()
+                } else {
+                    panic!("SimContext lost socket")
+                }
+            });
+
+            match r {
+                Some((src, _, msg)) => {
+                    // Safety: Data is being overwritten, so pre-init is not important.
+                    let chunk = unsafe {
+                        &mut *(buf.chunk_mut().as_uninit_slice_mut() as *mut [MaybeUninit<u8>]
+                            as *mut [u8])
+                    };
+
+                    let n = msg.content.len().min(chunk.len());
+                    chunk[..n].copy_from_slice(&msg.content[..n]);
+
+                    unsafe {
+                        buf.advance_mut(n);
+                    }
+
+                    return Ok((n, src));
+                }
+                None => {}
+            }
+        }
+    }
+
+    /// Tries to receive a single datagram message on the socket.
+    /// On success, returns the number of bytes read and the origin.
+    ///
+    /// The function must be called with valid byte array buf of sufficient size
+    /// to hold the message bytes. If a message is too long to fit in the supplied buffer,
+    /// excess bytes may be discarded.
+    pub fn try_recv_buf_from<B: BufMut>(&self, buf: &mut B) -> Result<(usize, SocketAddr)> {
+        loop {
+            let r = IOContext::with_current(|ctx| {
+                if let Some(handle) = ctx.udp.binds.get_mut(&self.fd) {
+                    handle.incoming.pop_front()
+                } else {
+                    panic!("SimContext lost socket")
+                }
+            });
+
+            match r {
+                Some((src, _, msg)) => {
+                    let chunk = unsafe {
+                        &mut *(buf.chunk_mut().as_uninit_slice_mut() as *mut [MaybeUninit<u8>]
+                            as *mut [u8])
+                    };
+
+                    let n = msg.content.len().min(chunk.len());
+                    chunk[..n].copy_from_slice(&msg.content[..n]);
+
+                    unsafe {
+                        buf.advance_mut(n);
+                    }
+
+                    return Ok((n, src));
                 }
                 None => {}
             }

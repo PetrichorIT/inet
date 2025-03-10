@@ -10,6 +10,7 @@ tracing = "*"
 inet = { path = "../inet" }
 types = { path = "../util/types" }
 bytepack = { path = "../util/bytepack" }
+bytes-io = { path = "../util/bytes-io" }
 des = { version = "*", features = ["full"] }
 fxhash = "*"
 async-trait = "*"

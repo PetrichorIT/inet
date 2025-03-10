@@ -1,4 +1,5 @@
-use bytepack::{FromBytestream, ToBytestream};
+use bytes::{Buf, Bytes, BytesMut};
+use bytes_io::{FromBytes, ToBytes};
 use inet::UdpSocket;
 use tokio::{sync::mpsc::Sender, task::JoinHandle};
 
@@ -57,17 +58,29 @@ impl TransportAdapter for UdpAdapter {
 
         self.handle = Some(tokio::spawn(async move {
             let tx = tx;
-            let mut buf = vec![0; 512];
+
+            let mut buf = BytesMut::with_capacity(512);
             loop {
-                let Ok((n, from)) = udp.recv_from(&mut buf).await else {
+                buf.clear();
+                buf.reserve(512 - buf.len());
+
+                let Ok((_, from)) = udp.recv_buf_from(&mut buf).await else {
                     tracing::error!("failed to recv datagram from socket");
                     return;
                 };
 
-                let Ok(msg) = DnsMessage::from_slice(&buf[..n]) else {
+                let Ok(msg) = DnsMessage::read_from(&mut Bytes::from(buf[..].to_vec())) else {
                     tracing::error!("invalid packet");
                     continue;
                 };
+
+                let Ok(msg2) = DnsMessage::read_from(&mut buf) else {
+                    tracing::error!("invalid packet 2");
+                    continue;
+                };
+
+                assert_eq!(msg, msg2);
+                assert_eq!(buf.remaining(), 0);
 
                 if let Err(err) = tx.send((TransportMedium::Udp, from, msg)).await {
                     tracing::error!("failed to dispatch event: {}", err);
@@ -89,10 +102,12 @@ impl TransportAdapter for UdpAdapter {
 
         let target = anwser.query.addr;
 
-        let mut buf = vec![0u8; self.udp_limit(&anwser.query.edns)];
+        let limit = self.udp_limit(&anwser.query.edns);
+        let mut buf = BytesMut::with_capacity(limit);
         let mut msg = DnsMessage::response_from_transaction(anwser).with_edns(self.edns);
         let n = loop {
-            match msg.to_buf(&mut buf) {
+            buf.clear();
+            match msg.write_to_limit(&mut buf, limit) {
                 Ok(n) => break n,
                 Err(w) if w.kind() == io::ErrorKind::WriteZero => {
                     msg.truncate();
@@ -115,10 +130,12 @@ impl TransportAdapter for UdpAdapter {
 
         let target = SocketAddr::new(ns_query.nameserver_ip, DEFAULT_PORT);
 
-        let mut buf = vec![0u8; self.udp_limit(&ns_query.query.edns)];
+        let limit = self.udp_limit(&ns_query.query.edns);
+        let mut buf = BytesMut::with_capacity(limit);
         let mut msg = DnsMessage::request_from_ns_query(ns_query).with_edns(self.edns);
         let n = loop {
-            match msg.to_buf(&mut buf) {
+            buf.clear();
+            match msg.write_to_limit(&mut buf, limit) {
                 Ok(n) => break n,
                 Err(w) if w.kind() == io::ErrorKind::WriteZero => {
                     msg.truncate();
@@ -126,6 +143,7 @@ impl TransportAdapter for UdpAdapter {
                 Err(e) => return Err(e),
             }
         };
+
         socket.send_to(&buf[..n], target).await?;
 
         Ok(())
@@ -149,10 +167,10 @@ impl Default for UdpAdapter {
 
 #[cfg(test)]
 mod tests {
-    use std::net::Ipv6Addr;
-
+    use bytepack::{FromBytestream, ToBytestream};
     use inet::{test_util::SimpleSim, utils::get_ip};
     use serial_test::serial;
+    use std::net::Ipv6Addr;
     use tokio::sync::mpsc;
 
     use crate::{
