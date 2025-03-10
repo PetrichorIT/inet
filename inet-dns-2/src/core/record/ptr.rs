@@ -1,6 +1,6 @@
 use super::{RawResourceRecord, ResourceRecord, ResourceRecordClass};
 use crate::core::{DnsString, ZonefileLineRecord};
-use bytepack::{FromBytestream, ToBytestream};
+use bytes_io::{FromBytes, ToBytes};
 use std::io;
 
 /// A resource record used for inverse name resolution.
@@ -31,7 +31,7 @@ impl TryFrom<RawResourceRecord> for PtrResourceRecord {
             addr: raw.name,
             ttl: raw.ttl,
             class: raw.class,
-            name: DnsString::from_slice(&raw.rdata)?,
+            name: DnsString::peek_from(&raw.rdata[..])?,
         })
     }
 }
@@ -51,7 +51,7 @@ impl ResourceRecord for PtrResourceRecord {
         Some(self.class)
     }
     fn rdata(&self) -> Vec<u8> {
-        self.name.to_vec().unwrap()
+        self.name.write_to_vec().expect("invalid parsing failure")
     }
     fn rdata_fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.name)

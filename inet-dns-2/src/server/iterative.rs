@@ -290,7 +290,7 @@ impl Nameserver for IterativeNameserver {
 mod tests {
     use std::{collections::HashSet, io, net::Ipv4Addr, str::FromStr, time::Duration};
 
-    use bytepack::{FromBytestream, ToBytestream};
+    use bytes_io::{FromBytes, ToBytes};
     use des::time::sleep;
     use inet::{dns::ToSocketAddrs, test_util::SimpleSim, UdpSocket};
     use serial_test::serial;
@@ -515,12 +515,15 @@ mod tests {
         addr: impl ToSocketAddrs,
     ) -> io::Result<DnsMessage> {
         let udp = UdpSocket::bind("0.0.0.0:0").await?;
-        udp.send_to(&DnsMessage::question_a(tx, name.parse()?).to_vec()?, addr)
-            .await?;
+        udp.send_to(
+            &DnsMessage::question_a(tx, name.parse()?).write_to_bytes()?,
+            addr,
+        )
+        .await?;
 
         let mut buf = vec![0u8; 512];
         let (len, _) = udp.recv_from(&mut buf).await?;
-        let resp = DnsMessage::from_slice(&buf[..len])?;
+        let resp = DnsMessage::peek_from(&buf[..len])?;
 
         Ok(resp)
     }

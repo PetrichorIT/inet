@@ -1,9 +1,6 @@
 use super::{string::DnsString, QuestionClass, QuestionTyp, ZonefileLineRecord};
-use bytepack::{
-    raw_enum, raw_enum_default, BytestreamWriter, FromBytestream, ReadBytesExt, ToBytestream,
-    WriteBytesExt, BE,
-};
-use bytes_io::{BytesReader, BytesWriter, FromBytes, ToBytes};
+use bytes_io::{BytesReader, BytesWriter, FromBytes, ReadBytesExt, ToBytes, WriteBytesExt, BE};
+use macros::{raw_enum, raw_enum_default};
 
 use std::{
     any::Any,
@@ -141,27 +138,6 @@ impl TryFrom<ZonefileLineRecord> for DnsResourceRecord {
     }
 }
 
-impl ToBytestream for DnsResourceRecord {
-    type Error = io::Error;
-    fn to_bytestream(&self, stream: &mut BytestreamWriter) -> Result<(), Self::Error> {
-        self.inner.name().to_bytestream(stream)?;
-
-        stream.write_u16::<BE>(self.inner.typ() as u16)?;
-        stream.write_u16::<BE>(
-            self.inner
-                .class()
-                .expect("no class no support")
-                .to_raw_repr(),
-        )?;
-        stream.write_u32::<BE>(self.inner.ttl().expect("no ttl no support"))?;
-
-        stream.write_u16::<BE>(self.inner.rdata().len() as u16)?;
-        stream.write_all(&self.inner.rdata())?;
-
-        Ok(())
-    }
-}
-
 impl ToBytes for DnsResourceRecord {
     type Error = io::Error;
     fn to_bytes(&self, stream: &mut BytesWriter) -> Result<(), Self::Error> {
@@ -180,31 +156,6 @@ impl ToBytes for DnsResourceRecord {
         stream.write_all(&self.inner.rdata())?;
 
         Ok(())
-    }
-}
-
-impl FromBytestream for DnsResourceRecord {
-    type Error = io::Error;
-    fn from_bytestream(stream: &mut bytepack::BytestreamReader) -> Result<Self, Self::Error> {
-        let name = DnsString::from_bytestream(stream)?;
-
-        let typ = ResourceRecordTyp::from_raw_repr(stream.read_u16::<BE>()?)?;
-        let class = ResourceRecordClass::from_raw_repr(stream.read_u16::<BE>()?)?;
-        let ttl = stream.read_u32::<BE>()?;
-
-        let len = stream.read_u16::<BE>()?;
-        let mut rdata = vec![0; len as usize];
-        stream.read_exact(&mut rdata)?;
-
-        let raw = RawResourceRecord {
-            name,
-            ttl,
-            typ,
-            class,
-            rdata,
-        };
-
-        Self::from_raw(raw)
     }
 }
 
@@ -354,8 +305,8 @@ mod tests {
         let zf3 = Zonefile::from_str(ZONEFILE_EXAMPLE_ORG)?;
 
         for entry in zf1.records.iter().chain(&zf2.records).chain(&zf3.records) {
-            let buf = entry.to_vec()?;
-            let decoded = DnsResourceRecord::from_slice(&buf)?;
+            let buf = entry.write_to_bytes()?;
+            let decoded = DnsResourceRecord::peek_from(buf)?;
             assert_eq!(entry, &decoded);
         }
 

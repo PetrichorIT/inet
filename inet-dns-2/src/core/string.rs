@@ -4,10 +4,7 @@ use std::{
     str::FromStr,
 };
 
-use bytepack::{
-    BytestreamReader, BytestreamWriter, FromBytestream, ReadBytesExt, ToBytestream, WriteBytesExt,
-};
-use bytes_io::{BytesReader, BytesWriter, FromBytes, ToBytes};
+use bytes_io::{BytesReader, BytesWriter, FromBytes, ReadBytesExt, ToBytes, WriteBytesExt};
 
 /// The string representation of a DNS name, in DNS packet encoding
 #[derive(Clone, PartialEq, Eq, Hash)]
@@ -204,18 +201,6 @@ impl Ord for DnsString {
     }
 }
 
-impl ToBytestream for DnsString {
-    type Error = std::io::Error;
-    fn to_bytestream(&self, bytestream: &mut BytestreamWriter) -> Result<(), Self::Error> {
-        for label in self.labels() {
-            bytestream.write_u8(label.len() as u8)?;
-            bytestream.write_all(label.as_bytes())?;
-        }
-        bytestream.write_u8(0)?;
-        Ok(())
-    }
-}
-
 impl ToBytes for DnsString {
     type Error = std::io::Error;
     fn to_bytes(&self, bytestream: &mut BytesWriter) -> Result<(), Self::Error> {
@@ -225,27 +210,6 @@ impl ToBytes for DnsString {
         }
         bytestream.write_u8(0)?;
         Ok(())
-    }
-}
-
-impl FromBytestream for DnsString {
-    type Error = std::io::Error;
-    fn from_bytestream(stream: &mut BytestreamReader) -> Result<Self, Self::Error> {
-        let mut labels = Vec::new();
-        loop {
-            let label_len = stream.read_u8()?;
-            if label_len == 0 {
-                break;
-            }
-            let mut bytes = vec![0; label_len as usize];
-            stream.read_exact(&mut bytes)?;
-            labels.push(String::from_utf8(bytes).map_err(io::Error::other)?);
-        }
-
-        Ok(Self {
-            labels,
-            relative: false,
-        })
     }
 }
 
@@ -298,7 +262,7 @@ mod tests {
         let raws = ["www.example.org.", "a.b.c.www.example.org.", "org.", "."];
         for raw in raws {
             let initial = DnsString::from_str(raw)?;
-            let reparsed = DnsString::from_slice(&initial.to_vec()?)?;
+            let reparsed = DnsString::read_from(&mut initial.write_to_bytes()?)?;
             assert_eq!(initial, reparsed);
         }
         Ok(())

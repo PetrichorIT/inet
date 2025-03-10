@@ -26,6 +26,14 @@ pub trait FromBytes: Sized {
         bytes.advance(cursor.position() as usize);
         Ok(result)
     }
+
+    /// A
+    fn peek_from<B: Buf>(bytes: B) -> Result<Self, Self::Error> {
+        let mut cursor = Cursor::new(bytes.chunk());
+        let mut reader = BytesReader::new(&mut cursor);
+        let result = Self::from_bytes(&mut reader)?;
+        Ok(result)
+    }
 }
 
 /// A
@@ -208,5 +216,11 @@ mod tests {
         assert_eq!(value.inner, [0x01020304, 0x05060708]);
         assert_eq!(bytes, &[9]);
         Ok(())
+    }
+
+    #[test]
+    fn trait_read_from_vec() {
+        let buf = vec![1, 2u8, 3, 4, 5, 6, 7, 8, 9];
+        let _ = U32x2::read_from(&mut &buf[..]);
     }
 }

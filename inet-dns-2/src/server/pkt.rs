@@ -1,8 +1,5 @@
-use bytepack::{
-    raw_enum, BytestreamReader, BytestreamWriter, FromBytestream, ReadBytesExt, ToBytestream,
-    WriteBytesExt, BE,
-};
-use bytes_io::{BytesReader, BytesWriter, FromBytes, ToBytes};
+use bytes_io::{BytesReader, BytesWriter, FromBytes, ReadBytesExt, ToBytes, WriteBytesExt, BE};
+use macros::raw_enum;
 
 use crate::core::{
     DnsResourceRecord, DnsString, OptResourceRecord, QueryResponse, Question, QuestionClass,
@@ -188,53 +185,6 @@ impl DnsMessage {
     }
 }
 
-impl ToBytestream for DnsMessage {
-    type Error = std::io::Error;
-    fn to_bytestream(&self, stream: &mut BytestreamWriter) -> Result<(), Self::Error> {
-        stream.write_u16::<BE>(self.transaction)?;
-        let mut b0 = self.opcode.to_raw_repr() << 3;
-        if self.qr {
-            b0 |= 0b1000_0000;
-        }
-        if self.aa {
-            b0 |= 0b0000_0100;
-        }
-        if self.tc {
-            b0 |= 0b0000_0010;
-        }
-        if self.rd {
-            b0 |= 0b0000_0001;
-        }
-        stream.write_u8(b0)?;
-
-        let mut b1 = self.rcode.to_raw_repr();
-        if self.ra {
-            b1 |= 0b1000_0000;
-        }
-        stream.write_u8(b1)?;
-
-        stream.write_u16::<BE>(self.response.questions.len() as u16)?;
-        stream.write_u16::<BE>(self.response.anwsers.len() as u16)?;
-        stream.write_u16::<BE>(self.response.auths.len() as u16)?;
-        stream.write_u16::<BE>(self.response.additional.len() as u16)?;
-
-        for q in &self.response.questions {
-            q.to_bytestream(stream)?;
-        }
-        for a in &self.response.anwsers {
-            a.to_bytestream(stream)?;
-        }
-        for a in &self.response.auths {
-            a.to_bytestream(stream)?;
-        }
-        for a in &self.response.additional {
-            a.to_bytestream(stream)?;
-        }
-
-        Ok(())
-    }
-}
-
 impl ToBytes for DnsMessage {
     type Error = std::io::Error;
     fn to_bytes(&self, stream: &mut BytesWriter) -> Result<(), Self::Error> {
@@ -279,75 +229,6 @@ impl ToBytes for DnsMessage {
         }
 
         Ok(())
-    }
-}
-
-impl FromBytestream for DnsMessage {
-    type Error = std::io::Error;
-    fn from_bytestream(stream: &mut BytestreamReader) -> Result<Self, Self::Error> {
-        let transaction = stream.read_u16::<BE>()?;
-        let b0 = stream.read_u8()?;
-        let b1 = stream.read_u8()?;
-
-        let qr = (0b1000_0000 & b0) != 0;
-        let aa = (0b0000_0100 & b0) != 0;
-        let tc = (0b0000_0010 & b0) != 0;
-        let rd = (0b0000_0001 & b0) != 0;
-        let opcode = OpCode::from_raw_repr((b0 >> 3) & 0b1111).unwrap();
-
-        let ra = (0b1000_0000 & b1) != 0;
-        let rcode = ResponseCode::from_raw_repr(b1 & 0b1111u8).unwrap();
-
-        let questions_len = stream.read_u16::<BE>()?;
-        let anwsers_len = stream.read_u16::<BE>()?;
-        let auth_len = stream.read_u16::<BE>()?;
-        let additional_len = stream.read_u16::<BE>()?;
-
-        let mut questions = Vec::new();
-
-        for _ in 0..questions_len {
-            let v = Question::from_bytestream(stream)?;
-            questions.push(v);
-        }
-
-        // println!("> done q");
-
-        let mut anwsers = Vec::new();
-        for _ in 0..anwsers_len {
-            let v = DnsResourceRecord::from_bytestream(stream)?;
-            anwsers.push(v);
-        }
-
-        // println!("> done a");
-
-        let mut auths = Vec::new();
-        for _ in 0..auth_len {
-            let v = DnsResourceRecord::from_bytestream(stream)?;
-            auths.push(v);
-        }
-
-        let mut additional = Vec::new();
-        for _ in 0..additional_len {
-            let v = DnsResourceRecord::from_bytestream(stream)?;
-            additional.push(v);
-        }
-
-        Ok(DnsMessage {
-            transaction,
-            qr,
-            opcode,
-            aa,
-            tc,
-            rd,
-            ra,
-            rcode,
-            response: QueryResponse {
-                questions,
-                anwsers,
-                auths,
-                additional,
-            },
-        })
     }
 }
 

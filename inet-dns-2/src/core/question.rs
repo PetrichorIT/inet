@@ -5,11 +5,8 @@ use super::{
     ZoneResolver,
 };
 use crate::core::{CNameResourceRecord, NsResourceRecord};
-use bytepack::{
-    raw_enum, BytestreamReader, BytestreamWriter, FromBytestream, ReadBytesExt, ToBytestream,
-    WriteBytesExt, BE,
-};
-use bytes_io::{BytesReader, BytesWriter, FromBytes, ToBytes};
+use bytes_io::{BytesReader, BytesWriter, FromBytes, ReadBytesExt, ToBytes, WriteBytesExt, BE};
+use macros::raw_enum;
 
 /// A DNS query.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -129,16 +126,6 @@ impl Question {
     }
 }
 
-impl ToBytestream for Question {
-    type Error = std::io::Error;
-    fn to_bytestream(&self, stream: &mut BytestreamWriter) -> Result<(), Self::Error> {
-        self.qname.to_bytestream(stream)?;
-        stream.write_u16::<BE>(self.qtyp.to_raw_repr())?;
-        stream.write_u16::<BE>(self.qclass.to_raw_repr())?;
-        Ok(())
-    }
-}
-
 impl ToBytes for Question {
     type Error = std::io::Error;
     fn to_bytes(&self, stream: &mut BytesWriter) -> Result<(), Self::Error> {
@@ -146,22 +133,6 @@ impl ToBytes for Question {
         stream.write_u16::<BE>(self.qtyp.to_raw_repr())?;
         stream.write_u16::<BE>(self.qclass.to_raw_repr())?;
         Ok(())
-    }
-}
-
-impl FromBytestream for Question {
-    type Error = std::io::Error;
-    fn from_bytestream(stream: &mut BytestreamReader) -> Result<Self, Self::Error> {
-        let qname = DnsString::from_bytestream(stream)?;
-
-        let qtyp = QuestionTyp::from_raw_repr(stream.read_u16::<BE>()?).unwrap();
-        let qclass = QuestionClass::from_raw_repr(stream.read_u16::<BE>()?).unwrap();
-
-        Ok(Question {
-            qname,
-            qtyp,
-            qclass,
-        })
     }
 }
 
@@ -415,7 +386,7 @@ mod tests {
             },
         ];
         for example in examples {
-            let e2e = Question::from_slice(&example.to_vec()?)?;
+            let e2e = Question::read_from(&mut example.write_to_bytes()?)?;
             assert_eq!(example, e2e);
         }
         Ok(())

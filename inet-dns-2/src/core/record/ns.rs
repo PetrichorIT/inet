@@ -1,6 +1,6 @@
 use super::{RawResourceRecord, ResourceRecord, ResourceRecordClass};
 use crate::core::{string::DnsString, ZonefileLineRecord};
-use bytepack::{FromBytestream, ToBytestream};
+use bytes_io::{FromBytes, ToBytes};
 use std::io;
 
 /// A resource record used to assign a subzone to a nameserver.
@@ -31,7 +31,7 @@ impl TryFrom<RawResourceRecord> for NsResourceRecord {
             domain: raw.name,
             ttl: raw.ttl,
             class: raw.class,
-            nameserver: DnsString::from_slice(&raw.rdata)?,
+            nameserver: DnsString::peek_from(&raw.rdata[..])?,
         })
     }
 }
@@ -50,7 +50,9 @@ impl ResourceRecord for NsResourceRecord {
         Some(self.class)
     }
     fn rdata(&self) -> Vec<u8> {
-        self.nameserver.to_vec().expect("invalid parsing failure")
+        self.nameserver
+            .write_to_vec()
+            .expect("invalid parsing failure")
     }
     fn rdata_fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.nameserver)

@@ -1,6 +1,6 @@
 use std::{error::Error as StdError, fmt::Display, io};
 
-use bytepack::raw_enum;
+use macros::raw_enum;
 
 /// A DNS error.
 #[derive(Debug)]

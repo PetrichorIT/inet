@@ -1,6 +1,6 @@
 use std::io::{self, Read, Write};
 
-use bytepack::{FromBytestream, ReadBytesExt, ToBytestream, WriteBytesExt, BE};
+use bytes_io::{BytesReader, BytesWriter, FromBytes, ReadBytesExt, ToBytes, WriteBytesExt, BE};
 
 use crate::core::DnsString;
 
@@ -26,7 +26,7 @@ pub struct Opt {
 
 impl TryFrom<RawResourceRecord> for OptResourceRecord {
     type Error = io::Error;
-    fn try_from(mut value: RawResourceRecord) -> Result<Self, Self::Error> {
+    fn try_from(value: RawResourceRecord) -> Result<Self, Self::Error> {
         if !value.name.labels().is_empty() {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
@@ -39,8 +39,9 @@ impl TryFrom<RawResourceRecord> for OptResourceRecord {
         let version = (value.ttl & 0x00_ff_00_00) >> 16 != 0;
 
         let mut options = Vec::new();
+        let mut slice = &value.rdata[..];
         while !value.rdata.is_empty() {
-            let opt = Opt::read_from_vec(&mut value.rdata)?;
+            let opt = Opt::read_from(&mut slice)?;
             options.push(opt);
         }
 
@@ -73,7 +74,7 @@ impl ResourceRecord for OptResourceRecord {
     fn rdata(&self) -> Vec<u8> {
         let mut buf = Vec::new();
         for opt in &self.options {
-            opt.append_to_vec(&mut buf).expect("cannot fail");
+            opt.write_to(&mut buf).expect("cannot fail");
         }
         buf
     }
@@ -85,9 +86,9 @@ impl ResourceRecord for OptResourceRecord {
     }
 }
 
-impl FromBytestream for Opt {
+impl FromBytes for Opt {
     type Error = io::Error;
-    fn from_bytestream(stream: &mut bytepack::BytestreamReader) -> Result<Self, Self::Error> {
+    fn from_bytes(stream: &mut BytesReader) -> Result<Self, Self::Error> {
         let code = stream.read_u16::<BE>()?;
         let len = stream.read_u16::<BE>()?;
         let mut value = vec![0; len as usize];
@@ -96,9 +97,9 @@ impl FromBytestream for Opt {
     }
 }
 
-impl ToBytestream for Opt {
+impl ToBytes for Opt {
     type Error = io::Error;
-    fn to_bytestream(&self, stream: &mut bytepack::BytestreamWriter) -> Result<(), Self::Error> {
+    fn to_bytes(&self, stream: &mut BytesWriter) -> Result<(), Self::Error> {
         stream.write_u16::<BE>(self.code)?;
         stream.write_u16::<BE>(self.value.len() as u16)?;
         stream.write_all(&self.value)

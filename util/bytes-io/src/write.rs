@@ -1,11 +1,12 @@
 use std::{
+    fmt::Debug,
     io::{self, Write},
     mem,
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
     ops::{Deref, DerefMut},
 };
 
-use bytes::{Buf, BufMut, BytesMut};
+use bytes::{BufMut, BytesMut};
 
 /// A
 pub trait ToBytes {
@@ -16,28 +17,25 @@ pub trait ToBytes {
     fn to_bytes(&self, writer: &mut BytesWriter) -> Result<(), Self::Error>;
 
     /// A
-    fn write_to(&self, bytes: &mut BytesMut) -> Result<usize, Self::Error> {
-        let mut writer = BytesWriter {
-            limit: usize::MAX,
-            markers: 0,
-            bytes: bytes.split(),
-        };
-        self.to_bytes(&mut writer)?;
-        let n = writer.bytes.len();
-        bytes.unsplit(writer.finish());
-        Ok(n)
+    fn write_to<B: BufMut + AsMut<[u8]>>(&self, bytes: &mut B) -> Result<usize, Self::Error> {
+        self.write_to_limit(bytes, usize::MAX)
     }
 
     /// A
-    fn write_to_limit(&self, bytes: &mut BytesMut, limit: usize) -> Result<usize, Self::Error> {
+    fn write_to_limit<B: BufMut + AsMut<[u8]>>(
+        &self,
+        bytes: &mut B,
+        limit: usize,
+    ) -> Result<usize, Self::Error> {
+        let initial = bytes.as_mut().len();
         let mut writer = BytesWriter {
             limit,
             markers: 0,
-            bytes: bytes.split(),
+            bytes,
         };
         self.to_bytes(&mut writer)?;
-        let n = writer.bytes.len();
-        bytes.unsplit(writer.finish());
+        drop(writer);
+        let n = bytes.as_mut().len() - initial;
         Ok(n)
     }
 
@@ -47,17 +45,25 @@ pub trait ToBytes {
         self.write_to(&mut bytes)?;
         Ok(bytes)
     }
+
+    /// A
+    fn write_to_vec(&self) -> Result<Vec<u8>, Self::Error> {
+        let mut bytes = Vec::new();
+        self.write_to(&mut bytes)?;
+        Ok(bytes)
+    }
 }
 
 /// A
-#[derive(Debug)]
-pub struct BytesWriter {
+pub struct BytesWriter<'a> {
     limit: usize,
     markers: usize,
-    bytes: BytesMut,
+    bytes: &'a mut dyn Writable,
 }
 
-trait Writable: BufMut + Buf {}
+/// A
+pub trait Writable: BufMut + AsMut<[u8]> {}
+impl<B: BufMut + AsMut<[u8]>> Writable for B {}
 
 /// A
 #[derive(Debug)]
@@ -67,75 +73,79 @@ pub struct Marker {
     len: usize,
 }
 
-impl BytesWriter {
+impl<'a> BytesWriter<'a> {
     /// A
-    pub fn new(limit: usize) -> Self {
+    pub fn new(bytes: &'a mut dyn Writable, limit: usize) -> Self {
         BytesWriter {
             limit,
             markers: 0,
-            bytes: BytesMut::new(),
+            bytes,
         }
     }
 
     /// A
     pub fn marker<T>(&mut self) -> Marker {
-        let pos = self.bytes.len();
+        let pos = self.bytes.as_mut().len();
         let len = mem::size_of::<T>();
         self.bytes.put_bytes(0x00, len);
         self.markers += 1;
-        println!("marker {:x?} => {:x?}", vec![0; len], &self.bytes[..]);
         Marker { pos, len }
     }
 
     /// A
-    pub fn bytes_written_since(&self, marker: &Marker) -> usize {
-        self.bytes.len() - (marker.pos + marker.len)
+    pub fn bytes_written_since(&mut self, marker: &Marker) -> usize {
+        self.bytes.as_mut().len() - (marker.pos + marker.len)
     }
 
     /// A
     pub fn apply(&mut self, marker: Marker) -> &mut [u8] {
         self.markers -= 1;
-        let slice = &mut self.bytes[marker.pos..marker.pos + marker.len];
+        let slice = &mut self.bytes.as_mut()[marker.pos..marker.pos + marker.len];
         println!("apply => {:x?}", slice);
         slice
     }
+}
 
-    /// A
-    pub fn finish(self) -> BytesMut {
+impl Drop for BytesWriter<'_> {
+    fn drop(&mut self) {
         assert_eq!(
             self.markers, 0,
             "unapplied markers exist, bytestream not complete anymore"
         );
-        self.bytes
     }
 }
 
-impl Deref for BytesWriter {
-    type Target = dyn BufMut;
+impl<'a> Deref for BytesWriter<'a> {
+    type Target = &'a mut dyn Writable;
     fn deref(&self) -> &Self::Target {
         &self.bytes
     }
 }
 
-impl DerefMut for BytesWriter {
+impl DerefMut for BytesWriter<'_> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.bytes
     }
 }
 
-impl io::Write for BytesWriter {
+impl io::Write for BytesWriter<'_> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         if buf.len() > self.limit {
             return Err(io::Error::new(io::ErrorKind::WriteZero, "buffer overflow"));
         }
-        self.bytes.extend_from_slice(&buf);
-        println!("write {buf:x?} => {:x?}", &self.bytes[..]);
+        self.bytes.put_slice(&buf);
         self.limit -= buf.len();
         Ok(buf.len())
     }
 
     fn flush(&mut self) -> io::Result<()> {
         Ok(())
+    }
+}
+
+impl Debug for BytesWriter<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("BytesWriter").finish()
     }
 }
 
@@ -189,44 +199,51 @@ mod tests {
 
     #[test]
     fn buf_write() {
-        let mut br = BytesWriter::new(usize::MAX);
+        let mut buf = BytesMut::new();
+        let mut br = BytesWriter::new(&mut buf, usize::MAX);
         br.put_u32(0x01020304);
         br.put_u8(0x05);
 
-        assert_eq!(br.bytes[..], [1, 2, 3, 4, 5])
+        drop(br);
+        assert_eq!(buf[..], [1, 2, 3, 4, 5])
     }
 
     #[test]
     fn io_write() -> io::Result<()> {
-        let mut br = BytesWriter::new(usize::MAX);
+        let mut buf = BytesMut::new();
+        let mut br = BytesWriter::new(&mut buf, usize::MAX);
         br.write_u32::<BE>(0x01020304)?;
         br.write_u8(0x05)?;
 
-        assert_eq!(br.bytes[..], [1, 2, 3, 4, 5]);
+        drop(br);
+        assert_eq!(buf[..], [1, 2, 3, 4, 5]);
         Ok(())
     }
 
     #[test]
     fn limit_on_main_writer() -> io::Result<()> {
-        let mut br = BytesWriter::new(10);
+        let mut buf = BytesMut::new();
+        let mut br = BytesWriter::new(&mut buf, 10);
         br.write_u32::<BE>(0x01020304)?;
         br.write_u32::<BE>(0x05060708)?;
 
-        assert_eq!(br.bytes[..], [1, 2, 3, 4, 5, 6, 7, 8]);
+        assert_eq!(br.bytes.as_mut()[..], [1, 2, 3, 4, 5, 6, 7, 8]);
 
         assert_eq!(
             br.write_u32::<BE>(0xffffffff).unwrap_err().kind(),
             ErrorKind::WriteZero
         );
 
-        assert_eq!(br.bytes[..], [1, 2, 3, 4, 5, 6, 7, 8]);
+        drop(br);
+        assert_eq!(buf[..], [1, 2, 3, 4, 5, 6, 7, 8]);
 
         Ok(())
     }
 
     #[test]
     fn limit_on_marker_writer() -> io::Result<()> {
-        let mut br = BytesWriter::new(100);
+        let mut buf = BytesMut::new();
+        let mut br = BytesWriter::new(&mut buf, 100);
         br.write_u32::<BE>(0x01020304)?;
         let marker = br.marker::<u32>();
 
@@ -240,20 +257,19 @@ mod tests {
             ErrorKind::WriteZero
         );
 
-        assert_eq!(
-            &br.bytes[..],
-            &[1, 2, 3, 4, 0xff, 0xff, 0xff, 0xff, 5, 6, 7, 8]
-        );
+        drop(br);
+        assert_eq!(buf[..], [1, 2, 3, 4, 0xff, 0xff, 0xff, 0xff, 5, 6, 7, 8]);
 
         Ok(())
     }
 
     #[test]
     fn marker_without_realloc() {
+        let mut buf = BytesMut::with_capacity(32);
         let mut writer = BytesWriter {
             limit: usize::MAX,
             markers: 0,
-            bytes: BytesMut::with_capacity(32),
+            bytes: &mut buf,
         };
         writer.put_u16(0xffff);
 
@@ -268,19 +284,20 @@ mod tests {
 
         writer.apply(marker).write_u16::<BE>(n as u16).unwrap();
 
-        let buf = writer.bytes;
+        drop(writer);
         assert_eq!(
-            &buf[..],
-            &[0xff, 0xff, 0x00, 0x06, 0x00, 0x01, 0x00, 0x02, 0x00, 0x03]
+            buf[..],
+            [0xff, 0xff, 0x00, 0x06, 0x00, 0x01, 0x00, 0x02, 0x00, 0x03]
         )
     }
 
     #[test]
     fn marker_with_realloc() {
+        let mut buf = BytesMut::with_capacity(6);
         let mut writer = BytesWriter {
             limit: usize::MAX,
             markers: 0,
-            bytes: BytesMut::with_capacity(6),
+            bytes: &mut buf,
         };
         writer.put_u16(0xffff);
 
@@ -295,10 +312,10 @@ mod tests {
 
         writer.apply(marker).write_u16::<BE>(n as u16).unwrap();
 
-        let buf = writer.bytes;
+        drop(writer);
         assert_eq!(
-            &buf[..],
-            &[0xff, 0xff, 0x00, 0x06, 0x00, 0x01, 0x00, 0x02, 0x00, 0x03]
+            buf[..],
+            [0xff, 0xff, 0x00, 0x06, 0x00, 0x01, 0x00, 0x02, 0x00, 0x03]
         )
     }
 }

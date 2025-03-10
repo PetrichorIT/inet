@@ -1,7 +1,8 @@
 use crate::server::{
     DnsMessage, FinishedTransaction, Nameserver, NameserverQuery, TransportMedium,
 };
-use bytepack::{FromBytestream, ToBytestream};
+use bytes::BytesMut;
+use bytes_io::{FromBytes, ToBytes};
 use inet::tcp2::{OwnedWriteHalf, TcpListener, TcpStream};
 use std::{
     collections::HashMap,
@@ -69,7 +70,7 @@ impl TransportAdapter for TcpAdapter {
         };
 
         let msg = DnsMessage::response_from_transaction(tx);
-        responder.write_all(&msg.to_vec()?).await?;
+        responder.write_all(&msg.write_to_bytes()?).await?;
 
         Ok(())
     }
@@ -94,7 +95,7 @@ impl TransportAdapter for TcpAdapter {
         };
 
         let msg = DnsMessage::request_from_ns_query(ns_query);
-        write.write_all(&msg.to_vec()?).await?;
+        write.write_all(&msg.write_to_bytes()?).await?;
 
         Ok(())
     }
@@ -153,7 +154,7 @@ async fn dispatch_incoming_events_from<R: AsyncRead + Unpin>(
     peer: SocketAddr,
     mut stream: R,
 ) -> io::Result<()> {
-    let mut buf = Vec::new();
+    let mut buf = BytesMut::with_capacity(1024);
     loop {
         let n = match stream.read_buf(&mut buf).await {
             Ok(n) => n,
@@ -166,7 +167,7 @@ async fn dispatch_incoming_events_from<R: AsyncRead + Unpin>(
         tracing::trace!("connection queuing {n} bytes");
 
         while !buf.is_empty() {
-            match DnsMessage::read_from_vec(&mut buf) {
+            match DnsMessage::read_from(&mut buf) {
                 Ok(msg) => {
                     // consumed the bytes from the buf, msg no ready
                     tx.send((TransportMedium::Tcp, peer, msg))
@@ -233,12 +234,12 @@ mod tests {
         sim.node_require_join("192.168.2.101", || async {
             let mut socket = TcpStream::connect(("192.168.2.30", DEFAULT_PORT)).await?;
             let msg = DnsMessage::question_a(1, "alice.example.org.".parse::<DnsString>()?);
-            socket.write_all(&msg.to_vec()?).await?;
+            socket.write_all(&msg.write_to_bytes()?).await?;
 
             let mut buf = vec![0; 512];
             let n = socket.read(&mut buf).await?;
 
-            let msg = DnsMessage::from_slice(&buf[..n])?;
+            let msg = DnsMessage::peek_from(&buf[..n])?;
             assert_eq!(msg.response.anwsers.len(), 1);
 
             drop(socket);
@@ -288,12 +289,12 @@ mod tests {
         sim.node_require_join("192.168.2.101", || async {
             let mut socket = TcpStream::connect(("192.168.2.100", DEFAULT_PORT)).await?;
             let msg = DnsMessage::question_a(1, "rss.info.org.".parse::<DnsString>()?);
-            socket.write_all(&msg.to_vec()?).await?;
+            socket.write_all(&msg.write_to_bytes()?).await?;
 
             let mut buf = vec![0; 512];
             let n = socket.read(&mut buf).await?;
 
-            let msg = DnsMessage::from_slice(&buf[..n])?;
+            let msg = DnsMessage::peek_from(&buf[..n])?;
             assert_eq!(msg.response.anwsers.len(), 1);
 
             tracing::info!("test completed");

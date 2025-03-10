@@ -1,6 +1,7 @@
 use std::io;
 
-use bytepack::{FromBytestream, ToBytestream};
+use bytes::BufMut;
+use bytes_io::{FromBytes, ReadBytesExt, ToBytes, BE};
 
 use crate::core::{string::DnsString, ZonefileLineRecord};
 
@@ -60,13 +61,13 @@ impl TryFrom<RawResourceRecord> for SoaResourceRecord {
             name: raw.name,
             ttl: raw.ttl,
             class: raw.class,
-            mname: DnsString::read_from_slice(&mut slice)?,
-            rname: DnsString::read_from_slice(&mut slice)?,
-            serial: u32::read_from_slice(&mut slice)?,
-            refresh: u32::read_from_slice(&mut slice)?,
-            retry: u32::read_from_slice(&mut slice)?,
-            expire: u32::read_from_slice(&mut slice)?,
-            minimum: u32::read_from_slice(&mut slice)?,
+            mname: DnsString::read_from(&mut slice)?,
+            rname: DnsString::read_from(&mut slice)?,
+            serial: slice.read_u32::<BE>()?,
+            refresh: slice.read_u32::<BE>()?,
+            retry: slice.read_u32::<BE>()?,
+            expire: slice.read_u32::<BE>()?,
+            minimum: slice.read_u32::<BE>()?,
         })
     }
 }
@@ -86,13 +87,17 @@ impl ResourceRecord for SoaResourceRecord {
     }
     fn rdata(&self) -> Vec<u8> {
         let mut buf = Vec::new();
-        self.mname.append_to_vec(&mut buf).unwrap();
-        self.rname.append_to_vec(&mut buf).unwrap();
-        self.serial.append_to_vec(&mut buf).unwrap();
-        self.refresh.append_to_vec(&mut buf).unwrap();
-        self.retry.append_to_vec(&mut buf).unwrap();
-        self.expire.append_to_vec(&mut buf).unwrap();
-        self.minimum.append_to_vec(&mut buf).unwrap();
+        self.mname
+            .write_to(&mut buf)
+            .expect("illegal parsing error");
+        self.rname
+            .write_to(&mut buf)
+            .expect("illegal parsing error");
+        buf.put_u32(self.serial);
+        buf.put_u32(self.refresh);
+        buf.put_u32(self.retry);
+        buf.put_u32(self.expire);
+        buf.put_u32(self.minimum);
 
         buf
     }

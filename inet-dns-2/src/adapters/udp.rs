@@ -1,5 +1,4 @@
-use bytes::{Buf, Bytes, BytesMut};
-use bytes_io::{FromBytes, ToBytes};
+use bytes_io::{BytesMut, FromBytes, ToBytes};
 use inet::UdpSocket;
 use tokio::{sync::mpsc::Sender, task::JoinHandle};
 
@@ -62,25 +61,17 @@ impl TransportAdapter for UdpAdapter {
             let mut buf = BytesMut::with_capacity(512);
             loop {
                 buf.clear();
-                buf.reserve(512 - buf.len());
+                buf.reserve(512);
 
                 let Ok((_, from)) = udp.recv_buf_from(&mut buf).await else {
                     tracing::error!("failed to recv datagram from socket");
                     return;
                 };
 
-                let Ok(msg) = DnsMessage::read_from(&mut Bytes::from(buf[..].to_vec())) else {
+                let Ok(msg) = DnsMessage::read_from(&mut buf) else {
                     tracing::error!("invalid packet");
                     continue;
                 };
-
-                let Ok(msg2) = DnsMessage::read_from(&mut buf) else {
-                    tracing::error!("invalid packet 2");
-                    continue;
-                };
-
-                assert_eq!(msg, msg2);
-                assert_eq!(buf.remaining(), 0);
 
                 if let Err(err) = tx.send((TransportMedium::Udp, from, msg)).await {
                     tracing::error!("failed to dispatch event: {}", err);
@@ -167,7 +158,6 @@ impl Default for UdpAdapter {
 
 #[cfg(test)]
 mod tests {
-    use bytepack::{FromBytestream, ToBytestream};
     use inet::{test_util::SimpleSim, utils::get_ip};
     use serial_test::serial;
     use std::net::Ipv6Addr;
@@ -204,14 +194,14 @@ mod tests {
         sim.node_require_join("192.168.2.101", || async move {
             let sock = UdpSocket::bind("0.0.0.0:0").await?;
             sock.send_to(
-                &DnsMessage::question_a(1, "rss.info.org.".parse()?).to_vec()?,
+                &DnsMessage::question_a(1, "rss.info.org.".parse()?).write_to_vec()?,
                 ("192.168.2.10", DEFAULT_PORT),
             )
             .await?;
 
             let mut buf = vec![0; 512];
             let (n, _) = sock.recv_from(&mut buf).await?;
-            let msg = DnsMessage::from_slice(&buf[..n])?;
+            let msg = DnsMessage::peek_from(&buf[..n])?;
             assert_eq!(msg.response.anwsers.len(), 1);
 
             Ok(())
@@ -236,14 +226,14 @@ mod tests {
         sim.node_require_join("192.168.2.101", || async move {
             let sock = UdpSocket::bind("0.0.0.0:0").await?;
             sock.send_to(
-                &DnsMessage::question_a(1, "alice.example.org.".parse()?).to_vec()?,
+                &DnsMessage::question_a(1, "alice.example.org.".parse()?).write_to_vec()?,
                 ("192.168.2.10", DEFAULT_PORT),
             )
             .await?;
 
             let mut buf = vec![0; 512];
             let (n, _) = sock.recv_from(&mut buf).await?;
-            let msg = DnsMessage::from_slice(&buf[..n])?;
+            let msg = DnsMessage::peek_from(&buf[..n])?;
             assert_eq!(msg.response.auths.len(), 1);
 
             Ok(())
@@ -268,14 +258,14 @@ mod tests {
         sim.node_require_join("192.168.2.101", || async move {
             let sock = UdpSocket::bind("0.0.0.0:0").await?;
             sock.send_to(
-                &DnsMessage::question_a(1, "alice.example.net.".parse()?).to_vec()?,
+                &DnsMessage::question_a(1, "alice.example.net.".parse()?).write_to_vec()?,
                 ("192.168.2.10", DEFAULT_PORT),
             )
             .await?;
 
             let mut buf = vec![0; 512];
             let (n, _) = sock.recv_from(&mut buf).await?;
-            let msg = DnsMessage::from_slice(&buf[..n])?;
+            let msg = DnsMessage::peek_from(&buf[..n])?;
             assert_eq!(msg.rcode, ResponseCode::NotZone);
 
             Ok(())
@@ -328,14 +318,14 @@ mod tests {
         sim.node_require_join("192.168.2.101", || async move {
             let sock = UdpSocket::bind("0.0.0.0:0").await?;
             sock.send_to(
-                &DnsMessage::question_a(1, "alice.example.org.".parse()?).to_vec()?,
+                &DnsMessage::question_a(1, "alice.example.org.".parse()?).write_to_vec()?,
                 ("192.168.2.100", DEFAULT_PORT),
             )
             .await?;
 
             let mut buf = vec![0; 512];
             let (n, _) = sock.recv_from(&mut buf).await?;
-            let msg = DnsMessage::from_slice(&buf[..n])?;
+            let msg = DnsMessage::peek_from(&buf[..n])?;
 
             assert_eq!(msg.response.anwsers.len(), 1);
 
@@ -399,7 +389,7 @@ mod tests {
 
             let mut buf = vec![0; 1012];
             let (n, _) = recv.recv_from(&mut buf).await?;
-            let msg = DnsMessage::from_slice(&buf[..n])?;
+            let msg = DnsMessage::peek_from(&buf[..n])?;
 
             assert_eq!(msg.response.anwsers.len(), 15);
             assert_eq!(msg.response.additional.len(), 0);
@@ -473,7 +463,7 @@ mod tests {
 
             let mut buf = vec![0; 2000];
             let (n, _) = recv.recv_from(&mut buf).await?;
-            let msg = DnsMessage::from_slice(&buf[..n])?;
+            let msg = DnsMessage::peek_from(&buf[..n])?;
 
             assert_eq!(msg.response.anwsers.len(), 20);
             assert_eq!(msg.response.additional.len(), 11);
