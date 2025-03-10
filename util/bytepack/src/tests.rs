@@ -81,3 +81,28 @@ fn from_mut_slice() {
     assert_eq!(ab, AB { a: 0, b: u32::MAX });
     assert_eq!(slice, [0, 1, 2, 3]);
 }
+
+#[test]
+fn writer_with_limited_buf() -> io::Result<()> {
+    let mut buf = [0u8; 10];
+    let mut w = BytestreamWriter {
+        writer: &mut (&mut buf[..], 0),
+    };
+
+    w.write_u32::<BE>(0xaaaa_bbbb)?;
+    let m = w.create_typed_marker::<u16>()?;
+    w.write_u32::<BE>(0xbbbb_aaaa)?;
+
+    w.update_marker(&m).write_u16::<BE>(0xffff)?;
+
+    assert_eq!(
+        w.write_i64::<BE>(-1).unwrap_err().kind(),
+        io::ErrorKind::WriteZero
+    );
+
+    assert_eq!(
+        buf,
+        [0xaa, 0xaa, 0xbb, 0xbb, 0xff, 0xff, 0xbb, 0xbb, 0xaa, 0xaa]
+    );
+    Ok(())
+}

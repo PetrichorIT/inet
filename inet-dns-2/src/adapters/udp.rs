@@ -2,8 +2,9 @@ use bytepack::{FromBytestream, ToBytestream};
 use inet::UdpSocket;
 use tokio::{sync::mpsc::Sender, task::JoinHandle};
 
-use crate::server::{
-    DnsMessage, FinishedTransaction, Nameserver, NameserverQuery, TransportMedium,
+use crate::{
+    core::OptResourceRecord,
+    server::{DnsMessage, FinishedTransaction, Nameserver, NameserverQuery, TransportMedium},
 };
 
 use std::{
@@ -33,6 +34,15 @@ impl UdpAdapter {
     pub fn with_edns(mut self, edns: bool) -> Self {
         self.edns = edns;
         self
+    }
+
+    fn udp_limit(&self, inc: &Option<OptResourceRecord>) -> usize {
+        if let Some(inc) = inc {
+            if self.edns {
+                return inc.udp_payload_size as usize;
+            }
+        }
+        516
     }
 }
 
@@ -78,9 +88,20 @@ impl TransportAdapter for UdpAdapter {
         };
 
         let target = anwser.query.addr;
-        let msg = DnsMessage::response_from_transaction(anwser).with_edns(self.edns);
-        // TODO: packet trunc, dep on EDNS
-        socket.send_to(&msg.to_vec()?, target).await?;
+
+        let mut buf = vec![0u8; self.udp_limit(&anwser.query.edns)];
+        let mut msg = DnsMessage::response_from_transaction(anwser).with_edns(self.edns);
+        let n = loop {
+            match msg.to_buf(&mut buf) {
+                Ok(n) => break n,
+                Err(w) if w.kind() == io::ErrorKind::WriteZero => {
+                    msg.truncate();
+                }
+                Err(e) => return Err(e),
+            }
+        };
+
+        socket.send_to(&buf[..n], target).await?;
         Ok(())
     }
 
@@ -93,9 +114,19 @@ impl TransportAdapter for UdpAdapter {
         };
 
         let target = SocketAddr::new(ns_query.nameserver_ip, DEFAULT_PORT);
-        let msg = DnsMessage::request_from_ns_query(ns_query).with_edns(self.edns);
-        // TODO: packet trunc, dep on EDNS
-        socket.send_to(&msg.to_vec()?, target).await?;
+
+        let mut buf = vec![0u8; self.udp_limit(&ns_query.query.edns)];
+        let mut msg = DnsMessage::request_from_ns_query(ns_query).with_edns(self.edns);
+        let n = loop {
+            match msg.to_buf(&mut buf) {
+                Ok(n) => break n,
+                Err(w) if w.kind() == io::ErrorKind::WriteZero => {
+                    msg.truncate();
+                }
+                Err(e) => return Err(e),
+            }
+        };
+        socket.send_to(&buf[..n], target).await?;
 
         Ok(())
     }
@@ -118,13 +149,19 @@ impl Default for UdpAdapter {
 
 #[cfg(test)]
 mod tests {
-    use inet::test_util::SimpleSim;
+    use std::net::Ipv6Addr;
+
+    use inet::{test_util::SimpleSim, utils::get_ip};
     use serial_test::serial;
+    use tokio::sync::mpsc;
 
     use crate::{
         adapters::Base,
-        core::{ResponseCode, ZoneResolver, Zonefile},
-        server::{IterativeNameserver, RecursiveNameserver},
+        core::{
+            AAAAResourceRecord, AResourceRecord, DnsString, QueryResponse, Question, QuestionClass,
+            QuestionTyp, ResourceRecordClass, ResponseCode, ZoneResolver, Zonefile,
+        },
+        server::{IterativeNameserver, RecursiveNameserver, SourceQuery, TransactionResult},
     };
 
     use super::*;
@@ -288,5 +325,144 @@ mod tests {
         });
 
         let _ = sim.run();
+    }
+
+    #[test]
+    #[serial]
+    fn truncated_execssive_response() -> Result<(), des::prelude::RuntimeError> {
+        let mut sim = SimpleSim::new(inet::init);
+        sim.node_require_join("alice", || async move {
+            let recv = UdpSocket::bind("0.0.0.0:2000").await?;
+
+            let (tx, _) = mpsc::channel(1);
+            let mut adapter = UdpAdapter::default().with_port(3000);
+            adapter.deploy(tx).await?;
+
+            let mut resp = QueryResponse::default();
+            for _ in 0..20 {
+                resp.anwsers.push(
+                    AResourceRecord {
+                        name: "alice.example.org.".parse().unwrap(),
+                        ttl: 3600,
+                        class: ResourceRecordClass::IN,
+                        addr: Ipv4Addr::new(127, 0, 0, 1),
+                    }
+                    .into(),
+                );
+                resp.additional.push(
+                    AAAAResourceRecord {
+                        name: "alice.example.org.".parse().unwrap(),
+                        ttl: 3600,
+                        class: ResourceRecordClass::IN,
+                        addr: Ipv6Addr::new(127, 0, 0, 1, 0, 0, 0, 1),
+                    }
+                    .into(),
+                );
+            }
+
+            adapter
+                .send_anwser(FinishedTransaction {
+                    query: Arc::new(SourceQuery {
+                        medium: TransportMedium::Udp,
+                        edns: None,
+                        addr: SocketAddr::new(get_ip().unwrap(), 2000),
+                        transaction: 1,
+                        question: Question {
+                            qtyp: QuestionTyp::A,
+                            qclass: QuestionClass::IN,
+                            qname: "alice.example.org.".parse().unwrap(),
+                        },
+                    }),
+                    aa: true,
+                    ra: true,
+                    result: TransactionResult::Success(resp),
+                })
+                .await?;
+
+            let mut buf = vec![0; 1012];
+            let (n, _) = recv.recv_from(&mut buf).await?;
+            let msg = DnsMessage::from_slice(&buf[..n])?;
+
+            assert_eq!(msg.response.anwsers.len(), 15);
+            assert_eq!(msg.response.additional.len(), 0);
+
+            Ok(())
+        });
+
+        sim.run()
+    }
+
+    #[test]
+    #[serial]
+    fn truncated_higher_limit_with_edns() -> Result<(), des::prelude::RuntimeError> {
+        let mut sim = SimpleSim::new(inet::init);
+        sim.node_require_join("alice", || async move {
+            let recv = UdpSocket::bind("0.0.0.0:2000").await?;
+
+            let (tx, _) = mpsc::channel(1);
+            let mut adapter = UdpAdapter::default().with_port(3000);
+            adapter.deploy(tx).await?;
+
+            let mut resp = QueryResponse::default();
+            for _ in 0..20 {
+                resp.anwsers.push(
+                    AResourceRecord {
+                        name: "alice.example.org.".parse().unwrap(),
+                        ttl: 3600,
+                        class: ResourceRecordClass::IN,
+                        addr: Ipv4Addr::new(127, 0, 0, 1),
+                    }
+                    .into(),
+                );
+                resp.additional.push(
+                    AAAAResourceRecord {
+                        name: "alice.example.org.".parse().unwrap(),
+                        ttl: 3600,
+                        class: ResourceRecordClass::IN,
+                        addr: Ipv6Addr::new(127, 0, 0, 1, 0, 0, 0, 1),
+                    }
+                    .into(),
+                );
+            }
+
+            adapter
+                .send_anwser(FinishedTransaction {
+                    query: Arc::new(SourceQuery {
+                        medium: TransportMedium::Udp,
+                        edns: Some(
+                            OptResourceRecord {
+                                name: DnsString::empty(),
+                                udp_payload_size: 1200,
+                                rcode: 0,
+                                version: true,
+                                options: Vec::new(),
+                            }
+                            .into(),
+                        ),
+                        addr: SocketAddr::new(get_ip().unwrap(), 2000),
+                        transaction: 1,
+                        question: Question {
+                            qtyp: QuestionTyp::A,
+                            qclass: QuestionClass::IN,
+                            qname: "alice.example.org.".parse().unwrap(),
+                        },
+                    }),
+                    aa: true,
+                    ra: true,
+                    result: TransactionResult::Success(resp),
+                })
+                .await?;
+
+            let mut buf = vec![0; 2000];
+            let (n, _) = recv.recv_from(&mut buf).await?;
+            let msg = DnsMessage::from_slice(&buf[..n])?;
+
+            assert_eq!(msg.response.anwsers.len(), 20);
+            assert_eq!(msg.response.additional.len(), 11);
+
+            Ok(())
+        });
+
+        sim.run()
     }
 }

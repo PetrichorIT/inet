@@ -43,6 +43,20 @@ pub trait ToBytestream {
     /// returned bytestream, or some parsing invariant does not hold.
     fn to_bytestream(&self, stream: &mut BytestreamWriter) -> Result<(), Self::Error>;
 
+    /// Serializes `self` into a the given buffer.
+    ///
+    /// # Errors
+    ///
+    /// See `ToBytestream::to_bytestream`.
+    fn to_buf(&self, buf: &mut [u8]) -> Result<usize, Self::Error> {
+        let mut writer = (buf, 0);
+        let mut stream = BytestreamWriter {
+            writer: &mut writer,
+        };
+        self.to_bytestream(&mut stream)?;
+        Ok(writer.1)
+    }
+
     /// Serializes `self` into a standalone bytevector.
     ///
     /// # Errors
@@ -50,7 +64,7 @@ pub trait ToBytestream {
     /// See `ToBytestream::to_bytestream`.
     fn to_vec(&self) -> Result<Vec<u8>, Self::Error> {
         let mut vec = Vec::new();
-        let mut stream = BytestreamWriter { buf: &mut vec };
+        let mut stream = BytestreamWriter { writer: &mut vec };
         self.to_bytestream(&mut stream)?;
         Ok(vec)
     }
@@ -62,7 +76,7 @@ pub trait ToBytestream {
     /// See `ToBytestream::to_bytestream`.
     /// If this operation fails, some bytes of the provided `buf` may have allready been edited.
     fn append_to_vec(&self, buf: &mut Vec<u8>) -> Result<(), Self::Error> {
-        let mut stream = BytestreamWriter { buf };
+        let mut stream = BytestreamWriter { writer: buf };
         self.to_bytestream(&mut stream)?;
         Ok(())
     }
@@ -75,7 +89,7 @@ pub trait ToBytestream {
 /// non-end-of-stream updates, using `Marker`.
 #[derive(Debug)]
 pub struct BytestreamWriter<'a> {
-    buf: &'a mut dyn BytestreamWritable,
+    writer: &'a mut dyn BytestreamWritable,
 }
 
 /// A allready written subslice of a `BytestreamWriter`, that
@@ -96,7 +110,7 @@ impl BytestreamWriter<'_> {
     /// The length of the underlying buffer.
     #[must_use]
     pub fn len(&self) -> usize {
-        self.buf.pos()
+        self.writer.pos()
     }
 
     /// Allocates and writes a `Marker` on the bytestream of the given `len`.
@@ -105,7 +119,7 @@ impl BytestreamWriter<'_> {
     ///
     /// May fail, if the bytestream cannot hold `len` more bytes.
     pub fn create_maker(&mut self, len: usize) -> io::Result<Marker> {
-        let pos = self.buf.pos();
+        let pos = self.writer.pos();
         self.write_all(&vec![0; len])?;
         Ok(Marker { pos, len })
     }
@@ -127,7 +141,7 @@ impl BytestreamWriter<'_> {
     /// writes to this subslice cannot depend on any other
     /// datapoints.
     pub fn update_marker(&mut self, marker: &Marker) -> &mut [u8] {
-        self.buf.subslice(marker.pos, marker.len)
+        self.writer.subslice(marker.pos, marker.len)
     }
 
     /// Messures the number of bytes written since the creation of the marker.
@@ -137,7 +151,7 @@ impl BytestreamWriter<'_> {
     ///
     /// May panic if the marker does not belong to this bytestream.
     pub fn len_since_marker(&mut self, marker: &Marker) -> usize {
-        let pos = self.buf.pos();
+        let pos = self.writer.pos();
         if let Some(len) = pos.checked_sub(marker.pos + marker.len) {
             len
         } else {
@@ -148,15 +162,16 @@ impl BytestreamWriter<'_> {
 
 impl Write for BytestreamWriter<'_> {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        self.buf.write(buf)
+        self.writer.write(buf)
     }
     fn flush(&mut self) -> std::io::Result<()> {
-        self.buf.flush()
+        Ok(())
     }
 }
 
-trait BytestreamWritable: Write + Debug {
+trait BytestreamWritable: Debug {
     fn pos(&self) -> usize;
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize>;
     fn subslice(&mut self, pos: usize, len: usize) -> &mut [u8];
 }
 
@@ -164,17 +179,27 @@ impl BytestreamWritable for Vec<u8> {
     fn pos(&self) -> usize {
         self.len()
     }
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        <Self as Write>::write(self, buf)
+    }
     fn subslice(&mut self, pos: usize, len: usize) -> &mut [u8] {
         &mut self[pos..pos + len]
     }
 }
-impl BytestreamWritable for &mut [u8] {
+
+impl BytestreamWritable for (&mut [u8], usize) {
     fn pos(&self) -> usize {
-        let slice: &[u8] = self;
-        slice.len()
+        self.1
+    }
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        let mut remaining = &mut self.0[self.1..];
+        remaining.write(buf).map(|n| {
+            self.1 += n;
+            n
+        })
     }
     fn subslice(&mut self, pos: usize, len: usize) -> &mut [u8] {
-        &mut self[pos..pos + len]
+        &mut self.0[pos..pos + len]
     }
 }
 

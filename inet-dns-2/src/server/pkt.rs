@@ -168,6 +168,23 @@ impl DnsMessage {
             .chain(self.response.auths)
             .chain(self.response.additional)
     }
+
+    // TODO: this is ineffecient as fk
+    pub fn truncate(&mut self) {
+        self.tc = true;
+
+        if let Some(_) = self.response.additional.pop() {
+            return;
+        }
+        if let Some(_) = self.response.auths.pop() {
+            return;
+        }
+        if let Some(_) = self.response.anwsers.pop() {
+            return;
+        }
+
+        unreachable!("this point should never be reached")
+    }
 }
 
 impl ToBytestream for DnsMessage {

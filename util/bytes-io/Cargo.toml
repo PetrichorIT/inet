@@ -1,5 +1,5 @@
 [package]
-name = "bytepack"
+name = "bytes-io"
 version = "0.1.0"
 edition = "2021"
 
