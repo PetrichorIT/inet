@@ -1,8 +1,10 @@
 use std::{
     io,
+    net::{Ipv4Addr, Ipv6Addr},
     ops::{Deref, DerefMut},
 };
 
+use byteorder::{ReadBytesExt, BE};
 use bytes::{Buf, Bytes};
 
 /// A
@@ -11,14 +13,14 @@ pub trait FromBytes: Sized {
     type Error;
 
     /// A
-    fn from_bytestream(stream: &mut BytesReader) -> Result<Self, Self::Error>;
+    fn from_bytes(stream: &mut BytesReader) -> Result<Self, Self::Error>;
 
     /// A
     fn read_from(bytes: &mut Bytes) -> Result<Self, Self::Error> {
         let available = bytes.split_off(0);
 
         let mut reader = BytesReader::new(available);
-        let result = Self::from_bytestream(&mut reader)?;
+        let result = Self::from_bytes(&mut reader)?;
 
         *bytes = reader.bytes;
         Ok(result)
@@ -73,6 +75,22 @@ impl io::Read for BytesReader {
         let n = buf.len().min(self.bytes.remaining());
         self.bytes.copy_to_slice(&mut buf[..n]);
         Ok(n)
+    }
+}
+
+//# Impls
+
+impl FromBytes for Ipv4Addr {
+    type Error = std::io::Error;
+    fn from_bytes(bytestream: &mut BytesReader) -> Result<Self, Self::Error> {
+        Ok(Ipv4Addr::from(bytestream.read_u32::<BE>()?))
+    }
+}
+
+impl FromBytes for Ipv6Addr {
+    type Error = std::io::Error;
+    fn from_bytes(bytestream: &mut BytesReader) -> Result<Self, Self::Error> {
+        Ok(Ipv6Addr::from(bytestream.read_u128::<BE>()?))
     }
 }
 
@@ -158,7 +176,7 @@ mod tests {
 
     impl FromBytes for U32x2 {
         type Error = io::Error;
-        fn from_bytestream(stream: &mut BytesReader) -> Result<Self, Self::Error> {
+        fn from_bytes(stream: &mut BytesReader) -> Result<Self, Self::Error> {
             let a0 = stream.get_u32();
             let a1 = stream.get_u32();
             Ok(U32x2 { inner: [a0, a1] })

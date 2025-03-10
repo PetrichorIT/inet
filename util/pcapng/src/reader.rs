@@ -1,5 +1,6 @@
+use bytes_io::{BufMut, BytesMut, FromBytes};
+
 use crate::Block;
-use bytepack::FromBytestream;
 use std::{
     fmt::Debug,
     io::{BufReader, ErrorKind, Read, Result, Seek},
@@ -7,7 +8,6 @@ use std::{
 
 /// A lazy reader, that reads PCAPNG blocks from a input device.
 pub struct BlockReader {
-    buffer: Vec<u8>,
     expected: Box<dyn ReadAndSeek>,
 }
 
@@ -19,7 +19,6 @@ impl BlockReader {
         R: Read + Seek + 'static,
     {
         Self {
-            buffer: Vec::with_capacity(4096),
             expected: Box::new(BufReader::new(input)),
         }
     }
@@ -29,7 +28,9 @@ macro_rules! try_err {
     ($($t:tt)*) => {
         match ($($t)*) {
             Ok(v) => v,
-            Err(e) => return Some(Err(e))
+            Err(e) => {
+                eprintln!("Error: {}", e);
+                return Some(Err(e))}
         }
     };
 }
@@ -37,27 +38,32 @@ macro_rules! try_err {
 impl Iterator for BlockReader {
     type Item = Result<Block>;
     fn next(&mut self) -> Option<Self::Item> {
-        self.buffer.clear();
-        self.buffer.extend_from_slice(&[0; 8]);
-        match self.expected.read_exact(&mut self.buffer) {
+        let mut bytes = [0; 8];
+        match self.expected.read_exact(&mut bytes[..]) {
             Ok(()) => {}
             Err(e) if e.kind() == ErrorKind::UnexpectedEof => return None,
             Err(e) => return Some(Err(e)),
         };
 
-        let block_len = u32::from_slice(&self.buffer[4..])
-            .expect("4 bytes as confirmed by if clause")
-            .to_be();
-        self.buffer.resize(block_len as usize, 0);
-        try_err!(self.expected.read_exact(&mut self.buffer[8..]));
+        let block_len =
+            u32::from_be_bytes([bytes[4], bytes[5], bytes[6], bytes[7]]).to_be() as usize;
 
-        Some(Block::read_from_vec(&mut self.buffer))
+        let mut buf = BytesMut::with_capacity(block_len + 8);
+        buf.put_slice(&bytes);
+        buf.put_bytes(0, block_len - 8);
+
+        try_err!(self.expected.read_exact(&mut buf[8..]));
+
+        let mut buf = buf.freeze();
+        let result = Block::read_from(&mut buf);
+
+        Some(result)
     }
 }
 
 impl DoubleEndedIterator for BlockReader {
     fn next_back(&mut self) -> Option<Self::Item> {
-        let mut buf = vec![0; 4];
+        let mut buf = [0; 4];
         if try_err!(self.expected.stream_position()) == 0 {
             return None;
         }
@@ -66,17 +72,18 @@ impl DoubleEndedIterator for BlockReader {
         let n = try_err!(self.expected.read(&mut buf));
         match n {
             4 => {
-                let block_len = u32::from_slice(&buf[..])
-                    .expect("4 bytes as confirmed by if clause")
-                    .to_be();
+                let block_len = u32::from_be_bytes(buf).to_be();
                 try_err!(self.expected.seek_relative(-i64::from(block_len)));
 
-                let mut buf = vec![0; block_len as usize];
+                let mut buf = BytesMut::with_capacity(block_len as usize);
+                buf.put_bytes(0, block_len as usize);
+
                 try_err!(self.expected.read_exact(&mut buf));
 
                 try_err!(self.expected.seek_relative(-i64::from(block_len)));
 
-                Some(Block::read_from_vec(&mut buf))
+                let mut buf = buf.freeze();
+                Some(Block::read_from(&mut buf))
             }
             0 => None,
             _ => todo!(),

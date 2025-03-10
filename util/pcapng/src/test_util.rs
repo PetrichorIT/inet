@@ -1,4 +1,5 @@
-use bytepack::{FromBytestream, ToBytestream};
+use bytepack::ToBytestream;
+use bytes_io::{Bytes, FromBytes};
 
 use super::{
     Block, BlockReader, BlockWriter, DefaultBlockWriter, EnhancedPacketOptionFlags,
@@ -42,14 +43,16 @@ impl<I: PartialEq + Clone> TestBlockWriter<I> {
     fn compare_block_output(&mut self) {
         let result = catch_unwind(AssertUnwindSafe(|| {
             while !self.writer.output[self.write_offset..].is_empty() {
-                let mut slice = &self.writer.output[self.write_offset..];
+                let slice = &self.writer.output[self.write_offset..];
                 let total = slice.len();
 
-                let Ok(block) = Block::read_from_slice(&mut slice) else {
+                let mut bytes = Bytes::from(slice.to_vec());
+
+                let Ok(block) = Block::read_from(&mut bytes) else {
                     panic!("block parsing error: writer");
                 };
 
-                let n = total - slice.len();
+                let n = total - bytes.len();
                 self.write_offset += n;
 
                 let Some(expected) = self.reader.next() else {

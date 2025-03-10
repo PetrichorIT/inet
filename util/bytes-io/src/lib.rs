@@ -14,3 +14,6 @@ mod write;
 
 pub use self::read::*;
 pub use self::write::*;
+
+pub use byteorder::*;
+pub use bytes::*;

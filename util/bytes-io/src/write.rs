@@ -1,9 +1,11 @@
 use std::{
-    io, mem,
+    io::{self, Write},
+    mem,
+    net::{IpAddr, Ipv4Addr, Ipv6Addr},
     ops::{Deref, DerefMut},
 };
 
-use bytes::{buf::Limit, BufMut, BytesMut};
+use bytes::{BufMut, BytesMut};
 
 /// A
 pub trait ToBytes {
@@ -11,7 +13,7 @@ pub trait ToBytes {
     type Error;
 
     /// A
-    fn to_bytestream(&self, writer: &mut BytesWriter) -> Result<(), Self::Error>;
+    fn to_bytes(&self, writer: &mut BytesWriter) -> Result<(), Self::Error>;
 
     /// A
     fn write_to(&self, bytes: &mut BytesMut) -> Result<usize, Self::Error> {
@@ -20,14 +22,14 @@ pub trait ToBytes {
             markers: 0,
             bytes: bytes.split(),
         };
-        self.to_bytestream(&mut writer)?;
+        self.to_bytes(&mut writer)?;
         let n = writer.bytes.len();
         bytes.unsplit(writer.finish());
         Ok(n)
     }
 
     /// A
-    fn to_bytes(&self) -> Result<BytesMut, Self::Error> {
+    fn write_to_bytes(&self) -> Result<BytesMut, Self::Error> {
         let mut bytes = BytesMut::new();
         self.write_to(&mut bytes)?;
         Ok(bytes)
@@ -47,7 +49,7 @@ pub struct BytesWriter {
 #[must_use]
 pub struct Marker {
     pos: usize,
-    bytes: Limit<BytesMut>,
+    len: usize,
 }
 
 impl BytesWriter {
@@ -62,26 +64,25 @@ impl BytesWriter {
 
     /// A
     pub fn marker<T>(&mut self) -> Marker {
-        let size = mem::size_of::<T>();
-        let remaining = self.bytes.split_to(size).limit(size);
+        let pos = self.bytes.len();
+        let len = mem::size_of::<T>();
+        self.bytes.put_bytes(0x00, len);
         self.markers += 1;
-        Marker {
-            pos: self.bytes.len(),
-            bytes: remaining,
-        }
+        println!("marker {:x?} => {:x?}", vec![0; len], &self.bytes[..]);
+        Marker { pos, len }
     }
 
     /// A
     pub fn bytes_written_since(&self, marker: &Marker) -> usize {
-        self.bytes.len() - marker.pos
+        self.bytes.len() - (marker.pos + marker.len)
     }
 
     /// A
-    pub fn apply(&mut self, marker: Marker) {
-        let mut bytes = marker.bytes.into_inner();
-        mem::swap(&mut self.bytes, &mut bytes);
-        self.bytes.unsplit(bytes);
+    pub fn apply(&mut self, marker: Marker) -> &mut [u8] {
         self.markers -= 1;
+        let slice = &mut self.bytes[marker.pos..marker.pos + marker.len];
+        println!("apply => {:x?}", slice);
+        slice
     }
 
     /// A
@@ -113,6 +114,7 @@ impl io::Write for BytesWriter {
             return Err(io::Error::new(io::ErrorKind::WriteZero, "buffer overflow"));
         }
         self.bytes.extend_from_slice(&buf);
+        println!("write {buf:x?} => {:x?}", &self.bytes[..]);
         self.limit -= buf.len();
         Ok(buf.len())
     }
@@ -122,16 +124,43 @@ impl io::Write for BytesWriter {
     }
 }
 
-impl io::Write for Marker {
-    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        if buf.len() > self.bytes.remaining_mut() {
-            return Err(io::Error::new(io::ErrorKind::WriteZero, "buffer overflow"));
-        }
-        self.bytes.put_slice(buf);
-        Ok(buf.len())
+//# Impls
+
+impl ToBytes for [u8] {
+    type Error = std::io::Error;
+    fn to_bytes(&self, stream: &mut BytesWriter) -> Result<(), Self::Error> {
+        stream.write_all(self)
     }
-    fn flush(&mut self) -> io::Result<()> {
-        Ok(())
+}
+
+impl ToBytes for Vec<u8> {
+    type Error = std::io::Error;
+    fn to_bytes(&self, stream: &mut BytesWriter) -> Result<(), Self::Error> {
+        stream.write_all(self)
+    }
+}
+
+impl ToBytes for IpAddr {
+    type Error = std::io::Error;
+    fn to_bytes(&self, stream: &mut BytesWriter) -> Result<(), Self::Error> {
+        match self {
+            Self::V4(v4) => v4.to_bytes(stream),
+            Self::V6(v6) => v6.to_bytes(stream),
+        }
+    }
+}
+
+impl ToBytes for Ipv4Addr {
+    type Error = std::io::Error;
+    fn to_bytes(&self, bytestream: &mut BytesWriter) -> Result<(), Self::Error> {
+        bytestream.write_all(&self.octets())
+    }
+}
+
+impl ToBytes for Ipv6Addr {
+    type Error = std::io::Error;
+    fn to_bytes(&self, bytestream: &mut BytesWriter) -> Result<(), Self::Error> {
+        bytestream.write_all(&self.octets())
     }
 }
 
@@ -184,17 +213,18 @@ mod tests {
     fn limit_on_marker_writer() -> io::Result<()> {
         let mut br = BytesWriter::new(100);
         br.write_u32::<BE>(0x01020304)?;
-        let mut marker = br.marker::<u32>();
+        let marker = br.marker::<u32>();
 
         br.write_u32::<BE>(0x05060708)?;
 
-        marker.write_u32::<BE>(0xffffffff)?;
+        let mut slice = br.apply(marker);
+
+        slice.write_u32::<BE>(0xffffffff)?;
         assert_eq!(
-            marker.write_u32::<BE>(2).unwrap_err().kind(),
+            slice.write_u32::<BE>(2).unwrap_err().kind(),
             ErrorKind::WriteZero
         );
 
-        br.apply(marker);
         assert_eq!(
             &br.bytes[..],
             &[1, 2, 3, 4, 0xff, 0xff, 0xff, 0xff, 5, 6, 7, 8]
@@ -212,7 +242,7 @@ mod tests {
         };
         writer.put_u16(0xffff);
 
-        let mut marker = writer.marker::<u16>();
+        let marker = writer.marker::<u16>();
 
         writer.put_u16(1);
         writer.put_u16(2);
@@ -221,9 +251,7 @@ mod tests {
         let n = writer.bytes_written_since(&marker);
         assert_eq!(n, 6);
 
-        marker.write_u16::<BE>(n as u16).unwrap();
-
-        writer.apply(marker);
+        writer.apply(marker).write_u16::<BE>(n as u16).unwrap();
 
         let buf = writer.bytes;
         assert_eq!(
@@ -241,7 +269,7 @@ mod tests {
         };
         writer.put_u16(0xffff);
 
-        let mut marker = writer.marker::<u16>();
+        let marker = writer.marker::<u16>();
 
         writer.put_u16(1);
         writer.put_u16(2);
@@ -250,9 +278,7 @@ mod tests {
         let n = writer.bytes_written_since(&marker);
         assert_eq!(n, 6);
 
-        marker.write_u16::<BE>(n as u16).unwrap();
-
-        writer.apply(marker);
+        writer.apply(marker).write_u16::<BE>(n as u16).unwrap();
 
         let buf = writer.bytes;
         assert_eq!(

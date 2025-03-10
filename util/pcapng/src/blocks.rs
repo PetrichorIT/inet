@@ -1,5 +1,5 @@
 use bitflags::bitflags;
-use bytepack::{BytestreamWriter, FromBytestream, ReadBytesExt, ToBytestream, WriteBytesExt, LE};
+use bytes_io::{BytesReader, BytesWriter, FromBytes, ReadBytesExt, ToBytes, WriteBytesExt, LE};
 use std::{
     io::{Cursor, Error, ErrorKind, Read, Write},
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
@@ -378,27 +378,27 @@ const EPB_OPTION_QUEUE: u16 = 0x06;
 const EPB_OPTION_VERDICT: u16 = 0x07;
 
 //
-// # ToBytestream
+// # ToBytes
 //
 
-impl ToBytestream for Block {
+impl ToBytes for Block {
     type Error = Error;
-    fn to_bytestream(&self, stream: &mut BytestreamWriter) -> Result<(), Self::Error> {
+    fn to_bytes(&self, stream: &mut BytesWriter) -> Result<(), Self::Error> {
         match self {
-            Self::SectionHeaderBlock(shb) => shb.to_bytestream(stream),
-            Self::InterfaceDescriptionBlock(idb) => idb.to_bytestream(stream),
-            Self::SimplePacketBlock(spb) => spb.to_bytestream(stream),
-            Self::NameResolutionBlock(nrb) => nrb.to_bytestream(stream),
-            Self::InterfaceStatisticsBlock(isb) => isb.to_bytestream(stream),
-            Self::EnhancedPacketBlock(epb) => epb.to_bytestream(stream),
-            Self::DecryptionSecretsBlock(dsb) => dsb.to_bytestream(stream),
+            Self::SectionHeaderBlock(shb) => shb.to_bytes(stream),
+            Self::InterfaceDescriptionBlock(idb) => idb.to_bytes(stream),
+            Self::SimplePacketBlock(spb) => spb.to_bytes(stream),
+            Self::NameResolutionBlock(nrb) => nrb.to_bytes(stream),
+            Self::InterfaceStatisticsBlock(isb) => isb.to_bytes(stream),
+            Self::EnhancedPacketBlock(epb) => epb.to_bytes(stream),
+            Self::DecryptionSecretsBlock(dsb) => dsb.to_bytes(stream),
         }
     }
 }
 
-impl ToBytestream for SectionHeaderBlock {
+impl ToBytes for SectionHeaderBlock {
     type Error = Error;
-    fn to_bytestream(&self, stream: &mut BytestreamWriter) -> std::result::Result<(), Self::Error> {
+    fn to_bytes(&self, stream: &mut BytesWriter) -> std::result::Result<(), Self::Error> {
         write_block(stream, BLOCK_TYP_SHB, |stream| {
             stream.write_u32::<LE>(SHB_MAGIC)?;
             stream.write_u16::<LE>(self.version_major)?;
@@ -412,9 +412,9 @@ impl ToBytestream for SectionHeaderBlock {
     }
 }
 
-impl ToBytestream for SectionHeaderOption {
+impl ToBytes for SectionHeaderOption {
     type Error = Error;
-    fn to_bytestream(&self, stream: &mut BytestreamWriter) -> std::result::Result<(), Self::Error> {
+    fn to_bytes(&self, stream: &mut BytesWriter) -> std::result::Result<(), Self::Error> {
         match self {
             Self::HardwareName(ref string) => write_option(stream, SHB_OPTION_HW_NAME, |stream| {
                 stream.write_all(string.as_bytes())?;
@@ -437,9 +437,9 @@ impl ToBytestream for SectionHeaderOption {
     }
 }
 
-impl ToBytestream for InterfaceDescriptionBlock {
+impl ToBytes for InterfaceDescriptionBlock {
     type Error = Error;
-    fn to_bytestream(&self, stream: &mut BytestreamWriter) -> std::result::Result<(), Self::Error> {
+    fn to_bytes(&self, stream: &mut BytesWriter) -> std::result::Result<(), Self::Error> {
         write_block(stream, BLOCK_TYP_IHB, |stream| {
             stream.write_u16::<LE>(self.link_type.0)?;
             stream.write_u16::<LE>(0)?;
@@ -452,9 +452,9 @@ impl ToBytestream for InterfaceDescriptionBlock {
     }
 }
 
-impl ToBytestream for InterfaceDescriptionOption {
+impl ToBytes for InterfaceDescriptionOption {
     type Error = Error;
-    fn to_bytestream(&self, stream: &mut BytestreamWriter) -> std::result::Result<(), Self::Error> {
+    fn to_bytes(&self, stream: &mut BytesWriter) -> std::result::Result<(), Self::Error> {
         match self {
             Self::InterfaceName(ref name) => {
                 write_option(stream, IDB_OPTION_IFACE_NAME, |stream| {
@@ -467,12 +467,12 @@ impl ToBytestream for InterfaceDescriptionOption {
                 })
             }
             Self::AddrIpv4(addr, mask) => write_option(stream, IDB_OPTION_ADDR_IPV4, |stream| {
-                addr.to_bytestream(stream)?;
-                mask.to_bytestream(stream)
+                addr.to_bytes(stream)?;
+                mask.to_bytes(stream)
             }),
             Self::AddrIpv6(addr, prefix_len) => {
                 write_option(stream, IDB_OPTION_ADDR_IPV6, |stream| {
-                    addr.to_bytestream(stream)?;
+                    addr.to_bytes(stream)?;
                     stream.write_u8(*prefix_len)
                 })
             }
@@ -517,9 +517,9 @@ impl ToBytestream for InterfaceDescriptionOption {
     }
 }
 
-impl ToBytestream for SimplePacketBlock {
+impl ToBytes for SimplePacketBlock {
     type Error = Error;
-    fn to_bytestream(&self, stream: &mut BytestreamWriter) -> Result<(), Self::Error> {
+    fn to_bytes(&self, stream: &mut BytesWriter) -> Result<(), Self::Error> {
         write_block(stream, BLOCK_TYP_SPB, |stream| {
             stream.write_u32::<LE>(self.org_len)?;
             stream.write_all(&self.data)
@@ -527,9 +527,9 @@ impl ToBytestream for SimplePacketBlock {
     }
 }
 
-impl ToBytestream for NameResolutionBlock {
+impl ToBytes for NameResolutionBlock {
     type Error = Error;
-    fn to_bytestream(&self, stream: &mut BytestreamWriter) -> Result<(), Self::Error> {
+    fn to_bytes(&self, stream: &mut BytesWriter) -> Result<(), Self::Error> {
         write_block(stream, BLOCK_TYP_NRB, |stream| {
             write_options(stream, &self.records)?;
             write_options(stream, &self.options)
@@ -537,9 +537,9 @@ impl ToBytestream for NameResolutionBlock {
     }
 }
 
-impl ToBytestream for NameResolutionRecord {
+impl ToBytes for NameResolutionRecord {
     type Error = Error;
-    fn to_bytestream(&self, stream: &mut BytestreamWriter) -> Result<(), Self::Error> {
+    fn to_bytes(&self, stream: &mut BytesWriter) -> Result<(), Self::Error> {
         let kind = if self.addr.is_ipv4() {
             NRB_RECORD_IPV4
         } else {
@@ -547,33 +547,33 @@ impl ToBytestream for NameResolutionRecord {
         };
 
         write_option(stream, kind, |stream| {
-            self.addr.to_bytestream(stream)?;
+            self.addr.to_bytes(stream)?;
             stream.write_all(self.name.as_bytes())?;
             stream.write_all(&[0])
         })
     }
 }
 
-impl ToBytestream for NameResolutionOption {
+impl ToBytes for NameResolutionOption {
     type Error = Error;
-    fn to_bytestream(&self, stream: &mut BytestreamWriter) -> Result<(), Self::Error> {
+    fn to_bytes(&self, stream: &mut BytesWriter) -> Result<(), Self::Error> {
         match self {
             Self::DnsName(name) => write_option(stream, NRB_OPTION_DNS_NAME, |stream| {
                 stream.write_all(name.as_bytes())
             }),
-            Self::DnsAddrIpv4(v4) => write_option(stream, NRB_OPTION_ADDR_IPV4, |stream| {
-                v4.to_bytestream(stream)
-            }),
-            Self::DnsAddrIpv6(v6) => write_option(stream, NRB_OPTION_ADDR_IPV6, |stream| {
-                v6.to_bytestream(stream)
-            }),
+            Self::DnsAddrIpv4(v4) => {
+                write_option(stream, NRB_OPTION_ADDR_IPV4, |stream| v4.to_bytes(stream))
+            }
+            Self::DnsAddrIpv6(v6) => {
+                write_option(stream, NRB_OPTION_ADDR_IPV6, |stream| v6.to_bytes(stream))
+            }
         }
     }
 }
 
-impl ToBytestream for InterfaceStatisticsBlock {
+impl ToBytes for InterfaceStatisticsBlock {
     type Error = Error;
-    fn to_bytestream(&self, stream: &mut BytestreamWriter) -> Result<(), Self::Error> {
+    fn to_bytes(&self, stream: &mut BytesWriter) -> Result<(), Self::Error> {
         write_block(stream, BLOCK_TYP_ISB, |stream| {
             stream.write_u32::<LE>(self.interface_id)?;
 
@@ -588,9 +588,9 @@ impl ToBytestream for InterfaceStatisticsBlock {
     }
 }
 
-impl ToBytestream for InterfaceStatisticsOption {
+impl ToBytes for InterfaceStatisticsOption {
     type Error = Error;
-    fn to_bytestream(&self, stream: &mut BytestreamWriter) -> Result<(), Self::Error> {
+    fn to_bytes(&self, stream: &mut BytesWriter) -> Result<(), Self::Error> {
         match self {
             Self::StartTime(value) => write_option(stream, ISB_OPTION_START_TIME, |stream| {
                 stream.write_u64::<LE>(*value)
@@ -617,10 +617,10 @@ impl ToBytestream for InterfaceStatisticsOption {
     }
 }
 
-impl ToBytestream for EnhancedPacketBlock {
+impl ToBytes for EnhancedPacketBlock {
     type Error = Error;
 
-    fn to_bytestream(&self, stream: &mut BytestreamWriter) -> std::result::Result<(), Self::Error> {
+    fn to_bytes(&self, stream: &mut BytesWriter) -> std::result::Result<(), Self::Error> {
         write_block(stream, BLOCK_TYP_EPB, |stream| {
             stream.write_u32::<LE>(self.interface_id)?;
 
@@ -647,9 +647,9 @@ impl ToBytestream for EnhancedPacketBlock {
     }
 }
 
-impl ToBytestream for EnhancedPacketOption {
+impl ToBytes for EnhancedPacketOption {
     type Error = Error;
-    fn to_bytestream(&self, stream: &mut BytestreamWriter) -> Result<(), Self::Error> {
+    fn to_bytes(&self, stream: &mut BytesWriter) -> Result<(), Self::Error> {
         match self {
             Self::Flags(flags) => write_option(stream, EPB_OPTION_FLAGS, |stream| {
                 stream.write_u32::<LE>(flags.bits())
@@ -673,9 +673,9 @@ impl ToBytestream for EnhancedPacketOption {
     }
 }
 
-impl ToBytestream for DecryptionSecretsBlock {
+impl ToBytes for DecryptionSecretsBlock {
     type Error = Error;
-    fn to_bytestream(&self, stream: &mut BytestreamWriter) -> Result<(), Self::Error> {
+    fn to_bytes(&self, stream: &mut BytesWriter) -> Result<(), Self::Error> {
         write_block(stream, BLOCK_TYP_DSB, |stream| {
             stream.write_u32::<LE>(self.secrets_typ)?;
             stream.write_u32::<LE>(
@@ -691,31 +691,28 @@ impl ToBytestream for DecryptionSecretsBlock {
 }
 
 fn write_block(
-    stream: &mut bytepack::BytestreamWriter,
+    stream: &mut BytesWriter,
     block_typ: u32,
-    f: impl FnOnce(&mut bytepack::BytestreamWriter) -> Result<(), Error>,
+    f: impl FnOnce(&mut BytesWriter) -> Result<(), Error>,
 ) -> Result<(), Error> {
     stream.write_u32::<LE>(block_typ)?;
-    let len_marker = stream.create_typed_marker::<u32>()?;
+    let len_marker = stream.marker::<u32>();
     f(stream)?;
 
-    let block_len = u32::try_from(stream.len_since_marker(&len_marker))
+    let block_len = u32::try_from(stream.bytes_written_since(&len_marker))
         .expect("block length exceeds u32::MAX")
         + 12;
-    stream
-        .update_marker(&len_marker)
-        .write_u32::<LE>(block_len)?;
+    stream.apply(len_marker).write_u32::<LE>(block_len)?;
     stream.write_u32::<LE>(block_len)?;
-
     Ok(())
 }
 
-fn write_options<T: ToBytestream<Error = Error>>(
-    stream: &mut bytepack::BytestreamWriter,
+fn write_options<T: ToBytes<Error = Error>>(
+    stream: &mut BytesWriter,
     options: &[T],
 ) -> Result<(), Error> {
     for option in options {
-        option.to_bytestream(stream)?;
+        option.to_bytes(stream)?;
     }
     // EOO
     stream.write_u32::<LE>(0)?;
@@ -723,17 +720,17 @@ fn write_options<T: ToBytestream<Error = Error>>(
 }
 
 fn write_option(
-    stream: &mut bytepack::BytestreamWriter,
+    stream: &mut BytesWriter,
     option_typ: u16,
-    f: impl FnOnce(&mut bytepack::BytestreamWriter) -> Result<(), Error>,
+    f: impl FnOnce(&mut BytesWriter) -> Result<(), Error>,
 ) -> Result<(), Error> {
     stream.write_u16::<LE>(option_typ)?;
-    let marker = stream.create_typed_marker::<u16>()?;
+    let marker = stream.marker::<u16>();
     f(stream)?;
 
     let len =
-        u16::try_from(stream.len_since_marker(&marker)).expect("option body exceeds u16::MAX");
-    stream.update_marker(&marker).write_u16::<LE>(len)?;
+        u16::try_from(stream.bytes_written_since(&marker)).expect("option body exceeds u16::MAX");
+    stream.apply(marker).write_u16::<LE>(len)?;
 
     let pad = (4 - (len % 4)) % 4;
     stream.write_all(&vec![0x00; pad as usize])?;
@@ -742,40 +739,35 @@ fn write_option(
 }
 
 //
-// # FromBytestream
+// # FromBytes
 //
 
-impl FromBytestream for Block {
+impl FromBytes for Block {
     type Error = Error;
-    fn from_bytestream(stream: &mut bytepack::BytestreamReader) -> Result<Self, Self::Error> {
-        let block_type = stream.read_u32::<LE>()?;
-        stream.bump_back(4);
+    fn from_bytes(stream: &mut BytesReader) -> Result<Self, Self::Error> {
+        let block_type = stream.peek().read_u32::<LE>()?;
 
         Ok(match block_type {
-            BLOCK_TYP_SHB => Self::SectionHeaderBlock(SectionHeaderBlock::from_bytestream(stream)?),
+            BLOCK_TYP_SHB => Self::SectionHeaderBlock(SectionHeaderBlock::from_bytes(stream)?),
             BLOCK_TYP_IHB => {
-                Self::InterfaceDescriptionBlock(InterfaceDescriptionBlock::from_bytestream(stream)?)
+                Self::InterfaceDescriptionBlock(InterfaceDescriptionBlock::from_bytes(stream)?)
             }
-            BLOCK_TYP_NRB => {
-                Self::NameResolutionBlock(NameResolutionBlock::from_bytestream(stream)?)
-            }
+            BLOCK_TYP_NRB => Self::NameResolutionBlock(NameResolutionBlock::from_bytes(stream)?),
             BLOCK_TYP_ISB => {
-                Self::InterfaceStatisticsBlock(InterfaceStatisticsBlock::from_bytestream(stream)?)
+                Self::InterfaceStatisticsBlock(InterfaceStatisticsBlock::from_bytes(stream)?)
             }
-            BLOCK_TYP_EPB => {
-                Self::EnhancedPacketBlock(EnhancedPacketBlock::from_bytestream(stream)?)
-            }
+            BLOCK_TYP_EPB => Self::EnhancedPacketBlock(EnhancedPacketBlock::from_bytes(stream)?),
             BLOCK_TYP_DSB => {
-                Self::DecryptionSecretsBlock(DecryptionSecretsBlock::from_bytestream(stream)?)
+                Self::DecryptionSecretsBlock(DecryptionSecretsBlock::from_bytes(stream)?)
             }
             _ => unreachable!("block typ = {block_type}"),
         })
     }
 }
 
-impl FromBytestream for SectionHeaderBlock {
+impl FromBytes for SectionHeaderBlock {
     type Error = Error;
-    fn from_bytestream(stream: &mut bytepack::BytestreamReader) -> Result<Self, Self::Error> {
+    fn from_bytes(stream: &mut BytesReader) -> Result<Self, Self::Error> {
         read_block(stream, BLOCK_TYP_SHB, |body| {
             let byteorder_magic = body.read_u32::<LE>()?;
             assert_eq!(byteorder_magic, SHB_MAGIC);
@@ -794,9 +786,9 @@ impl FromBytestream for SectionHeaderBlock {
     }
 }
 
-impl FromBytestream for SectionHeaderOption {
+impl FromBytes for SectionHeaderOption {
     type Error = Error;
-    fn from_bytestream(stream: &mut bytepack::BytestreamReader) -> Result<Self, Self::Error> {
+    fn from_bytes(stream: &mut BytesReader) -> Result<Self, Self::Error> {
         read_option(stream, |typ, body| {
             Ok(match typ {
                 SHB_OPTION_HW_NAME => {
@@ -820,9 +812,9 @@ impl FromBytestream for SectionHeaderOption {
     }
 }
 
-impl FromBytestream for InterfaceDescriptionBlock {
+impl FromBytes for InterfaceDescriptionBlock {
     type Error = Error;
-    fn from_bytestream(stream: &mut bytepack::BytestreamReader) -> Result<Self, Self::Error> {
+    fn from_bytes(stream: &mut BytesReader) -> Result<Self, Self::Error> {
         read_block(stream, BLOCK_TYP_IHB, |body| {
             let link_type = Linktype(body.read_u16::<LE>()?);
             let resv = body.read_u16::<LE>()?;
@@ -839,9 +831,9 @@ impl FromBytestream for InterfaceDescriptionBlock {
     }
 }
 
-impl FromBytestream for InterfaceDescriptionOption {
+impl FromBytes for InterfaceDescriptionOption {
     type Error = Error;
-    fn from_bytestream(stream: &mut bytepack::BytestreamReader) -> Result<Self, Self::Error> {
+    fn from_bytes(stream: &mut BytesReader) -> Result<Self, Self::Error> {
         read_option(stream, |typ, body| {
             Ok(match typ {
                 IDB_OPTION_IFACE_NAME => {
@@ -854,13 +846,12 @@ impl FromBytestream for InterfaceDescriptionOption {
                     body.read_to_string(&mut str)?;
                     Self::InterfaceDescription(str)
                 }
-                IDB_OPTION_ADDR_IPV4 => Self::AddrIpv4(
-                    Ipv4Addr::from_bytestream(body)?,
-                    Ipv4Addr::from_bytestream(body)?,
-                ),
+                IDB_OPTION_ADDR_IPV4 => {
+                    Self::AddrIpv4(Ipv4Addr::from_bytes(body)?, Ipv4Addr::from_bytes(body)?)
+                }
 
                 IDB_OPTION_ADDR_IPV6 => {
-                    Self::AddrIpv6(Ipv6Addr::from_bytestream(body)?, body.read_u8()?)
+                    Self::AddrIpv6(Ipv6Addr::from_bytes(body)?, body.read_u8()?)
                 }
                 // MAC
                 // EUI
@@ -893,9 +884,9 @@ impl FromBytestream for InterfaceDescriptionOption {
     }
 }
 
-impl FromBytestream for SimplePacketBlock {
+impl FromBytes for SimplePacketBlock {
     type Error = Error;
-    fn from_bytestream(stream: &mut bytepack::BytestreamReader) -> Result<Self, Self::Error> {
+    fn from_bytes(stream: &mut BytesReader) -> Result<Self, Self::Error> {
         read_block(stream, BLOCK_TYP_SPB, |body| {
             let org_len = body.read_u32::<LE>()?;
             let mut data = Vec::new();
@@ -905,9 +896,9 @@ impl FromBytestream for SimplePacketBlock {
     }
 }
 
-impl FromBytestream for NameResolutionBlock {
+impl FromBytes for NameResolutionBlock {
     type Error = Error;
-    fn from_bytestream(stream: &mut bytepack::BytestreamReader) -> Result<Self, Self::Error> {
+    fn from_bytes(stream: &mut BytesReader) -> Result<Self, Self::Error> {
         read_block(stream, BLOCK_TYP_NRB, |body| {
             let records = read_options::<NameResolutionRecord>(body)?;
             let options = read_options::<NameResolutionOption>(body)?;
@@ -916,14 +907,14 @@ impl FromBytestream for NameResolutionBlock {
     }
 }
 
-impl FromBytestream for NameResolutionRecord {
+impl FromBytes for NameResolutionRecord {
     type Error = Error;
-    fn from_bytestream(stream: &mut bytepack::BytestreamReader) -> Result<Self, Self::Error> {
+    fn from_bytes(stream: &mut BytesReader) -> Result<Self, Self::Error> {
         read_option(stream, |typ, body| {
             let addr = match typ {
                 0 => return Err(Error::new(ErrorKind::UnexpectedEof, "EOR")),
-                NRB_RECORD_IPV4 => Ipv4Addr::from_bytestream(body)?.into(),
-                NRB_RECORD_IPV6 => Ipv6Addr::from_bytestream(body)?.into(),
+                NRB_RECORD_IPV4 => Ipv4Addr::from_bytes(body)?.into(),
+                NRB_RECORD_IPV6 => Ipv6Addr::from_bytes(body)?.into(),
                 _ => unreachable!(),
             };
             let mut name = String::new();
@@ -936,25 +927,25 @@ impl FromBytestream for NameResolutionRecord {
     }
 }
 
-impl FromBytestream for NameResolutionOption {
+impl FromBytes for NameResolutionOption {
     type Error = Error;
-    fn from_bytestream(stream: &mut bytepack::BytestreamReader) -> Result<Self, Self::Error> {
+    fn from_bytes(stream: &mut BytesReader) -> Result<Self, Self::Error> {
         read_option(stream, |typ, body| match typ {
             NRB_OPTION_DNS_NAME => {
                 let mut str = String::new();
                 body.read_to_string(&mut str)?;
                 Ok(Self::DnsName(str))
             }
-            NRB_OPTION_ADDR_IPV4 => Ok(Self::DnsAddrIpv4(Ipv4Addr::from_bytestream(body)?)),
-            NRB_OPTION_ADDR_IPV6 => Ok(Self::DnsAddrIpv6(Ipv6Addr::from_bytestream(body)?)),
+            NRB_OPTION_ADDR_IPV4 => Ok(Self::DnsAddrIpv4(Ipv4Addr::from_bytes(body)?)),
+            NRB_OPTION_ADDR_IPV6 => Ok(Self::DnsAddrIpv6(Ipv6Addr::from_bytes(body)?)),
             _ => unreachable!("typ = {typ}"),
         })
     }
 }
 
-impl FromBytestream for InterfaceStatisticsBlock {
+impl FromBytes for InterfaceStatisticsBlock {
     type Error = Error;
-    fn from_bytestream(stream: &mut bytepack::BytestreamReader) -> Result<Self, Self::Error> {
+    fn from_bytes(stream: &mut BytesReader) -> Result<Self, Self::Error> {
         read_block(stream, BLOCK_TYP_ISB, |body| {
             let interface_id = body.read_u32::<LE>()?;
 
@@ -975,9 +966,9 @@ impl FromBytestream for InterfaceStatisticsBlock {
     }
 }
 
-impl FromBytestream for InterfaceStatisticsOption {
+impl FromBytes for InterfaceStatisticsOption {
     type Error = Error;
-    fn from_bytestream(stream: &mut bytepack::BytestreamReader) -> Result<Self, Self::Error> {
+    fn from_bytes(stream: &mut BytesReader) -> Result<Self, Self::Error> {
         read_option(stream, |typ, body| match typ {
             ISB_OPTION_START_TIME => Ok(Self::StartTime(body.read_u64::<LE>()?)),
             ISB_OPTION_END_TIME => Ok(Self::EndTime(body.read_u64::<LE>()?)),
@@ -991,10 +982,10 @@ impl FromBytestream for InterfaceStatisticsOption {
     }
 }
 
-impl FromBytestream for EnhancedPacketBlock {
+impl FromBytes for EnhancedPacketBlock {
     type Error = Error;
 
-    fn from_bytestream(stream: &mut bytepack::BytestreamReader) -> Result<Self, Self::Error> {
+    fn from_bytes(stream: &mut BytesReader) -> Result<Self, Self::Error> {
         read_block(stream, BLOCK_TYP_EPB, |body| {
             let interface_id = body.read_u32::<LE>()?;
 
@@ -1027,9 +1018,9 @@ impl FromBytestream for EnhancedPacketBlock {
     }
 }
 
-impl FromBytestream for EnhancedPacketOption {
+impl FromBytes for EnhancedPacketOption {
     type Error = Error;
-    fn from_bytestream(stream: &mut bytepack::BytestreamReader) -> Result<Self, Self::Error> {
+    fn from_bytes(stream: &mut BytesReader) -> Result<Self, Self::Error> {
         read_option(stream, |typ, body| {
             Ok(match typ {
                 EPB_OPTION_FLAGS => Self::Flags(
@@ -1054,9 +1045,9 @@ impl FromBytestream for EnhancedPacketOption {
     }
 }
 
-impl FromBytestream for DecryptionSecretsBlock {
+impl FromBytes for DecryptionSecretsBlock {
     type Error = Error;
-    fn from_bytestream(stream: &mut bytepack::BytestreamReader) -> Result<Self, Self::Error> {
+    fn from_bytes(stream: &mut BytesReader) -> Result<Self, Self::Error> {
         read_block(stream, BLOCK_TYP_DSB, |body| {
             let secrets_typ = body.read_u32::<LE>()?;
             let len = body.read_u32::<LE>()? as usize;
@@ -1077,9 +1068,9 @@ impl FromBytestream for DecryptionSecretsBlock {
 }
 
 fn read_block<R>(
-    stream: &mut bytepack::BytestreamReader,
+    stream: &mut BytesReader,
     block_typ: u32,
-    f: impl FnOnce(&mut bytepack::BytestreamReader) -> Result<R, Error>,
+    f: impl FnOnce(&mut BytesReader) -> Result<R, Error>,
 ) -> Result<R, Error> {
     let read_block_typ = stream.read_u32::<LE>()?;
     if read_block_typ != block_typ {
@@ -1100,12 +1091,10 @@ fn read_block<R>(
     result
 }
 
-fn read_options<T: FromBytestream<Error = Error>>(
-    stream: &mut bytepack::BytestreamReader,
-) -> Result<Vec<T>, Error> {
+fn read_options<T: FromBytes<Error = Error>>(stream: &mut BytesReader) -> Result<Vec<T>, Error> {
     let mut options = Vec::new();
     while !stream.is_empty() {
-        match T::from_bytestream(stream) {
+        match T::from_bytes(stream) {
             Ok(v) => options.push(v),
             Err(e) if e.kind() == ErrorKind::UnexpectedEof => break,
             Err(e) => return Err(e),
@@ -1115,8 +1104,8 @@ fn read_options<T: FromBytestream<Error = Error>>(
 }
 
 fn read_option<R>(
-    stream: &mut bytepack::BytestreamReader,
-    f: impl FnOnce(u16, &mut bytepack::BytestreamReader) -> Result<R, Error>,
+    stream: &mut BytesReader,
+    f: impl FnOnce(u16, &mut BytesReader) -> Result<R, Error>,
 ) -> Result<R, Error> {
     let typ = stream.read_u16::<LE>()?;
     let len = stream.read_u16::<LE>()?;

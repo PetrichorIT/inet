@@ -103,7 +103,7 @@ impl ToBytestream for Ipv4Packet {
 
 impl ToBytes for Ipv4Packet {
     type Error = std::io::Error;
-    fn to_bytestream(&self, stream: &mut BytesWriter) -> Result<(), Self::Error> {
+    fn to_bytes(&self, stream: &mut BytesWriter) -> Result<(), Self::Error> {
         stream.write_u8(0b0100_0101)?;
         stream.write_u8((self.dscp << 2) | self.enc)?;
 
@@ -196,7 +196,7 @@ impl FromBytestream for Ipv4Packet {
 
 impl FromBytes for Ipv4Packet {
     type Error = std::io::Error;
-    fn from_bytestream(stream: &mut BytesReader) -> Result<Self, Self::Error> {
+    fn from_bytes(stream: &mut BytesReader) -> Result<Self, Self::Error> {
         let byte0 = stream.read_u8()?;
         let version = byte0 >> 4;
         if version != 4 {

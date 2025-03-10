@@ -4,7 +4,7 @@ use crate::{
     InterfaceStatisticsOption, Linktype, NameResolutionBlock, NameResolutionOption,
     NameResolutionRecord, SectionHeaderBlock, SectionHeaderOption, SimplePacketBlock,
 };
-use bytepack::{FromBytestream, ToBytestream};
+use bytes_io::{FromBytes, ToBytes};
 use std::{
     fmt::Debug,
     io::Error,
@@ -13,15 +13,17 @@ use std::{
 
 fn assert_encoding_e2e<T>(values: &[T])
 where
-    T: FromBytestream<Error = Error>,
-    T: ToBytestream<Error = Error>,
+    T: FromBytes<Error = Error>,
+    T: ToBytes<Error = Error>,
     T: PartialEq + Debug,
 {
     for value in values {
-        let encoded = value.to_vec().expect("encoding failed");
-        let mut encoded_for_decoding = encoded.clone();
+        let encoded = value.write_to_bytes().expect("encoding failed");
+        let mut encoded_for_decoding = encoded.clone().freeze();
 
-        let decoded = T::read_from_vec(&mut encoded_for_decoding).expect("decoding failed");
+        println!("{:x?}", &encoded[..]);
+
+        let decoded = T::read_from(&mut encoded_for_decoding).expect("decoding failed");
         assert!(
             encoded_for_decoding.is_empty(),
             "decoding left some bytes behind: {:?}",
@@ -29,7 +31,7 @@ where
         );
         assert_eq!(*value, decoded, "Value must be equal after encode->decode");
 
-        let reencoded = decoded.to_vec().expect("reencoding failed");
+        let reencoded = decoded.write_to_bytes().expect("reencoding failed");
         assert_eq!(encoded, reencoded, "different encodings");
     }
 }

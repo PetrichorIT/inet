@@ -52,7 +52,7 @@ impl ToBytestream for Ipv6Packet {
 
 impl ToBytes for Ipv6Packet {
     type Error = std::io::Error;
-    fn to_bytestream(&self, stream: &mut BytesWriter) -> Result<(), Self::Error> {
+    fn to_bytes(&self, stream: &mut BytesWriter) -> Result<(), Self::Error> {
         let header = (6 << 4) | (self.traffic_class >> 4);
         stream.write_u8(header)?;
 
@@ -122,7 +122,7 @@ impl FromBytestream for Ipv6Packet {
 
 impl FromBytes for Ipv6Packet {
     type Error = std::io::Error;
-    fn from_bytestream(stream: &mut BytesReader) -> Result<Self, Self::Error> {
+    fn from_bytes(stream: &mut BytesReader) -> Result<Self, Self::Error> {
         let byte0 = stream.read_u8()?;
         let byte1 = stream.read_u8()?;
         let byte2 = stream.read_u8()?;

@@ -1,6 +1,6 @@
 use std::io::{Cursor, Error, ErrorKind};
 
-use bytepack::FromBytestream;
+use bytes_io::{Bytes, FromBytes};
 
 use crate::{
     Block, BlockReader, EnhancedPacketBlock, InterfaceDescriptionBlock, InterfaceDescriptionOption,
@@ -12,9 +12,9 @@ use super::{SAMPLE_HTTP_GET, SAMPLE_RAW_IP_PACKETS};
 #[test]
 fn read_existing_files() -> Result<(), Error> {
     for file in [SAMPLE_HTTP_GET, SAMPLE_RAW_IP_PACKETS] {
-        let mut slice: &[u8] = file;
+        let mut slice = Bytes::from(file);
         while !slice.is_empty() {
-            let _block = Block::read_from_slice(&mut slice)?;
+            let _block = Block::read_from(&mut slice)?;
         }
     }
     Ok(())
