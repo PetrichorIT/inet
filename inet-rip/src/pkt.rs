@@ -1,7 +1,4 @@
-use bytepack::{
-    BytestreamReader, BytestreamWriter, FromBytestream, ReadBytesExt, ToBytestream, WriteBytesExt,
-    BE,
-};
+use bytes_io::{BytesReader, BytesWriter, FromBytes, ReadBytesExt, ToBytes, WriteBytesExt, BE};
 use macros::repr_enum;
 use std::{io::Error, net::Ipv4Addr};
 
@@ -56,30 +53,30 @@ impl RipPacket {
     }
 }
 
-impl ToBytestream for RipPacket {
+impl ToBytes for RipPacket {
     type Error = Error;
-    fn to_bytestream(&self, stream: &mut BytestreamWriter) -> Result<(), Self::Error> {
+    fn to_bytes(&self, stream: &mut BytesWriter) -> Result<(), Self::Error> {
         stream.write_u8(self.command.to_raw_repr())?;
         stream.write_u8(2)?;
         stream.write_u16::<BE>(0)?;
         for entry in &self.entries {
-            entry.to_bytestream(stream)?;
+            entry.to_bytes(stream)?;
         }
         Ok(())
     }
 }
 
-impl FromBytestream for RipPacket {
+impl FromBytes for RipPacket {
     type Error = Error;
-    fn from_bytestream(stream: &mut BytestreamReader) -> Result<Self, Self::Error> {
+    fn from_bytes(stream: &mut BytesReader) -> Result<Self, Self::Error> {
         let command = RipCommand::from_raw_repr(stream.read_u8()?)?;
         let version = stream.read_u8()?;
         assert_eq!(version, 2);
         assert_eq!(0, stream.read_u16::<BE>()?);
 
         let mut entries = Vec::new();
-        while !stream.is_empty() {
-            entries.push(RipEntry::from_bytestream(stream)?);
+        while stream.has_remaining() {
+            entries.push(RipEntry::from_bytes(stream)?);
         }
         Ok(RipPacket { command, entries })
     }
@@ -88,9 +85,9 @@ impl FromBytestream for RipPacket {
 /// Address familiy `Ipv4/INET`.
 pub const AF_INET: u16 = 2;
 
-impl ToBytestream for RipEntry {
+impl ToBytes for RipEntry {
     type Error = Error;
-    fn to_bytestream(&self, stream: &mut BytestreamWriter) -> Result<(), Self::Error> {
+    fn to_bytes(&self, stream: &mut BytesWriter) -> Result<(), Self::Error> {
         stream.write_u16::<BE>(self.addr_fam)?;
         stream.write_u16::<BE>(0)?;
 
@@ -102,9 +99,9 @@ impl ToBytestream for RipEntry {
     }
 }
 
-impl FromBytestream for RipEntry {
+impl FromBytes for RipEntry {
     type Error = Error;
-    fn from_bytestream(stream: &mut BytestreamReader) -> Result<Self, Self::Error> {
+    fn from_bytes(stream: &mut BytesReader) -> Result<Self, Self::Error> {
         let addr_fam = stream.read_u16::<BE>()?;
         assert_eq!(0, stream.read_u16::<BE>()?);
         let target = Ipv4Addr::from(stream.read_u32::<BE>()?);
@@ -140,7 +137,7 @@ mod tests {
             }],
         };
 
-        let buf = pkt.to_vec()?;
+        let buf = pkt.write_to_vec()?;
         assert_eq!(
             buf,
             &[
@@ -167,7 +164,7 @@ mod tests {
             0x00, 0x00, 0x03, 0xeb, // metrics
         ];
 
-        let pkt = RipPacket::from_slice(buf)?;
+        let pkt = RipPacket::peek_from(&buf[..])?;
 
         assert_eq!(
             pkt,
@@ -202,9 +199,9 @@ mod tests {
             command: RipCommand::Request,
             entries,
         };
-        let buf = rip.to_vec()?;
+        let buf = rip.write_to_vec()?;
         assert_eq!(buf.len(), 4 + 20 * 20);
-        let rip2 = RipPacket::from_slice(&buf)?;
+        let rip2 = RipPacket::peek_from(&buf[..])?;
         assert_eq!(rip, rip2);
 
         Ok(())

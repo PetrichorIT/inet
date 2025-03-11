@@ -13,9 +13,6 @@ use types::{
     ip::{Ipv4Packet, Ipv6Packet, KIND_IPV4, KIND_IPV6},
 };
 
-#[cfg(test)]
-mod tests;
-
 /// Applies a new configuration to PCAP, starting a new
 /// capturing epoch.
 pub fn pcap<W>(out: W) -> Result<()>

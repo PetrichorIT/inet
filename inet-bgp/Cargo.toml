@@ -14,7 +14,7 @@ tracing = "*"
 inet = { path = "../inet" }
 inet-pcap = { path = "../inet-pcap" }
 inet-rip = { path = "../inet-rip" }
-bytepack = { path = "../util/bytepack" }
+bytes-io = { path = "../util/bytes-io" }
 macros = { path = "../util/macros" }
 des = { version = "*", features = ["full"] }
 fxhash = "*"

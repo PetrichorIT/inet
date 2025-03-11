@@ -1,4 +1,4 @@
-use bytepack::FromBytestream;
+use bytes_io::{BytesMut, FromBytes};
 use inet::TcpStream;
 use std::{
     io::Result,
@@ -9,14 +9,14 @@ use tokio::io::AsyncReadExt;
 use crate::pkt::{BgpPacket, BgpParsingError::*};
 
 pub(super) struct BgpStream {
-    buf: Vec<u8>,
+    buf: BytesMut,
     stream: TcpStream,
 }
 
 impl BgpStream {
     pub(super) fn new(stream: TcpStream) -> Self {
         Self {
-            buf: Vec::with_capacity(1024),
+            buf: BytesMut::with_capacity(4096),
             stream,
         }
     }
@@ -36,7 +36,7 @@ impl BgpStream {
         if self.buf.len() < 19 {
             return Ok(None);
         }
-        let pkt = BgpPacket::read_from_vec(&mut self.buf);
+        let pkt = BgpPacket::read_from(&mut self.buf);
         match pkt {
             Ok(pkt) => Ok(Some(pkt)),
             // if body is incomplete safe data, (since this is an err, the vec will not have changed)

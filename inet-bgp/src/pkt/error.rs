@@ -1,8 +1,6 @@
 use std::io::{Error, ErrorKind};
 
-use bytepack::{
-    BytestreamReader, BytestreamWriter, FromBytestream, ReadBytesExt, ToBytestream, WriteBytesExt,
-};
+use bytes_io::{BytesReader, BytesWriter, FromBytes, ReadBytesExt, ToBytes, WriteBytesExt};
 use macros::repr_enum;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -16,9 +14,9 @@ pub enum BgpNotificationPacket {
     Cease() = 6,
 }
 
-impl ToBytestream for BgpNotificationPacket {
+impl ToBytes for BgpNotificationPacket {
     type Error = Error;
-    fn to_bytestream(&self, stream: &mut BytestreamWriter) -> Result<(), Self::Error> {
+    fn to_bytes(&self, stream: &mut BytesWriter) -> Result<(), Self::Error> {
         match self {
             Self::MessageHeaderError(err) => {
                 stream.write_u8(1)?;
@@ -48,9 +46,9 @@ impl ToBytestream for BgpNotificationPacket {
     }
 }
 
-impl FromBytestream for BgpNotificationPacket {
+impl FromBytes for BgpNotificationPacket {
     type Error = Error;
-    fn from_bytestream(stream: &mut BytestreamReader) -> Result<Self, Self::Error> {
+    fn from_bytes(stream: &mut BytesReader) -> Result<Self, Self::Error> {
         let code = stream.read_u8()?;
         match code {
             1 => Ok(BgpNotificationPacket::MessageHeaderError(

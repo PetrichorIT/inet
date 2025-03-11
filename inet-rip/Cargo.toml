@@ -7,7 +7,7 @@ edition = "2021"
 
 [dependencies]
 inet = { path = "../inet" }
-bytepack = { path = "../util/bytepack" }
+bytes-io = { path = "../util/bytes-io" }
 macros = { path = "../util/macros" }
 fxhash = "*"
 des = "*"
