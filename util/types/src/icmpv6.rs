@@ -4,8 +4,7 @@ use std::{
     time::Duration,
 };
 
-use bytepack::{FromBytestream, ReadBytesExt, ToBytestream, WriteBytesExt, BE};
-use bytes_io::{BytesReader, BytesWriter, FromBytes, ToBytes};
+use bytes_io::{BytesReader, BytesWriter, FromBytes, ReadBytesExt, ToBytes, WriteBytesExt, BE};
 use macros::repr_enum;
 
 use crate::{iface::MacAddress, ip::Ipv6Prefix};
@@ -36,47 +35,6 @@ pub enum IcmpV6Packet {
     NeighborSolicitation(IcmpV6NeighborSolicitation) = 135,
     NeighborAdvertisment(IcmpV6NeighborAdvertisment) = 136,
     Redirect = 137,
-}
-
-impl ToBytestream for IcmpV6Packet {
-    type Error = io::Error;
-    fn to_bytestream(&self, stream: &mut bytepack::BytestreamWriter) -> Result<(), Self::Error> {
-        macro_rules! ser {
-            ($(
-                $i:ident = $l:literal
-            ),*) => {
-            match self {
-                $(
-                    Self::$i(ref inner) => {{
-                        stream.write_u8($l)?;
-                        inner.to_bytestream(stream)?;
-                    }}
-                )*
-                _ => todo!()
-            }
-            };
-        }
-
-        ser!(
-            DestinationUnreachable = 1,
-            PacketToBig = 2,
-            TimeExceeded = 3,
-            ParameterProblem = 4,
-            EchoRequest = 128,
-            EchoReply = 129,
-            /* MDL */
-            MulticastListenerQuery = 130,
-            MulticastListenerReport = 131,
-            MulticastListenerDone = 132,
-            /* NDP */
-            RouterSolicitation = 133,
-            RouterAdvertisment = 134,
-            NeighborSolicitation = 135,
-            NeighborAdvertisment = 136
-        );
-
-        Ok(())
-    }
 }
 
 impl ToBytes for IcmpV6Packet {
@@ -117,43 +75,6 @@ impl ToBytes for IcmpV6Packet {
         );
 
         Ok(())
-    }
-}
-
-impl FromBytestream for IcmpV6Packet {
-    type Error = io::Error;
-    fn from_bytestream(stream: &mut bytepack::BytestreamReader) -> Result<Self, Self::Error> {
-        macro_rules! deser {
-            ($(
-                $i:ident($t:ident) = $l:literal
-            ),*) => {{
-                let typ = stream.read_u8()?;
-                match typ {
-                    $(
-                        $l => Ok(Self::$i($t::from_bytestream(stream)?)),
-                    )*
-                    _ => panic!("no deser implemented yet typ : {typ}")
-                }
-            }};
-        }
-
-        deser!(
-            DestinationUnreachable(IcmpV6DestinationUnreachable) = 1,
-            PacketToBig(IcmpV6PacketToBig) = 2,
-            TimeExceeded(IcmpV6TimeExceeded) = 3,
-            ParameterProblem(IcmpV6ParameterProblem) = 4,
-            EchoRequest(IcmpV6Echo) = 128,
-            EchoReply(IcmpV6Echo) = 129,
-            /* MDL */
-            MulticastListenerQuery(IcmpV6MulticastListenerMessage) = 130,
-            MulticastListenerReport(IcmpV6MulticastListenerMessage) = 131,
-            MulticastListenerDone(IcmpV6MulticastListenerMessage) = 132,
-            /* NDP */
-            RouterSolicitation(IcmpV6RouterSolicitation) = 133,
-            RouterAdvertisment(IcmpV6RouterAdvertisement) = 134,
-            NeighborSolicitation(IcmpV6NeighborSolicitation) = 135,
-            NeighborAdvertisment(IcmpV6NeighborAdvertisment) = 136
-        )
     }
 }
 
@@ -210,17 +131,6 @@ pub struct IcmpV6DestinationUnreachable {
     pub packet: Vec<u8>,
 }
 
-impl ToBytestream for IcmpV6DestinationUnreachable {
-    type Error = io::Error;
-    fn to_bytestream(&self, stream: &mut bytepack::BytestreamWriter) -> Result<(), Self::Error> {
-        stream.write_u8(self.code as u8)?;
-        stream.write_u16::<BE>(0)?; // checksum
-        stream.write_u32::<BE>(0)?; // padding
-        stream.write_all(&self.packet)?;
-        Ok(())
-    }
-}
-
 impl ToBytes for IcmpV6DestinationUnreachable {
     type Error = io::Error;
     fn to_bytes(&self, stream: &mut BytesWriter) -> Result<(), Self::Error> {
@@ -229,18 +139,6 @@ impl ToBytes for IcmpV6DestinationUnreachable {
         stream.write_u32::<BE>(0)?; // padding
         stream.write_all(&self.packet)?;
         Ok(())
-    }
-}
-
-impl FromBytestream for IcmpV6DestinationUnreachable {
-    type Error = io::Error;
-    fn from_bytestream(stream: &mut bytepack::BytestreamReader) -> Result<Self, Self::Error> {
-        let code = IcmpV6DestinationUnreachableCode::from_raw_repr(stream.read_u8()?)?;
-        assert_eq!(0, stream.read_u16::<BE>()?);
-        assert_eq!(0, stream.read_u32::<BE>()?);
-        let mut packet = Vec::new();
-        stream.read_to_end(&mut packet)?;
-        Ok(Self { code, packet })
     }
 }
 
@@ -270,17 +168,6 @@ pub struct IcmpV6PacketToBig {
     pub packet: Vec<u8>,
 }
 
-impl ToBytestream for IcmpV6PacketToBig {
-    type Error = io::Error;
-    fn to_bytestream(&self, stream: &mut bytepack::BytestreamWriter) -> Result<(), Self::Error> {
-        stream.write_u8(0)?; // code
-        stream.write_u16::<BE>(0)?; // checksum
-        stream.write_u32::<BE>(self.mtu)?; // padding
-        stream.write_all(&self.packet)?; // packet
-        Ok(())
-    }
-}
-
 impl ToBytes for IcmpV6PacketToBig {
     type Error = io::Error;
     fn to_bytes(&self, stream: &mut BytesWriter) -> Result<(), Self::Error> {
@@ -289,18 +176,6 @@ impl ToBytes for IcmpV6PacketToBig {
         stream.write_u32::<BE>(self.mtu)?; // padding
         stream.write_all(&self.packet)?; // packet
         Ok(())
-    }
-}
-
-impl FromBytestream for IcmpV6PacketToBig {
-    type Error = io::Error;
-    fn from_bytestream(stream: &mut bytepack::BytestreamReader) -> Result<Self, Self::Error> {
-        assert_eq!(0, stream.read_u8()?); // code
-        assert_eq!(0, stream.read_u32::<BE>()?); // checksum
-        let mtu = stream.read_u32::<BE>()?;
-        let mut packet = Vec::new();
-        stream.read_to_end(&mut packet)?;
-        Ok(Self { mtu, packet })
     }
 }
 
@@ -331,17 +206,6 @@ pub struct IcmpV6TimeExceeded {
     pub packet: Vec<u8>,
 }
 
-impl ToBytestream for IcmpV6TimeExceeded {
-    type Error = io::Error;
-    fn to_bytestream(&self, stream: &mut bytepack::BytestreamWriter) -> Result<(), Self::Error> {
-        stream.write_u8(self.code as u8)?;
-        stream.write_u16::<BE>(0)?; // checksum
-        stream.write_u32::<BE>(0)?; // padding
-        stream.write_all(&self.packet)?;
-        Ok(())
-    }
-}
-
 impl ToBytes for IcmpV6TimeExceeded {
     type Error = io::Error;
     fn to_bytes(&self, stream: &mut BytesWriter) -> Result<(), Self::Error> {
@@ -350,18 +214,6 @@ impl ToBytes for IcmpV6TimeExceeded {
         stream.write_u32::<BE>(0)?; // padding
         stream.write_all(&self.packet)?;
         Ok(())
-    }
-}
-
-impl FromBytestream for IcmpV6TimeExceeded {
-    type Error = io::Error;
-    fn from_bytestream(stream: &mut bytepack::BytestreamReader) -> Result<Self, Self::Error> {
-        let code = IcmpV6TimeExceededCode::from_raw_repr(stream.read_u8()?)?;
-        assert_eq!(0, stream.read_u16::<BE>()?);
-        assert_eq!(0, stream.read_u32::<BE>()?);
-        let mut packet = Vec::new();
-        stream.read_to_end(&mut packet)?;
-        Ok(Self { code, packet })
     }
 }
 
@@ -389,17 +241,6 @@ pub struct IcmpV6ParameterProblem {
     pub packet: Vec<u8>,
 }
 
-impl ToBytestream for IcmpV6ParameterProblem {
-    type Error = io::Error;
-    fn to_bytestream(&self, stream: &mut bytepack::BytestreamWriter) -> Result<(), Self::Error> {
-        stream.write_u8(self.code as u8)?;
-        stream.write_u16::<BE>(0)?; // checksum
-        stream.write_u32::<BE>(self.pointer)?;
-        stream.write_all(&self.packet)?;
-        Ok(())
-    }
-}
-
 impl ToBytes for IcmpV6ParameterProblem {
     type Error = io::Error;
     fn to_bytes(&self, stream: &mut BytesWriter) -> Result<(), Self::Error> {
@@ -408,22 +249,6 @@ impl ToBytes for IcmpV6ParameterProblem {
         stream.write_u32::<BE>(self.pointer)?;
         stream.write_all(&self.packet)?;
         Ok(())
-    }
-}
-
-impl FromBytestream for IcmpV6ParameterProblem {
-    type Error = io::Error;
-    fn from_bytestream(stream: &mut bytepack::BytestreamReader) -> Result<Self, Self::Error> {
-        let code = IcmpV6ParameterProblemCode::from_raw_repr(stream.read_u8()?)?;
-        assert_eq!(0, stream.read_u16::<BE>()?);
-        let pointer = stream.read_u32::<BE>()?;
-        let mut packet = Vec::new();
-        stream.read_to_end(&mut packet)?;
-        Ok(Self {
-            code,
-            pointer,
-            packet,
-        })
     }
 }
 
@@ -454,18 +279,6 @@ pub struct IcmpV6Echo {
     pub data: Vec<u8>,
 }
 
-impl ToBytestream for IcmpV6Echo {
-    type Error = io::Error;
-    fn to_bytestream(&self, stream: &mut bytepack::BytestreamWriter) -> Result<(), Self::Error> {
-        stream.write_u8(0)?;
-        stream.write_u16::<BE>(0)?; // checksum
-        stream.write_u16::<BE>(self.identifier)?;
-        stream.write_u16::<BE>(self.sequence_no)?;
-        stream.write_all(&self.data)?;
-        Ok(())
-    }
-}
-
 impl ToBytes for IcmpV6Echo {
     type Error = io::Error;
     fn to_bytes(&self, stream: &mut BytesWriter) -> Result<(), Self::Error> {
@@ -475,23 +288,6 @@ impl ToBytes for IcmpV6Echo {
         stream.write_u16::<BE>(self.sequence_no)?;
         stream.write_all(&self.data)?;
         Ok(())
-    }
-}
-
-impl FromBytestream for IcmpV6Echo {
-    type Error = io::Error;
-    fn from_bytestream(stream: &mut bytepack::BytestreamReader) -> Result<Self, Self::Error> {
-        assert_eq!(0, stream.read_u8()?);
-        assert_eq!(0, stream.read_u16::<BE>()?); // checksum
-        let identifier = stream.read_u16::<BE>()?;
-        let sequence_no = stream.read_u16::<BE>()?;
-        let mut data = Vec::new();
-        stream.read_to_end(&mut data)?;
-        Ok(Self {
-            identifier,
-            sequence_no,
-            data,
-        })
     }
 }
 
@@ -522,20 +318,6 @@ pub struct IcmpV6RouterSolicitation {
     pub options: Vec<IcmpV6NDPOption>,
 }
 
-impl ToBytestream for IcmpV6RouterSolicitation {
-    type Error = io::Error;
-    fn to_bytestream(&self, stream: &mut bytepack::BytestreamWriter) -> Result<(), Self::Error> {
-        stream.write_u8(0)?;
-        stream.write_u16::<BE>(0)?; // checksum
-        stream.write_u32::<BE>(0)?; // adding
-        for option in &self.options {
-            // if !matches!(option, IcmpV6NDPOption::SourceLinkLayerAddress(_)) {}
-            option.to_bytestream(stream)?;
-        }
-        Ok(())
-    }
-}
-
 impl ToBytes for IcmpV6RouterSolicitation {
     type Error = io::Error;
     fn to_bytes(&self, stream: &mut BytesWriter) -> Result<(), Self::Error> {
@@ -547,20 +329,6 @@ impl ToBytes for IcmpV6RouterSolicitation {
             option.to_bytes(stream)?;
         }
         Ok(())
-    }
-}
-
-impl FromBytestream for IcmpV6RouterSolicitation {
-    type Error = io::Error;
-    fn from_bytestream(stream: &mut bytepack::BytestreamReader) -> Result<Self, Self::Error> {
-        assert_eq!(0, stream.read_u8()?);
-        assert_eq!(0, stream.read_u16::<BE>()?); // checksum
-        assert_eq!(0, stream.read_u32::<BE>()?);
-        let mut options = Vec::new();
-        while !stream.is_empty() {
-            options.push(IcmpV6NDPOption::from_bytestream(stream)?);
-        }
-        Ok(Self { options })
     }
 }
 
@@ -615,31 +383,6 @@ pub struct IcmpV6RouterAdvertisement {
     pub options: Vec<IcmpV6NDPOption>,
 }
 
-impl ToBytestream for IcmpV6RouterAdvertisement {
-    type Error = io::Error;
-    fn to_bytestream(&self, stream: &mut bytepack::BytestreamWriter) -> Result<(), Self::Error> {
-        stream.write_u8(0)?; // code
-        stream.write_u16::<BE>(0)?; // checksum
-
-        stream.write_u8(self.current_hop_limit)?;
-        let mut flag_byte = 0;
-        if self.managed {
-            flag_byte |= 0b1000_0000;
-        }
-        if self.other_configuration {
-            flag_byte |= 0b0100_0000;
-        }
-        stream.write_u8(flag_byte)?;
-        stream.write_u16::<BE>(self.router_lifetime)?;
-        stream.write_u32::<BE>(self.reachable_time)?;
-        stream.write_u32::<BE>(self.retransmit_time)?;
-        for option in &self.options {
-            option.to_bytestream(stream)?;
-        }
-        Ok(())
-    }
-}
-
 impl ToBytes for IcmpV6RouterAdvertisement {
     type Error = io::Error;
     fn to_bytes(&self, stream: &mut BytesWriter) -> Result<(), Self::Error> {
@@ -662,33 +405,6 @@ impl ToBytes for IcmpV6RouterAdvertisement {
             option.to_bytes(stream)?;
         }
         Ok(())
-    }
-}
-
-impl FromBytestream for IcmpV6RouterAdvertisement {
-    type Error = io::Error;
-    fn from_bytestream(stream: &mut bytepack::BytestreamReader) -> Result<Self, Self::Error> {
-        assert_eq!(0, stream.read_u8()?);
-        assert_eq!(0, stream.read_u16::<BE>()?);
-        let current_hop_limit = stream.read_u8()?;
-        let flag_byte = stream.read_u8()?;
-        let router_lifetime = stream.read_u16::<BE>()?;
-        let reachable_time = stream.read_u32::<BE>()?;
-        let retransmit_time = stream.read_u32::<BE>()?;
-        let mut options = Vec::new();
-        while !stream.is_empty() {
-            options.push(IcmpV6NDPOption::from_bytestream(stream)?);
-        }
-
-        Ok(Self {
-            current_hop_limit,
-            managed: (flag_byte & 0b1000_0000) != 0,
-            other_configuration: (flag_byte & 0b0100_0000) != 0,
-            router_lifetime,
-            reachable_time,
-            retransmit_time,
-            options,
-        })
     }
 }
 
@@ -736,20 +452,6 @@ pub struct IcmpV6NeighborSolicitation {
     pub options: Vec<IcmpV6NDPOption>,
 }
 
-impl ToBytestream for IcmpV6NeighborSolicitation {
-    type Error = io::Error;
-    fn to_bytestream(&self, stream: &mut bytepack::BytestreamWriter) -> Result<(), Self::Error> {
-        stream.write_u8(0)?; // code
-        stream.write_u16::<BE>(0)?; // checksum
-        stream.write_u32::<BE>(0)?;
-        stream.write_all(&self.target.octets())?;
-        for option in &self.options {
-            option.to_bytestream(stream)?;
-        }
-        Ok(())
-    }
-}
-
 impl ToBytes for IcmpV6NeighborSolicitation {
     type Error = io::Error;
     fn to_bytes(&self, stream: &mut BytesWriter) -> Result<(), Self::Error> {
@@ -761,21 +463,6 @@ impl ToBytes for IcmpV6NeighborSolicitation {
             option.to_bytes(stream)?;
         }
         Ok(())
-    }
-}
-
-impl FromBytestream for IcmpV6NeighborSolicitation {
-    type Error = io::Error;
-    fn from_bytestream(stream: &mut bytepack::BytestreamReader) -> Result<Self, Self::Error> {
-        assert_eq!(0, stream.read_u8()?);
-        assert_eq!(0, stream.read_u16::<BE>()?);
-        assert_eq!(0, stream.read_u32::<BE>()?);
-        let target = Ipv6Addr::from(stream.read_u128::<BE>()?);
-        let mut options = Vec::new();
-        while !stream.is_empty() {
-            options.push(IcmpV6NDPOption::from_bytestream(stream)?);
-        }
-        Ok(Self { target, options })
     }
 }
 
@@ -819,30 +506,6 @@ pub struct IcmpV6NeighborAdvertisment {
     pub options: Vec<IcmpV6NDPOption>,
 }
 
-impl ToBytestream for IcmpV6NeighborAdvertisment {
-    type Error = io::Error;
-    fn to_bytestream(&self, stream: &mut bytepack::BytestreamWriter) -> Result<(), Self::Error> {
-        stream.write_u8(0)?; // code
-        stream.write_u16::<BE>(0)?; // checksum
-        let mut flag_bytes = 0;
-        if self.router {
-            flag_bytes |= 0b1000_0000;
-        }
-        if self.solicited {
-            flag_bytes |= 0b0100_0000;
-        }
-        if self.overide {
-            flag_bytes |= 0b0010_0000;
-        }
-        stream.write_all(&[flag_bytes, 0, 0, 0])?;
-        stream.write_all(&self.target.octets())?;
-        for option in &self.options {
-            option.to_bytestream(stream)?;
-        }
-        Ok(())
-    }
-}
-
 impl ToBytes for IcmpV6NeighborAdvertisment {
     type Error = io::Error;
     fn to_bytes(&self, stream: &mut BytesWriter) -> Result<(), Self::Error> {
@@ -864,30 +527,6 @@ impl ToBytes for IcmpV6NeighborAdvertisment {
             option.to_bytes(stream)?;
         }
         Ok(())
-    }
-}
-
-impl FromBytestream for IcmpV6NeighborAdvertisment {
-    type Error = io::Error;
-    fn from_bytestream(stream: &mut bytepack::BytestreamReader) -> Result<Self, Self::Error> {
-        assert_eq!(0, stream.read_u8()?);
-        assert_eq!(0, stream.read_u16::<BE>()?);
-        let flag_byte = stream.read_u8()?;
-        for _ in 0..3 {
-            assert_eq!(0, stream.read_u8()?);
-        }
-        let target = Ipv6Addr::from(stream.read_u128::<BE>()?);
-        let mut options = Vec::new();
-        while !stream.is_empty() {
-            options.push(IcmpV6NDPOption::from_bytestream(stream)?);
-        }
-        Ok(Self {
-            target,
-            router: (flag_byte & 0b1000_0000) != 0,
-            solicited: (flag_byte & 0b0100_0000) != 0,
-            overide: (flag_byte & 0b0010_0000) != 0,
-            options,
-        })
     }
 }
 
@@ -987,36 +626,6 @@ pub enum IcmpV6NDPOption {
     Unknown(u8, Vec<u8>),
 }
 
-impl ToBytestream for IcmpV6NDPOption {
-    type Error = io::Error;
-    fn to_bytestream(&self, stream: &mut bytepack::BytestreamWriter) -> Result<(), Self::Error> {
-        macro_rules! ser {
-            ($(
-                $i:ident = $l:literal ($len:literal)
-            ),*) => {
-                match self {
-                    $(
-                        Self::$i(ref inner) => {
-                            stream.write_u8($l)?;
-                            stream.write_u8($len)?;
-                            inner.to_bytestream(stream)?;
-                        }
-                    )*,
-                    _ => todo!()
-                }
-            };
-        }
-
-        ser!(
-            SourceLinkLayerAddress = 1(1),
-            TargetLinkLayerAddress = 2(1),
-            PrefixInformation = 3(4),
-            Mtu = 5(1)
-        );
-        Ok(())
-    }
-}
-
 impl ToBytes for IcmpV6NDPOption {
     type Error = io::Error;
     fn to_bytes(&self, stream: &mut BytesWriter) -> Result<(), Self::Error> {
@@ -1048,35 +657,6 @@ impl ToBytes for IcmpV6NDPOption {
             Mtu = 5(1)
         );
         Ok(())
-    }
-}
-
-impl FromBytestream for IcmpV6NDPOption {
-    type Error = io::Error;
-    fn from_bytestream(stream: &mut bytepack::BytestreamReader) -> Result<Self, Self::Error> {
-        macro_rules! deser {
-            ($($i:ident($t:ident) = $l:literal ($len:literal)),*) => {{
-                let typ = stream.read_u8()?;
-                let len = stream.read_u8()?;
-                match (typ, len) {
-                    $(
-                        ($l, $len) => Ok(Self::$i($t::from_bytestream(stream)?)),
-                    )*
-                    _ => {
-                        let mut buf = vec![0; len as usize];
-                        stream.read_exact(&mut buf)?;
-                        Ok(Self::Unknown(typ, buf))
-                    }
-                }
-            }};
-        }
-
-        deser!(
-            SourceLinkLayerAddress(MacAddress) = 1(1),
-            TargetLinkLayerAddress(MacAddress) = 2(1),
-            PrefixInformation(IcmpV6PrefixInformation) = 3(4),
-            Mtu(IcmpV6MtuOption) = 5(1)
-        )
     }
 }
 
@@ -1135,26 +715,6 @@ impl IcmpV6PrefixInformation {
     }
 }
 
-impl ToBytestream for IcmpV6PrefixInformation {
-    type Error = io::Error;
-    fn to_bytestream(&self, stream: &mut bytepack::BytestreamWriter) -> Result<(), Self::Error> {
-        stream.write_u8(self.prefix_len)?;
-        let mut flag_byte = 0;
-        if self.on_link {
-            flag_byte |= 0b1000_0000;
-        }
-        if self.autonomous_address_configuration {
-            flag_byte |= 0b0100_0000;
-        }
-        stream.write_u8(flag_byte)?;
-        stream.write_u32::<BE>(self.valid_lifetime)?;
-        stream.write_u32::<BE>(self.preferred_lifetime)?;
-        stream.write_u32::<BE>(0)?; // pad
-        stream.write_all(&self.prefix.octets())?;
-        Ok(())
-    }
-}
-
 impl ToBytes for IcmpV6PrefixInformation {
     type Error = io::Error;
     fn to_bytes(&self, stream: &mut BytesWriter) -> Result<(), Self::Error> {
@@ -1172,26 +732,6 @@ impl ToBytes for IcmpV6PrefixInformation {
         stream.write_u32::<BE>(0)?; // pad
         stream.write_all(&self.prefix.octets())?;
         Ok(())
-    }
-}
-
-impl FromBytestream for IcmpV6PrefixInformation {
-    type Error = io::Error;
-    fn from_bytestream(stream: &mut bytepack::BytestreamReader) -> Result<Self, Self::Error> {
-        let prefix_len = stream.read_u8()?;
-        let flag_byte = stream.read_u8()?;
-        let valid_lifetime = stream.read_u32::<BE>()?;
-        let preferred_lifetime = stream.read_u32::<BE>()?;
-        assert_eq!(0, stream.read_u32::<BE>()?);
-        let prefix = Ipv6Addr::from(stream.read_u128::<BE>()?);
-        Ok(Self {
-            prefix_len,
-            on_link: (0b1000_0000 & flag_byte) != 0,
-            autonomous_address_configuration: (0b0100_0000 & flag_byte) != 0,
-            valid_lifetime,
-            preferred_lifetime,
-            prefix,
-        })
     }
 }
 
@@ -1224,31 +764,12 @@ pub struct IcmpV6MtuOption {
     pub mtu: u32,
 }
 
-impl ToBytestream for IcmpV6MtuOption {
-    type Error = io::Error;
-    fn to_bytestream(&self, stream: &mut bytepack::BytestreamWriter) -> Result<(), Self::Error> {
-        stream.write_u16::<BE>(0)?;
-        stream.write_u32::<BE>(self.mtu)?;
-        Ok(())
-    }
-}
-
 impl ToBytes for IcmpV6MtuOption {
     type Error = io::Error;
     fn to_bytes(&self, stream: &mut BytesWriter) -> Result<(), Self::Error> {
         stream.write_u16::<BE>(0)?;
         stream.write_u32::<BE>(self.mtu)?;
         Ok(())
-    }
-}
-
-impl FromBytestream for IcmpV6MtuOption {
-    type Error = io::Error;
-    fn from_bytestream(stream: &mut bytepack::BytestreamReader) -> Result<Self, Self::Error> {
-        assert_eq!(0, stream.read_u16::<BE>()?);
-        Ok(Self {
-            mtu: stream.read_u32::<BE>()?,
-        })
     }
 }
 
@@ -1268,17 +789,6 @@ pub struct IcmpV6MulticastListenerMessage {
     pub multicast_addr: Ipv6Addr,
 }
 
-impl ToBytestream for IcmpV6MulticastListenerMessage {
-    type Error = io::Error;
-    fn to_bytestream(&self, stream: &mut bytepack::BytestreamWriter) -> Result<(), Self::Error> {
-        stream.write_u8(0)?;
-        stream.write_u16::<BE>(0)?;
-        stream.write_u16::<BE>(self.maximum_response_delay.as_millis() as u16)?;
-        stream.write_u16::<BE>(0)?;
-        stream.write_u128::<BE>(u128::from(self.multicast_addr))
-    }
-}
-
 impl ToBytes for IcmpV6MulticastListenerMessage {
     type Error = io::Error;
     fn to_bytes(&self, stream: &mut BytesWriter) -> Result<(), Self::Error> {
@@ -1287,21 +797,6 @@ impl ToBytes for IcmpV6MulticastListenerMessage {
         stream.write_u16::<BE>(self.maximum_response_delay.as_millis() as u16)?;
         stream.write_u16::<BE>(0)?;
         stream.write_u128::<BE>(u128::from(self.multicast_addr))
-    }
-}
-
-impl FromBytestream for IcmpV6MulticastListenerMessage {
-    type Error = io::Error;
-    fn from_bytestream(stream: &mut bytepack::BytestreamReader) -> Result<Self, Self::Error> {
-        assert_eq!(0, stream.read_u8()?);
-        assert_eq!(0, stream.read_u16::<BE>()?);
-        let maximum_response_delay = Duration::from_millis(u64::from(stream.read_u16::<BE>()?));
-        assert_eq!(0, stream.read_u16::<BE>()?);
-        let multicast_addr = Ipv6Addr::from(stream.read_u128::<BE>()?);
-        Ok(Self {
-            maximum_response_delay,
-            multicast_addr,
-        })
     }
 }
 

@@ -1,10 +1,7 @@
 #![allow(clippy::similar_names)]
 
 use super::iface::MacAddress;
-use bytepack::FromBytestream;
-use bytepack::{BytestreamReader, BytestreamWriter, ReadBytesExt, ToBytestream, WriteBytesExt, BE};
-
-use bytes_io::{BytesReader, BytesWriter, FromBytes, ToBytes};
+use bytes_io::{BytesReader, BytesWriter, FromBytes, ReadBytesExt, ToBytes, WriteBytesExt, BE};
 use des::prelude::*;
 use macros::repr_enum;
 use std::io::Read;
@@ -227,19 +224,6 @@ impl ArpPacket {
     }
 }
 
-impl ToBytestream for ArpPacket {
-    type Error = std::io::Error;
-    fn to_bytestream(&self, stream: &mut BytestreamWriter) -> Result<(), Self::Error> {
-        stream.write_u16::<BE>(self.htype)?;
-        stream.write_u16::<BE>(self.ptype)?;
-        stream.write_u8(self.haddrlen)?;
-        stream.write_u8(self.paddrlen)?;
-
-        self.operation.to_bytestream(stream)?;
-        stream.write_all(&self.raw)
-    }
-}
-
 impl ToBytes for ArpPacket {
     type Error = std::io::Error;
     fn to_bytes(&self, stream: &mut BytesWriter) -> Result<(), Self::Error> {
@@ -250,31 +234,6 @@ impl ToBytes for ArpPacket {
 
         self.operation.to_bytes(stream)?;
         stream.write_all(&self.raw)
-    }
-}
-
-impl FromBytestream for ArpPacket {
-    type Error = std::io::Error;
-    fn from_bytestream(stream: &mut BytestreamReader) -> Result<Self, Self::Error> {
-        let htype = stream.read_u16::<BE>()?;
-        let ptype = stream.read_u16::<BE>()?;
-
-        let haddrlen = stream.read_u8()?;
-        let paddrlen = stream.read_u8()?;
-        let operation = ARPOperation::from_bytestream(stream)?;
-
-        let len = 2 * haddrlen + 2 * paddrlen;
-        let mut buf = vec![0u8; len as usize];
-        stream.read_exact(&mut buf)?;
-
-        Ok(ArpPacket {
-            htype,
-            ptype,
-            haddrlen,
-            paddrlen,
-            operation,
-            raw: buf,
-        })
     }
 }
 
@@ -321,25 +280,10 @@ repr_enum! {
     }
 }
 
-impl ToBytestream for ARPOperation {
-    type Error = std::io::Error;
-    fn to_bytestream(&self, stream: &mut BytestreamWriter) -> Result<(), Self::Error> {
-        stream.write_u16::<BE>(self.to_raw_repr())
-    }
-}
-
 impl ToBytes for ARPOperation {
     type Error = std::io::Error;
     fn to_bytes(&self, stream: &mut BytesWriter) -> Result<(), Self::Error> {
         stream.write_u16::<BE>(self.to_raw_repr())
-    }
-}
-
-impl FromBytestream for ARPOperation {
-    type Error = std::io::Error;
-    fn from_bytestream(stream: &mut BytestreamReader) -> Result<Self, Self::Error> {
-        let tag = stream.read_u16::<BE>()?;
-        Self::from_raw_repr(tag)
     }
 }
 
@@ -388,7 +332,7 @@ mod tests {
         assert_eq!(r.src_ipv4_addr(), Ipv4Addr::new(1, 2, 3, 4));
         assert_eq!(r.dst_ipv4_addr(), Ipv4Addr::new(255, 254, 253, 252));
 
-        let r = ArpPacket::read_from_vec(&mut r.to_vec().unwrap()).unwrap();
+        let r = ArpPacket::peek_from(&r.write_to_vec().unwrap()[..]).unwrap();
         assert_eq!(r.htype, 1);
         assert_eq!(r.ptype, 0x0800);
         assert_eq!(r.src_mac_addr(), [1, 2, 3, 4, 5, 6].into());
@@ -412,7 +356,7 @@ mod tests {
         assert_eq!(r.src_ipv6_addr(), Ipv6Addr::new(1, 2, 3, 4, 5, 6, 7, 8));
         assert_eq!(r.dst_ipv6_addr(), Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 0));
 
-        let r = ArpPacket::read_from_vec(&mut r.to_vec().unwrap()).unwrap();
+        let r = ArpPacket::peek_from(&r.write_to_vec().unwrap()[..]).unwrap();
         assert_eq!(r.htype, 1);
         assert_eq!(r.ptype, 0x86DD);
         assert_eq!(r.src_mac_addr(), [1, 2, 3, 4, 5, 6].into());
