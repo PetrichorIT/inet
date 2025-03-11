@@ -1,6 +1,0 @@
-[book]
-authors = ["Petrichor"]
-language = "en"
-multilingual = false
-src = "src"
-title = "INET documentation"
