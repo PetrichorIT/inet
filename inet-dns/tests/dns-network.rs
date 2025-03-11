@@ -10,7 +10,7 @@ use inet::{
     tcp2::{TcpListener, TcpStream},
     test_util::SimpleSim,
 };
-use inet_dns_2::{
+use inet_dns::{
     adapters::{Base, UdpAdapter},
     client::resolve,
     core::{

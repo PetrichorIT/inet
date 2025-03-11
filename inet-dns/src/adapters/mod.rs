@@ -34,8 +34,8 @@ pub const DEFAULT_PORT: u16 = 53;
 ///
 /// ```rust
 /// # use std::io;
-/// # use inet_dns_2::adapters::{Base, LocalAdapter, TcpAdapter, UdpAdapter};
-/// # use inet_dns_2::server::{TransportMedium, RecursiveNameserver};
+/// # use inet_dns::adapters::{Base, LocalAdapter, TcpAdapter, UdpAdapter};
+/// # use inet_dns::server::{TransportMedium, RecursiveNameserver};
 /// async fn alice() -> io::Result<()> {
 ///     let nameserver: RecursiveNameserver = todo!();
 ///     let base = Base::new(nameserver).with_adapter(TransportMedium::Udp, UdpAdapter::default());
