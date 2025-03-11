@@ -10,9 +10,11 @@
 //!
 
 mod read;
+mod util;
 mod write;
 
 pub use self::read::*;
+pub use self::util::*;
 pub use self::write::*;
 
 pub use byteorder::*;

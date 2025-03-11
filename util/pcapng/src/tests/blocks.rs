@@ -4,37 +4,8 @@ use crate::{
     InterfaceStatisticsOption, Linktype, NameResolutionBlock, NameResolutionOption,
     NameResolutionRecord, SectionHeaderBlock, SectionHeaderOption, SimplePacketBlock,
 };
-use bytes_io::{FromBytes, ToBytes};
-use std::{
-    fmt::Debug,
-    io::Error,
-    net::{Ipv4Addr, Ipv6Addr},
-};
-
-fn assert_encoding_e2e<T>(values: &[T])
-where
-    T: FromBytes<Error = Error>,
-    T: ToBytes<Error = Error>,
-    T: PartialEq + Debug,
-{
-    for value in values {
-        let encoded = value.write_to_bytes().expect("encoding failed");
-        let mut encoded_for_decoding = encoded.clone().freeze();
-
-        println!("{:x?}", &encoded[..]);
-
-        let decoded = T::read_from(&mut encoded_for_decoding).expect("decoding failed");
-        assert!(
-            encoded_for_decoding.is_empty(),
-            "decoding left some bytes behind: {:?}",
-            encoded_for_decoding
-        );
-        assert_eq!(*value, decoded, "Value must be equal after encode->decode");
-
-        let reencoded = decoded.write_to_bytes().expect("reencoding failed");
-        assert_eq!(encoded, reencoded, "different encodings");
-    }
-}
+use bytes_io::assert_encoding_e2e;
+use std::net::{Ipv4Addr, Ipv6Addr};
 
 #[test]
 fn shb_encoding() {

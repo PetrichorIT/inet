@@ -14,18 +14,6 @@ mod error;
 pub use self::attrs::*;
 pub use self::error::*;
 
-#[derive(Debug)]
-pub enum BgpParsingError {
-    Error(Error),
-    Incomplete,
-}
-
-impl From<Error> for BgpParsingError {
-    fn from(value: Error) -> Self {
-        Self::Error(value)
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BgpPacket {
     pub marker: u128,
@@ -47,7 +35,7 @@ impl ToBytes for BgpPacket {
 }
 
 impl FromBytes for BgpPacket {
-    type Error = BgpParsingError;
+    type Error = Error;
     fn from_bytes(bytestream: &mut BytesReader) -> Result<Self, Self::Error> {
         let mut marker = [0; 16];
         bytestream.read_exact(&mut marker)?;
@@ -317,6 +305,8 @@ mod tests {
     use std::error::Error;
     use std::io;
 
+    use bytes_io::assert_encoding_e2e;
+
     use super::*;
 
     #[test]
@@ -357,5 +347,84 @@ mod tests {
             BgpPacket::peek_from(&open.write_to_vec()?[..]).unwrap()
         );
         Ok(())
+    }
+
+    #[test]
+    fn e2e_encoding_packet() {
+        assert_encoding_e2e(&[
+            BgpPacket {
+                marker: 312312,
+                kind: BgpPacketKind::Open(BgpOpenPacket {
+                    version: 4,
+                    as_number: 2000,
+                    hold_time: 100,
+                    identifier: 10001,
+                    options: Vec::new(),
+                }),
+            },
+            BgpPacket {
+                marker: 312312,
+                kind: BgpPacketKind::Update(BgpUpdatePacket {
+                    withdrawn_routes: vec![],
+                    path_attributes: vec![],
+                    nlris: vec![],
+                }),
+            },
+        ]);
+    }
+
+    #[test]
+    fn e2e_encoding_open_packet() {
+        assert_encoding_e2e(&[
+            BgpOpenPacket {
+                version: 144,
+                as_number: 3123,
+                hold_time: 180,
+                identifier: 10001,
+                options: vec![],
+            },
+            BgpOpenPacket {
+                version: 1,
+                as_number: 3123,
+                hold_time: 0100,
+                identifier: 3123,
+                options: vec![],
+            },
+        ]);
+    }
+
+    #[test]
+    fn e2e_encoding_update_packet() {
+        assert_encoding_e2e(&[
+            BgpUpdatePacket {
+                withdrawn_routes: vec![Nlri::new(Ipv4Addr::new(255, 254, 253, 252), 16)],
+                path_attributes: vec![BgpPathAttribute {
+                    flags: BgpPathAttributeFlags::default(),
+                    attr: BgpPathAttributeKind::Origin(BgpPathAttributeOrigin::Igp),
+                }],
+                nlris: vec![Nlri::new(Ipv4Addr::new(255, 254, 253, 252), 21)],
+            },
+            BgpUpdatePacket {
+                withdrawn_routes: vec![],
+                path_attributes: vec![BgpPathAttribute {
+                    flags: BgpPathAttributeFlags::default(),
+                    attr: BgpPathAttributeKind::NextHop(BgpPathAttributeNextHop {
+                        hop: Ipv4Addr::new(3, 74, 4, 9),
+                    }),
+                }],
+                nlris: vec![Nlri::new(Ipv4Addr::new(255, 254, 253, 252), 21)],
+            },
+        ]);
+    }
+
+    #[test]
+    fn e2e_encoding_nlri() {
+        assert_encoding_e2e(&[
+            Nlri::new(Ipv4Addr::new(255, 254, 253, 252), 16),
+            Nlri::new(Ipv4Addr::new(255, 254, 253, 252), 17),
+            Nlri::new(Ipv4Addr::new(255, 254, 253, 252), 18),
+            Nlri::new(Ipv4Addr::new(255, 254, 253, 252), 19),
+            Nlri::new(Ipv4Addr::new(255, 254, 253, 252), 21),
+        ]);
     }
 }

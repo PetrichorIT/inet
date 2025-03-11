@@ -267,3 +267,36 @@ impl MessageBody for Ipv4Packet {
         20 + self.content.len()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use bytes_io::assert_encoding_e2e;
+    use rand::{rng, Rng};
+
+    use super::*;
+
+    #[test]
+    fn e2e_encoding_fuzz() {
+        let fuzzed = std::iter::repeat_with(|| Ipv4Packet {
+            enc: rng().random::<u8>() & 0b11,
+            dscp: rng().random::<u8>() & 0b11111,
+            flags: Ipv4Flags {
+                mf: rng().random(),
+                df: rng().random(),
+            },
+            identification: rng().random(),
+            fragment_offset: rng().random::<u16>() & 0b0001_1111_1111_1111,
+            ttl: rng().random(),
+            proto: rng().random(),
+            src: Ipv4Addr::from(rng().random::<u32>()),
+            dst: Ipv4Addr::from(rng().random::<u32>()),
+            content: std::iter::repeat_with(|| rng().random())
+                .take((rng().random::<u32>() % 100) as usize)
+                .collect(),
+        })
+        .take(100)
+        .collect::<Vec<_>>();
+
+        assert_encoding_e2e(&fuzzed);
+    }
+}

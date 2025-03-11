@@ -170,3 +170,30 @@ impl MessageBody for Ipv6Packet {
         40 + self.content.len()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use bytes_io::assert_encoding_e2e;
+    use rand::{rng, Rng};
+
+    use super::*;
+
+    #[test]
+    fn e2e_encoding_fuzz() {
+        let fuzzed = std::iter::repeat_with(|| Ipv6Packet {
+            traffic_class: rng().random::<u8>(),
+            flow_label: rng().random::<u32>() & 0b1111_1111_1111_1111_1111,
+            next_header: rng().random::<u8>(),
+            hop_limit: rng().random::<u8>(),
+            src: Ipv6Addr::from(rng().random::<u128>()),
+            dst: Ipv6Addr::from(rng().random::<u128>()),
+            content: std::iter::repeat_with(|| rng().random())
+                .take((rng().random::<u32>() % 100) as usize)
+                .collect(),
+        })
+        .take(100)
+        .collect::<Vec<_>>();
+
+        assert_encoding_e2e(&fuzzed);
+    }
+}

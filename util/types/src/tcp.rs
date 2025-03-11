@@ -606,3 +606,47 @@ fn read_option_bytes(
     let len = stream.read_u8()? - 2;
     stream.extract(len as usize, f)
 }
+
+#[cfg(test)]
+mod tests {
+    use bytes_io::assert_encoding_e2e;
+    use rand::{rng, Rng};
+
+    use super::*;
+
+    #[test]
+    fn e2e_encoding_fuzz() {
+        let fuzzed = std::iter::repeat_with(|| TcpPacket {
+            src_port: rng().random(),
+            dst_port: rng().random(),
+            seq_no: rng().random(),
+            ack_no: rng().random(),
+            flags: TcpFlags::from_bits(rng().random()).unwrap(),
+            window: rng().random(),
+            urgent_ptr: rng().random(),
+            options: Vec::new(),
+            content: std::iter::repeat_with(|| rng().random())
+                .take((rng().random::<u32>() % 1500) as usize)
+                .collect(),
+        })
+        .take(100)
+        .collect::<Vec<_>>();
+
+        assert_encoding_e2e(&fuzzed);
+    }
+
+    #[test]
+    fn e2e_encoding_options() {
+        assert_encoding_e2e(&[
+            TcpOption::WindowScaling(2),
+            TcpOption::WindowScaling(8),
+            TcpOption::Timestamp(132313, 441),
+            TcpOption::SelectiveAcknowledgementPermitted,
+            TcpOption::SelectiveAcknowledgement(vec![(32, 3), (3123, 4)]),
+            TcpOption::NoOperation,
+            TcpOption::MaximumSegmentSize(12333),
+            TcpOption::MaximumSegmentSize(4133),
+            TcpOption::EndOfOptionsList,
+        ]);
+    }
+}

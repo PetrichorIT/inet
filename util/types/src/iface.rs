@@ -166,6 +166,9 @@ impl Display for MacAddress {
 
 #[cfg(test)]
 mod tests {
+    use bytes_io::assert_encoding_e2e;
+    use rand::{rng, Rng};
+
     use super::*;
 
     #[test]
@@ -185,5 +188,13 @@ mod tests {
         let mac = MacAddress::ipv6_multicast(dst);
         assert_eq!(mac, MacAddress([0x33, 0x33, 0x12, 0x34, 0x56, 0x78]));
         assert!(mac.is_multicast());
+    }
+
+    #[test]
+    fn e2e_encoding_fuzz() {
+        let fuzzed = std::iter::repeat_with(|| MacAddress(rng().random()))
+            .take(100)
+            .collect::<Vec<_>>();
+        assert_encoding_e2e(&fuzzed);
     }
 }

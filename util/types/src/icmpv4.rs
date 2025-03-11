@@ -284,7 +284,7 @@ impl ToBytes for IcmpV4Type {
                 stream.write_u32::<BE>(0)?;
                 Ok(())
             }
-            _ => todo!(),
+            _ => todo!("{self:?}"),
         }
     }
 }
@@ -493,5 +493,77 @@ repr_enum! {
         SeePointer = 0,
         MissingRequiredOption = 1,
         BadLength = 2,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use bytes_io::assert_encoding_e2e;
+
+    use super::*;
+
+    #[test]
+    fn e2e_encoding() {
+        assert_encoding_e2e(&[
+            // IcmpV4Type::TimestmapReply {
+            //     identifier: 14,
+            //     sequence: 1,
+            //     ts_org: 1,
+            //     ts_rcv: 1,
+            //     ts_transmit: 1,
+            // },
+            // IcmpV4Type::Timestamp {
+            //     identifier: 132,
+            //     sequence: 3,
+            //     ts_org: 34,
+            //     ts_rcv: 4,
+            //     ts_transmit: 55,
+            // },
+            IcmpV4Type::TimeExceeded {
+                code: IcmpV4TimeExceededCode::TimeToLifeInTransit,
+            },
+            IcmpV4Type::TimeExceeded {
+                code: IcmpV4TimeExceededCode::FragmentReassemblyTimeExceeded,
+            },
+            IcmpV4Type::SourceQuench,
+            IcmpV4Type::RouterSolicitation,
+            IcmpV4Type::RouterAdvertisment,
+            IcmpV4Type::RedirectMessage {
+                code: IcmpV4RedirectCode::RedirectForNetwork,
+                addr: Ipv4Addr::new(192, 168, 0, 1),
+            },
+            IcmpV4Type::RedirectMessage {
+                code: IcmpV4RedirectCode::RedirectForHost,
+                addr: Ipv4Addr::new(192, 168, 0, 2),
+            },
+            // IcmpV4Type::ExtendedEchoRequest,
+            // IcmpV4Type::ExtendedEchoReply,
+            IcmpV4Type::EchoRequest {
+                identifier: 1323,
+                sequence: 3123,
+            },
+            IcmpV4Type::EchoReply {
+                identifier: 1323,
+                sequence: 3123,
+            },
+            IcmpV4Type::DestinationUnreachable {
+                next_hop_mtu: 3123,
+                code: IcmpV4DestinationUnreachableCode::DestinationHostProhibited,
+            },
+            IcmpV4Type::DestinationUnreachable {
+                next_hop_mtu: 3123,
+                code: IcmpV4DestinationUnreachableCode::HostUnreachable,
+            },
+            IcmpV4Type::DestinationUnreachable {
+                next_hop_mtu: 3123,
+                code: IcmpV4DestinationUnreachableCode::SourceHostFailed,
+            },
+            IcmpV4Type::BadIpHeader {
+                code: IcmpV4BadIpHeaderCode::MissingRequiredOption,
+            },
+            IcmpV4Type::BadIpHeader {
+                code: IcmpV4BadIpHeaderCode::BadLength,
+            },
+        ]);
     }
 }

@@ -43,7 +43,7 @@ impl ResourceRecord for TxtResourceRecord {
         Some(self.ttl)
     }
     fn typ(&self) -> super::ResourceRecordTyp {
-        super::ResourceRecordTyp::PTR
+        super::ResourceRecordTyp::TXT
     }
     fn class(&self) -> Option<ResourceRecordClass> {
         Some(self.class)

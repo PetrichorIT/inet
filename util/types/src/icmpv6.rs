@@ -308,7 +308,7 @@ impl FromBytes for IcmpV6PacketToBig {
     type Error = io::Error;
     fn from_bytes(stream: &mut BytesReader) -> Result<Self, Self::Error> {
         assert_eq!(0, stream.read_u8()?); // code
-        assert_eq!(0, stream.read_u32::<BE>()?); // checksum
+        assert_eq!(0, stream.read_u16::<BE>()?); // checksum
         let mtu = stream.read_u32::<BE>()?;
         let mut packet = Vec::new();
         stream.read_to_end(&mut packet)?;
@@ -1031,8 +1031,12 @@ impl ToBytes for IcmpV6NDPOption {
                             stream.write_u8($len)?;
                             inner.to_bytes(stream)?;
                         }
-                    )*,
-                    _ => todo!()
+                    )*
+                    Self::Unknown(typ, data) => {
+                        stream.write_u8(*typ)?;
+                        stream.write_u8(data.len() as u8)?;
+                        stream.write_all(&data)?;
+                    }
                 }
             };
         }
@@ -1344,3 +1348,205 @@ pub const NDP_RETRANS_TIMER: Duration = Duration::from_millis(1_000);
 pub const NDP_DELAY_FIRST_PROBE: Duration = Duration::from_secs(5);
 pub const NDP_MIN_RANDOM_FACTOR: f64 = 0.5;
 pub const NDP_MAX_RANDOM_FACTOR: f64 = 1.5;
+
+#[cfg(test)]
+mod tests {
+    use bytes_io::assert_encoding_e2e;
+
+    use super::*;
+
+    #[test]
+    fn e2e_encoding_destination_unreachable() {
+        assert_encoding_e2e(&[
+            IcmpV6DestinationUnreachable {
+                code: IcmpV6DestinationUnreachableCode::NoRouteToDestination,
+                packet: vec![0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07],
+            },
+            IcmpV6DestinationUnreachable {
+                code: IcmpV6DestinationUnreachableCode::AddressUnreachable,
+                packet: vec![0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07],
+            },
+            IcmpV6DestinationUnreachable {
+                code: IcmpV6DestinationUnreachableCode::PortUnreachable,
+                packet: vec![0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07],
+            },
+        ]);
+    }
+
+    #[test]
+    fn e2e_encoding_to_big() {
+        assert_encoding_e2e(&[
+            IcmpV6PacketToBig {
+                mtu: 1500,
+                packet: vec![0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07],
+            },
+            IcmpV6PacketToBig {
+                mtu: 80,
+                packet: vec![0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07],
+            },
+        ]);
+    }
+
+    #[test]
+    fn e2e_encoding_time_exceeded() {
+        assert_encoding_e2e(&[
+            IcmpV6TimeExceeded {
+                code: IcmpV6TimeExceededCode::HopLimitExceeded,
+                packet: vec![0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07],
+            },
+            IcmpV6TimeExceeded {
+                code: IcmpV6TimeExceededCode::FragmentReassemblyTimeExceeded,
+                packet: vec![0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07],
+            },
+        ]);
+    }
+
+    #[test]
+    fn e2e_encoding_parameter_problem() {
+        assert_encoding_e2e(&[
+            IcmpV6ParameterProblem {
+                code: IcmpV6ParameterProblemCode::UnrecognizedIpv6Option,
+                pointer: 0,
+                packet: vec![0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07],
+            },
+            IcmpV6ParameterProblem {
+                code: IcmpV6ParameterProblemCode::ErroneousHeader,
+                pointer: 41,
+                packet: vec![0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07],
+            },
+        ]);
+    }
+
+    #[test]
+    fn e2e_encoding_echo() {
+        assert_encoding_e2e(&[
+            IcmpV6Echo {
+                identifier: 0x1234,
+                sequence_no: 0x5678,
+                data: vec![0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07],
+            },
+            IcmpV6Echo {
+                identifier: 0x1234,
+                sequence_no: 0x5678,
+                data: vec![0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f],
+            },
+        ]);
+    }
+
+    #[test]
+    fn e2e_encoding_router_sol() {
+        assert_encoding_e2e(&[
+            IcmpV6RouterSolicitation { options: vec![] },
+            IcmpV6RouterSolicitation {
+                options: vec![IcmpV6NDPOption::SourceLinkLayerAddress(MacAddress::from([
+                    0x00, 0x01, 0x04, 0x00, 0x00, 0x00,
+                ]))],
+            },
+        ]);
+    }
+
+    #[test]
+    fn e2e_encoding_router_adv() {
+        assert_encoding_e2e(&[
+            IcmpV6RouterAdvertisement {
+                managed: false,
+                other_configuration: false,
+                current_hop_limit: 64,
+                router_lifetime: 1800,
+                reachable_time: 13123,
+                retransmit_time: 414,
+                options: vec![],
+            },
+            IcmpV6RouterAdvertisement {
+                managed: false,
+                other_configuration: false,
+                current_hop_limit: 64,
+                router_lifetime: 1800,
+                reachable_time: 13123,
+                retransmit_time: 414,
+                options: vec![IcmpV6NDPOption::SourceLinkLayerAddress(MacAddress::from([
+                    0x00, 0x01, 0x04, 0x00, 0x00, 0x00,
+                ]))],
+            },
+        ]);
+    }
+
+    #[test]
+    fn e2e_encoding_neighbor_adv() {
+        assert_encoding_e2e(&[
+            IcmpV6NeighborAdvertisment {
+                router: true,
+                solicited: false,
+                overide: false,
+                target: Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1),
+                options: vec![],
+            },
+            IcmpV6NeighborAdvertisment {
+                router: false,
+                solicited: true,
+                overide: true,
+                target: Ipv6Addr::new(414, 41, 4, 5, 891, 0, 56, 1),
+                options: vec![IcmpV6NDPOption::Mtu(IcmpV6MtuOption { mtu: 3 })],
+            },
+        ]);
+    }
+
+    #[test]
+    fn e2e_encoding_ndp_option() {
+        assert_encoding_e2e(&[
+            IcmpV6NDPOption::SourceLinkLayerAddress(MacAddress::from([3, 13, 13, 4, 1, 5])),
+            IcmpV6NDPOption::TargetLinkLayerAddress(MacAddress::from([34, 13, 13, 4, 141, 5])),
+            IcmpV6NDPOption::PrefixInformation(IcmpV6PrefixInformation {
+                prefix: Ipv6Addr::new(41, 67, 53, 39, 4, 4, 4, 4),
+                prefix_len: 64,
+                valid_lifetime: 6141,
+                preferred_lifetime: 412414,
+                on_link: false,
+                autonomous_address_configuration: true,
+            }),
+            IcmpV6NDPOption::Mtu(IcmpV6MtuOption { mtu: 31 }),
+            IcmpV6NDPOption::Unknown(7, vec![123, 3, 31, 31, 5, 5]),
+        ]);
+    }
+
+    #[test]
+    fn e2e_encoding_prefix_information() {
+        assert_encoding_e2e(&[
+            IcmpV6PrefixInformation {
+                prefix: Ipv6Addr::new(41, 67, 53, 39, 4, 4, 4, 4),
+                prefix_len: 64,
+                valid_lifetime: 6141,
+                preferred_lifetime: 412414,
+                on_link: false,
+                autonomous_address_configuration: true,
+            },
+            IcmpV6PrefixInformation {
+                prefix: Ipv6Addr::new(441, 67, 53, 4441, 4, 44, 414, 54),
+                prefix_len: 64,
+                valid_lifetime: 4124,
+                preferred_lifetime: 0,
+                on_link: true,
+                autonomous_address_configuration: false,
+            },
+        ]);
+    }
+
+    #[test]
+    fn e2e_encoding_mtu_option() {
+        assert_encoding_e2e(&[IcmpV6MtuOption { mtu: 313 }, IcmpV6MtuOption { mtu: 9000 }]);
+    }
+
+    #[test]
+    fn e2e_encoding_multicast_listerner() {
+        assert_encoding_e2e(&[
+            IcmpV6MulticastListenerMessage {
+                maximum_response_delay: Duration::from_secs(3),
+                multicast_addr: Ipv6Addr::new(41, 67, 53, 39, 4, 4, 4, 4),
+            },
+            IcmpV6MulticastListenerMessage {
+                maximum_response_delay: Duration::from_secs(1),
+                multicast_addr: Ipv6Addr::new(441, 67, 53, 4441, 4, 44, 414, 54),
+            },
+        ]);
+    }
+}

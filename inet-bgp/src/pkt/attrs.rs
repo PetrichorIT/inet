@@ -64,7 +64,7 @@ impl FromBytes for BgpPathAttribute {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct BgpPathAttributeFlags {
     pub optional: bool, // MSB
     pub transitiv: bool,
@@ -233,5 +233,87 @@ impl FromBytes for BgpPathAttributeNextHop {
         Ok(BgpPathAttributeNextHop {
             hop: Ipv4Addr::from(bytestream.read_u32::<BE>()?),
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use bytes_io::assert_encoding_e2e;
+
+    use super::*;
+
+    #[test]
+    fn e2e_encoding_path_attr() {
+        assert_encoding_e2e(&[
+            BgpPathAttribute {
+                flags: BgpPathAttributeFlags::default(),
+                attr: BgpPathAttributeKind::Origin(BgpPathAttributeOrigin::Egp),
+            },
+            BgpPathAttribute {
+                flags: BgpPathAttributeFlags::default(),
+                attr: BgpPathAttributeKind::Origin(BgpPathAttributeOrigin::Igp),
+            },
+            BgpPathAttribute {
+                flags: BgpPathAttributeFlags::default(),
+                attr: BgpPathAttributeKind::Origin(BgpPathAttributeOrigin::Incomplete),
+            },
+            //
+            BgpPathAttribute {
+                flags: BgpPathAttributeFlags::default(),
+                attr: BgpPathAttributeKind::AsPath(BgpPathAttributeAsPath {
+                    typ: BgpPathAttributeAsPathTyp::AsSequence,
+                    path: vec![13123, 3123, 123],
+                }),
+            },
+            //
+            BgpPathAttribute {
+                flags: BgpPathAttributeFlags::default(),
+                attr: BgpPathAttributeKind::NextHop(BgpPathAttributeNextHop {
+                    hop: Ipv4Addr::new(123, 3, 31, 4),
+                }),
+            },
+            BgpPathAttribute {
+                flags: BgpPathAttributeFlags::default(),
+                attr: BgpPathAttributeKind::NextHop(BgpPathAttributeNextHop {
+                    hop: Ipv4Addr::new(3, 13, 231, 4),
+                }),
+            },
+        ]);
+    }
+
+    #[test]
+    fn e2e_encoding_path_attr_flags() {
+        assert_encoding_e2e(&[
+            BgpPathAttributeFlags {
+                optional: true,
+                transitiv: false,
+                partial: false,
+                extended_len: true,
+            },
+            BgpPathAttributeFlags {
+                optional: false,
+                transitiv: true,
+                partial: false,
+                extended_len: true,
+            },
+        ]);
+    }
+
+    #[test]
+    fn e2e_encoding_path_attr_as_path() {
+        assert_encoding_e2e(&[
+            BgpPathAttributeAsPath {
+                typ: BgpPathAttributeAsPathTyp::AsSequence,
+                path: vec![1, 2, 3],
+            },
+            BgpPathAttributeAsPath {
+                typ: BgpPathAttributeAsPathTyp::AsSet,
+                path: vec![1, 4440, 1414, 4],
+            },
+            BgpPathAttributeAsPath {
+                typ: BgpPathAttributeAsPathTyp::AsSet,
+                path: vec![4],
+            },
+        ]);
     }
 }

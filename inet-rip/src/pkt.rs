@@ -121,6 +121,8 @@ impl FromBytes for RipEntry {
 
 #[cfg(test)]
 mod tests {
+    use bytes_io::assert_encoding_e2e;
+
     use super::*;
     use std::io::Result;
 
@@ -205,5 +207,61 @@ mod tests {
         assert_eq!(rip, rip2);
 
         Ok(())
+    }
+
+    #[test]
+    fn e2e_encoding_rip_entry() {
+        assert_encoding_e2e(&[
+            RipEntry {
+                addr_fam: AF_INET,
+                target: Ipv4Addr::new(6, 7, 8, 9),
+                mask: Ipv4Addr::new(255, 255, 0, 0),
+                next_hop: Ipv4Addr::new(10, 11, 12, 13),
+                metric: 1003,
+            },
+            RipEntry {
+                addr_fam: AF_INET,
+                target: Ipv4Addr::new(10, 11, 12, 13),
+                mask: Ipv4Addr::new(255, 255, 255, 0),
+                next_hop: Ipv4Addr::new(14, 15, 16, 17),
+                metric: 14,
+            },
+            RipEntry {
+                addr_fam: AF_INET,
+                target: Ipv4Addr::new(14, 15, 16, 17),
+                mask: Ipv4Addr::UNSPECIFIED,
+                next_hop: Ipv4Addr::new(18, 19, 20, 21),
+                metric: 10305,
+            },
+        ]);
+    }
+
+    #[test]
+    fn e2e_encoding_rip_packet() {
+        assert_encoding_e2e(&[
+            RipPacket {
+                command: RipCommand::Request,
+                entries: vec![
+                    RipEntry {
+                        addr_fam: AF_INET,
+                        target: Ipv4Addr::new(6, 7, 8, 9),
+                        mask: Ipv4Addr::new(255, 255, 0, 0),
+                        next_hop: Ipv4Addr::new(10, 11, 12, 13),
+                        metric: 1003,
+                    },
+                    RipEntry {
+                        addr_fam: AF_INET,
+                        target: Ipv4Addr::new(10, 11, 12, 13),
+                        mask: Ipv4Addr::new(255, 255, 255, 0),
+                        next_hop: Ipv4Addr::new(14, 15, 16, 17),
+                        metric: 14,
+                    },
+                ],
+            },
+            RipPacket {
+                command: RipCommand::Response,
+                entries: vec![],
+            },
+        ]);
     }
 }

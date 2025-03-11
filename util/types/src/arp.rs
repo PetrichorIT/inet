@@ -353,7 +353,25 @@ impl FromBytes for ARPOperation {
 
 #[cfg(test)]
 mod tests {
+    use bytes_io::assert_encoding_e2e;
+
     use super::*;
+
+    #[test]
+    fn e2e_encoding() {
+        assert_encoding_e2e(&[
+            ArpPacket::new_v4_request(
+                MacAddress::from([1, 2, 3, 4, 5, 6]),
+                Ipv4Addr::new(123, 4, 49, 3),
+                Ipv4Addr::new(49, 131, 4, 5),
+            ),
+            ArpPacket::new_v6_request(
+                MacAddress::from([1, 2, 3, 4, 5, 6]),
+                Ipv6Addr::new(123, 4, 49, 3, 14, 14, 4, 1),
+                Ipv6Addr::new(49, 131, 4, 5, 536, 63, 67, 4),
+            ),
+        ]);
+    }
 
     #[test]
     fn ipv4_ethernet_request() {

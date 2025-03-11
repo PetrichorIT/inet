@@ -80,3 +80,27 @@ impl FromBytes for UdpPacket {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use bytes_io::assert_encoding_e2e;
+    use rand::{rng, Rng};
+
+    use super::*;
+
+    #[test]
+    fn e2e_encoding_fuzz() {
+        let fuzzed = std::iter::repeat_with(|| UdpPacket {
+            src_port: rng().random(),
+            dst_port: rng().random(),
+            checksum: rng().random(),
+            content: std::iter::repeat_with(|| rng().random())
+                .take((rng().random::<u32>() % 1500) as usize)
+                .collect(),
+        })
+        .take(100)
+        .collect::<Vec<_>>();
+
+        assert_encoding_e2e(&fuzzed);
+    }
+}

@@ -289,8 +289,13 @@ impl TryFrom<QuestionTyp> for ResourceRecordTyp {
 
 #[cfg(test)]
 mod tests {
+    use bytes_io::assert_encoding_e2e;
+
     use crate::core::Zonefile;
-    use std::str::FromStr;
+    use std::{
+        net::{Ipv4Addr, Ipv6Addr},
+        str::FromStr,
+    };
 
     use super::*;
 
@@ -325,6 +330,194 @@ mod tests {
             assert_eq!(entry, &decoded);
         }
 
+        Ok(())
+    }
+
+    #[test]
+    fn e2e_encoding_a_records() -> io::Result<()> {
+        assert_encoding_e2e::<DnsResourceRecord, _>(&[
+            AResourceRecord {
+                name: "example.org.".parse()?,
+                ttl: 3600,
+                class: ResourceRecordClass::IN,
+                addr: Ipv4Addr::new(192, 0, 2, 1),
+            }
+            .into(),
+            AResourceRecord {
+                name: "example.org.".parse()?,
+                ttl: 3600,
+                class: ResourceRecordClass::CH,
+                addr: Ipv4Addr::new(192, 0, 133, 2),
+            }
+            .into(),
+            AResourceRecord {
+                name: ".".parse()?,
+                ttl: 3600,
+                class: ResourceRecordClass::IN,
+                addr: Ipv4Addr::new(192, 123, 2, 3),
+            }
+            .into(),
+        ]);
+        Ok(())
+    }
+
+    #[test]
+    fn e2e_encoding_aaaa_records() -> io::Result<()> {
+        assert_encoding_e2e::<DnsResourceRecord, _>(&[
+            AAAAResourceRecord {
+                name: "example.org.".parse()?,
+                ttl: 3600,
+                class: ResourceRecordClass::IN,
+                addr: Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 1),
+            }
+            .into(),
+            AAAAResourceRecord {
+                name: "example.org.".parse()?,
+                ttl: 3600,
+                class: ResourceRecordClass::CH,
+                addr: Ipv6Addr::new(0x2001, 0xdb8, 0, 321, 0, 0, 0, 2),
+            }
+            .into(),
+            AAAAResourceRecord {
+                name: ".".parse()?,
+                ttl: 3600,
+                class: ResourceRecordClass::IN,
+                addr: Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 3),
+            }
+            .into(),
+        ]);
+        Ok(())
+    }
+
+    #[test]
+    fn e2e_encoding_cname_records() -> io::Result<()> {
+        assert_encoding_e2e::<DnsResourceRecord, _>(&[
+            CNameResourceRecord {
+                name: "example.org.".parse()?,
+                ttl: 3600,
+                class: ResourceRecordClass::IN,
+                target: "example.com.".parse()?,
+            }
+            .into(),
+            CNameResourceRecord {
+                name: ".".parse()?,
+                ttl: 3600,
+                class: ResourceRecordClass::IN,
+                target: "root.com.".parse()?,
+            }
+            .into(),
+        ]);
+        Ok(())
+    }
+
+    #[test]
+    fn e2e_encoding_ns_records() -> io::Result<()> {
+        assert_encoding_e2e::<DnsResourceRecord, _>(&[
+            NsResourceRecord {
+                domain: "example.org.".parse()?,
+                ttl: 3600,
+                class: ResourceRecordClass::IN,
+                nameserver: "ns1.example.org.".parse()?,
+            }
+            .into(),
+            NsResourceRecord {
+                domain: "abc.example.org.".parse()?,
+                ttl: 9000,
+                class: ResourceRecordClass::HS,
+                nameserver: "ns2.example.org.".parse()?,
+            }
+            .into(),
+            NsResourceRecord {
+                domain: ".".parse()?,
+                ttl: 3600,
+                class: ResourceRecordClass::IN,
+                nameserver: "ns3.subdomain.lalala.very-deep.example.org.".parse()?,
+            }
+            .into(),
+        ]);
+        Ok(())
+    }
+
+    #[test]
+    fn e2e_encoding_opt_records() -> io::Result<()> {
+        assert_encoding_e2e::<DnsResourceRecord, _>(&[
+            OptResourceRecord {
+                name: ".".parse()?,
+                udp_payload_size: 4096,
+                rcode: 7,
+                version: false,
+                options: vec![],
+            }
+            .into(),
+            OptResourceRecord {
+                name: ".".parse()?,
+                udp_payload_size: 1396,
+                rcode: 73,
+                version: true,
+                options: vec![
+                    Opt {
+                        code: 1,
+                        value: vec![1, 2, 3],
+                    },
+                    Opt {
+                        code: 2,
+                        value: vec![4, 5, 6],
+                    },
+                ],
+            }
+            .into(),
+        ]);
+        Ok(())
+    }
+
+    #[test]
+    fn e2e_encoding_ptr_records() -> io::Result<()> {
+        assert_encoding_e2e::<DnsResourceRecord, _>(&[
+            PtrResourceRecord {
+                name: "example.org.".parse()?,
+                ttl: 3600,
+                class: ResourceRecordClass::IN,
+                addr: "192.168.2.1.".parse()?,
+            }
+            .into(),
+            PtrResourceRecord {
+                name: "www.example.org.".parse()?,
+                ttl: 31233,
+                class: ResourceRecordClass::CS,
+                addr: "192.33.12.1.".parse()?,
+            }
+            .into(),
+        ]);
+        Ok(())
+    }
+
+    #[test]
+    fn e2e_encoding_soa_records() -> io::Result<()> {
+        assert_encoding_e2e::<DnsResourceRecord, _>(&[SoaResourceRecord {
+            name: "example.org.".parse()?,
+            ttl: 3600,
+            class: ResourceRecordClass::IN,
+            mname: "a@mail.com".parse()?,
+            rname: "b@mail.com".parse()?,
+            serial: 1,
+            refresh: 2,
+            retry: 3,
+            expire: 4,
+            minimum: 5,
+        }
+        .into()]);
+        Ok(())
+    }
+
+    #[test]
+    fn e2e_encoding_txt_records() -> io::Result<()> {
+        assert_encoding_e2e::<DnsResourceRecord, _>(&[TxtResourceRecord {
+            name: "example.org.".parse()?,
+            ttl: 3600,
+            class: ResourceRecordClass::IN,
+            text: "example text tralal".to_string(),
+        }
+        .into()]);
         Ok(())
     }
 }

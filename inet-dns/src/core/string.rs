@@ -236,6 +236,8 @@ impl FromBytes for DnsString {
 
 #[cfg(test)]
 mod tests {
+    use bytes_io::assert_encoding_e2e;
+
     use super::*;
 
     #[test]
@@ -265,6 +267,21 @@ mod tests {
             let reparsed = DnsString::read_from(&mut initial.write_to_bytes()?)?;
             assert_eq!(initial, reparsed);
         }
+        Ok(())
+    }
+
+    #[test]
+    fn e2e_encoding() -> io::Result<()> {
+        assert_encoding_e2e::<DnsString, _>(&[
+            ".".parse()?,
+            "www.example.org.".parse()?,
+            "a.b.c.www.example.org.".parse()?,
+            "org.".parse()?,
+            "www.example.org.".parse()?,
+            "www.abcd-dasd.a.org.".parse()?,
+            "utf.a.a.v.ad.ad.ad.ad.d.org.".parse()?,
+            "www.abcd-dasd.a.org.".parse()?,
+        ]);
         Ok(())
     }
 }

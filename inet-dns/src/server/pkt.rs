@@ -314,3 +314,80 @@ repr_enum! {
         Status = 2,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::{io, net::Ipv4Addr, sync::Arc};
+
+    use bytes_io::assert_encoding_e2e;
+
+    use crate::{
+        core::{AResourceRecord, ResourceRecordClass},
+        server::{SourceQuery, TransportMedium},
+    };
+
+    use super::*;
+
+    #[test]
+    fn e2e_encoding_query() -> io::Result<()> {
+        assert_encoding_e2e(&[
+            DnsMessage::question_a(1323, "www.example.com.".parse()?),
+            DnsMessage::question_aaaa(3131, "this.is.ipv6.de.".parse()?),
+            DnsMessage::question_a(0, "a.b.c.".parse()?).with_edns(true),
+            DnsMessage::query(
+                31,
+                Question {
+                    qname: "example.com.".parse()?,
+                    qclass: QuestionClass::IN,
+                    qtyp: QuestionTyp::PTR,
+                },
+            ),
+            DnsMessage::query(
+                3331,
+                Question {
+                    qname: "example.com.".parse()?,
+                    qclass: QuestionClass::IN,
+                    qtyp: QuestionTyp::NS,
+                },
+            ),
+        ]);
+        Ok(())
+    }
+
+    #[test]
+    fn e2e_encoding_response() -> io::Result<()> {
+        assert_encoding_e2e(
+            &[DnsMessage::response_from_transaction(FinishedTransaction {
+                query: Arc::new(SourceQuery {
+                    medium: TransportMedium::Udp,
+                    edns: None,
+                    addr: "3.13.1.3:313".parse().unwrap(),
+                    transaction: 3,
+                    question: Question {
+                        qname: "example.com.".parse()?,
+                        qclass: QuestionClass::IN,
+                        qtyp: QuestionTyp::A,
+                    },
+                }),
+                aa: true,
+                ra: false,
+                result: TransactionResult::Success(QueryResponse {
+                    questions: vec![Question {
+                        qname: "example.com.".parse()?,
+                        qclass: QuestionClass::IN,
+                        qtyp: QuestionTyp::A,
+                    }],
+                    anwsers: vec![AResourceRecord {
+                        name: "example.com.".parse()?,
+                        ttl: 3600,
+                        class: ResourceRecordClass::IN,
+                        addr: Ipv4Addr::new(1, 2, 3, 4),
+                    }
+                    .into()],
+                    ..Default::default()
+                }),
+            })],
+        );
+        Ok(())
+    }
+}

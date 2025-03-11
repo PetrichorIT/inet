@@ -256,6 +256,8 @@ impl From<ResourceRecordTyp> for QuestionTyp {
 
 #[cfg(test)]
 mod tests {
+    use bytes_io::assert_encoding_e2e;
+
     use super::*;
     use crate::core::{AResourceRecord, RecordMap, ResourceRecordClass};
     use std::{io, net::Ipv4Addr, str::FromStr};
@@ -368,27 +370,24 @@ mod tests {
 
     #[test]
     fn byte_encoding_e2e() -> io::Result<()> {
-        let examples = [
+        assert_encoding_e2e(&[
             Question {
                 qtyp: QuestionTyp::A,
-                qname: "example.org.".parse().unwrap(),
+                qname: "example.org.".parse()?,
                 qclass: QuestionClass::IN,
             },
             Question {
                 qtyp: QuestionTyp::NS,
-                qname: "www.example.org.".parse().unwrap(),
+                qname: "www.example.org.".parse()?,
                 qclass: QuestionClass::IN,
             },
             Question {
                 qtyp: QuestionTyp::CNAME,
-                qname: "org.".parse().unwrap(),
+                qname: "org.".parse()?,
                 qclass: QuestionClass::CH,
             },
-        ];
-        for example in examples {
-            let e2e = Question::read_from(&mut example.write_to_bytes()?)?;
-            assert_eq!(example, e2e);
-        }
+        ]);
+
         Ok(())
     }
 }

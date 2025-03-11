@@ -1,5 +1,6 @@
 use std::io::{self, Read, Write};
 
+use bytes::Buf;
 use bytes_io::{BytesReader, BytesWriter, FromBytes, ReadBytesExt, ToBytes, WriteBytesExt, BE};
 
 use crate::core::DnsString;
@@ -40,7 +41,7 @@ impl TryFrom<RawResourceRecord> for OptResourceRecord {
 
         let mut options = Vec::new();
         let mut slice = &value.rdata[..];
-        while !value.rdata.is_empty() {
+        while slice.has_remaining() {
             let opt = Opt::read_from(&mut slice)?;
             options.push(opt);
         }
