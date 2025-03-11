@@ -2,6 +2,7 @@ use bytepack::{
     BytestreamReader, BytestreamWriter, FromBytestream, ReadBytesExt, ToBytestream, WriteBytesExt,
     BE,
 };
+use bytes_io::{BytesReader, BytesWriter, FromBytes, ToBytes};
 use std::io::{Read, Write};
 
 pub const PROTO_UDP: u8 = 0x11;
@@ -27,9 +28,42 @@ impl ToBytestream for UdpPacket {
     }
 }
 
+impl ToBytes for UdpPacket {
+    type Error = std::io::Error;
+    fn to_bytes(&self, stream: &mut BytesWriter) -> Result<(), Self::Error> {
+        stream.write_u16::<BE>(self.src_port)?;
+        stream.write_u16::<BE>(self.dst_port)?;
+        stream.write_u16::<BE>(self.content.len() as u16 + 8)?;
+        stream.write_u16::<BE>(self.checksum)?;
+
+        stream.write_all(&self.content)?;
+        Ok(())
+    }
+}
+
 impl FromBytestream for UdpPacket {
     type Error = std::io::Error;
     fn from_bytestream(stream: &mut BytestreamReader) -> Result<Self, Self::Error> {
+        let src_port = stream.read_u16::<BE>()?;
+        let dst_port = stream.read_u16::<BE>()?;
+        let len = stream.read_u16::<BE>()?;
+        let checksum = stream.read_u16::<BE>()?;
+
+        let mut buf = vec![0; (len - 8) as usize];
+        stream.read_exact(&mut buf)?;
+
+        Ok(Self {
+            src_port,
+            dst_port,
+            checksum,
+            content: buf,
+        })
+    }
+}
+
+impl FromBytes for UdpPacket {
+    type Error = std::io::Error;
+    fn from_bytes(stream: &mut BytesReader) -> Result<Self, Self::Error> {
         let src_port = stream.read_u16::<BE>()?;
         let dst_port = stream.read_u16::<BE>()?;
         let len = stream.read_u16::<BE>()?;

@@ -4,8 +4,10 @@ use super::iface::MacAddress;
 use bytepack::FromBytestream;
 use bytepack::{BytestreamReader, BytestreamWriter, ReadBytesExt, ToBytestream, WriteBytesExt, BE};
 
+use bytes_io::{BytesReader, BytesWriter, FromBytes, ToBytes};
 use des::prelude::*;
-use std::io::{Error, ErrorKind, Read};
+use macros::repr_enum;
+use std::io::Read;
 use std::{io::Write, net::Ipv4Addr};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -238,6 +240,19 @@ impl ToBytestream for ArpPacket {
     }
 }
 
+impl ToBytes for ArpPacket {
+    type Error = std::io::Error;
+    fn to_bytes(&self, stream: &mut BytesWriter) -> Result<(), Self::Error> {
+        stream.write_u16::<BE>(self.htype)?;
+        stream.write_u16::<BE>(self.ptype)?;
+        stream.write_u8(self.haddrlen)?;
+        stream.write_u8(self.paddrlen)?;
+
+        self.operation.to_bytes(stream)?;
+        stream.write_all(&self.raw)
+    }
+}
+
 impl FromBytestream for ArpPacket {
     type Error = std::io::Error;
     fn from_bytestream(stream: &mut BytestreamReader) -> Result<Self, Self::Error> {
@@ -263,6 +278,31 @@ impl FromBytestream for ArpPacket {
     }
 }
 
+impl FromBytes for ArpPacket {
+    type Error = std::io::Error;
+    fn from_bytes(stream: &mut BytesReader) -> Result<Self, Self::Error> {
+        let htype = stream.read_u16::<BE>()?;
+        let ptype = stream.read_u16::<BE>()?;
+
+        let haddrlen = stream.read_u8()?;
+        let paddrlen = stream.read_u8()?;
+        let operation = ARPOperation::from_bytes(stream)?;
+
+        let len = 2 * haddrlen + 2 * paddrlen;
+        let mut buf = vec![0u8; len as usize];
+        stream.read_exact(&mut buf)?;
+
+        Ok(ArpPacket {
+            htype,
+            ptype,
+            haddrlen,
+            paddrlen,
+            operation,
+            raw: buf,
+        })
+    }
+}
+
 impl MessageBody for ArpPacket {
     fn byte_len(&self) -> usize {
         self.raw.len() + 8
@@ -271,20 +311,27 @@ impl MessageBody for ArpPacket {
 
 pub const KIND_ARP: MessageKind = 0x0806;
 
-primitve_enum_repr! {
+repr_enum! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
     pub enum ARPOperation {
-        type Repr = u16;
+        type Repr = u16 where BE;
 
         Request = 1,
         Response = 2,
-    };
+    }
 }
 
 impl ToBytestream for ARPOperation {
     type Error = std::io::Error;
     fn to_bytestream(&self, stream: &mut BytestreamWriter) -> Result<(), Self::Error> {
-        stream.write_u16::<BE>(self.to_raw())
+        stream.write_u16::<BE>(self.to_raw_repr())
+    }
+}
+
+impl ToBytes for ARPOperation {
+    type Error = std::io::Error;
+    fn to_bytes(&self, stream: &mut BytesWriter) -> Result<(), Self::Error> {
+        stream.write_u16::<BE>(self.to_raw_repr())
     }
 }
 
@@ -292,7 +339,15 @@ impl FromBytestream for ARPOperation {
     type Error = std::io::Error;
     fn from_bytestream(stream: &mut BytestreamReader) -> Result<Self, Self::Error> {
         let tag = stream.read_u16::<BE>()?;
-        Self::from_raw(tag).ok_or(Error::new(ErrorKind::InvalidData, "invalid discriminant"))
+        Self::from_raw_repr(tag)
+    }
+}
+
+impl FromBytes for ARPOperation {
+    type Error = std::io::Error;
+    fn from_bytes(stream: &mut BytesReader) -> Result<Self, Self::Error> {
+        let tag = stream.read_u16::<BE>()?;
+        Self::from_raw_repr(tag)
     }
 }
 

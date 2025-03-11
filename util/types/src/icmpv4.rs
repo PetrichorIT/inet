@@ -7,6 +7,7 @@ use bytepack::{
     BytestreamReader, BytestreamWriter, FromBytestream, ReadBytesExt, ToBytestream, WriteBytesExt,
     BE,
 };
+use bytes_io::{BytesReader, BytesWriter, FromBytes, ToBytes};
 use macros::repr_enum;
 
 use crate::ip::Ipv4Packet;
@@ -207,9 +208,164 @@ impl ToBytestream for IcmpV4Type {
     }
 }
 
+impl ToBytes for IcmpV4Type {
+    type Error = Error;
+    fn to_bytes(&self, stream: &mut BytesWriter) -> Result<(), Self::Error> {
+        match self {
+            Self::EchoReply {
+                identifier,
+                sequence,
+            } => {
+                stream.write_u8(0)?;
+                stream.write_u8(0)?;
+                stream.write_u16::<BE>(0)?;
+                stream.write_u16::<BE>(*identifier)?;
+                stream.write_u16::<BE>(*sequence)?;
+                Ok(())
+            }
+            Self::DestinationUnreachable { next_hop_mtu, code } => {
+                stream.write_u8(3)?;
+                stream.write_u8(code.to_raw_repr())?;
+                stream.write_u16::<BE>(0)?; // checksum
+                stream.write_u16::<BE>(0)?; // unused
+                stream.write_u16::<BE>(*next_hop_mtu)?;
+                Ok(())
+            }
+            Self::SourceQuench => {
+                stream.write_u8(4)?;
+                stream.write_u8(0)?;
+                stream.write_u16::<BE>(0)?; // checksum
+                stream.write_u32::<BE>(0)?; // unused
+                Ok(())
+            }
+            Self::RedirectMessage { addr, code } => {
+                stream.write_u8(5)?;
+                stream.write_u8(code.to_raw_repr())?;
+                stream.write_u16::<BE>(0)?; // checksum
+                stream.write_all(&addr.octets())?;
+                Ok(())
+            }
+            Self::EchoRequest {
+                identifier,
+                sequence,
+            } => {
+                stream.write_u8(8)?;
+                stream.write_u8(0)?;
+                stream.write_u16::<BE>(0)?; // checksum
+                stream.write_u16::<BE>(*identifier)?;
+                stream.write_u16::<BE>(*sequence)?;
+                Ok(())
+            }
+            Self::RouterAdvertisment => {
+                stream.write_u8(9)?;
+                stream.write_u8(0)?;
+                stream.write_u16::<BE>(0)?; // checksum
+                stream.write_u32::<BE>(0)?;
+                Ok(())
+            }
+            Self::RouterSolicitation => {
+                stream.write_u8(10)?;
+                stream.write_u8(0)?;
+                stream.write_u16::<BE>(0)?; // checksum
+                stream.write_u32::<BE>(0)?;
+                Ok(())
+            }
+            Self::TimeExceeded { code } => {
+                stream.write_u8(11)?;
+                stream.write_u8(code.to_raw_repr())?;
+                stream.write_u16::<BE>(0)?; // checksum
+                stream.write_u32::<BE>(0)?;
+                Ok(())
+            }
+            Self::BadIpHeader { code } => {
+                stream.write_u8(12)?;
+                stream.write_u8(code.to_raw_repr())?;
+                stream.write_u16::<BE>(0)?; // checksum
+                stream.write_u32::<BE>(0)?;
+                Ok(())
+            }
+            _ => todo!(),
+        }
+    }
+}
+
 impl FromBytestream for IcmpV4Type {
     type Error = Error;
     fn from_bytestream(stream: &mut BytestreamReader) -> Result<Self, Self::Error> {
+        let typ = stream.read_u8()?;
+        let code = stream.read_u8()?;
+        let _checksum = stream.read_u16::<BE>()?;
+
+        match typ {
+            0 => {
+                assert_eq!(code, 0, "Divergent code not allowed on echo reply");
+                let identifier = stream.read_u16::<BE>()?;
+                let sequence = stream.read_u16::<BE>()?;
+                Ok(Self::EchoReply {
+                    identifier,
+                    sequence,
+                })
+            }
+            3 => {
+                let _ = stream.read_u16::<BE>()?;
+                let next_hop_mtu = stream.read_u16::<BE>()?;
+                Ok(Self::DestinationUnreachable {
+                    next_hop_mtu,
+                    code: IcmpV4DestinationUnreachableCode::from_raw_repr(code)?,
+                })
+            }
+            4 => {
+                assert_eq!(code, 0, "Divergent code not allowed on source quench");
+                let _ = stream.read_u32::<BE>()?;
+                Ok(Self::SourceQuench)
+            }
+            5 => {
+                let addr = Ipv4Addr::from(stream.read_u32::<BE>()?);
+
+                Ok(Self::RedirectMessage {
+                    addr,
+                    code: IcmpV4RedirectCode::from_raw_repr(code)?,
+                })
+            }
+            8 => {
+                assert_eq!(code, 0, "Divergent code not allowed on echo request");
+                let identifier = stream.read_u16::<BE>()?;
+                let sequence = stream.read_u16::<BE>()?;
+                Ok(Self::EchoRequest {
+                    identifier,
+                    sequence,
+                })
+            }
+            9 => {
+                assert_eq!(code, 0, "Divergent code not allowed on route advertisment");
+                let _ = stream.read_u32::<BE>()?;
+                Ok(Self::RouterAdvertisment)
+            }
+            10 => {
+                assert_eq!(code, 0, "Divergent code not allowed on route solicitation");
+                let _ = stream.read_u32::<BE>()?;
+                Ok(Self::RouterSolicitation)
+            }
+            11 => {
+                let _ = stream.read_u32::<BE>()?;
+                Ok(Self::TimeExceeded {
+                    code: IcmpV4TimeExceededCode::from_raw_repr(code)?,
+                })
+            }
+            12 => {
+                let _ = stream.read_u32::<BE>()?;
+                Ok(Self::BadIpHeader {
+                    code: IcmpV4BadIpHeaderCode::from_raw_repr(code)?,
+                })
+            }
+            _ => todo!(),
+        }
+    }
+}
+
+impl FromBytes for IcmpV4Type {
+    type Error = Error;
+    fn from_bytes(stream: &mut BytesReader) -> Result<Self, Self::Error> {
         let typ = stream.read_u8()?;
         let code = stream.read_u8()?;
         let _checksum = stream.read_u16::<BE>()?;

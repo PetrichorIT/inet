@@ -5,9 +5,6 @@
     clippy::module_name_repetitions
 )]
 
-#[macro_use]
-mod macros;
-
 pub mod arp;
 pub mod icmpv4;
 pub mod icmpv6;
