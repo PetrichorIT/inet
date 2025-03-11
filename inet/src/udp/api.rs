@@ -1,4 +1,4 @@
-use bytes::BufMut;
+use bytes_io::BufMut;
 
 use crate::io::{Interest, Ready};
 use crate::{

@@ -14,7 +14,7 @@ use std::{
     net::{IpAddr, Ipv4Addr},
 };
 
-use bytepack::{FromBytestream, ToBytestream};
+use bytes_io::{FromBytes, ToBytes};
 use des::time::SimTime;
 use types::{
     icmpv4::{
@@ -51,7 +51,7 @@ impl IOContext {
     pub(super) fn recv_icmpv4_packet(&mut self, ip_icmp: &Ipv4Packet, ifid: IfId) -> bool {
         assert_eq!(ip_icmp.proto, PROTO_ICMPV4);
 
-        let Ok(pkt) = IcmpV4Packet::read_from_slice(&mut &ip_icmp.content[..]) else {
+        let Ok(pkt) = IcmpV4Packet::peek_from(&ip_icmp.content[..]) else {
             tracing::error!(
                 "received ip-packet with proto=0x1 (icmpv4) but content was no icmpv4-packet"
             );
@@ -84,7 +84,7 @@ impl IOContext {
                     proto: PROTO_ICMPV4,
                     src: ip_icmp.dst,
                     dst: ip_icmp.src,
-                    content: icmp.to_vec().expect("Failed to parse ICMP"),
+                    content: icmp.write_to_vec().expect("Failed to parse ICMP"),
                 };
                 self.send_ip_packet(SocketIfaceBinding::Bound(ifid), IpPacket::V4(ip), true)
                     .expect("Failed to send");
@@ -212,7 +212,7 @@ impl IOContext {
                 let mut ip = pkt.reverse();
                 ip.src = Ipv4Addr::UNSPECIFIED;
                 ip.proto = PROTO_ICMPV4;
-                ip.content = icmp.to_vec().expect("Failed to parse ICMP");
+                ip.content = icmp.write_to_vec().expect("Failed to parse ICMP");
 
                 self.send_ip_packet(SocketIfaceBinding::NotBound, IpPacket::V4(ip), true)
                     .unwrap()
@@ -230,7 +230,7 @@ impl IOContext {
                 let mut ip = pkt.reverse();
                 ip.src = Ipv4Addr::UNSPECIFIED;
                 ip.proto = PROTO_ICMPV4;
-                ip.content = icmp.to_vec().expect("Failed to parse ICMP");
+                ip.content = icmp.write_to_vec().expect("Failed to parse ICMP");
 
                 let _ = self.send_ip_packet(SocketIfaceBinding::NotBound, IpPacket::V4(ip), true);
             }
@@ -248,7 +248,7 @@ impl IOContext {
         let mut ip = pkt.reverse();
         ip.src = Ipv4Addr::UNSPECIFIED;
         ip.proto = PROTO_ICMPV4;
-        ip.content = icmp.to_vec().expect("Failed to parse ICMP");
+        ip.content = icmp.write_to_vec().expect("Failed to parse ICMP");
         self.send_ip_packet(SocketIfaceBinding::Bound(ifid), IpPacket::V4(ip), true)
             .unwrap();
     }
@@ -265,7 +265,7 @@ impl IOContext {
             let mut ip = pkt.reverse();
             ip.src = Ipv4Addr::UNSPECIFIED;
             ip.proto = PROTO_ICMPV4;
-            ip.content = icmp.to_vec().expect("Failed to parse ICMP");
+            ip.content = icmp.write_to_vec().expect("Failed to parse ICMP");
             self.send_ip_packet(SocketIfaceBinding::Bound(ifid), IpPacket::V4(ip), true)
                 .unwrap();
         }

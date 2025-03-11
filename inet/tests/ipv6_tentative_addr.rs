@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use bytepack::FromBytestream;
+use bytes_io::FromBytes;
 use des::{
     net::{
         channel::{Channel, ChannelDropBehaviour, ChannelMetrics},
@@ -91,7 +91,7 @@ struct OnlyRouterSolOrMDL;
 impl Module for OnlyRouterSolOrMDL {
     fn handle_message(&mut self, msg: des::prelude::Message) {
         let pkt = msg.content::<Ipv6Packet>();
-        let icmp = IcmpV6Packet::from_slice(&pkt.content).unwrap();
+        let icmp = IcmpV6Packet::peek_from(&pkt.content[..]).unwrap();
         assert!(matches!(
             icmp,
             IcmpV6Packet::RouterSolicitation(_) | IcmpV6Packet::MulticastListenerReport(_)

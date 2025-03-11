@@ -11,7 +11,7 @@ inet = { path = "../inet", features = ["libpcap"] }
 tracing = "*"
 tokio = "*"
 serial_test = "*"
-bytepack = { path = "../util/bytepack" }
+bytes-io = { path = "../util/bytes-io" }
 types = { path = "../util/types" }
 pcapng = { path = "../util/pcapng", features = ["test-util"] }
 rand = "*"

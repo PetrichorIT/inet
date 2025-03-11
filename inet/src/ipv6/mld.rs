@@ -2,14 +2,14 @@
 
 use std::{io, net::Ipv6Addr, time::Duration};
 
-use bytepack::ToBytestream;
+use bytes_io::ToBytes;
 use des::time::SimTime;
 use fxhash::{FxBuildHasher, FxHashMap};
+use tracing::Level;
 use types::{
     icmpv6::{IcmpV6MulticastListenerMessage, IcmpV6Packet, PROTO_ICMPV6},
     ip::{Ipv6AddrExt, Ipv6AddrScope, Ipv6Packet},
 };
-use tracing::Level;
 
 use crate::{ctx::IOContext, interface::IfId};
 
@@ -244,7 +244,7 @@ impl IOContext {
             hop_limit: 1,
             src: Ipv6Addr::UNSPECIFIED,
             dst: multicast,
-            content: msg.to_vec()?,
+            content: msg.write_to_vec()?,
         };
 
         // TODO: this should ?? always use fe80 addrs, but what to do when no such addr is availabel ??
@@ -270,7 +270,7 @@ impl IOContext {
             hop_limit: 1,
             src: Ipv6Addr::UNSPECIFIED,
             dst: multicast_addr,
-            content: msg.to_vec()?,
+            content: msg.write_to_vec()?,
         };
 
         // TODO: this should ?? always use fe80 addrs, but what to do when no such addr is availabel ??

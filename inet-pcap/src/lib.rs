@@ -1,4 +1,4 @@
-use bytepack::ToBytestream;
+use bytes_io::ToBytes;
 use des::prelude::*;
 use inet::{
     interface::{IfId, Interface},
@@ -89,21 +89,21 @@ impl<W: BlockWriter<IfId>> LibPcapDeamon<W> {
                     ErrorKind::InvalidInput,
                     "Packet of kind {KIND_ARP} did not contain Arp Packet",
                 ))?
-                .to_vec(),
+                .write_to_vec(),
             KIND_IPV6 => msg
                 .try_content::<Ipv6Packet>()
                 .ok_or(Error::new(
                     ErrorKind::InvalidInput,
                     "Packet of kind {KIND_ARP} did not contain Arp Packet",
                 ))?
-                .to_vec(),
+                .write_to_vec(),
             KIND_ARP => msg
                 .try_content::<ArpPacket>()
                 .ok_or(Error::new(
                     ErrorKind::InvalidInput,
                     "Packet of kind {KIND_ARP} did not contain Arp Packet",
                 ))?
-                .to_vec(),
+                .write_to_vec(),
             _ => Err(Error::new(ErrorKind::Unsupported, "unsupported ethertyp")),
         }
     }

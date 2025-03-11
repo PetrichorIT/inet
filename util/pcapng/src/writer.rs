@@ -4,7 +4,6 @@ use super::{
     SectionHeaderBlock, SectionHeaderOption,
 };
 
-use bytepack::ToBytestream;
 use bytes_io::ToBytes;
 use std::io::{Error, ErrorKind, Result, Write};
 
@@ -41,7 +40,7 @@ pub trait BlockWriter<I> {
         eth_src: MacAddress,
         eth_dst: MacAddress,
         eth_kind: u16,
-        pkt: &impl ToBytestream<Error = Error>,
+        pkt: &impl ToBytes<Error = Error>,
         flags: Option<EnhancedPacketOptionFlags>,
     ) -> Result<()>;
 
@@ -132,7 +131,7 @@ impl<W: Write, I: PartialEq + Clone> BlockWriter<I> for DefaultBlockWriter<W, I>
         eth_src: MacAddress,
         eth_dst: MacAddress,
         eth_kind: u16,
-        pkt: &impl ToBytestream<Error = Error>,
+        pkt: &impl ToBytes<Error = Error>,
         flags: Option<EnhancedPacketOptionFlags>,
     ) -> Result<()> {
         let (interface_id, (_, link_type)) = self
@@ -155,7 +154,7 @@ impl<W: Write, I: PartialEq + Clone> BlockWriter<I> for DefaultBlockWriter<W, I>
                 data.write_all(&eth_kind.to_be_bytes())?;
 
                 // Packet
-                pkt.append_to_vec(&mut data)?;
+                pkt.write_to(&mut data)?;
 
                 // Ethernet header part 2
                 data.write_all(&[0x00, 0x00, 0x00, 0x00])?;
@@ -168,7 +167,7 @@ impl<W: Write, I: PartialEq + Clone> BlockWriter<I> for DefaultBlockWriter<W, I>
                 data.write_all(&ether_typ_to_lo_id(eth_kind).to_be_bytes())?;
 
                 // Packet
-                pkt.append_to_vec(&mut data)?;
+                pkt.write_to(&mut data)?;
 
                 // Ethernet header part 2
                 data.write_all(&[0x00, 0x00, 0x00, 0x00])?;

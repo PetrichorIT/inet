@@ -57,10 +57,29 @@ impl ToBytestream for IcmpV4Packet {
     }
 }
 
+impl ToBytes for IcmpV4Packet {
+    type Error = Error;
+    fn to_bytes(&self, bytestream: &mut BytesWriter) -> Result<(), Self::Error> {
+        self.typ.to_bytes(bytestream)?;
+        bytestream.write_all(&self.content)
+    }
+}
+
 impl FromBytestream for IcmpV4Packet {
     type Error = Error;
     fn from_bytestream(bytestream: &mut BytestreamReader) -> Result<Self, Self::Error> {
         let typ = IcmpV4Type::from_bytestream(bytestream)?;
+        let mut content = vec![0; PAYLOAD_LIMIT];
+        let n = bytestream.read(&mut content)?;
+        content.truncate(n);
+        Ok(Self { typ, content })
+    }
+}
+
+impl FromBytes for IcmpV4Packet {
+    type Error = Error;
+    fn from_bytes(bytestream: &mut BytesReader) -> Result<Self, Self::Error> {
+        let typ = IcmpV4Type::from_bytes(bytestream)?;
         let mut content = vec![0; PAYLOAD_LIMIT];
         let n = bytestream.read(&mut content)?;
         content.truncate(n);

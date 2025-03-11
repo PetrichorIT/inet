@@ -1,4 +1,4 @@
-use bytepack::FromBytestream;
+use bytes_io::FromBytes;
 use des::registry;
 use std::{
     str::FromStr,
@@ -19,7 +19,7 @@ impl Module for Link {
         // random packet drop 10 %
         if (random::<u64>() as usize % 10) == 7 {
             let ippacket = msg.content::<Ipv4Packet>();
-            let tcp = TcpPacket::from_slice(&ippacket.content).unwrap();
+            let tcp = TcpPacket::peek_from(&ippacket.content[..]).unwrap();
 
             tracing::error!(
                 "DROP {} --> {} :: Tcp {{ {:?} seq_no = {} ack_no = {} win = {} data = {} bytes }}",

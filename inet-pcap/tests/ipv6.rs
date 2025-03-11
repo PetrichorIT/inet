@@ -1,6 +1,6 @@
 use std::{fs::File, net::Ipv6Addr, time::Duration};
 
-use bytepack::ToBytestream;
+use bytes_io::ToBytes;
 use des::{
     net::{module::Module, Sim},
     registry,
@@ -91,7 +91,7 @@ impl Module for HostBob {
                                 maximum_response_delay: Duration::from_secs(1),
                                 multicast_addr: Ipv6Addr::UNSPECIFIED,
                             });
-                        msg.to_vec().unwrap()
+                        msg.write_to_vec().unwrap()
                     },
                 }))
                 .unwrap();

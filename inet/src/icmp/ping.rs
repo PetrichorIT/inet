@@ -1,11 +1,11 @@
-use bytepack::ToBytestream;
+use bytes_io::ToBytes;
 use des::prelude::*;
-use types::icmpv4::{IcmpV4Packet, IcmpV4Type, PROTO_ICMPV4};
-use types::ip::{IpPacket, Ipv4Flags, Ipv4Packet};
 use std::io::{Error, ErrorKind, Result};
 use std::net::Ipv4Addr;
 use std::time::Duration;
 use tokio::sync::oneshot;
+use types::icmpv4::{IcmpV4Packet, IcmpV4Type, PROTO_ICMPV4};
+use types::ip::{IpPacket, Ipv4Flags, Ipv4Packet};
 
 use crate::socket::SocketIfaceBinding;
 use crate::IOContext;
@@ -101,7 +101,7 @@ impl IOContext {
             },
             &ip,
         );
-        ip.content = icmp.to_vec().expect("Failed to parse ICMP");
+        ip.content = icmp.write_to_vec().expect("Failed to parse ICMP");
 
         self.send_ip_packet(
             SocketIfaceBinding::Any(self.ifaces.keys().cloned().collect::<Vec<_>>()),

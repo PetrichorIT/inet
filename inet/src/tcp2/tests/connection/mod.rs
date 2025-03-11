@@ -9,7 +9,7 @@ use std::{
 };
 
 use crate::tcp2::{Config, Connection, Quad, State};
-use bytepack::ToBytestream;
+use bytes_io::ToBytes;
 use des::time::SimTime;
 use pcapng::{BlockWriter, DefaultBlockWriter, InterfaceDescriptionOption, Linktype};
 use tracing::instrument;
@@ -278,7 +278,7 @@ fn record(
                         proto: PROTO_TCP,
                         src,
                         dst,
-                        content: pkt.to_vec()?,
+                        content: pkt.write_to_vec()?,
                     },
                     None,
                 )?;
@@ -297,7 +297,7 @@ fn record(
                         hop_limit: 64,
                         src,
                         dst,
-                        content: pkt.to_vec()?,
+                        content: pkt.write_to_vec()?,
                     },
                     None,
                 )?;

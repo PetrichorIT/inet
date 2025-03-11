@@ -1,5 +1,4 @@
-use bytepack::ToBytestream;
-use bytes_io::{Bytes, FromBytes};
+use bytes_io::{Bytes, FromBytes, ToBytes};
 
 use super::{
     Block, BlockReader, BlockWriter, DefaultBlockWriter, EnhancedPacketOptionFlags,
@@ -102,7 +101,7 @@ impl<I: PartialEq + Clone> BlockWriter<I> for TestBlockWriter<I> {
         eth_src: MacAddress,
         eth_dst: MacAddress,
         eth_kind: u16,
-        pkt: &impl ToBytestream<Error = Error>,
+        pkt: &impl ToBytes<Error = Error>,
         flags: Option<EnhancedPacketOptionFlags>,
     ) -> Result<()> {
         self.writer

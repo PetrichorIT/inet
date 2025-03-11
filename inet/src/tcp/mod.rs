@@ -1,7 +1,7 @@
 //! The Transmission Control Protocol (TCP)
 #![allow(unused)]
 
-use bytepack::{FromBytestream, ToBytestream};
+use bytes_io::{FromBytes, ToBytes};
 use des::{
     prelude::{current, schedule_in, GateRef, Message},
     time::SimTime,
@@ -227,7 +227,7 @@ impl IOContext {
     pub(super) fn capture_tcp_packet(&mut self, ip_packet: IpPacketRef, ifid: IfId) -> bool {
         assert!(ip_packet.tos() == PROTO_TCP);
 
-        let Ok(tcp_pkt) = TcpPacket::from_slice(ip_packet.content()) else {
+        let Ok(tcp_pkt) = TcpPacket::peek_from(ip_packet.content()) else {
             tracing::error!(
                 "received ip-packet with proto=0x06 (tcp) but content was no tcp-packet"
             );
@@ -291,7 +291,7 @@ impl IOContext {
             tracing::trace!("invalid incoming connection, sending RST");
 
             let rst = TcpPacket::rst_for_syn(&tcp_pkt);
-            let rst = ip_packet.response(rst.to_vec().unwrap());
+            let rst = ip_packet.response(rst.write_to_vec().unwrap());
             self.send_ip_packet(SocketIfaceBinding::Bound(ifid), rst, true);
             true
         } else {
@@ -1651,7 +1651,7 @@ impl TransmissionControlBlock {
     }
 
     fn ip_packet_for(&self, tcp: TcpPacket) -> IpPacket {
-        let content = tcp.to_vec().unwrap();
+        let content = tcp.write_to_vec().unwrap();
         match self.local_addr {
             SocketAddr::V4(local) => IpPacket::V4(Ipv4Packet {
                 dscp: 0,

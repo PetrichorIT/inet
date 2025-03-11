@@ -5,7 +5,7 @@
 #![deny(unsafe_code)]
 //! Provides tools for parsing and packing bytestreams.
 //!
-//! The `bytepack` crate provides intuitive tools to assemble and parse
+//! The `bytes-io` crate provides intuitive tools to assemble and parse
 //! bytestreams, based on abitrary serializable types.
 //!
 

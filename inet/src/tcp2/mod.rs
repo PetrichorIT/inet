@@ -5,7 +5,7 @@ use crate::{
     IOContext,
 };
 
-use bytepack::{FromBytestream, ToBytestream};
+use bytes_io::{FromBytes, ToBytes};
 use des::{
     prelude::{schedule_at, Message},
     time::SimTime,
@@ -225,7 +225,7 @@ impl IOContext {
     pub fn tcp2_on_packet(&mut self, ip_packet: IpPacketRef, ifid: IfId) -> bool {
         assert_eq!(ip_packet.tos(), PROTO_TCP2);
 
-        let Ok(pkt) = TcpPacket::from_slice(ip_packet.content()) else {
+        let Ok(pkt) = TcpPacket::peek_from(ip_packet.content()) else {
             tracing::error!(
                 "received ip-packet with proto=0x06 (tcp) but content was no tcp-packet"
             );
@@ -279,7 +279,7 @@ impl IOContext {
                 tracing::trace!("invalid incoming connection, sending RST");
 
                 let rst = TcpPacket::rst_for_syn(&pkt);
-                let rst = ip_packet.response(rst.to_vec().unwrap());
+                let rst = ip_packet.response(rst.write_to_vec().unwrap());
                 self.send_ip_packet(SocketIfaceBinding::Bound(ifid), rst, true)
                     .expect("failed to send");
                 true

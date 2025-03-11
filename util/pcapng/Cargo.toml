@@ -8,7 +8,6 @@ default = []
 test-util = ["dep:des"]
 
 [dependencies]
-bytepack = { path = "../bytepack" }
 bitflags = ">2.6.0"
 des = { version = "*", optional = true }
 bytes-io = { path = "../bytes-io" }

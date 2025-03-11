@@ -1,8 +1,7 @@
 //! The User Datagram Protocol (UDP)
 use super::{socket::*, IOContext};
 use crate::interface::IfId;
-use bytepack::{FromBytestream, ToBytestream};
-use bytes::BufMut;
+use bytes_io::{BufMut, FromBytes, ToBytes};
 use fxhash::{FxBuildHasher, FxHashMap};
 use std::{
     collections::VecDeque,
@@ -114,7 +113,7 @@ impl IOContext {
 
         let is_broadcast = is_broadcast(packet.dst());
 
-        let Ok(udp) = UdpPacket::from_slice(packet.content()) else {
+        let Ok(udp) = UdpPacket::peek_from(packet.content()) else {
             tracing::error!(
                 "received ip-packet with proto=0x11 (udp) but content was no udp-packet"
             );
@@ -258,7 +257,7 @@ impl IOContext {
             checksum: 0,
             content: Vec::from(buf),
         };
-        let content = udp_packet.to_vec()?;
+        let content = udp_packet.write_to_vec()?;
 
         match (mng.local_addr.ip(), target.ip()) {
             (IpAddr::V4(local), IpAddr::V4(target)) => {

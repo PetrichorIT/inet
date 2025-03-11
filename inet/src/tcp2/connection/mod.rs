@@ -1,4 +1,4 @@
-use bytepack::{FromBytestream, ToBytestream};
+use bytes_io::{FromBytes, ToBytes};
 use des::time::SimTime;
 use interface::UserInterface;
 use std::{
@@ -142,7 +142,7 @@ impl Connection {
                     proto: PROTO_TCP2,
                     src,
                     dst,
-                    content: tcp.to_vec().expect("failed to encode"),
+                    content: tcp.write_to_vec().expect("failed to encode"),
                 }),
                 (V6(src), V6(dst)) => IpPacket::V6(Ipv6Packet {
                     traffic_class: 0,
@@ -151,7 +151,7 @@ impl Connection {
                     hop_limit: self.cfg.ttl,
                     src,
                     dst,
-                    content: tcp.to_vec().expect("failed to encodes"),
+                    content: tcp.write_to_vec().expect("failed to encodes"),
                 }),
                 _ => todo!(),
             };
@@ -656,7 +656,7 @@ impl Connection {
             return Ok(());
         }
 
-        let tcp = TcpPacket::from_slice(&ip_header.content)?;
+        let tcp = TcpPacket::peek_from(&ip_header.content[..])?;
         let implied_quad = Quad {
             src: SocketAddrV4::new(ip_header.src, tcp.src_port).into(),
             dst: SocketAddrV4::new(ip_header.dst, tcp.dst_port).into(),

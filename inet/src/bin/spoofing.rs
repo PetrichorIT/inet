@@ -1,4 +1,4 @@
-use bytepack::ToBytestream;
+use bytes_io::ToBytes;
 use des::{prelude::*, registry, time::sleep};
 use inet::{
     interface::{add_interface, Interface, NetworkDevice},
@@ -48,7 +48,7 @@ impl Module for Spoofer {
                         options: Vec::new(),
                         content: Vec::new(),
                     }
-                    .to_vec()
+                    .write_to_vec()
                     .unwrap(),
                 });
                 sock.try_send(pkt).unwrap();

@@ -1,12 +1,12 @@
 use crate::{ctx::IOContext, interface::IfId};
-use bytepack::ToBytestream;
+use bytes_io::ToBytes;
 use des::time::SimTime;
+use std::{fmt, io, iter, net::Ipv6Addr, time::Duration};
+use tokio::sync::oneshot;
 use types::{
     icmpv6::{IcmpV6Echo, IcmpV6Packet, PROTO_ICMPV6},
     ip::Ipv6Packet,
 };
-use std::{fmt, io, iter, net::Ipv6Addr, time::Duration};
-use tokio::sync::oneshot;
 
 /// Tries to determine reachability and round-trip time
 /// to a specified target
@@ -145,7 +145,7 @@ impl IOContext {
             next_header: PROTO_ICMPV6,
             src: Ipv6Addr::UNSPECIFIED,
             dst: addr,
-            content: msg.to_vec()?,
+            content: msg.write_to_vec()?,
         };
 
         self.ipv6_send(pkt, IfId::NULL)

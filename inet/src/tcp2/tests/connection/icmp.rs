@@ -1,4 +1,4 @@
-use bytepack::ToBytestream;
+use bytes_io::ToBytes;
 use std::{
     io::{self, ErrorKind},
     net::{Ipv4Addr, SocketAddr},
@@ -50,10 +50,10 @@ impl TcpTestUnit {
                             options: Vec::new(),
                             content: Vec::new(),
                         }
-                        .to_vec()
+                        .write_to_vec()
                         .unwrap(),
                     }
-                    .to_vec()
+                    .write_to_vec()
                     .unwrap();
                     buf
                 },
@@ -121,7 +121,7 @@ fn demux_quad_missmatch() -> io::Result<()> {
             proto: PROTO_TCP2,
             src: Ipv4Addr::new(10, 0, 1, 104),
             dst: Ipv4Addr::new(20, 0, 2, 204),
-            content: TcpPacket::new(80, 1801, 0, 0, 0, Vec::new()).to_vec()?,
+            content: TcpPacket::new(80, 1801, 0, 0, 0, Vec::new()).write_to_vec()?,
         },
     )?;
     assert_eq!(test.state, State::Estab);
@@ -143,7 +143,7 @@ fn demux_quad_missmatch() -> io::Result<()> {
             proto: PROTO_TCP2,
             src: Ipv4Addr::new(10, 0, 1, 104),
             dst: Ipv4Addr::new(20, 0, 2, 204),
-            content: TcpPacket::new(81, 1808, 0, 0, 0, Vec::new()).to_vec()?,
+            content: TcpPacket::new(81, 1808, 0, 0, 0, Vec::new()).write_to_vec()?,
         },
     )?;
     assert_eq!(test.state, State::Estab);
@@ -165,7 +165,7 @@ fn demux_quad_missmatch() -> io::Result<()> {
             proto: PROTO_TCP2,
             src: Ipv4Addr::new(10, 0, 1, 105),
             dst: Ipv4Addr::new(20, 0, 2, 204),
-            content: TcpPacket::new(80, 1808, 0, 0, 0, Vec::new()).to_vec()?,
+            content: TcpPacket::new(80, 1808, 0, 0, 0, Vec::new()).write_to_vec()?,
         },
     )?;
     assert_eq!(test.state, State::Estab);
