@@ -1,6 +1,6 @@
 use std::{error::Error as StdError, fmt::Display, io};
 
-use macros::raw_enum;
+use macros::repr_enum;
 
 /// A DNS error.
 #[derive(Debug)]
@@ -47,7 +47,7 @@ impl From<Error> for io::Error {
     }
 }
 
-raw_enum! {
+repr_enum! {
     /// The response code of a DNS message.
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
     pub enum ResponseCode {

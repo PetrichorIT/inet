@@ -5,10 +5,8 @@ use crate::{
     dns::{lookup_host, ToSocketAddrs},
     interface::InterfaceName,
     socket::{AsRawFd, Fd},
-    udp::UdpPacket,
     IOContext,
 };
-use std::mem::MaybeUninit;
 use std::{
     io::{Error, ErrorKind, Result},
     net::SocketAddr,
@@ -196,29 +194,11 @@ impl UdpSocket {
         let peer = self.peer_addr()?;
         loop {
             self.readable().await?;
-
-            let r = IOContext::with_current(|ctx| {
-                if let Some(handle) = ctx.udp.binds.get_mut(&self.fd) {
-                    handle.incoming.pop_front()
-                } else {
-                    panic!("SimContext lost socket")
-                }
-            });
-
-            match r {
-                Some((src, _, msg)) => {
-                    if src != peer {
-                        continue;
-                    }
-
-                    let wrt = msg.content.len().min(buf.len());
-                    for i in 0..wrt {
-                        buf[i] = msg.content[i];
-                    }
-
-                    return Ok(wrt);
-                }
-                None => {}
+            match IOContext::with_current(|ctx| ctx.udp_recv(self.fd, Some(peer), buf)) {
+                Ok((n, _)) => return Ok(n),
+                Err(e) if e.kind() == ErrorKind::WouldBlock => {}
+                Err(e) if e.kind() == ErrorKind::ConnectionRefused => {}
+                Err(e) => return Err(e),
             }
         }
     }
@@ -229,36 +209,11 @@ impl UdpSocket {
         let peer = self.peer_addr()?;
         loop {
             self.readable().await?;
-
-            let r = IOContext::with_current(|ctx| {
-                if let Some(handle) = ctx.udp.binds.get_mut(&self.fd) {
-                    handle.incoming.pop_front()
-                } else {
-                    panic!("SimContext lost socket")
-                }
-            });
-
-            match r {
-                Some((src, _, msg)) => {
-                    if src != peer {
-                        continue;
-                    }
-
-                    let chunk = unsafe {
-                        &mut *(buf.chunk_mut().as_uninit_slice_mut() as *mut [MaybeUninit<u8>]
-                            as *mut [u8])
-                    };
-
-                    let n = msg.content.len().min(chunk.len());
-                    chunk[..n].copy_from_slice(&msg.content[..n]);
-
-                    unsafe {
-                        buf.advance_mut(n);
-                    }
-
-                    return Ok(n);
-                }
-                None => {}
+            match IOContext::with_current(|ctx| ctx.udp_recv_buf(self.fd, Some(peer), buf)) {
+                Ok((n, _)) => return Ok(n),
+                Err(e) if e.kind() == ErrorKind::WouldBlock => {}
+                Err(e) if e.kind() == ErrorKind::ConnectionRefused => {}
+                Err(e) => return Err(e),
             }
         }
     }
@@ -271,30 +226,10 @@ impl UdpSocket {
     pub fn try_recv(&self, buf: &mut [u8]) -> Result<usize> {
         loop {
             let peer = self.peer_addr()?;
-            let (peer, r) = IOContext::with_current(|ctx| {
-                if let Some(handle) = ctx.udp.binds.get_mut(&self.fd) {
-                    Ok::<(SocketAddr, Option<(SocketAddr, SocketAddr, UdpPacket)>), std::io::Error>(
-                        (peer, handle.incoming.pop_front()),
-                    )
-                } else {
-                    panic!("SimContext lost socket")
-                }
-            })?;
-
-            match r {
-                Some((src, _, msg)) => {
-                    if src != peer {
-                        continue;
-                    }
-
-                    let wrt = msg.content.len().min(buf.len());
-                    for i in 0..wrt {
-                        buf[i] = msg.content[i];
-                    }
-
-                    return Ok(wrt);
-                }
-                None => return Err(Error::new(ErrorKind::WouldBlock, "Would block")),
+            match IOContext::with_current(|ctx| ctx.udp_recv(self.fd, Some(peer), buf)) {
+                Ok((n, _)) => return Ok(n),
+                Err(e) if e.kind() == ErrorKind::ConnectionRefused => {}
+                Err(e) => return Err(e),
             }
         }
     }
@@ -307,36 +242,10 @@ impl UdpSocket {
     pub fn try_recv_buf<B: BufMut>(&self, buf: &mut B) -> Result<usize> {
         loop {
             let peer = self.peer_addr()?;
-            let (peer, r) = IOContext::with_current(|ctx| {
-                if let Some(handle) = ctx.udp.binds.get_mut(&self.fd) {
-                    Ok::<(SocketAddr, Option<(SocketAddr, SocketAddr, UdpPacket)>), std::io::Error>(
-                        (peer, handle.incoming.pop_front()),
-                    )
-                } else {
-                    panic!("SimContext lost socket")
-                }
-            })?;
-
-            match r {
-                Some((src, _, msg)) => {
-                    if src != peer {
-                        continue;
-                    }
-                    let chunk = unsafe {
-                        &mut *(buf.chunk_mut().as_uninit_slice_mut() as *mut [MaybeUninit<u8>]
-                            as *mut [u8])
-                    };
-
-                    let n = msg.content.len().min(chunk.len());
-                    chunk[..n].copy_from_slice(&msg.content[..n]);
-
-                    unsafe {
-                        buf.advance_mut(n);
-                    }
-
-                    return Ok(n);
-                }
-                None => return Err(Error::new(ErrorKind::WouldBlock, "Would block")),
+            match IOContext::with_current(|ctx| ctx.udp_recv_buf(self.fd, Some(peer), buf)) {
+                Ok((n, _)) => return Ok(n),
+                Err(e) if e.kind() == ErrorKind::ConnectionRefused => {}
+                Err(e) => return Err(e),
             }
         }
     }
@@ -347,27 +256,17 @@ impl UdpSocket {
     /// The function must be called with valid byte array buf of sufficient size to hold the message bytes.
     /// If a message is too long to fit in the supplied buffer, excess bytes may be discarded.
     pub async fn recv_from(&self, buf: &mut [u8]) -> Result<(usize, SocketAddr)> {
+        if let Ok(peer) = self.peer_addr() {
+            return self.recv(buf).await.map(|n| (n, peer));
+        }
+
         loop {
             self.readable().await?;
-
-            let r = IOContext::with_current(|ctx| {
-                if let Some(handle) = ctx.udp.binds.get_mut(&self.fd) {
-                    handle.incoming.pop_front()
-                } else {
-                    panic!("SimContext lost socket")
-                }
-            });
-
-            match r {
-                Some((src, _, msg)) => {
-                    let wrt = msg.content.len().min(buf.len());
-                    for i in 0..wrt {
-                        buf[i] = msg.content[i];
-                    }
-
-                    return Ok((wrt, src));
-                }
-                None => {}
+            match IOContext::with_current(|ctx| ctx.udp_recv(self.fd, None, buf)) {
+                Ok((n, src)) => return Ok((n, src)),
+                Err(e) if e.kind() == ErrorKind::WouldBlock => {}
+                Err(e) if e.kind() == ErrorKind::ConnectionRefused => {}
+                Err(e) => return Err(e),
             }
         }
     }
@@ -379,25 +278,15 @@ impl UdpSocket {
     /// to hold the message bytes. If a message is too long to fit in the supplied buffer,
     /// excess bytes may be discarded.
     pub fn try_recv_from(&self, buf: &mut [u8]) -> Result<(usize, SocketAddr)> {
+        if let Ok(peer) = self.peer_addr() {
+            return self.try_recv(buf).map(|n| (n, peer));
+        }
+
         loop {
-            let r = IOContext::with_current(|ctx| {
-                if let Some(handle) = ctx.udp.binds.get_mut(&self.fd) {
-                    handle.incoming.pop_front()
-                } else {
-                    panic!("SimContext lost socket")
-                }
-            });
-
-            match r {
-                Some((src, _, msg)) => {
-                    let wrt = msg.content.len().min(buf.len());
-                    for i in 0..wrt {
-                        buf[i] = msg.content[i];
-                    }
-
-                    return Ok((wrt, src));
-                }
-                None => {}
+            match IOContext::with_current(|ctx| ctx.udp_recv(self.fd, None, buf)) {
+                Ok((n, src)) => return Ok((n, src)),
+                Err(e) if e.kind() == ErrorKind::ConnectionRefused => {}
+                Err(e) => return Err(e),
             }
         }
     }
@@ -408,35 +297,19 @@ impl UdpSocket {
     /// The function must be called with valid byte array buf of sufficient size to hold the message bytes.
     /// If a message is too long to fit in the supplied buffer, excess bytes may be discarded.
     pub async fn recv_buf_from<B: BufMut>(&self, buf: &mut B) -> Result<(usize, SocketAddr)> {
+        if let Ok(peer) = self.peer_addr() {
+            return self.recv_buf(buf).await.map(|n| (n, peer));
+        }
+
         loop {
-            self.readable().await?;
-
-            let r = IOContext::with_current(|ctx| {
-                if let Some(handle) = ctx.udp.binds.get_mut(&self.fd) {
-                    handle.incoming.pop_front()
-                } else {
-                    panic!("SimContext lost socket")
+            loop {
+                self.readable().await?;
+                match IOContext::with_current(|ctx| ctx.udp_recv_buf(self.fd, None, buf)) {
+                    Ok((n, src)) => return Ok((n, src)),
+                    Err(e) if e.kind() == ErrorKind::WouldBlock => {}
+                    Err(e) if e.kind() == ErrorKind::ConnectionRefused => {}
+                    Err(e) => return Err(e),
                 }
-            });
-
-            match r {
-                Some((src, _, msg)) => {
-                    // Safety: Data is being overwritten, so pre-init is not important.
-                    let chunk = unsafe {
-                        &mut *(buf.chunk_mut().as_uninit_slice_mut() as *mut [MaybeUninit<u8>]
-                            as *mut [u8])
-                    };
-
-                    let n = msg.content.len().min(chunk.len());
-                    chunk[..n].copy_from_slice(&msg.content[..n]);
-
-                    unsafe {
-                        buf.advance_mut(n);
-                    }
-
-                    return Ok((n, src));
-                }
-                None => {}
             }
         }
     }
@@ -448,32 +321,89 @@ impl UdpSocket {
     /// to hold the message bytes. If a message is too long to fit in the supplied buffer,
     /// excess bytes may be discarded.
     pub fn try_recv_buf_from<B: BufMut>(&self, buf: &mut B) -> Result<(usize, SocketAddr)> {
+        if let Ok(peer) = self.peer_addr() {
+            return self.try_recv_buf(buf).map(|n| (n, peer));
+        }
+
         loop {
-            let r = IOContext::with_current(|ctx| {
-                if let Some(handle) = ctx.udp.binds.get_mut(&self.fd) {
-                    handle.incoming.pop_front()
-                } else {
-                    panic!("SimContext lost socket")
-                }
-            });
+            match IOContext::with_current(|ctx| ctx.udp_recv_buf(self.fd, None, buf)) {
+                Ok((n, src)) => return Ok((n, src)),
+                Err(e) if e.kind() == ErrorKind::ConnectionRefused => {}
+                Err(e) => return Err(e),
+            }
+        }
+    }
 
-            match r {
-                Some((src, _, msg)) => {
-                    let chunk = unsafe {
-                        &mut *(buf.chunk_mut().as_uninit_slice_mut() as *mut [MaybeUninit<u8>]
-                            as *mut [u8])
-                    };
+    pub async fn peek(&self, buf: &mut [u8]) -> Result<usize> {
+        loop {
+            let peer = self.peer_addr()?;
+            self.readable().await?;
+            match IOContext::with_current(|ctx| ctx.udp_peek(self.fd, Some(peer), buf)) {
+                Ok((n, _)) => return Ok(n),
+                Err(e) if e.kind() == ErrorKind::WouldBlock => {}
+                Err(e) if e.kind() == ErrorKind::ConnectionRefused => {}
+                Err(e) => return Err(e),
+            }
+        }
+    }
 
-                    let n = msg.content.len().min(chunk.len());
-                    chunk[..n].copy_from_slice(&msg.content[..n]);
+    pub fn try_peek(&self, buf: &mut [u8]) -> Result<usize> {
+        loop {
+            let peer = self.peer_addr()?;
+            match IOContext::with_current(|ctx| ctx.udp_peek(self.fd, Some(peer), buf)) {
+                Ok((n, _)) => return Ok(n),
+                Err(e) if e.kind() == ErrorKind::ConnectionRefused => {}
+                Err(e) => return Err(e),
+            }
+        }
+    }
 
-                    unsafe {
-                        buf.advance_mut(n);
-                    }
+    pub async fn peek_from(&self, buf: &mut [u8]) -> Result<(usize, SocketAddr)> {
+        if let Ok(peer) = self.peer_addr() {
+            return self.peek(buf).await.map(|n| (n, peer));
+        }
+        loop {
+            self.readable().await?;
+            match IOContext::with_current(|ctx| ctx.udp_peek(self.fd, None, buf)) {
+                Ok((n, src)) => return Ok((n, src)),
+                Err(e) if e.kind() == ErrorKind::WouldBlock => {}
+                Err(e) if e.kind() == ErrorKind::ConnectionRefused => {}
+                Err(e) => return Err(e),
+            }
+        }
+    }
 
-                    return Ok((n, src));
-                }
-                None => {}
+    pub fn try_peek_from(&self, buf: &mut [u8]) -> Result<(usize, SocketAddr)> {
+        if let Ok(peer) = self.peer_addr() {
+            return self.try_peek(buf).map(|n| (n, peer));
+        }
+        loop {
+            match IOContext::with_current(|ctx| ctx.udp_peek(self.fd, None, buf)) {
+                Ok((n, src)) => return Ok((n, src)),
+                Err(e) if e.kind() == ErrorKind::ConnectionRefused => {}
+                Err(e) => return Err(e),
+            }
+        }
+    }
+
+    pub async fn peek_sender(&self) -> Result<SocketAddr> {
+        loop {
+            self.readable().await?;
+            match IOContext::with_current(|ctx| ctx.udp_peek(self.fd, None, &mut [])) {
+                Ok((_, src)) => return Ok(src),
+                Err(e) if e.kind() == ErrorKind::WouldBlock => {}
+                Err(e) if e.kind() == ErrorKind::ConnectionRefused => {}
+                Err(e) => return Err(e),
+            }
+        }
+    }
+
+    pub fn try_peek_sender(&self) -> Result<SocketAddr> {
+        loop {
+            match IOContext::with_current(|ctx| ctx.udp_peek(self.fd, None, &mut [])) {
+                Ok((_, src)) => return Ok(src),
+                Err(e) if e.kind() == ErrorKind::ConnectionRefused => {}
+                Err(e) => return Err(e),
             }
         }
     }

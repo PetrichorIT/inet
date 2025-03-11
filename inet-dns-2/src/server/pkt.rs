@@ -1,5 +1,5 @@
 use bytes_io::{BytesReader, BytesWriter, FromBytes, ReadBytesExt, ToBytes, WriteBytesExt, BE};
-use macros::raw_enum;
+use macros::repr_enum;
 
 use crate::core::{
     DnsResourceRecord, DnsString, OptResourceRecord, QueryResponse, Question, QuestionClass,
@@ -303,7 +303,7 @@ impl FromBytes for DnsMessage {
 
 // # DNSOpCode
 
-raw_enum! {
+repr_enum! {
     /// The operation code of a DNS message.
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
     pub enum OpCode {

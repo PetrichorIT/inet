@@ -8,6 +8,7 @@ edition = "2021"
 [dependencies]
 inet = { path = "../inet" }
 bytepack = { path = "../util/bytepack" }
+macros = { path = "../util/macros" }
 fxhash = "*"
 des = "*"
 tracing = "*"

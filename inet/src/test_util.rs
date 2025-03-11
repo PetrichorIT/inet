@@ -1,4 +1,9 @@
-use std::{future::Future, io, net::Ipv4Addr, time::Duration};
+use std::{
+    future::Future,
+    io,
+    net::{IpAddr, Ipv4Addr},
+    time::Duration,
+};
 
 use des::{
     net::{processing::ProcessingStack, AsyncFn, Sim},
@@ -11,9 +16,17 @@ use crate::{
     utils::LinkLayerSwitch,
 };
 
+const DEFAULT_CHANNEL_METRICS: ChannelMetrics = ChannelMetrics::new(
+    8_000_000,
+    Duration::from_millis(20),
+    Duration::ZERO,
+    ChannelDropBehaviour::Queue(None),
+);
+
 pub struct SimpleSim {
-    clients: Vec<Ipv4Addr>,
+    clients: Vec<IpAddr>,
     sim: Sim<()>,
+    pub metrics: ChannelMetrics,
 }
 
 impl SimpleSim {
@@ -24,10 +37,11 @@ impl SimpleSim {
         Self {
             sim,
             clients: Vec::new(),
+            metrics: DEFAULT_CHANNEL_METRICS,
         }
     }
 
-    fn add_client(&mut self, key: &str) -> Ipv4Addr {
+    fn add_client(&mut self, key: &str) -> IpAddr {
         match key.parse() {
             Ok(addr) => {
                 self.clients.push(addr);
@@ -71,19 +85,21 @@ impl SimpleSim {
             AsyncFn::io(move |_rx| {
                 let f = f();
                 async move {
-                    add_interface(Interface::ethv4(NetworkDevice::eth(), addr))?;
+                    match addr {
+                        IpAddr::V4(addr) => {
+                            add_interface(Interface::ethv4(NetworkDevice::eth(), addr))?;
+                        }
+                        IpAddr::V6(addr) => {
+                            add_interface(Interface::ethv6(NetworkDevice::eth(), addr))?;
+                        }
+                    }
                     f.await
                 }
             }),
         );
         self.sim.gate(&key, "port").connect(
             self.sim.gate("switch", &format!("port-${key}")),
-            Some(Channel::new(ChannelMetrics::new(
-                8_000_000,
-                Duration::from_millis(20),
-                Duration::ZERO,
-                ChannelDropBehaviour::Queue(None),
-            ))),
+            Some(Channel::new(self.metrics)),
         );
     }
 
@@ -99,22 +115,26 @@ impl SimpleSim {
         self.sim.node(
             &key,
             AsyncFn::io(move |_rx| {
+                // TODO: add option to ensure no packet escapes the IOContext, aka rx remains empty
                 let f = f();
                 async move {
-                    add_interface(Interface::ethv4(NetworkDevice::eth(), addr))?;
-                    f.await
+                    match addr {
+                        IpAddr::V4(addr) => {
+                            add_interface(Interface::ethv4(NetworkDevice::eth(), addr))?;
+                        }
+                        IpAddr::V6(addr) => {
+                            add_interface(Interface::ethv6(NetworkDevice::eth(), addr))?;
+                        }
+                    }
+                    let r = f.await;
+                    r
                 }
             })
             .require_join(),
         );
         self.sim.gate(&key, "port").connect(
             self.sim.gate("switch", &format!("port-${key}")),
-            Some(Channel::new(ChannelMetrics::new(
-                8_000_000,
-                Duration::from_millis(20),
-                Duration::ZERO,
-                ChannelDropBehaviour::Queue(None),
-            ))),
+            Some(Channel::new(self.metrics)),
         );
     }
 
@@ -137,6 +157,7 @@ impl Default for SimpleSim {
         Self {
             sim,
             clients: Vec::new(),
+            metrics: DEFAULT_CHANNEL_METRICS,
         }
     }
 }

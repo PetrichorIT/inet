@@ -4,9 +4,10 @@ use std::{
 };
 
 use bytepack::{
-    raw_enum, BytestreamReader, BytestreamWriter, FromBytestream, ReadBytesExt, ToBytestream,
-    WriteBytesExt, BE,
+    BytestreamReader, BytestreamWriter, FromBytestream, ReadBytesExt, ToBytestream, WriteBytesExt,
+    BE,
 };
+use macros::repr_enum;
 
 use crate::types::AsNumber;
 
@@ -158,7 +159,7 @@ impl ToBytestream for BgpPathAttributeKind {
     }
 }
 
-raw_enum! {
+repr_enum! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub enum BgpPathAttributeOrigin {
         type Repr = u8 where ByteOrder::BigEndian;
@@ -209,7 +210,7 @@ impl FromBytestream for BgpPathAttributeAsPath {
     }
 }
 
-raw_enum! {
+repr_enum! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub enum BgpPathAttributeAsPathTyp {
         type Repr = u8 where ByteOrder::BigEndian;

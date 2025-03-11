@@ -1,6 +1,6 @@
 use super::{string::DnsString, QuestionClass, QuestionTyp, ZonefileLineRecord};
 use bytes_io::{BytesReader, BytesWriter, FromBytes, ReadBytesExt, ToBytes, WriteBytesExt, BE};
-use macros::{raw_enum, raw_enum_default};
+use macros::repr_enum;
 
 use std::{
     any::Any,
@@ -200,7 +200,7 @@ impl Display for DnsResourceRecord {
 
 // # ResourceRecordClass / ResourceRecordTyp
 
-raw_enum_default! {
+repr_enum! {
     /// The class of a Resource Record.
     #[derive(Debug, Default,Clone, Copy, PartialEq, Eq, Hash)]
     pub enum ResourceRecordClass {
@@ -222,7 +222,7 @@ impl TryFrom<QuestionClass> for ResourceRecordClass {
     }
 }
 
-raw_enum! {
+repr_enum! {
     /// The type of a Resource Record.
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
     pub enum ResourceRecordTyp {

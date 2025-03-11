@@ -11,4 +11,5 @@ uds = []
 bitflags = ">2.6.0"
 bytepack = { path = "../bytepack" }
 bytes-io = { path = "../bytes-io" }
+macros = { path = "../macros" }
 des = { version = "*", features = ["full"] }

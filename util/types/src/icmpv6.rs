@@ -4,7 +4,8 @@ use std::{
     time::Duration,
 };
 
-use bytepack::{raw_enum, FromBytestream, ReadBytesExt, ToBytestream, WriteBytesExt, BE};
+use bytepack::{FromBytestream, ReadBytesExt, ToBytestream, WriteBytesExt, BE};
+use macros::repr_enum;
 
 use crate::{iface::MacAddress, ip::Ipv6Prefix};
 
@@ -553,7 +554,7 @@ impl FromBytestream for IcmpV6NeighborAdvertisment {
     }
 }
 
-raw_enum! {
+repr_enum! {
     /// A detailed reason, why a ICMPv6 DestinationUnreachable message was send.
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
     pub enum IcmpV6DestinationUnreachableCode {
@@ -587,7 +588,7 @@ raw_enum! {
     }
 }
 
-raw_enum! {
+repr_enum! {
     /// A detailed reason, which might cause a ICMP TimeExceeded error.
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
     pub enum IcmpV6TimeExceededCode {
@@ -599,7 +600,7 @@ raw_enum! {
     }
 }
 
-raw_enum! {
+repr_enum! {
     /// A reponse code to a ICMP desintation unreachable message.
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
     pub enum IcmpV6ParameterProblemCode {

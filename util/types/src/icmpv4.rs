@@ -4,9 +4,10 @@ use std::{
 };
 
 use bytepack::{
-    raw_enum, BytestreamReader, BytestreamWriter, FromBytestream, ReadBytesExt, ToBytestream,
-    WriteBytesExt, BE,
+    BytestreamReader, BytestreamWriter, FromBytestream, ReadBytesExt, ToBytestream, WriteBytesExt,
+    BE,
 };
+use macros::repr_enum;
 
 use crate::ip::Ipv4Packet;
 
@@ -282,7 +283,7 @@ impl FromBytestream for IcmpV4Type {
 
 // # Codes
 
-raw_enum! {
+repr_enum! {
      /// A reponse code to a ICMP redirect message.
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
     pub enum IcmpV4RedirectCode {
@@ -294,7 +295,7 @@ raw_enum! {
     }
 }
 
-raw_enum! {
+repr_enum! {
      /// A reponse code to a ICMP time exceeded message.
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
     pub enum IcmpV4TimeExceededCode {
@@ -304,7 +305,7 @@ raw_enum! {
     }
 }
 
-raw_enum! {
+repr_enum! {
     /// A reponse code to a ICMP desintation unreachable message.
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
     pub enum IcmpV4DestinationUnreachableCode {
@@ -328,7 +329,7 @@ raw_enum! {
     }
 }
 
-raw_enum! {
+repr_enum! {
      /// A reponse code to a ICMP desintation unreachable message.
      #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
     pub enum IcmpV4BadIpHeaderCode {

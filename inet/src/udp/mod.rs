@@ -2,10 +2,12 @@
 use super::{socket::*, IOContext};
 use crate::interface::IfId;
 use bytepack::{FromBytestream, ToBytestream};
+use bytes::BufMut;
 use fxhash::{FxBuildHasher, FxHashMap};
 use std::{
     collections::VecDeque,
     io::{Error, ErrorKind, Result},
+    mem::MaybeUninit,
     net::{IpAddr, SocketAddr},
 };
 use types::{
@@ -18,6 +20,9 @@ pub use api::*;
 
 mod interest;
 use interest::*;
+
+#[cfg(test)]
+mod tests;
 
 pub(super) struct Udp {
     pub(super) binds: FxHashMap<Fd, UdpControlBlock>,
@@ -237,7 +242,7 @@ impl IOContext {
         if let IpAddr::V4(dst_addr) = target.ip() {
             if dst_addr.is_broadcast() && !mng.broadcast {
                 return Err(Error::new(
-                    ErrorKind::Other,
+                    ErrorKind::InvalidInput,
                     "cannot send broadcast without broadcast flag enabled",
                 ));
             }
@@ -312,6 +317,93 @@ impl IOContext {
             }
             _ => unreachable!(),
         }
+    }
+
+    pub(crate) fn udp_recv(
+        &mut self,
+        fd: Fd,
+        peer: Option<SocketAddr>,
+        buf: &mut [u8],
+    ) -> Result<(usize, SocketAddr)> {
+        let Some(socket) = self.udp.binds.get_mut(&fd) else {
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                "invalid fd - socket dropped",
+            ));
+        };
+
+        let Some((src, _, pkt)) = socket.incoming.pop_front() else {
+            return Err(Error::new(ErrorKind::WouldBlock, "no data available"));
+        };
+
+        if peer.map_or(false, |peer| peer != src) {
+            return Err(Error::new(ErrorKind::ConnectionRefused, "not connecteds"));
+        }
+
+        let n = pkt.content.len().min(buf.len());
+        buf[..n].copy_from_slice(&pkt.content[..n]);
+        Ok((n, src))
+    }
+
+    pub(crate) fn udp_recv_buf<B: BufMut>(
+        &mut self,
+        fd: Fd,
+        peer: Option<SocketAddr>,
+        buf: &mut B,
+    ) -> Result<(usize, SocketAddr)> {
+        let Some(socket) = self.udp.binds.get_mut(&fd) else {
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                "invalid fd - socket dropped",
+            ));
+        };
+
+        let Some((src, _, pkt)) = socket.incoming.pop_front() else {
+            return Err(Error::new(ErrorKind::WouldBlock, "no data available"));
+        };
+
+        if peer.map_or(false, |peer| peer != src) {
+            return Err(Error::new(ErrorKind::ConnectionRefused, "not connecteds"));
+        }
+
+        let chunk = unsafe {
+            &mut *(buf.chunk_mut().as_uninit_slice_mut() as *mut [MaybeUninit<u8>] as *mut [u8])
+        };
+
+        let n = pkt.content.len().min(chunk.len());
+        chunk[..n].copy_from_slice(&pkt.content[..n]);
+
+        unsafe {
+            buf.advance_mut(n);
+        }
+
+        Ok((n, src))
+    }
+
+    pub(crate) fn udp_peek(
+        &mut self,
+        fd: Fd,
+        peer: Option<SocketAddr>,
+        buf: &mut [u8],
+    ) -> Result<(usize, SocketAddr)> {
+        let Some(socket) = self.udp.binds.get_mut(&fd) else {
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                "invalid fd - socket dropped",
+            ));
+        };
+
+        let Some((src, _, pkt)) = socket.incoming.front() else {
+            return Err(Error::new(ErrorKind::WouldBlock, "no data available"));
+        };
+
+        if peer.map_or(false, |peer| peer != *src) {
+            return Err(Error::new(ErrorKind::ConnectionRefused, "not connecteds"));
+        }
+
+        let n = pkt.content.len().min(buf.len());
+        buf[..n].copy_from_slice(&pkt.content[..n]);
+        Ok((n, *src))
     }
 
     fn udp_take_error(&mut self, fd: Fd) -> Result<Option<Error>> {

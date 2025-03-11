@@ -21,9 +21,7 @@ cfg_dhcp! {
     pub mod dhcp;
 }
 
-cfg_test_util! {
-    pub mod test_util;
-}
+pub mod test_util;
 
 use des::net::{module::ModuleId, processing::ProcessingStack};
 use dns::DnsResolver;

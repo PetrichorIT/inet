@@ -1,9 +1,9 @@
 use std::io::{Error, ErrorKind};
 
 use bytepack::{
-    raw_enum, BytestreamReader, BytestreamWriter, FromBytestream, ReadBytesExt, ToBytestream,
-    WriteBytesExt,
+    BytestreamReader, BytestreamWriter, FromBytestream, ReadBytesExt, ToBytestream, WriteBytesExt,
 };
+use macros::repr_enum;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[repr(u8)]
@@ -70,7 +70,7 @@ impl FromBytestream for BgpNotificationPacket {
     }
 }
 
-raw_enum! {
+repr_enum! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub enum BgpMessageHeaderError {
         type Repr = u8 where ByteOrder::BigEndian;
@@ -80,7 +80,7 @@ raw_enum! {
     }
 }
 
-raw_enum! {
+repr_enum! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub enum BgpOpenMessageError {
         type Repr = u8 where ByteOrder::BigEndian;
@@ -93,7 +93,7 @@ raw_enum! {
     }
 }
 
-raw_enum! {
+repr_enum! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub enum BgpUpdateMessageError {
         type Repr = u8 where ByteOrder::BigEndian;

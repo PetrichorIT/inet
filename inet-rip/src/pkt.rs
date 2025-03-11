@@ -1,8 +1,8 @@
-use bytepack::raw_enum;
 use bytepack::{
     BytestreamReader, BytestreamWriter, FromBytestream, ReadBytesExt, ToBytestream, WriteBytesExt,
     BE,
 };
+use macros::repr_enum;
 use std::{io::Error, net::Ipv4Addr};
 
 /// A RIP packet.
@@ -14,7 +14,7 @@ pub struct RipPacket {
     pub entries: Vec<RipEntry>,
 }
 
-raw_enum! {
+repr_enum! {
     /// The kind of command, encoded in a RIP packet.
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
     pub enum RipCommand {

@@ -6,7 +6,7 @@ use super::{
 };
 use crate::core::{CNameResourceRecord, NsResourceRecord};
 use bytes_io::{BytesReader, BytesWriter, FromBytes, ReadBytesExt, ToBytes, WriteBytesExt, BE};
-use macros::raw_enum;
+use macros::repr_enum;
 
 /// A DNS query.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -158,7 +158,7 @@ impl Display for Question {
     }
 }
 
-raw_enum! {
+repr_enum! {
     /// DNS question class.
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
     pub enum QuestionClass {
@@ -187,7 +187,7 @@ impl From<ResourceRecordClass> for QuestionClass {
     }
 }
 
-raw_enum! {
+repr_enum! {
     /// DNS question type.
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
     pub enum QuestionTyp {

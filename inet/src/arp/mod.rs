@@ -55,6 +55,10 @@ impl IOContext {
                     });
 
                     if let Some((trg, sendable)) = sendable {
+                        tracing::trace!(
+                            "learned arp resolution currently requested, sending {}",
+                            sendable.len()
+                        );
                         for pkt in sendable {
                             self.send_lan_local_ip_packet(
                                 SocketIfaceBinding::Bound(ifid),
