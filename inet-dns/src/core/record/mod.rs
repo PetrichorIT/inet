@@ -310,7 +310,7 @@ mod tests {
         let zf3 = Zonefile::from_str(ZONEFILE_EXAMPLE_ORG)?;
 
         for entry in zf1.records.iter().chain(&zf2.records).chain(&zf3.records) {
-            let buf = entry.write_to_bytes()?;
+            let buf = entry.write_to_bytes_mut()?;
             let decoded = DnsResourceRecord::peek_from(buf)?;
             assert_eq!(entry, &decoded);
         }

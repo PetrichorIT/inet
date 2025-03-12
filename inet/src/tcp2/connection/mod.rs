@@ -1,10 +1,10 @@
-use bytes_io::{FromBytes, ToBytes};
+use bytes_io::{BufMut, Bytes, BytesMut, FromBytes, ToBytes};
 use des::time::SimTime;
 use interface::UserInterface;
 use std::{
     cmp,
     collections::VecDeque,
-    io::{self, Error, ErrorKind, Write},
+    io::{self, Error, ErrorKind},
     net::SocketAddrV4,
     time::Duration,
 };
@@ -142,7 +142,7 @@ impl Connection {
                     proto: PROTO_TCP2,
                     src,
                     dst,
-                    content: tcp.write_to_vec().expect("failed to encode"),
+                    content: tcp.write_to_bytes().expect("failed to encode"),
                 }),
                 (V6(src), V6(dst)) => IpPacket::V6(Ipv6Packet {
                     traffic_class: 0,
@@ -151,7 +151,7 @@ impl Connection {
                     hop_limit: self.cfg.ttl,
                     src,
                     dst,
-                    content: tcp.write_to_vec().expect("failed to encodes"),
+                    content: tcp.write_to_bytes().expect("failed to encodes"),
                 }),
                 _ => todo!(),
             };
@@ -380,7 +380,7 @@ impl Connection {
                 .putv(TcpFlags::RST, matches!(kind, Rst)),
             urgent_ptr: 0,
             options: self.options_for_kind(kind),
-            content: Vec::new(),
+            content: Bytes::new(),
         };
 
         // TODO: return +1 for SYN/FIN
@@ -413,15 +413,21 @@ impl Connection {
         let payload_bytes = {
             let mut written = 0;
             let mut limit = max_data;
+            let mut content = BytesMut::new();
 
             // first, write as much as we can from h
             let p1l = std::cmp::min(limit, h.len());
-            written += packet.content.write(&h[..p1l])?;
+            content.put_slice(&h[..p1l]);
+            written += p1l;
             limit -= written;
 
             // then, write more (if we can) from t
             let p2l = std::cmp::min(limit, t.len());
-            written += packet.content.write(&t[..p2l])?;
+            content.put_slice(&t[..p2l]);
+            written += p2l;
+
+            packet.content = content.freeze();
+
             written
         };
 

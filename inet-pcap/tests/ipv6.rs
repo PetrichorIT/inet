@@ -91,7 +91,7 @@ impl Module for HostBob {
                                 maximum_response_delay: Duration::from_secs(1),
                                 multicast_addr: Ipv6Addr::UNSPECIFIED,
                             });
-                        msg.write_to_vec().unwrap()
+                        msg.write_to_bytes().unwrap()
                     },
                 }))
                 .unwrap();

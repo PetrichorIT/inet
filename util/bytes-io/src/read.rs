@@ -65,10 +65,12 @@ impl<'a> BytesReader<'a> {
             ));
         };
 
-        let mut slice = &self.bytes.chunk()[..n];
-        let mut reader = BytesReader::new(&mut slice);
+        // for Bytes this copy is shallow ref inc
+        let mut subslice = self.bytes.copy_to_bytes(n);
+        let mut reader = BytesReader::new(&mut subslice);
         let result = f(&mut reader);
-        self.bytes.advance(n);
+
+        // TODO: should we check for remaining bytes in extracted subslice?
 
         result
     }

@@ -60,7 +60,7 @@ impl IOContext {
                     hop_limit: 64,
                     src: ip.dst,
                     dst: ip.src,
-                    content: msg.write_to_vec()?,
+                    content: msg.write_to_bytes()?,
                 };
                 self.ipv6_send(pkt, ifid)?;
                 return Ok(true);
@@ -78,7 +78,7 @@ impl IOContext {
                         hop_limit: 64,
                         src: ip.dst,
                         dst: ip.src,
-                        content: msg.write_to_vec()?,
+                        content: msg.write_to_bytes()?,
                     };
                     self.ipv6_send(pkt, ifid)?;
                 }
@@ -247,7 +247,7 @@ impl IOContext {
 
         let err = IcmpV6TimeExceeded {
             code: IcmpV6TimeExceededCode::HopLimitExceeded,
-            packet: pkt.write_to_vec()?,
+            packet: pkt.write_to_bytes_mut()?.freeze(),
         };
         let msg = IcmpV6Packet::TimeExceeded(err);
         let pkt = Ipv6Packet {
@@ -257,7 +257,7 @@ impl IOContext {
             hop_limit: 32,
             src: Ipv6Addr::UNSPECIFIED,
             dst: pkt.src,
-            content: msg.write_to_vec()?,
+            content: msg.write_to_bytes()?,
         };
         self.ipv6_send(pkt, ifid)?;
         Ok(())
@@ -392,7 +392,7 @@ impl IOContext {
             hop_limit: 255,
             src: Ipv6Addr::UNSPECIFIED,
             dst,
-            content: msg.write_to_vec()?,
+            content: msg.write_to_bytes()?,
         };
 
         self.ipv6_send(pkt, ifid)?;
@@ -436,7 +436,7 @@ impl IOContext {
             hop_limit: 255,
             src: src.unwrap_or(Ipv6Addr::UNSPECIFIED),
             dst: Ipv6Addr::MULTICAST_ALL_ROUTERS,
-            content: msg.write_to_vec()?,
+            content: msg.write_to_bytes()?,
         };
 
         self.ipv6_send_with_flags(pkt, ifid, Ipv6SendFlags::ALLOW_SRC_UNSPECIFIED)?;
@@ -666,7 +666,7 @@ impl IOContext {
             hop_limit: 255,
             src: Ipv6Addr::UNSPECIFIED,
             dst,
-            content: msg.write_to_vec()?,
+            content: msg.write_to_bytes()?,
         };
 
         self.ipv6_send(pkt, ifid)?;
@@ -784,7 +784,7 @@ impl IOContext {
             hop_limit: 255,
             src: src.unwrap_or(Ipv6Addr::UNSPECIFIED),
             dst,
-            content: msg.write_to_vec()?,
+            content: msg.write_to_bytes()?,
         };
 
         tracing::trace!("send (sol) from {} for {target}", pkt.src);
@@ -856,7 +856,7 @@ impl IOContext {
             for pkt in queue {
                 let error_msg = IcmpV6DestinationUnreachable {
                     code: IcmpV6DestinationUnreachableCode::AddressUnreachable,
-                    packet: pkt.write_to_vec()?,
+                    packet: pkt.write_to_bytes_mut()?.freeze(),
                 };
                 let msg = IcmpV6Packet::DestinationUnreachable(error_msg);
                 let ip = Ipv6Packet {
@@ -866,7 +866,7 @@ impl IOContext {
                     hop_limit: 0,
                     src: *addr,
                     dst: *addr,
-                    content: msg.write_to_vec()?,
+                    content: msg.write_to_bytes()?,
                 };
 
                 self.ipv6_send(ip, ifid)?;
@@ -927,7 +927,7 @@ impl IOContext {
             hop_limit: 255,
             src: addr,
             dst: Ipv6Addr::MULTICAST_ALL_NODES,
-            content: msg.write_to_vec()?,
+            content: msg.write_to_bytes()?,
         };
         self.ipv6_send(pkt, ifid)?;
 

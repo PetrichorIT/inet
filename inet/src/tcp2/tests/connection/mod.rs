@@ -278,7 +278,7 @@ fn record(
                         proto: PROTO_TCP,
                         src,
                         dst,
-                        content: pkt.write_to_vec()?,
+                        content: pkt.write_to_bytes()?,
                     },
                     None,
                 )?;
@@ -297,7 +297,7 @@ fn record(
                         hop_limit: 64,
                         src,
                         dst,
-                        content: pkt.write_to_vec()?,
+                        content: pkt.write_to_bytes_mut()?.freeze(),
                     },
                     None,
                 )?;

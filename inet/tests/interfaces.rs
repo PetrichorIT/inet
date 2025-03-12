@@ -7,6 +7,7 @@ use std::{
     },
 };
 
+use bytes_io::Bytes;
 use des::{net::AsyncFn, prelude::*};
 use inet::{
     interface::*,
@@ -421,7 +422,7 @@ fn interface_does_not_use_busy_channel() -> Result<(), RuntimeError> {
                 hop_limit: 32,
                 src: Ipv6Addr::UNSPECIFIED,
                 dst: Ipv6Addr::MULTICAST_ALL_NODES,
-                content: Vec::new(),
+                content: Bytes::new(),
             }))?;
 
             for i in 0..32 {
@@ -510,7 +511,7 @@ fn interface_will_use_idle_channel_fcfs() -> Result<(), RuntimeError> {
                 hop_limit: 32,
                 src: Ipv6Addr::UNSPECIFIED,
                 dst: Ipv6Addr::MULTICAST_ALL_NODES,
-                content: Vec::new(),
+                content: Bytes::new(),
             }))?;
 
             for i in 0..32 {

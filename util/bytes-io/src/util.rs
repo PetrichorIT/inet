@@ -32,7 +32,7 @@ where
             encoded_for_decoding
         );
 
-        let reencoded = decoded.write_to_bytes().expect(
+        let reencoded = decoded.write_to_bytes_mut().expect(
             "technically unreachable, since decpded == value and value was already encoded",
         );
         assert_eq!(

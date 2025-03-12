@@ -70,7 +70,7 @@ impl TransportAdapter for TcpAdapter {
         };
 
         let msg = DnsMessage::response_from_transaction(tx);
-        responder.write_all(&msg.write_to_bytes()?).await?;
+        responder.write_all(&msg.write_to_bytes_mut()?).await?;
 
         Ok(())
     }
@@ -95,7 +95,7 @@ impl TransportAdapter for TcpAdapter {
         };
 
         let msg = DnsMessage::request_from_ns_query(ns_query);
-        write.write_all(&msg.write_to_bytes()?).await?;
+        write.write_all(&msg.write_to_bytes_mut()?).await?;
 
         Ok(())
     }
@@ -234,7 +234,7 @@ mod tests {
         sim.node_require_join("192.168.2.101", || async {
             let mut socket = TcpStream::connect(("192.168.2.30", DEFAULT_PORT)).await?;
             let msg = DnsMessage::question_a(1, "alice.example.org.".parse::<DnsString>()?);
-            socket.write_all(&msg.write_to_bytes()?).await?;
+            socket.write_all(&msg.write_to_bytes_mut()?).await?;
 
             let mut buf = vec![0; 512];
             let n = socket.read(&mut buf).await?;
@@ -289,7 +289,7 @@ mod tests {
         sim.node_require_join("192.168.2.101", || async {
             let mut socket = TcpStream::connect(("192.168.2.100", DEFAULT_PORT)).await?;
             let msg = DnsMessage::question_a(1, "rss.info.org.".parse::<DnsString>()?);
-            socket.write_all(&msg.write_to_bytes()?).await?;
+            socket.write_all(&msg.write_to_bytes_mut()?).await?;
 
             let mut buf = vec![0; 512];
             let n = socket.read(&mut buf).await?;

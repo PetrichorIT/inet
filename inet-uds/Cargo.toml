@@ -10,6 +10,7 @@ fxhash = "*"
 inet = { path = "../inet" }
 tokio = "*"
 rand = "*"
+bytes-io = { path = "../util/bytes-io" }
 des = { version = "*", features = ["full"] }
 tracing = "*"
 

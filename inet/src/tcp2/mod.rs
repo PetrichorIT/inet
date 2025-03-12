@@ -279,7 +279,7 @@ impl IOContext {
                 tracing::trace!("invalid incoming connection, sending RST");
 
                 let rst = TcpPacket::rst_for_syn(&pkt);
-                let rst = ip_packet.response(rst.write_to_vec().unwrap());
+                let rst = ip_packet.response(rst.write_to_bytes().unwrap());
                 self.send_ip_packet(SocketIfaceBinding::Bound(ifid), rst, true)
                     .expect("failed to send");
                 true

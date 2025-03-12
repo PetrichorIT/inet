@@ -78,7 +78,7 @@ impl<W: Write, I: PartialEq + Clone> DefaultBlockWriter<W, I> {
                 SectionHeaderOption::UserApplication(appl_name.to_string()),
             ],
         };
-        output.write_all(&shb.write_to_bytes()?)?;
+        output.write_all(&shb.write_to_bytes_mut()?)?;
         Ok(Self {
             output,
             interfaces: Vec::new(),
@@ -94,7 +94,7 @@ impl<W: Write, I: PartialEq + Clone> DefaultBlockWriter<W, I> {
             data: vec![0x00; 14],
             options: Vec::new(),
         };
-        self.output.write_all(&ebp.write_to_bytes()?)
+        self.output.write_all(&ebp.write_to_bytes_mut()?)
     }
 }
 
@@ -111,7 +111,7 @@ impl<W: Write, I: PartialEq + Clone> BlockWriter<I> for DefaultBlockWriter<W, I>
             snap_len,
             options,
         };
-        self.output.write_all(&idb.write_to_bytes()?)?;
+        self.output.write_all(&idb.write_to_bytes_mut()?)?;
         self.interfaces.push((id.clone(), link_type));
 
         if self.interfaces.len() == 1 {
@@ -186,7 +186,7 @@ impl<W: Write, I: PartialEq + Clone> BlockWriter<I> for DefaultBlockWriter<W, I>
         };
 
         self.packet_count += 1;
-        self.output.write_all(&epb.write_to_bytes()?)?;
+        self.output.write_all(&epb.write_to_bytes_mut()?)?;
 
         Ok(())
     }

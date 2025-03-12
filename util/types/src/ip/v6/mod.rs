@@ -1,7 +1,9 @@
-use bytes_io::{BytesReader, BytesWriter, FromBytes, ReadBytesExt, ToBytes, WriteBytesExt, BE};
+use bytes_io::{
+    Bytes, BytesReader, BytesWriter, FromBytes, ReadBytesExt, ToBytes, WriteBytesExt, BE,
+};
 use des::net::message::MessageBody;
 use std::{
-    io::{Error, ErrorKind, Read, Write},
+    io::{Error, ErrorKind, Write},
     net::Ipv6Addr,
 };
 
@@ -18,7 +20,7 @@ pub struct Ipv6Packet {
     pub src: Ipv6Addr,
     pub dst: Ipv6Addr,
 
-    pub content: Vec<u8>,
+    pub content: Bytes,
 }
 
 impl ToBytes for Ipv6Packet {
@@ -75,9 +77,8 @@ impl FromBytes for Ipv6Packet {
         let src = Ipv6Addr::from(stream.read_u128::<BE>()?);
         let dst = Ipv6Addr::from(stream.read_u128::<BE>()?);
 
-        // fetch rest
-        let mut content = vec![0; len as usize];
-        stream.read_exact(&mut content)?;
+        // fetch rest, according to len
+        let content = stream.copy_to_bytes(len as usize);
 
         Ok(Self {
             traffic_class,

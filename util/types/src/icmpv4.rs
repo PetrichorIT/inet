@@ -1,9 +1,11 @@
 use std::{
-    io::{Error, Read, Write},
+    io::{Error, Write},
     net::Ipv4Addr,
 };
 
-use bytes_io::{BytesReader, BytesWriter, FromBytes, ReadBytesExt, ToBytes, WriteBytesExt, BE};
+use bytes_io::{
+    Bytes, BytesMut, BytesReader, BytesWriter, FromBytes, ReadBytesExt, ToBytes, WriteBytesExt, BE,
+};
 use macros::repr_enum;
 
 use crate::ip::Ipv4Packet;
@@ -11,8 +13,8 @@ use crate::ip::Ipv4Packet;
 /// An ICMP packet
 #[derive(Debug)]
 pub struct IcmpV4Packet {
-    pub typ: IcmpV4Type,  // icmp info
-    pub content: Vec<u8>, // ip header + first 8 byte payload or padding
+    pub typ: IcmpV4Type, // icmp info
+    pub content: Bytes,  // ip header + first 8 byte payload or padding
 }
 
 const PAYLOAD_LIMIT: usize = 20 + 64;
@@ -25,7 +27,10 @@ impl IcmpV4Packet {
     /// This function panics, if the IP packet cannot be encoded.
     #[must_use]
     pub fn new(typ: IcmpV4Type, pkt: &Ipv4Packet) -> Self {
-        let mut content = pkt.write_to_vec().expect("Failed to write incoming IP ???");
+        let mut content = pkt
+            .write_to_bytes_mut()
+            .expect("Failed to write incoming IP ???")
+            .freeze();
         content.truncate(PAYLOAD_LIMIT);
         Self { typ, content }
     }
@@ -37,11 +42,11 @@ impl IcmpV4Packet {
     /// Can return an error, if the parsing of the IP packet fails.
     pub fn contained(&self) -> Result<Ipv4Packet, Error> {
         // Override len with 8
-        let mut buffer = self.content.clone();
+        let mut buffer = BytesMut::from(self.content.clone());
         let len = buffer.len().min(PAYLOAD_LIMIT);
         buffer[2] = 0;
         buffer[3] = len as u8;
-        Ipv4Packet::peek_from(&buffer[..])
+        Ipv4Packet::read_from(&mut buffer)
     }
 }
 
@@ -57,9 +62,8 @@ impl FromBytes for IcmpV4Packet {
     type Error = Error;
     fn from_bytes(bytestream: &mut BytesReader) -> Result<Self, Self::Error> {
         let typ = IcmpV4Type::from_bytes(bytestream)?;
-        let mut content = vec![0; PAYLOAD_LIMIT];
-        let n = bytestream.read(&mut content)?;
-        content.truncate(n);
+        let n = PAYLOAD_LIMIT.min(bytestream.remaining());
+        let content = bytestream.copy_to_bytes(n);
         Ok(Self { typ, content })
     }
 }

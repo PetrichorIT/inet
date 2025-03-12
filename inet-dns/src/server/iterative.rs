@@ -516,7 +516,7 @@ mod tests {
     ) -> io::Result<DnsMessage> {
         let udp = UdpSocket::bind("0.0.0.0:0").await?;
         udp.send_to(
-            &DnsMessage::question_a(tx, name.parse()?).write_to_bytes()?,
+            &DnsMessage::question_a(tx, name.parse()?).write_to_bytes_mut()?,
             addr,
         )
         .await?;

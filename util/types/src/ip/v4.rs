@@ -1,7 +1,9 @@
-use bytes_io::{BytesReader, BytesWriter, FromBytes, ReadBytesExt, ToBytes, WriteBytesExt, BE};
+use bytes_io::{
+    Bytes, BytesReader, BytesWriter, FromBytes, ReadBytesExt, ToBytes, WriteBytesExt, BE,
+};
 use des::net::message::MessageBody;
 use std::{
-    io::{Error, ErrorKind, Read, Write},
+    io::{Error, ErrorKind, Write},
     net::Ipv4Addr,
 };
 
@@ -19,7 +21,7 @@ pub struct Ipv4Packet {
     pub src: Ipv4Addr,
     pub dst: Ipv4Addr,
 
-    pub content: Vec<u8>,
+    pub content: Bytes,
 }
 
 impl Ipv4Packet {
@@ -36,7 +38,7 @@ impl Ipv4Packet {
         proto: 0,
         src: Ipv4Addr::UNSPECIFIED,
         dst: Ipv4Addr::UNSPECIFIED,
-        content: Vec::new(),
+        content: Bytes::new(),
     };
 
     #[must_use]
@@ -54,7 +56,7 @@ impl Ipv4Packet {
             proto: self.proto,
             src: self.dst,
             dst: self.src,
-            content: Vec::new(),
+            content: Bytes::new(),
         }
     }
 }
@@ -144,9 +146,8 @@ impl FromBytes for Ipv4Packet {
         let src = Ipv4Addr::from(stream.read_u32::<BE>()?);
         let dst = Ipv4Addr::from(stream.read_u32::<BE>()?);
 
-        // fetch rest
-        let mut content = vec![0; len as usize - 20];
-        stream.read_exact(&mut content)?;
+        // fetch rest, according to len
+        let content = stream.copy_to_bytes(len as usize - 20);
 
         Ok(Self {
             // ihl,

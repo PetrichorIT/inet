@@ -264,7 +264,7 @@ mod tests {
         let raws = ["www.example.org.", "a.b.c.www.example.org.", "org.", "."];
         for raw in raws {
             let initial = DnsString::from_str(raw)?;
-            let reparsed = DnsString::read_from(&mut initial.write_to_bytes()?)?;
+            let reparsed = DnsString::read_from(&mut initial.write_to_bytes_mut()?)?;
             assert_eq!(initial, reparsed);
         }
         Ok(())

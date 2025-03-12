@@ -1,7 +1,7 @@
 //! The User Datagram Protocol (UDP)
 use super::{socket::*, IOContext};
 use crate::interface::IfId;
-use bytes_io::{BufMut, FromBytes, ToBytes};
+use bytes_io::{BufMut, Bytes, FromBytes, ToBytes};
 use fxhash::{FxBuildHasher, FxHashMap};
 use std::{
     collections::VecDeque,
@@ -255,9 +255,9 @@ impl IOContext {
             src_port: mng.local_addr.port(),
             dst_port: target.port(),
             checksum: 0,
-            content: Vec::from(buf),
+            content: Bytes::from(buf.to_vec()),
         };
-        let content = udp_packet.write_to_vec()?;
+        let content = udp_packet.write_to_bytes()?;
 
         match (mng.local_addr.ip(), target.ip()) {
             (IpAddr::V4(local), IpAddr::V4(target)) => {

@@ -1,4 +1,5 @@
 use crate::{tests::SAMPLE_RAW_IP_PACKETS, BlockWriter, DefaultBlockWriter, Linktype};
+use bytes_io::Bytes;
 use std::{
     io::{Error, ErrorKind},
     net::Ipv4Addr,
@@ -31,7 +32,7 @@ fn write_sample_ip_packets() -> Result<(), Error> {
             proto: 0,
             src: Ipv4Addr::new(192, 168, 2, 101),
             dst: Ipv4Addr::new(10, 7, 18, 78),
-            content: b"Hello world".to_vec(),
+            content: Bytes::from_static(b"Hello world"),
         },
         None,
     )?;
@@ -55,7 +56,7 @@ fn write_sample_ip_packets() -> Result<(), Error> {
             proto: 0,
             src: Ipv4Addr::new(10, 7, 18, 78),
             dst: Ipv4Addr::new(192, 168, 2, 101),
-            content: b"Hello client".to_vec(),
+            content: Bytes::from_static(b"Hello client"),
         },
         None,
     )?;
@@ -94,7 +95,7 @@ fn writer_no_such_iface() -> Result<(), Error> {
                 proto: 0,
                 src: Ipv4Addr::new(192, 168, 2, 101),
                 dst: Ipv4Addr::new(10, 7, 18, 78),
-                content: b"Hello world".to_vec(),
+                content: Bytes::from_static(b"Hello world"),
             },
             None,
         )

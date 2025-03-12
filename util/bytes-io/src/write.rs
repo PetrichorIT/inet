@@ -6,7 +6,7 @@ use std::{
     ops::{Deref, DerefMut},
 };
 
-use bytes::{BufMut, BytesMut};
+use bytes::{BufMut, Bytes, BytesMut};
 
 /// A
 pub trait ToBytes {
@@ -40,10 +40,17 @@ pub trait ToBytes {
     }
 
     /// A
-    fn write_to_bytes(&self) -> Result<BytesMut, Self::Error> {
+    fn write_to_bytes_mut(&self) -> Result<BytesMut, Self::Error> {
         let mut bytes = BytesMut::new();
         self.write_to(&mut bytes)?;
         Ok(bytes)
+    }
+
+    /// A
+    fn write_to_bytes(&self) -> Result<Bytes, Self::Error> {
+        let mut bytes = BytesMut::new();
+        self.write_to(&mut bytes)?;
+        Ok(bytes.freeze())
     }
 
     /// A
@@ -101,7 +108,6 @@ impl<'a> BytesWriter<'a> {
     pub fn apply(&mut self, marker: Marker) -> &mut [u8] {
         self.markers -= 1;
         let slice = &mut self.bytes.as_mut()[marker.pos..marker.pos + marker.len];
-        println!("apply => {:x?}", slice);
         slice
     }
 }

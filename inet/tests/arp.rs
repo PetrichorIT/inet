@@ -1,3 +1,4 @@
+use bytes_io::Bytes;
 use des::{prelude::*, registry, time::sleep};
 use inet::{
     arp::arpa,
@@ -56,7 +57,7 @@ impl Module for Node {
                 }
 
                 tracing::info!("sending packet to {}", target);
-                sock.try_send(IpPacket::new(ip, target, vec![42, 42]))
+                sock.try_send(IpPacket::new(ip, target, Bytes::from_static(&[42, 42])))
                     .unwrap();
             }
         });

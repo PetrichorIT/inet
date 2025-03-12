@@ -1,3 +1,4 @@
+use bytes_io::Bytes;
 use inet::{
     extensions::{try_with_ext, with_ext},
     socket::{close, socket},
@@ -27,14 +28,14 @@ use crate::{addr::SocketAddr, UdsExtension};
 #[derive(Debug)]
 pub struct UnixDatagram {
     fd: Fd,
-    rx: Mutex<Receiver<(Vec<u8>, SocketAddr)>>,
+    rx: Mutex<Receiver<(Bytes, SocketAddr)>>,
 }
 
 #[derive(Debug)]
 pub(crate) struct UnixDatagramHandle {
     pub(crate) addr: SocketAddr,
     pub(crate) peer: Option<Fd>,
-    tx: Sender<(Vec<u8>, SocketAddr)>,
+    tx: Sender<(Bytes, SocketAddr)>,
 }
 
 impl PartialEq for UnixDatagramHandle {
@@ -205,7 +206,7 @@ impl UnixDatagram {
 
             Ok(peer.tx.clone())
         })?;
-        match sender.send((Vec::from(buf), addr)).await {
+        match sender.send((Bytes::from(buf.to_vec()), addr)).await {
             Ok(_) => Ok(buf.len()),
             Err(e) => Err(Error::new(ErrorKind::Other, e)),
         }
@@ -232,7 +233,7 @@ impl UnixDatagram {
                 ))
             }
         })?;
-        match sender.send((Vec::from(buf), addr)).await {
+        match sender.send((Bytes::from(buf.to_vec()), addr)).await {
             Ok(_) => Ok(buf.len()),
             Err(e) => Err(Error::new(ErrorKind::Other, e)),
         }

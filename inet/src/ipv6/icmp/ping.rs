@@ -1,5 +1,5 @@
 use crate::{ctx::IOContext, interface::IfId};
-use bytes_io::ToBytes;
+use bytes_io::{Bytes, ToBytes};
 use des::time::SimTime;
 use std::{fmt, io, iter, net::Ipv6Addr, time::Duration};
 use tokio::sync::oneshot;
@@ -145,7 +145,7 @@ impl IOContext {
             next_header: PROTO_ICMPV6,
             src: Ipv6Addr::UNSPECIFIED,
             dst: addr,
-            content: msg.write_to_vec()?,
+            content: msg.write_to_bytes()?,
         };
 
         self.ipv6_send(pkt, IfId::NULL)
@@ -162,7 +162,7 @@ impl fmt::Display for Ping {
     }
 }
 
-fn random_bytes(n: usize) -> Vec<u8> {
+fn random_bytes(n: usize) -> Bytes {
     iter::repeat_with(des::runtime::random::<u8>)
         .take(n)
         .collect()

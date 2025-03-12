@@ -1,5 +1,7 @@
-use bytes_io::{BytesReader, BytesWriter, FromBytes, ReadBytesExt, ToBytes, WriteBytesExt, BE};
-use std::io::{Read, Write};
+use bytes_io::{
+    Bytes, BytesReader, BytesWriter, FromBytes, ReadBytesExt, ToBytes, WriteBytesExt, BE,
+};
+use std::io::Write;
 
 pub const PROTO_UDP: u8 = 0x11;
 
@@ -8,7 +10,7 @@ pub struct UdpPacket {
     pub src_port: u16,
     pub dst_port: u16,
     pub checksum: u16,
-    pub content: Vec<u8>,
+    pub content: Bytes,
 }
 
 impl ToBytes for UdpPacket {
@@ -31,15 +33,13 @@ impl FromBytes for UdpPacket {
         let dst_port = stream.read_u16::<BE>()?;
         let len = stream.read_u16::<BE>()?;
         let checksum = stream.read_u16::<BE>()?;
-
-        let mut buf = vec![0; (len - 8) as usize];
-        stream.read_exact(&mut buf)?;
+        let content = stream.copy_to_bytes((len - 8) as usize);
 
         Ok(Self {
             src_port,
             dst_port,
             checksum,
-            content: buf,
+            content,
         })
     }
 }

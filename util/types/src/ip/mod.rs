@@ -1,5 +1,6 @@
 //! Internet-Protocol.
 
+use bytes_io::Bytes;
 use des::net::message::MessageKind;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
@@ -68,7 +69,7 @@ impl IpPacketRef<'_, '_> {
     }
 
     #[must_use]
-    pub fn response(&self, content: Vec<u8>) -> IpPacket {
+    pub fn response(&self, content: Bytes) -> IpPacket {
         match self {
             IpPacketRef::V4(pkt) => IpPacket::V4(Ipv4Packet {
                 dscp: pkt.dscp,
@@ -148,7 +149,7 @@ impl IpPacket {
     }
 
     #[must_use]
-    pub fn new(src: IpAddr, dst: IpAddr, content: Vec<u8>) -> Self {
+    pub fn new(src: IpAddr, dst: IpAddr, content: Bytes) -> Self {
         use IpAddr::{V4, V6};
         match (src, dst) {
             (V4(src), V4(dst)) => IpPacket::V4(Ipv4Packet {

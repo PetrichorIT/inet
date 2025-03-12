@@ -1,3 +1,4 @@
+use bytes_io::BytesMut;
 use inet::{
     extensions::{try_with_ext, with_ext},
     socket::{close, socket},
@@ -14,7 +15,7 @@ use tokio::sync::{
 
 use crate::{SocketAddr, UdsExtension};
 
-use super::{buf::Buffer, UnixStream};
+use super::UnixStream;
 use inet::socket::Fd;
 use inet::socket::{SocketDomain, SocketType};
 
@@ -95,11 +96,11 @@ pub(super) fn establish_link(
     server: (Fd, SocketAddr),
 ) -> (UnixStream, UnixStream) {
     // (1) create server socket
-    let server_buf = Arc::new(Mutex::new(Buffer::new(4096)));
+    let server_buf = Arc::new(Mutex::new(BytesMut::with_capacity(4096)));
     let server_buf_readable = Arc::new(sync::Mutex::new(None));
     let server_buf_writable = Arc::new(sync::Mutex::new(None));
 
-    let client_buf = Arc::new(Mutex::new(Buffer::new(4096)));
+    let client_buf = Arc::new(Mutex::new(BytesMut::with_capacity(4096)));
     let client_buf_readable = Arc::new(sync::Mutex::new(None));
     let client_buf_writable = Arc::new(sync::Mutex::new(None));
 

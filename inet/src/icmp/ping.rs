@@ -1,4 +1,4 @@
-use bytes_io::ToBytes;
+use bytes_io::{Bytes, ToBytes};
 use des::prelude::*;
 use std::io::{Error, ErrorKind, Result};
 use std::net::Ipv4Addr;
@@ -92,7 +92,7 @@ impl IOContext {
             proto: PROTO_ICMPV4,
             src: Ipv4Addr::UNSPECIFIED,
             dst: addr,
-            content: vec![0; 36],
+            content: Bytes::from_static(&[0; 36]),
         };
         let icmp = IcmpV4Packet::new(
             IcmpV4Type::EchoRequest {
@@ -101,7 +101,7 @@ impl IOContext {
             },
             &ip,
         );
-        ip.content = icmp.write_to_vec().expect("Failed to parse ICMP");
+        ip.content = icmp.write_to_bytes().expect("Failed to parse ICMP");
 
         self.send_ip_packet(
             SocketIfaceBinding::Any(self.ifaces.keys().cloned().collect::<Vec<_>>()),

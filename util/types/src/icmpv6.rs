@@ -1,10 +1,12 @@
 use std::{
-    io::{self, Read, Write},
+    io::{self, Write},
     net::Ipv6Addr,
     time::Duration,
 };
 
-use bytes_io::{BytesReader, BytesWriter, FromBytes, ReadBytesExt, ToBytes, WriteBytesExt, BE};
+use bytes_io::{
+    Bytes, BytesReader, BytesWriter, FromBytes, ReadBytesExt, ToBytes, WriteBytesExt, BE,
+};
 use macros::repr_enum;
 
 use crate::{iface::MacAddress, ip::Ipv6Prefix};
@@ -128,7 +130,7 @@ pub struct IcmpV6DestinationUnreachable {
     pub code: IcmpV6DestinationUnreachableCode,
     /// The error causing IP packet, possibly truncated to fit into
     /// the `ICMPv6` message.
-    pub packet: Vec<u8>,
+    pub packet: Bytes,
 }
 
 impl ToBytes for IcmpV6DestinationUnreachable {
@@ -148,8 +150,8 @@ impl FromBytes for IcmpV6DestinationUnreachable {
         let code = IcmpV6DestinationUnreachableCode::from_raw_repr(stream.read_u8()?)?;
         assert_eq!(0, stream.read_u16::<BE>()?);
         assert_eq!(0, stream.read_u32::<BE>()?);
-        let mut packet = Vec::new();
-        stream.read_to_end(&mut packet)?;
+        let n = stream.remaining();
+        let packet = stream.copy_to_bytes(n);
         Ok(Self { code, packet })
     }
 }
@@ -165,7 +167,7 @@ pub struct IcmpV6PacketToBig {
     pub mtu: u32,
     /// The error causing IP packet, possibly truncated to fit into
     /// the `ICMPv6` message.
-    pub packet: Vec<u8>,
+    pub packet: Bytes,
 }
 
 impl ToBytes for IcmpV6PacketToBig {
@@ -185,8 +187,8 @@ impl FromBytes for IcmpV6PacketToBig {
         assert_eq!(0, stream.read_u8()?); // code
         assert_eq!(0, stream.read_u16::<BE>()?); // checksum
         let mtu = stream.read_u32::<BE>()?;
-        let mut packet = Vec::new();
-        stream.read_to_end(&mut packet)?;
+        let n = stream.remaining();
+        let packet = stream.copy_to_bytes(n);
         Ok(Self { mtu, packet })
     }
 }
@@ -203,7 +205,7 @@ pub struct IcmpV6TimeExceeded {
     pub code: IcmpV6TimeExceededCode,
     /// The error causing IP packet, possibly truncated to fit into
     /// the `ICMPv6` message.
-    pub packet: Vec<u8>,
+    pub packet: Bytes,
 }
 
 impl ToBytes for IcmpV6TimeExceeded {
@@ -223,8 +225,8 @@ impl FromBytes for IcmpV6TimeExceeded {
         let code = IcmpV6TimeExceededCode::from_raw_repr(stream.read_u8()?)?;
         assert_eq!(0, stream.read_u16::<BE>()?);
         assert_eq!(0, stream.read_u32::<BE>()?);
-        let mut packet = Vec::new();
-        stream.read_to_end(&mut packet)?;
+        let n = stream.remaining();
+        let packet = stream.copy_to_bytes(n);
         Ok(Self { code, packet })
     }
 }
@@ -238,7 +240,7 @@ pub struct IcmpV6ParameterProblem {
     pub pointer: u32,
     /// The error causing IP packet, possibly truncated to fit into
     /// the `ICMPv6` message.
-    pub packet: Vec<u8>,
+    pub packet: Bytes,
 }
 
 impl ToBytes for IcmpV6ParameterProblem {
@@ -258,8 +260,8 @@ impl FromBytes for IcmpV6ParameterProblem {
         let code = IcmpV6ParameterProblemCode::from_raw_repr(stream.read_u8()?)?;
         assert_eq!(0, stream.read_u16::<BE>()?);
         let pointer = stream.read_u32::<BE>()?;
-        let mut packet = Vec::new();
-        stream.read_to_end(&mut packet)?;
+        let n = stream.remaining();
+        let packet = stream.copy_to_bytes(n);
         Ok(Self {
             code,
             pointer,
@@ -276,7 +278,7 @@ pub struct IcmpV6Echo {
     /// A sequence number used when a sending multiple pings.
     pub sequence_no: u16,
     /// Some abitrary data, echoed back in a echo reply
-    pub data: Vec<u8>,
+    pub data: Bytes,
 }
 
 impl ToBytes for IcmpV6Echo {
@@ -298,8 +300,8 @@ impl FromBytes for IcmpV6Echo {
         assert_eq!(0, stream.read_u16::<BE>()?); // checksum
         let identifier = stream.read_u16::<BE>()?;
         let sequence_no = stream.read_u16::<BE>()?;
-        let mut data = Vec::new();
-        stream.read_to_end(&mut data)?;
+        let n = stream.remaining();
+        let data = stream.copy_to_bytes(n);
         Ok(Self {
             identifier,
             sequence_no,
@@ -623,7 +625,7 @@ pub enum IcmpV6NDPOption {
     /// Information about eh maximum transfer size of the sender.
     Mtu(IcmpV6MtuOption),
     /// An unknown option,
-    Unknown(u8, Vec<u8>),
+    Unknown(u8, Bytes),
 }
 
 impl ToBytes for IcmpV6NDPOption {
@@ -672,9 +674,11 @@ impl FromBytes for IcmpV6NDPOption {
                         ($l, $len) => Ok(Self::$i($t::from_bytes(stream)?)),
                     )*
                     _ => {
-                        let mut buf = vec![0; len as usize];
-                        stream.read_exact(&mut buf)?;
-                        Ok(Self::Unknown(typ, buf))
+                        if stream.remaining() < len as usize {
+                            return Err(io::Error::new(io::ErrorKind::UnexpectedEof, "not enough data"));
+                        }
+                        let buf = stream.copy_to_bytes(len as usize);
+                        Ok(Self::Unknown(typ, buf.into()))
                     }
                 }
             }};
@@ -855,15 +859,15 @@ mod tests {
         assert_encoding_e2e(&[
             IcmpV6DestinationUnreachable {
                 code: IcmpV6DestinationUnreachableCode::NoRouteToDestination,
-                packet: vec![0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07],
+                packet: vec![0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07].into(),
             },
             IcmpV6DestinationUnreachable {
                 code: IcmpV6DestinationUnreachableCode::AddressUnreachable,
-                packet: vec![0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07],
+                packet: vec![0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07].into(),
             },
             IcmpV6DestinationUnreachable {
                 code: IcmpV6DestinationUnreachableCode::PortUnreachable,
-                packet: vec![0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07],
+                packet: vec![0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07].into(),
             },
         ]);
     }
@@ -873,11 +877,11 @@ mod tests {
         assert_encoding_e2e(&[
             IcmpV6PacketToBig {
                 mtu: 1500,
-                packet: vec![0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07],
+                packet: vec![0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07].into(),
             },
             IcmpV6PacketToBig {
                 mtu: 80,
-                packet: vec![0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07],
+                packet: vec![0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07].into(),
             },
         ]);
     }
@@ -887,11 +891,11 @@ mod tests {
         assert_encoding_e2e(&[
             IcmpV6TimeExceeded {
                 code: IcmpV6TimeExceededCode::HopLimitExceeded,
-                packet: vec![0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07],
+                packet: vec![0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07].into(),
             },
             IcmpV6TimeExceeded {
                 code: IcmpV6TimeExceededCode::FragmentReassemblyTimeExceeded,
-                packet: vec![0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07],
+                packet: vec![0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07].into(),
             },
         ]);
     }
@@ -902,12 +906,12 @@ mod tests {
             IcmpV6ParameterProblem {
                 code: IcmpV6ParameterProblemCode::UnrecognizedIpv6Option,
                 pointer: 0,
-                packet: vec![0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07],
+                packet: vec![0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07].into(),
             },
             IcmpV6ParameterProblem {
                 code: IcmpV6ParameterProblemCode::ErroneousHeader,
                 pointer: 41,
-                packet: vec![0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07],
+                packet: vec![0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07].into(),
             },
         ]);
     }
@@ -918,12 +922,12 @@ mod tests {
             IcmpV6Echo {
                 identifier: 0x1234,
                 sequence_no: 0x5678,
-                data: vec![0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07],
+                data: vec![0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07].into(),
             },
             IcmpV6Echo {
                 identifier: 0x1234,
                 sequence_no: 0x5678,
-                data: vec![0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f],
+                data: vec![0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f].into(),
             },
         ]);
     }
@@ -1000,7 +1004,7 @@ mod tests {
                 autonomous_address_configuration: true,
             }),
             IcmpV6NDPOption::Mtu(IcmpV6MtuOption { mtu: 31 }),
-            IcmpV6NDPOption::Unknown(7, vec![123, 3, 31, 31, 5, 5]),
+            IcmpV6NDPOption::Unknown(7, vec![123, 3, 31, 31, 5, 5].into()),
         ]);
     }
 

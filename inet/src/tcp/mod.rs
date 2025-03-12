@@ -1,7 +1,7 @@
 //! The Transmission Control Protocol (TCP)
 #![allow(unused)]
 
-use bytes_io::{FromBytes, ToBytes};
+use bytes_io::{Bytes, BytesMut, FromBytes, ToBytes};
 use des::{
     prelude::{current, schedule_in, GateRef, Message},
     time::SimTime,
@@ -291,7 +291,7 @@ impl IOContext {
             tracing::trace!("invalid incoming connection, sending RST");
 
             let rst = TcpPacket::rst_for_syn(&tcp_pkt);
-            let rst = ip_packet.response(rst.write_to_vec().unwrap());
+            let rst = ip_packet.response(rst.write_to_bytes().unwrap());
             self.send_ip_packet(SocketIfaceBinding::Bound(ifid), rst, true);
             true
         } else {
@@ -1419,7 +1419,7 @@ impl IOContext {
                 window: ctrl.recv_window(),
                 urgent_ptr: 0,
                 options: Vec::new(),
-                content: buf,
+                content: Bytes::from(buf),
             };
 
             // (3) Forward the packet to the socket output.
@@ -1651,7 +1651,7 @@ impl TransmissionControlBlock {
     }
 
     fn ip_packet_for(&self, tcp: TcpPacket) -> IpPacket {
-        let content = tcp.write_to_vec().unwrap();
+        let content = tcp.write_to_bytes().unwrap();
         match self.local_addr {
             SocketAddr::V4(local) => IpPacket::V4(Ipv4Packet {
                 dscp: 0,
@@ -1709,7 +1709,7 @@ impl TransmissionControlBlock {
             window: 0,
             urgent_ptr: 0,
             options: Vec::new(),
-            content: Vec::new(),
+            content: Bytes::new(),
         }
     }
 

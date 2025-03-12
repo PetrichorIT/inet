@@ -1,5 +1,6 @@
 use std::{collections::VecDeque, time::Duration};
 
+use bytes_io::Buf;
 use des::time::SimTime;
 use types::tcp::{TcpOption, TcpPacket};
 
@@ -49,7 +50,7 @@ impl ReorderBuffer {
                 return self.next(expected);
             }
 
-            drop(seg.content.drain(..trunc_len));
+            seg.content.advance(trunc_len);
             seg.seq_no = seg.seq_no.wrapping_add(trunc_len as u32);
             Some(seg)
         } else {

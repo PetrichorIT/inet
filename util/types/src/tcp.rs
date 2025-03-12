@@ -1,7 +1,9 @@
-use std::io::{Error, ErrorKind, Read, Write};
+use std::io::{Error, ErrorKind, Write};
 
 use bitflags::bitflags;
-use bytes_io::{BytesReader, BytesWriter, FromBytes, ReadBytesExt, ToBytes, WriteBytesExt, BE};
+use bytes_io::{
+    Bytes, BytesReader, BytesWriter, FromBytes, ReadBytesExt, ToBytes, WriteBytesExt, BE,
+};
 
 pub const PROTO_TCP: u8 = 0x06;
 
@@ -17,7 +19,7 @@ pub struct TcpPacket {
     pub urgent_ptr: u16,
     pub options: Vec<TcpOption>,
 
-    pub content: Vec<u8>,
+    pub content: Bytes,
 }
 
 bitflags! {
@@ -56,7 +58,7 @@ impl TcpPacket {
         seq_no: u32,
         ack_no: u32,
         window: u16,
-        content: Vec<u8>,
+        content: impl Into<Bytes>,
     ) -> TcpPacket {
         TcpPacket {
             src_port,
@@ -67,7 +69,7 @@ impl TcpPacket {
             window,
             urgent_ptr: 0,
             options: Vec::new(),
-            content,
+            content: content.into(),
         }
     }
 
@@ -82,7 +84,7 @@ impl TcpPacket {
             window,
             urgent_ptr: 0,
             options: Vec::new(),
-            content: Vec::new(),
+            content: Bytes::new(),
         }
     }
 
@@ -103,7 +105,7 @@ impl TcpPacket {
             window,
             urgent_ptr: 0,
             options: Vec::new(),
-            content: Vec::new(),
+            content: Bytes::new(),
         }
     }
 
@@ -139,7 +141,7 @@ impl TcpPacket {
             window,
             urgent_ptr: 0,
             options: Vec::new(),
-            content: Vec::new(),
+            content: Bytes::new(),
         }
     }
 
@@ -154,7 +156,7 @@ impl TcpPacket {
             window: 0,
             urgent_ptr: 0,
             options: Vec::new(),
-            content: Vec::new(),
+            content: Bytes::new(),
         }
     }
 }
@@ -322,8 +324,9 @@ impl FromBytes for TcpPacket {
             Ok(options)
         })?;
 
-        let mut content = Vec::new();
-        stream.read_to_end(&mut content)?;
+        let remaining = stream.remaining();
+        let content = stream.copy_to_bytes(remaining);
+        debug_assert!(!stream.has_remaining());
 
         Ok(TcpPacket {
             src_port,

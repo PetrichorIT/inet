@@ -1,3 +1,4 @@
+use bytes_io::{Buf, BufMut, BytesMut};
 use inet::{
     extensions::with_ext,
     socket::{close, socket},
@@ -18,7 +19,7 @@ use tokio::{
 
 use crate::{addr::SocketAddr, UdsExtension};
 
-use super::{buf::Buffer, establish_link, listener::IncomingStream};
+use super::{establish_link, listener::IncomingStream};
 use inet::socket::Fd;
 use inet::socket::{SocketDomain, SocketType};
 
@@ -29,11 +30,11 @@ pub struct UnixStream {
     pub(super) addr: SocketAddr,
     pub(super) peer: SocketAddr,
 
-    pub(super) rx_buf: Arc<Mutex<Buffer>>,
+    pub(super) rx_buf: Arc<Mutex<BytesMut>>,
     pub(super) rx_readable: Arc<sync::Mutex<Option<Waker>>>,
     pub(super) rx_writable: Arc<sync::Mutex<Option<Waker>>>,
 
-    pub(super) tx_buf: Arc<Mutex<Buffer>>,
+    pub(super) tx_buf: Arc<Mutex<BytesMut>>,
     pub(super) tx_readable: Arc<sync::Mutex<Option<Waker>>>,
     pub(super) tx_writable: Arc<sync::Mutex<Option<Waker>>>,
 }
@@ -107,7 +108,8 @@ impl AsyncRead for UnixStream {
         };
 
         // read from buf
-        let n = lock.read(buf.initialize_unfilled());
+        let n = lock.remaining().min(buf.initialized_mut().len());
+        lock.copy_to_slice(&mut buf.initialize_unfilled()[..n]);
         buf.advance(n);
 
         if n == 0 {
@@ -136,8 +138,8 @@ impl AsyncWrite for UnixStream {
             Poll::Pending => todo!(),
         };
 
-        // write to buf
-        let n = lock.write(buf);
+        let n = lock.remaining_mut().min(buf.len());
+        lock.put_slice(&buf[..n]);
 
         if n == 0 {
             if Arc::strong_count(&self.tx_buf) == 1 {

@@ -244,7 +244,7 @@ impl IOContext {
             hop_limit: 1,
             src: Ipv6Addr::UNSPECIFIED,
             dst: multicast,
-            content: msg.write_to_vec()?,
+            content: msg.write_to_bytes()?,
         };
 
         // TODO: this should ?? always use fe80 addrs, but what to do when no such addr is availabel ??
@@ -270,7 +270,7 @@ impl IOContext {
             hop_limit: 1,
             src: Ipv6Addr::UNSPECIFIED,
             dst: multicast_addr,
-            content: msg.write_to_vec()?,
+            content: msg.write_to_bytes()?,
         };
 
         // TODO: this should ?? always use fe80 addrs, but what to do when no such addr is availabel ??

@@ -1,4 +1,3 @@
-mod buf;
 mod listener;
 mod stream;
 
