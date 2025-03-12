@@ -12,19 +12,19 @@ use crate::{
 };
 use des::{
     net::module::{current, try_current},
-    prelude::{Message, ModuleId},
+    prelude::{Message, MessageHeader, ModuleId},
 };
 use fxhash::{FxBuildHasher, FxHashMap};
 use std::{
     cell::RefCell,
     io::{Error, ErrorKind, Result},
-    net::{IpAddr, Ipv4Addr},
+    net::IpAddr,
     panic::UnwindSafe,
 };
 use types::{
     icmpv4::PROTO_ICMPV4,
     icmpv6::PROTO_ICMPV6,
-    ip::{IpPacket, IpPacketRef, Ipv4Packet, Ipv6Packet, KIND_IPV4, KIND_IPV6},
+    ip::{IpPacket, Ipv4Packet, Ipv6Packet, KIND_IPV4, KIND_IPV6},
 };
 
 use super::{socket::*, tcp::Tcp};
@@ -168,191 +168,150 @@ impl IOContext {
     }
 
     pub fn recv(&mut self, msg: Message) -> Option<Message> {
-        use LinkLayerResult::*;
-
         // Packets that are passed to the networking layer, are
         // not nessecarily addressed to any valid ip addr, but are valid for
         // the local MAC addr
         let l2 = self.recv_linklayer(msg);
         let (msg, ifid) = match l2 {
-            PassThrough(msg) => return Some(msg),
-            Consumed() => return None,
-            NetworkingPacket(msg, ifid) => (msg, ifid),
-            Timeout(timeout) => return self.networking_layer_io_timeout(timeout),
+            LinkLayerResult::PassThrough(msg) => return Some(msg),
+            LinkLayerResult::Consumed() => return None,
+            LinkLayerResult::NetworkingPacket(msg, ifid) => (msg, ifid),
+            LinkLayerResult::Timeout(timeout) => return self.networking_layer_io_timeout(timeout),
         };
 
         self.current.ifid = ifid.clone();
 
-        let kind = msg.header().kind;
-        match kind {
-            KIND_IPV4 => {
-                let Some(ip) = msg.try_content::<Ipv4Packet>() else {
-                    tracing::error!(
-                        "received eth-packet with kind=0x0800 (ip) but content was no ipv4-packet"
-                    );
-                    return Some(msg);
-                };
+        let l3 = self.recv_network_layer(msg, ifid);
+        let (pkt, header) = match l3 {
+            NetworkLayerResult::PassThrough(msg) => return Some(msg),
+            NetworkLayerResult::Consumed() => return None,
+            NetworkLayerResult::TransportLayerPacket(msg, header) => (msg, header),
+        };
 
-                let iface = self.ifaces.get(&ifid).unwrap();
-
-                // (0) Check whether the received ip packet is addressed for the local machine
-                let local_dest = ip.dst == Ipv4Addr::BROADCAST || iface.addrs.v4.matches(ip.dst);
-                // .iter()
-                // .any(|addr| addr.matches(IpAddr::V4(ip.dest)));
-
-                if !local_dest {
-                    // (0) Check TTL
-                    let mut pkt = ip.clone();
-                    pkt.ttl = pkt.ttl.saturating_sub(1);
-
-                    if pkt.ttl == 0 {
-                        tracing::warn!("dropping packet due to ttl");
-                        self.icmp_ttl_expired(ifid, ip);
-                        return None;
-                    }
-
-                    // (2) Reroute packet.
-                    match self.send_ip_packet(
-                        SocketIfaceBinding::Any(self.ifaces.keys().cloned().collect()),
-                        IpPacket::V4(pkt),
-                        true,
-                    ) {
-                        Ok(()) => return None,
-                        Err(e) => {
-                            tracing::error!("Failed to forward packet due to internal err: {e}");
-                            self.icmp_routing_failed(e, ip);
-                            // Maybe return dropped packet ?
-                            return None;
-                        }
-                    };
+        let consumed = match pkt.tos() {
+            PROTO_UDP => self.capture_udp_packet(pkt.as_ref(), ifid),
+            PROTO_TCP => self.capture_tcp_packet(pkt.as_ref(), ifid),
+            PROTO_TCP2 => self.tcp2_on_packet(pkt.as_ref(), ifid),
+            proto => {
+                let domain = pkt
+                    .is_v4()
+                    .then_some(SocketDomain::AF_INET)
+                    .unwrap_or(SocketDomain::AF_INET6);
+                if let Some(handle) = self.sockets.handlers.get(&(proto, domain)) {
+                    let _ = handle.1.try_send(pkt);
+                    return None;
                 }
-
-                match ip.proto {
-                    0 => Some(msg),
-                    PROTO_ICMPV4 => {
-                        let consumed = self.recv_icmpv4_packet(ip, ifid);
-                        if consumed {
-                            None
-                        } else {
-                            Some(msg)
-                        }
-                    }
-                    PROTO_UDP => {
-                        let consumed = self.recv_udp_packet(IpPacketRef::V4(ip), ifid);
-                        if consumed {
-                            None
-                        } else {
-                            Some(msg)
-                        }
-                    }
-                    PROTO_TCP => {
-                        let consumed = self.capture_tcp_packet(IpPacketRef::V4(ip), ifid);
-                        if consumed {
-                            None
-                        } else {
-                            Some(msg)
-                        }
-                    }
-                    PROTO_TCP2 => {
-                        let consumed = self.tcp2_on_packet(IpPacketRef::V4(ip), ifid);
-                        if consumed {
-                            None
-                        } else {
-                            Some(msg)
-                        }
-                    }
-                    k => {
-                        if let Some(handle) = self.sockets.handlers.get(&(k, SocketDomain::AF_INET))
-                        {
-                            let _ = handle.1.try_send(IpPacket::V4(ip.clone()));
-                            return None;
-                        }
-                        panic!("internal error: unreachable code :: proto = {k}");
-                    }
-                }
+                panic!("internal error: unreachable code :: proto = {proto}");
             }
-            KIND_IPV6 => {
-                let Some(ip) = msg.try_content::<Ipv6Packet>() else {
-                    tracing::error!(
-                        "received eth-packet with kind=0x0800 (ip) but content was no ipv4-packet"
-                    );
-                    return Some(msg);
-                };
+        };
 
-                let iface = self.get_iface(ifid).unwrap();
+        (!consumed).then(|| match pkt {
+            IpPacket::V4(v4) => Message::from_parts(header, Some(v4)),
+            IpPacket::V6(v6) => Message::from_parts(header, Some(v6)),
+        })
+    }
 
-                // (0) Check whether the received ip packet is addressed for the local machine
-                let local_dest = iface.addrs.v6.matches(ip.dst);
+    pub fn recv_network_layer(&mut self, msg: Message, ifid: IfId) -> NetworkLayerResult {
+        match msg.header().kind {
+            KIND_IPV4 => self.ipv4_recv(msg, ifid),
+            KIND_IPV6 => self.ipv6_recv(msg, ifid),
+            KIND_LINK_UPDATE => panic!("should not happen"),
+            _ => NetworkLayerResult::PassThrough(msg),
+        }
+    }
 
-                let multicast = ip.dst.is_multicast();
+    fn ipv4_recv(&mut self, msg: Message, ifid: IfId) -> NetworkLayerResult {
+        let Ok((pkt, header)) = msg.try_cast::<Ipv4Packet>() else {
+            tracing::error!(
+                "received eth-packet with kind=0x0800 (ip) but content was no ipv4-packet"
+            );
+            return NetworkLayerResult::Consumed();
+        };
 
-                if !local_dest && !multicast {
-                    // (0) Check TTL
-                    let mut pkt = ip.clone();
-                    pkt.hop_limit = pkt.hop_limit.saturating_sub(1);
+        let iface = self
+            .ifaces
+            .get(&ifid)
+            .expect("interface was already resolved");
 
-                    if pkt.hop_limit == 0 {
-                        tracing::warn!("dropping packet due to ttl");
-                        self.ipv6_icmp_send_ttl_expired(&pkt, ifid).unwrap();
-                        return None;
-                    }
+        let is_local_dest = iface.addrs.v4.matches(pkt.dst) || pkt.dst.is_broadcast();
+        if !is_local_dest {
+            let mut pkt = pkt;
+            pkt.ttl = pkt.ttl.saturating_sub(1);
 
-                    // (2) Reroute packet.
-                    match self.send_ip_packet(
-                        SocketIfaceBinding::Any(self.ifaces.keys().cloned().collect()),
-                        IpPacket::V6(pkt),
-                        true,
-                    ) {
-                        Ok(()) => return None,
-                        Err(e) => {
-                            panic!(
-                                "{}: not yet impl: forwarding without route: {}",
-                                current().path(),
-                                e
-                            )
-                        }
-                    };
-                }
-
-                match ip.next_header {
-                    0 => return Some(msg),
-                    PROTO_UDP => {
-                        let consumed = self.recv_udp_packet(IpPacketRef::V6(ip), ifid);
-                        if consumed {
-                            None
-                        } else {
-                            Some(msg)
-                        }
-                    }
-                    PROTO_TCP => {
-                        let consumed = self.capture_tcp_packet(IpPacketRef::V6(ip), ifid);
-                        if consumed {
-                            None
-                        } else {
-                            Some(msg)
-                        }
-                    }
-                    PROTO_ICMPV6 => {
-                        let consumed = self.ipv6_icmp_recv(ip, ifid).unwrap();
-                        if consumed {
-                            None
-                        } else {
-                            Some(msg)
-                        }
-                    }
-                    k => {
-                        if let Some(handle) =
-                            self.sockets.handlers.get(&(k, SocketDomain::AF_INET6))
-                        {
-                            let _ = handle.1.try_send(IpPacket::V6(ip.clone()));
-                            return None;
-                        }
-                        panic!("internal error: unreachable code :: proto = {k}");
-                    }
-                }
+            if pkt.ttl == 0 {
+                tracing::warn!("dropped ipv4-packet with ttl 0");
+                self.icmp_ttl_expired(ifid, &pkt);
+                return NetworkLayerResult::Consumed();
             }
-            KIND_LINK_UPDATE => panic!("HUH"),
-            _ => Some(msg),
+
+            tracing::debug!("fwd packet to {}", pkt.dst);
+
+            if let Err(error) = self.send_ip_packet(
+                SocketIfaceBinding::Any(self.ifaces.keys().cloned().collect()),
+                IpPacket::V4(pkt.clone()), // TODO: to not copy, use a result Err(Packet)
+                true,
+            ) {
+                tracing::error!("failed to forward ip-packet {error}");
+                self.icmp_routing_failed(error, &pkt);
+            }
+
+            return NetworkLayerResult::Consumed();
+        }
+
+        match pkt.proto {
+            PROTO_ICMPV4 => {
+                let _consumed = self.recv_icmpv4_packet(&pkt, ifid);
+                NetworkLayerResult::Consumed()
+            }
+            0 => NetworkLayerResult::PassThrough(Message::from_parts(header, Some(pkt))),
+            _ => NetworkLayerResult::TransportLayerPacket(IpPacket::V4(pkt), header),
+        }
+    }
+
+    fn ipv6_recv(&mut self, msg: Message, ifid: IfId) -> NetworkLayerResult {
+        let Ok((pkt, header)) = msg.try_cast::<Ipv6Packet>() else {
+            tracing::error!(
+                "received eth-packet with kind=0x86DD (ip) but content was no ipv6-packet"
+            );
+            return NetworkLayerResult::Consumed();
+        };
+
+        let iface = self
+            .ifaces
+            .get(&ifid)
+            .expect("interface was already resolved");
+
+        let is_local_dest = iface.addrs.v6.matches(pkt.dst) || pkt.dst.is_multicast();
+        if !is_local_dest {
+            let mut pkt = pkt;
+            pkt.hop_limit = pkt.hop_limit.saturating_sub(1);
+
+            if pkt.hop_limit == 0 {
+                tracing::warn!("dropped ipv6-packet with ttl 0");
+                self.ipv6_icmp_send_ttl_expired(&pkt, ifid)
+                    .expect("ttl expired failed");
+                return NetworkLayerResult::Consumed();
+            }
+
+            if let Err(error) = self.send_ip_packet(
+                SocketIfaceBinding::Any(self.ifaces.keys().cloned().collect()),
+                IpPacket::V6(pkt.clone()), // TODO: to not copy, use a result Err(Packet)
+                true,
+            ) {
+                tracing::error!("failed to forward ip-packet {error}");
+                panic!("TODO: cannot send ipv6 packet")
+            }
+
+            return NetworkLayerResult::Consumed();
+        }
+
+        match pkt.next_header {
+            PROTO_ICMPV6 => {
+                let _consumed = self.ipv6_icmp_recv(&pkt, ifid);
+                NetworkLayerResult::Consumed()
+            }
+            0 => NetworkLayerResult::PassThrough(Message::from_parts(header, Some(pkt))),
+            _ => NetworkLayerResult::TransportLayerPacket(IpPacket::V6(pkt), header),
         }
     }
 
@@ -400,4 +359,10 @@ impl Drop for IOContext {
         #[cfg(feature = "libpcap")]
         crate::libpcap::close(self.id);
     }
+}
+
+pub enum NetworkLayerResult {
+    PassThrough(Message),
+    TransportLayerPacket(IpPacket, MessageHeader),
+    Consumed(),
 }

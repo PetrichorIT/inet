@@ -208,12 +208,12 @@ impl IOContext {
                 .addrs
                 .multicast_scopes()
                 .into_iter()
-                .filter(|(addr, _)| addr.scope() > Ipv6AddrScope::InterfaceLocal) // only with great scopes
-                .filter(|(addr, _)| *addr != Ipv6Addr::MULTICAST_ALL_NODES)
+                .filter(|addr| addr.scope() > Ipv6AddrScope::InterfaceLocal) // only with great scopes
+                .filter(|addr| **addr != Ipv6Addr::MULTICAST_ALL_NODES)
                 .copied()
                 .collect::<Vec<_>>();
 
-            for (addr, _) in addrs {
+            for addr in addrs {
                 self.mld_on_event(ifid, Event::QueryReceived(query.clone()), addr)?;
             }
         } else {

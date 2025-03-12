@@ -108,7 +108,7 @@ fn is_valid_dst_for(socket_addr: &SocketAddr, packet_addr: &SocketAddr) -> bool 
 
 impl IOContext {
     // returns consumed
-    pub(super) fn recv_udp_packet(&mut self, packet: IpPacketRef, ifid: IfId) -> bool {
+    pub(super) fn capture_udp_packet(&mut self, packet: IpPacketRef, ifid: IfId) -> bool {
         assert_eq!(packet.tos(), PROTO_UDP);
 
         let is_broadcast = is_broadcast(packet.dst());
@@ -180,7 +180,7 @@ impl IOContext {
 }
 
 impl IOContext {
-    pub(super) fn udp_bind(&mut self, addr: SocketAddr) -> Result<UdpSocket> {
+    fn udp_bind(&mut self, addr: SocketAddr) -> Result<UdpSocket> {
         let domain = if addr.is_ipv4() {
             SocketDomain::AF_INET
         } else {
@@ -211,7 +211,7 @@ impl IOContext {
         Ok(UdpSocket { fd: socket })
     }
 
-    pub(super) fn udp_connect(&mut self, fd: Fd, peer: SocketAddr) -> Result<()> {
+    fn udp_connect(&mut self, fd: Fd, peer: SocketAddr) -> Result<()> {
         let Some(socket) = self.udp.binds.get_mut(&fd) else {
             return Err(Error::new(
                 ErrorKind::InvalidInput,
@@ -224,7 +224,7 @@ impl IOContext {
         Ok(())
     }
 
-    pub(super) fn udp_send_to(&mut self, fd: Fd, target: SocketAddr, buf: &[u8]) -> Result<usize> {
+    fn udp_send_to(&mut self, fd: Fd, target: SocketAddr, buf: &[u8]) -> Result<usize> {
         let Some(mng) = self.udp.binds.get_mut(&fd) else {
             return Err(Error::new(
                 ErrorKind::InvalidInput,
@@ -318,7 +318,7 @@ impl IOContext {
         }
     }
 
-    pub(crate) fn udp_recv(
+    fn udp_recv(
         &mut self,
         fd: Fd,
         peer: Option<SocketAddr>,
@@ -344,7 +344,7 @@ impl IOContext {
         Ok((n, src))
     }
 
-    pub(crate) fn udp_recv_buf<B: BufMut>(
+    fn udp_recv_buf<B: BufMut>(
         &mut self,
         fd: Fd,
         peer: Option<SocketAddr>,
@@ -379,7 +379,7 @@ impl IOContext {
         Ok((n, src))
     }
 
-    pub(crate) fn udp_peek(
+    fn udp_peek(
         &mut self,
         fd: Fd,
         peer: Option<SocketAddr>,
@@ -416,7 +416,7 @@ impl IOContext {
         Ok(mng.error.take())
     }
 
-    pub(super) fn udp_drop(&mut self, fd: Fd) {
+    fn udp_drop(&mut self, fd: Fd) {
         self.udp.binds.remove(&fd);
         let _ = self.socket_close(fd);
     }

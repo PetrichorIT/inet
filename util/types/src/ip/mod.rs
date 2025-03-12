@@ -30,12 +30,12 @@ pub enum IpPacket {
 }
 
 #[derive(Debug)]
-pub enum IpPacketRef<'a, 'b> {
+pub enum IpPacketRef<'a> {
     V4(&'a Ipv4Packet),
-    V6(&'b Ipv6Packet),
+    V6(&'a Ipv6Packet),
 }
 
-impl IpPacketRef<'_, '_> {
+impl IpPacketRef<'_> {
     #[must_use]
     pub fn tos(&self) -> u8 {
         match self {
@@ -177,6 +177,13 @@ impl IpPacket {
                 content,
             }),
             _ => unreachable!(),
+        }
+    }
+
+    pub fn as_ref<'a>(&'a self) -> IpPacketRef<'a> {
+        match self {
+            IpPacket::V4(packet) => IpPacketRef::V4(packet),
+            IpPacket::V6(packet) => IpPacketRef::V6(packet),
         }
     }
 }

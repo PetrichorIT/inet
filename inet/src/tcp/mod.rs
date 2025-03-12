@@ -460,7 +460,7 @@ impl IOContext {
 }
 
 impl IOContext {
-    fn process_packet(&mut self, fd: Fd, ip: IpPacketRef<'_, '_>, pkt: TcpPacket) {
+    fn process_packet(&mut self, fd: Fd, ip: IpPacketRef<'_>, pkt: TcpPacket) {
         let Some(mut ctrl) = self.tcp.streams.remove(&fd) else {
             return;
         };

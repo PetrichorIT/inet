@@ -26,7 +26,7 @@ pub struct InterfaceAddrsV4 {
 #[derive(Debug, Clone, Default)]
 pub struct InterfaceAddrsV6 {
     pub(super) unicast: Vec<InterfaceAddrV6>,
-    pub(super) multicast: Vec<(Ipv6Addr, MacAddress)>,
+    pub(super) multicast: Vec<Ipv6Addr>,
 }
 
 impl InterfaceAddrs {
@@ -70,7 +70,7 @@ impl InterfaceAddrs {
             )
     }
 
-    pub fn multicast_scopes(&self) -> &[(Ipv6Addr, MacAddress)] {
+    pub fn multicast_scopes(&self) -> &[Ipv6Addr] {
         &self.v6.multicast[..]
     }
 }
@@ -124,10 +124,9 @@ impl InterfaceAddrsV6 {
             multicast.is_multicast(),
             "cannot join multicast group '{multicast}': address is not multicast"
         );
-        if !self.multicast.iter().any(|(addr, _)| *addr == multicast) {
+        if !self.multicast.iter().any(|addr| *addr == multicast) {
             tracing::debug!(addr = %multicast, "joining multicast scope");
-            self.multicast
-                .push((multicast, MacAddress::ipv6_multicast(multicast)));
+            self.multicast.push(multicast);
             true
         } else {
             false
@@ -137,7 +136,7 @@ impl InterfaceAddrsV6 {
     pub fn leave(&mut self, multicast: Ipv6Addr) {
         // TODO: same sol scope may attend to multile unicast -> only del after last unicast
         tracing::debug!(addr = %multicast, "leaving multicast scope");
-        self.multicast.retain(|(addr, _)| *addr != multicast);
+        self.multicast.retain(|addr| *addr != multicast);
     }
 
     /// The bound unicast addrs
@@ -145,17 +144,17 @@ impl InterfaceAddrsV6 {
         self.unicast.iter().map(|binding| binding.addr)
     }
 
-    pub fn valid_src_mac(&self, addr: MacAddress) -> bool {
-        self.multicast.iter().any(|(_, binding)| *binding == addr)
+    pub fn valid_src_mac(&self, mac_addr: MacAddress) -> bool {
+        self.multicast
+            .iter()
+            .any(|addr| MacAddress::ipv6_multicast(*addr) == mac_addr)
     }
 
     /// Whether the bindings of this interface can be used as a receiver
     /// for a packet addressed to `dst`
     pub fn matches(&self, dst: Ipv6Addr) -> bool {
         if dst.is_multicast() {
-            self.multicast
-                .iter()
-                .any(|(multicast, _)| *multicast == dst)
+            self.multicast.iter().any(|multicast| *multicast == dst)
         } else {
             self.unicast.iter().any(|binding| binding.matches(dst))
         }

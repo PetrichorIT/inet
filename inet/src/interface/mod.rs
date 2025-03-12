@@ -15,6 +15,8 @@ use types::arp::KIND_ARP;
 use types::iface::MacAddress;
 use types::{arp::ArpPacket, ip::Ipv6AddrExt};
 
+mod def;
+
 mod api;
 pub use self::api::*;
 
