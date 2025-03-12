@@ -1,7 +1,7 @@
 use crate::{
     arp::ArpEntryInternal,
     ctx::IOContext,
-    interface::{IfId, InterfaceAddr, InterfaceAddrV6},
+    interface::{IfId, InterfaceAddrV6},
     ipv6::{addrs::CanidateAddr, timer::TimerToken, Ipv6SendFlags},
 };
 use bytes_io::{FromBytes, ToBytes};
@@ -589,7 +589,7 @@ impl IOContext {
         // Message validation on unspecific IP
         let iface = self.ifaces.get(&ifid).unwrap();
         if ip.src.is_unspecified() {
-            if let Some(unicast_addr) = iface.addrs.v6.addrs().next() {
+            if let Some(unicast_addr) = iface.bindings.v6.addrs().next() {
                 if unicast_addr != ip.dst {
                     return Ok(true);
                 }
@@ -601,7 +601,7 @@ impl IOContext {
         }
 
         let query_is_dedup = ip.src.is_unspecified();
-        let tentative = !iface.addrs.v6.matches(req.target);
+        let tentative = !iface.bindings.v6.matches(req.target);
 
         tracing::trace!(IFACE=%ifid, tentative, "recv (sol) for {} from {}->{}", req.target, ip.src, ip.dst);
 
@@ -696,7 +696,7 @@ impl IOContext {
 
         // Reponses to Solicitations may be sen on the ALL_NODES multicast
         // so joining this multicast is of the utmost importance
-        iface.addrs.v6.join(Ipv6Addr::MULTICAST_ALL_NODES);
+        iface.bindings.v6.join(Ipv6Addr::MULTICAST_ALL_NODES);
 
         // Solicitations may be casued by either an send:address_resolution or
         // the assigment of a local address (tentaive address check). Different cases
@@ -728,7 +728,7 @@ impl IOContext {
                 // Else join immediatly and ping MLD
                 let multicast = Ipv6Addr::solicied_node_multicast(target);
 
-                let needs_mld_report = iface.addrs.v6.join(multicast);
+                let needs_mld_report = iface.bindings.v6.join(multicast);
                 if needs_mld_report {
                     self.mld_on_event(ifid, mld::Event::StartListening, multicast)?;
                 }
@@ -898,7 +898,7 @@ impl IOContext {
             if binding.validity != Duration::MAX {
                 binding.deadline = SimTime::now() + binding.validity;
             }
-            iface.addrs.add(InterfaceAddr::Inet6(binding));
+            iface.bindings.v6.add(binding);
             Ok(())
         }
     }
@@ -1007,7 +1007,7 @@ impl IOContext {
         };
 
         iface
-            .addrs
+            .bindings
             .v6
             .leave(Ipv6Addr::solicied_node_multicast(binding.addr));
 

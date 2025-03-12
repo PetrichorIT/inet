@@ -8,8 +8,8 @@ use std::{
     result,
 };
 
-use crate::socket::Fd;
 use crate::IOContext;
+use crate::{ctx::LinkLayerResult, socket::Fd};
 use des::prelude::*;
 use types::arp::ArpPacket;
 use types::arp::KIND_ARP;
@@ -36,56 +36,24 @@ pub use self::addrs::*;
 /// A network interface, mapping a physical network device
 /// to internal abstractions
 #[derive(Debug)]
-pub struct Interface {
-    /// The name of the interface.
-    ///
-    /// A name uniquely identifies an interface, either directly or through the
-    /// interface-id derived from the name. No two interfaces on the same node
-    /// should share either name or id.
+pub struct InterfaceController {
     pub name: InterfaceName,
-    /// The physical network device, representing a NIC in most cases.
-    ///
-    /// This device will be used on receive / send packets using this inteface. In OSI
-    /// terms, this represents the physical layer device.
     pub device: NetworkDevice,
-    /// Flags indicating the state and capabilities of the associated device.
     pub flags: InterfaceFlags,
-    /// A list of addresses bound to this interface.
-    pub addrs: InterfaceAddrs,
-    /// The internal state of the interface
-    pub status: InterfaceStatus,
-    /// A flag indicating whether the interface is currently busy sending
+    pub bindings: InterfaceAddrBindings,
     pub state: InterfaceBusyState,
-
-    pub(crate) prio: usize,
-    pub(crate) buffer: VecDeque<Message>,
-    pub(crate) send_q: usize,
+    pub prio: usize,
+    pub buffer: VecDeque<Message>,
+    pub send_q: usize,
 }
 
-/// A result forwarded after linklayer processing
-#[derive(Debug)]
-pub enum LinkLayerResult {
-    /// The packet does not attach to any link layer interface, so its custom made.
-    /// Pass it through the entires IOPlugin
-    PassThrough(Message),
-    /// The packet was consumed by the link layer thus neeeds no futher
-    /// processing,
-    Consumed(),
-    /// The packet was received on the given interface and should be
-    /// passed through to the network layer.
-    NetworkingPacket(Message, IfId),
-    /// An IO timeout for the networking layer.
-    Timeout(Message),
-}
-
-impl Interface {
+impl InterfaceController {
     pub fn empty(name: &str, device: NetworkDevice) -> Self {
         Self {
             name: InterfaceName::new(name),
             device,
             flags: InterfaceFlags::en0(true),
-            addrs: InterfaceAddrs::new(Vec::new()),
-            status: InterfaceStatus::Active,
+            bindings: InterfaceAddrBindings::default(),
             state: InterfaceBusyState::Idle,
             prio: 200,
             buffer: VecDeque::new(),
@@ -100,23 +68,11 @@ impl Interface {
     }
 
     pub fn ipv4_subnet(&self) -> Option<(Ipv4Addr, Ipv4Addr)> {
-        self.addrs.iter().find_map(|a| {
-            if let InterfaceAddr::Inet(binding) = a {
-                Some((binding.addr, binding.netmask))
-            } else {
-                None
-            }
-        })
+        self.bindings.v4.unicast.first().map(|b| (b.addr, b.mask))
     }
 
     pub fn ipv6_subnet(&self) -> Option<(Ipv6Addr, Ipv6Addr)> {
-        self.addrs.iter().find_map(|addr| {
-            if let InterfaceAddr::Inet6(addr) = addr {
-                Some((addr.addr, addr.mask))
-            } else {
-                None
-            }
-        })
+        self.bindings.v6.unicast.first().map(|b| (b.addr, b.mask))
     }
 
     pub(crate) fn send_buffered(&mut self, msg: Message) -> Result<()> {
@@ -212,19 +168,17 @@ impl Interface {
         matches!(self.state, InterfaceBusyState::Busy { .. })
     }
 
-    fn valid_recv_addr(&self, addr: MacAddress) -> bool {
+    pub fn is_valid_recv_addr(&self, addr: MacAddress) -> bool {
         if addr.is_broadcast() {
             return true;
         }
         if addr == self.device.addr {
             return true;
         }
-
         // Check multicast scopes
-        if self.addrs.v6.valid_src_mac(addr) {
+        if self.bindings.v6.valid_src_mac(addr) {
             return true;
         }
-
         false
     }
 }
@@ -232,6 +186,7 @@ impl Interface {
 impl IOContext {
     pub fn recv_linklayer(&mut self, msg: Message) -> LinkLayerResult {
         use LinkLayerResult::*;
+
         let dst = MacAddress::from(msg.header().dest);
 
         // Precheck for link layer updates
@@ -243,7 +198,6 @@ impl IOContext {
                 return PassThrough(msg);
             };
             self.recv_linklayer_update(update);
-
             return Consumed();
         }
 
@@ -253,7 +207,6 @@ impl IOContext {
                 self.recv_arp_wakeup();
                 return Consumed();
             }
-
             return Timeout(msg);
         }
 
@@ -274,7 +227,7 @@ impl IOContext {
 
         // Check that packet is addressed correctly.
 
-        if !iface.valid_recv_addr(dst) {
+        if !iface.is_valid_recv_addr(dst) {
             if dst.is_multicast() {
                 return Consumed();
             } else {
@@ -309,18 +262,18 @@ impl IOContext {
         }
     }
 
-    fn device_for_message(&self, msg: &Message) -> Option<(&IfId, &Interface)> {
+    fn device_for_message(&self, msg: &Message) -> Option<(&IfId, &InterfaceController)> {
         self.ifaces
             .iter()
             .find(|(_, iface)| iface.device.last_gate_matches(&msg.header().last_gate))
     }
 
-    pub(super) fn get_iface(&self, ifid: IfId) -> io::Result<&Interface> {
+    pub(super) fn get_iface(&self, ifid: IfId) -> io::Result<&InterfaceController> {
         self.ifaces.get(&ifid).ok_or_else(|| {
             io::Error::new(io::ErrorKind::NotFound, "no interface found under this id")
         })
     }
-    pub(super) fn get_mut_iface(&mut self, ifid: IfId) -> io::Result<&mut Interface> {
+    pub(super) fn get_mut_iface(&mut self, ifid: IfId) -> io::Result<&mut InterfaceController> {
         self.ifaces.get_mut(&ifid).ok_or_else(|| {
             io::Error::new(io::ErrorKind::NotFound, "no interface found under this id")
         })

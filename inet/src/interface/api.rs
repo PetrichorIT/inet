@@ -1,6 +1,6 @@
 use super::{
-    def::InterfaceDef, IfId, InterfaceAddr, InterfaceAddrs, InterfaceAddrsV6, InterfaceBusyState,
-    InterfaceFlags, InterfaceName, InterfaceStatus, MacAddress,
+    def::InterfaceDef, IfId, InterfaceAddrBindings, InterfaceAddrsV6, InterfaceBusyState,
+    InterfaceFlags, InterfaceName, MacAddress,
 };
 use crate::{
     arp::ArpEntryInternal,
@@ -42,8 +42,7 @@ pub fn interface_status_by_ifid(ifid: IfId) -> io::Result<InterfaceState> {
 pub struct InterfaceState {
     pub name: InterfaceName,
     pub flags: InterfaceFlags,
-    pub addrs: InterfaceAddrs,
-    pub status: InterfaceStatus,
+    pub addrs: InterfaceAddrBindings,
     pub busy: InterfaceBusyState,
     pub queuelen: usize,
 }
@@ -54,8 +53,8 @@ impl InterfaceState {
         par(base_key.clone() + ":flags").set(self.flags)?;
         par(base_key + ":addrs").set(
             self.addrs
-                .iter()
-                .map(|binding| binding.to_ip().to_string())
+                .addrs()
+                .map(|addr| addr.to_string())
                 .collect::<Vec<_>>()
                 .join(", "),
         )?;
@@ -121,23 +120,23 @@ impl IOContext {
         }
 
         // (1) Add all interface addrs to ARP
-        for addr in iface.addrs.iter() {
+        for addr in iface.bindings.addrs() {
             match addr {
-                InterfaceAddr::Inet(binding) => {
+                IpAddr::V4(binding) => {
                     let _ = self.arp.update(ArpEntryInternal {
                         negated: false,
                         hostname: Some(current().name()),
-                        ip: IpAddr::V4(binding.addr),
+                        ip: IpAddr::V4(binding),
                         mac: iface.device.addr,
                         iface: iface.name.id(),
                         expires: SimTime::MAX,
                     });
                 }
-                InterfaceAddr::Inet6(addr) => {
+                IpAddr::V6(addr) => {
                     let _ = self.arp.update(ArpEntryInternal {
                         negated: false,
                         hostname: Some(current().name()),
-                        ip: IpAddr::V6(addr.addr),
+                        ip: IpAddr::V6(addr),
                         mac: iface.device.addr,
                         iface: iface.name.id(),
                         expires: SimTime::MAX,
@@ -180,7 +179,7 @@ impl IOContext {
 
         let mut iface = iface;
         let mut addrs = InterfaceAddrsV6::default();
-        std::mem::swap(&mut addrs, &mut iface.addrs.v6);
+        std::mem::swap(&mut addrs, &mut iface.bindings.v6);
 
         self.ifaces.insert(iface.name.id(), iface);
 
@@ -230,10 +229,10 @@ impl IOContext {
                 let _guard = tracing::span!(Level::INFO, "iface", id = %ifid).entered();
 
                 tracing::debug!("assigning blind address {addr}");
-                iface.addrs.add(InterfaceAddr::Inet(InterfaceAddrV4 {
+                iface.bindings.v4.add(InterfaceAddrV4 {
                     addr,
-                    netmask: Ipv4Addr::BROADCAST,
-                }));
+                    mask: Ipv4Addr::BROADCAST,
+                });
                 Ok(())
             }
             IpAddr::V6(addr) => {
@@ -263,7 +262,7 @@ impl IOContext {
 
         if !iface.flags.multicast {
             tracing::debug!("assigning blind address '{binding}'");
-            iface.addrs.add(InterfaceAddr::Inet6(binding));
+            iface.bindings.v6.add(binding);
             return Ok(());
         }
 
@@ -275,15 +274,15 @@ impl IOContext {
                 QueryType::TentativeAddressCheck(binding),
             )
         } else {
-            iface.addrs.v6.join(Ipv6Addr::MULTICAST_ALL_NODES);
+            iface.bindings.v6.join(Ipv6Addr::MULTICAST_ALL_NODES);
             if iface.flags.router {
-                iface.addrs.v6.join(Ipv6Addr::MULTICAST_ALL_ROUTERS);
+                iface.bindings.v6.join(Ipv6Addr::MULTICAST_ALL_ROUTERS);
             }
 
             let multicast = Ipv6Addr::solicied_node_multicast(binding.addr);
 
-            let needs_mld_report = iface.addrs.v6.join(multicast);
-            iface.addrs.add(InterfaceAddr::Inet6(binding));
+            let needs_mld_report = iface.bindings.v6.join(multicast);
+            iface.bindings.v6.add(binding);
 
             if needs_mld_report {
                 self.mld_on_event(ifid, mld::Event::StartListening, multicast)?;
@@ -306,8 +305,7 @@ impl IOContext {
         Ok(InterfaceState {
             name: iface.name.clone(),
             flags: iface.flags,
-            addrs: iface.addrs.clone(),
-            status: iface.status,
+            addrs: iface.bindings.clone(),
             busy: iface.state.clone(),
             queuelen: iface.buffer.len(),
         })
@@ -323,8 +321,7 @@ impl IOContext {
         Ok(InterfaceState {
             name: iface.name.clone(),
             flags: iface.flags,
-            addrs: iface.addrs.clone(),
-            status: iface.status,
+            addrs: iface.bindings.clone(),
             busy: iface.state.clone(),
             queuelen: iface.buffer.len(),
         })

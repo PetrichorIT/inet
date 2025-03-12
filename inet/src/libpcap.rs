@@ -1,6 +1,6 @@
 //! An interfaces for capturing packets, akin to libpcap.
 
-use crate::interface::Interface;
+use crate::interface::InterfaceController;
 use des::net::module::current;
 use des::prelude::{Message, ModuleId};
 use std::cell::RefCell;
@@ -72,7 +72,7 @@ pub struct PcapEnvelope<'a> {
     /// A reference to the captured packet
     pub message: &'a Message,
     /// The receiving / sending interface for the packet.
-    pub iface: &'a Interface,
+    pub iface: &'a InterfaceController,
 }
 
 impl Pcap {

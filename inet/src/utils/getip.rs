@@ -2,7 +2,7 @@ use std::{io::Result, net::IpAddr};
 
 use types::iface::MacAddress;
 
-use crate::{interface::InterfaceAddr, IOContext};
+use crate::IOContext;
 
 /// Returns the first MAC address of the current node.
 ///
@@ -48,13 +48,11 @@ impl IOContext {
 
     pub(crate) fn get_ip(&self) -> Option<IpAddr> {
         for (_, interface) in &self.ifaces {
-            for addr in interface.addrs.iter() {
-                if let InterfaceAddr::Inet(addr) = addr {
-                    return Some(IpAddr::V4(addr.addr));
-                }
-                if let InterfaceAddr::Inet6(addr) = addr {
-                    return Some(IpAddr::V6(addr.addr));
-                }
+            for binding in &interface.bindings.v4.unicast {
+                return Some(IpAddr::V4(binding.addr));
+            }
+            for binding in &interface.bindings.v6.unicast {
+                return Some(IpAddr::V6(binding.addr));
             }
         }
         None
@@ -63,11 +61,11 @@ impl IOContext {
     pub(crate) fn getaddrinfo(&self) -> AddrInfo {
         let mut info = AddrInfo::new();
         for (_, iface) in &self.ifaces {
-            for addr in iface.addrs.iter() {
-                match addr {
-                    InterfaceAddr::Inet(binding) => info.push(IpAddr::V4(binding.addr)),
-                    InterfaceAddr::Inet6(binding) => info.push(IpAddr::V6(binding.addr)),
-                }
+            for binding in &iface.bindings.v4.unicast {
+                info.push(binding.addr.into())
+            }
+            for binding in &iface.bindings.v6.unicast {
+                info.push(binding.addr.into())
             }
         }
         info

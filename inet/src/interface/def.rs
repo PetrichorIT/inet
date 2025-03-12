@@ -7,7 +7,8 @@ use des::time::SimTime;
 use types::ip::Ipv6AddrExt;
 
 use super::{
-    Interface, InterfaceAddrV4, InterfaceAddrV6, InterfaceFlags, InterfaceName, NetworkDevice,
+    InterfaceAddrV4, InterfaceAddrV6, InterfaceController, InterfaceFlags, InterfaceName,
+    NetworkDevice,
 };
 
 /// An interface definition.
@@ -39,16 +40,16 @@ pub struct InterfaceAddrsDef {
 }
 
 impl InterfaceDef {
-    pub(crate) fn into_legacy(self) -> Interface {
-        let mut iface = Interface::empty(&self.name, self.device);
+    pub(crate) fn into_legacy(self) -> InterfaceController {
+        let mut iface = InterfaceController::empty(&self.name, self.device);
         iface.flags = self.flags;
 
         for (addr, mask) in self.addrs.ipv4 {
-            iface.addrs.v4.add(InterfaceAddrV4::new(addr, mask));
+            iface.bindings.v4.add(InterfaceAddrV4::new(addr, mask));
         }
         for (addr, mask) in self.addrs.ipv6 {
             iface.flags.v6 = true;
-            iface.addrs.v6.add(InterfaceAddrV6 {
+            iface.bindings.v6.add(InterfaceAddrV6 {
                 addr,
                 mask,
                 deadline: SimTime::MAX,

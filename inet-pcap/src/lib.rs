@@ -1,7 +1,7 @@
 use bytes_io::ToBytes;
 use des::prelude::*;
 use inet::{
-    interface::{IfId, Interface},
+    interface::{IfId, InterfaceController},
     libpcap::{set_pcap_deamon, PcapCapturePoint, PcapEnvelope, PcapSubscriber},
 };
 use pcapng::{
@@ -42,7 +42,7 @@ struct LibPcapDeamon<W: BlockWriter<IfId>> {
 }
 
 impl<W: BlockWriter<IfId>> LibPcapDeamon<W> {
-    fn write_iface(&mut self, ifid: IfId, iface: &Interface) -> Result<()> {
+    fn write_iface(&mut self, ifid: IfId, iface: &InterfaceController) -> Result<()> {
         let link_type = if iface.device.is_loopback() {
             Linktype::LOOP
         } else {

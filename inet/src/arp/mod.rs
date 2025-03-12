@@ -15,6 +15,7 @@
 use std::io::{self, Error, ErrorKind};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
+use crate::ctx::LinkLayerResult;
 use crate::routing::{IpGateway, Ipv6Gateway};
 use crate::socket::SocketIfaceBinding;
 use crate::{interface::*, IOContext};
@@ -73,18 +74,17 @@ impl IOContext {
 
                 // (1) check whether the responding interface has an appropiate ip addr.
                 let iface = self.ifaces.get_mut(&ifid).unwrap();
-                let requested_addr = arp.dst_ip_addr();
+                let requested_addr = arp.dst_ipv4_addr();
 
                 let valid_iaddr = iface
-                    .addrs
+                    .bindings
+                    .v4
+                    .unicast
                     .iter()
                     .find(|iaddr| iaddr.matches(requested_addr));
 
                 if let Some(iaddr) = valid_iaddr {
-                    let addr: IpAddr = match iaddr {
-                        InterfaceAddr::Inet(addr) => addr.addr.into(),
-                        InterfaceAddr::Inet6(addr) => addr.addr.into(),
-                    };
+                    let addr: Ipv4Addr = iaddr.addr;
 
                     assert_eq!(addr, requested_addr);
 
@@ -432,7 +432,7 @@ impl IOContext {
                         return None;
                     };
                     let looback = iface.flags.loopback && dest.is_loopback();
-                    let self_addr = iface.addrs.iter().any(|addr| addr.matches(dest));
+                    let self_addr = iface.bindings.matches(dest);
                     if looback || self_addr {
                         Some((false, iface.device.addr, iface.name.id))
                     } else {
@@ -445,7 +445,7 @@ impl IOContext {
                             continue;
                         };
                         let looback = iface.flags.loopback && dest.is_loopback();
-                        let self_addr = iface.addrs.iter().any(|addr| addr.matches(dest));
+                        let self_addr = iface.bindings.matches(dest);
                         if looback || self_addr {
                             return Some((false, iface.device.addr, iface.name.id));
                         }

@@ -6,10 +6,7 @@ use types::ip::IpPacket;
 
 use crate::interface::IfId;
 
-use super::{
-    interface::{InterfaceName, InterfaceStatus},
-    IOContext,
-};
+use super::{interface::InterfaceName, IOContext};
 use std::{
     fmt::Display,
     io::{Error, ErrorKind, Result},
@@ -244,17 +241,14 @@ impl IOContext {
         let valid_ifaces = available_ifaces
             .iter()
             .filter_map(|(&ifid, iface)| {
-                if let InterfaceStatus::Inactive = iface.status {
-                    return None;
-                }
                 if !iface.flags.up {
                     return None;
                 }
 
                 if addr.is_ipv4() {
-                    iface.addrs.has_v4_capability().then(|| ifid)
+                    iface.bindings.has_v4_capability().then(|| ifid)
                 } else {
-                    (iface.addrs.has_v4_capability() || iface.addrs.has_v6_capability())
+                    (iface.bindings.has_v4_capability() || iface.bindings.has_v6_capability())
                         .then(|| ifid)
                 }
             })
@@ -319,13 +313,8 @@ impl IOContext {
         for (ifid, interface) in self
             .ifaces
             .iter()
-            .filter(|(_, iface)| iface.addrs.iter().any(|iaddr| iaddr.matches(addr.ip())))
+            .filter(|(_, iface)| iface.bindings.matches(addr.ip()))
         {
-            // Found the right interface
-            if interface.status == InterfaceStatus::Inactive {
-                continue;
-            }
-
             if !interface.flags.up {
                 continue;
             }

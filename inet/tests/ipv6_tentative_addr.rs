@@ -24,13 +24,13 @@ impl Module for WithChecks {
         add_interface(InterfaceDef::new("en0", NetworkDevice::eth()).v6()).unwrap();
 
         let state = interface_status("en0").unwrap();
-        assert_eq!(state.addrs.iter().count(), 0);
+        assert_eq!(state.addrs.addrs().count(), 0);
         assert_eq!(state.addrs.multicast_scopes().len(), 1); // sol-multicast (delayed) + all nodes multicast
     }
 
     fn at_sim_end(&mut self) -> Result<(), RuntimeError> {
         let state = interface_status("en0").unwrap();
-        assert_eq!(state.addrs.iter().count(), 1);
+        assert_eq!(state.addrs.addrs().count(), 1);
         assert_eq!(state.addrs.multicast_scopes().len(), 2); // sol-multicast (delayed) + all nodes multicast
         Ok(())
     }
@@ -49,13 +49,13 @@ impl Module for WithoutChecks {
 
         add_interface(InterfaceDef::new("en0", NetworkDevice::eth()).v6()).unwrap();
         let state = interface_status("en0").unwrap();
-        assert_eq!(state.addrs.iter().count(), 1);
+        assert_eq!(state.addrs.addrs().count(), 1);
         assert_eq!(state.addrs.multicast_scopes().len(), 2); // sol-multicast + all nodes multicast
     }
 
     fn at_sim_end(&mut self) -> Result<(), RuntimeError> {
         let state = interface_status("en0").unwrap();
-        assert_eq!(state.addrs.iter().count(), 1);
+        assert_eq!(state.addrs.addrs().count(), 1);
         assert_eq!(state.addrs.multicast_scopes().len(), 2); // sol-multicast + all nodes multicast
         Ok(())
     }
@@ -69,13 +69,13 @@ impl Module for ManualAssignWithoutDedup {
         add_interface(InterfaceDef::ethv6_autocfg(NetworkDevice::eth())).unwrap();
 
         let state = interface_status("en0").unwrap();
-        assert_eq!(state.addrs.iter().count(), 1);
+        assert_eq!(state.addrs.addrs().count(), 1);
         assert_eq!(state.addrs.multicast_scopes().len(), 2); // sol-multicast + all nodes multicast
     }
 
     fn at_sim_end(&mut self) -> Result<(), RuntimeError> {
         let state = interface_status("en0").unwrap();
-        assert_eq!(state.addrs.iter().count(), 1);
+        assert_eq!(state.addrs.addrs().count(), 1);
         assert_eq!(state.addrs.multicast_scopes().len(), 2); // sol-multicast + all nodes multicast
         Ok(())
     }
@@ -111,7 +111,7 @@ impl Module for AssignSameAddr {
         assert!(interface_status("en0")
             .unwrap()
             .addrs
-            .iter()
+            .addrs()
             .collect::<Vec<_>>()
             .is_empty());
         Ok(())

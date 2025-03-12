@@ -205,7 +205,7 @@ impl IOContext {
                 .ifaces
                 .get(&ifid)
                 .expect("unknow interface")
-                .addrs
+                .bindings
                 .multicast_scopes()
                 .into_iter()
                 .filter(|addr| addr.scope() > Ipv6AddrScope::InterfaceLocal) // only with great scopes

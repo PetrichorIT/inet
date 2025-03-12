@@ -121,30 +121,6 @@ impl<T: AsRef<str>> From<T> for InterfaceName {
     }
 }
 
-// # Interface Status
-
-/// The activity status of a network interface
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
-pub enum InterfaceStatus {
-    /// The interface is active and can be used.
-    ///
-    /// This indicates the existence of the interface, but makes no assumtions
-    /// whether the interface is currently free to send, or at all contected to any endpoint.
-    Active,
-    /// The interface is only pre-configures not really there.
-    #[default]
-    Inactive,
-}
-
-impl fmt::Display for InterfaceStatus {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> std::result::Result<(), fmt::Error> {
-        match self {
-            Self::Active => write!(f, "active"),
-            Self::Inactive => write!(f, "inactive"),
-        }
-    }
-}
-
 // # Busy state
 
 /// The state of the interfaces sending half.

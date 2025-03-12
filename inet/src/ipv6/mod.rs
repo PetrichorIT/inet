@@ -215,7 +215,7 @@ impl IOContext {
 
     fn ipv6_ifid_for_src_addr(&self, src: Ipv6Addr) -> IfId {
         for (id, iface) in &self.ifaces {
-            if iface.addrs.v6.matches(src) {
+            if iface.bindings.v6.matches(src) {
                 return *id;
             }
         }
@@ -275,7 +275,7 @@ impl IOContext {
                 DelayedJoinMulticast { ifid, multicast } => {
                     let iface = self.ifaces.get_mut(&ifid).unwrap();
                     let _guard = tracing::span!(Level::INFO, "iface", id=%ifid).entered();
-                    let needs_mld_report = iface.addrs.v6.join(multicast);
+                    let needs_mld_report = iface.bindings.v6.join(multicast);
 
                     if needs_mld_report {
                         self.mld_on_event(ifid, mld::Event::StartListening, multicast)?;
@@ -323,11 +323,11 @@ impl IOContext {
             let Some(assigned) = timed_out.assigned_addr else {
                 continue;
             };
-            let Some(binding) = iface.addrs.v6.remove(assigned) else {
+            let Some(binding) = iface.bindings.v6.remove(assigned) else {
                 continue;
             };
             iface
-                .addrs
+                .bindings
                 .v6
                 .leave(Ipv6Addr::solicied_node_multicast(binding.addr));
         }

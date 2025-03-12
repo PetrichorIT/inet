@@ -4,7 +4,7 @@ use crate::{
     extensions::Extensions,
     fs::Fs,
     icmp::Icmp,
-    interface::{IfId, Interface, LinkLayerResult, ID_IPV6_TIMEOUT, KIND_LINK_UPDATE},
+    interface::{IfId, InterfaceController, ID_IPV6_TIMEOUT, KIND_LINK_UPDATE},
     ipv6::Ipv6,
     routing::{FwdV4, Ipv6RoutingTable},
     tcp2::{self, PROTO_TCP2},
@@ -37,7 +37,7 @@ thread_local! {
 pub(crate) struct IOContext {
     #[allow(unused)]
     pub(super) id: ModuleId,
-    pub(super) ifaces: FxHashMap<IfId, Interface>,
+    pub(super) ifaces: FxHashMap<IfId, InterfaceController>,
 
     pub(super) ipv6: Ipv6,
 
@@ -233,7 +233,7 @@ impl IOContext {
             .get(&ifid)
             .expect("interface was already resolved");
 
-        let is_local_dest = iface.addrs.v4.matches(pkt.dst) || pkt.dst.is_broadcast();
+        let is_local_dest = iface.bindings.v4.matches(pkt.dst) || pkt.dst.is_broadcast();
         if !is_local_dest {
             let mut pkt = pkt;
             pkt.ttl = pkt.ttl.saturating_sub(1);
@@ -281,7 +281,7 @@ impl IOContext {
             .get(&ifid)
             .expect("interface was already resolved");
 
-        let is_local_dest = iface.addrs.v6.matches(pkt.dst) || pkt.dst.is_multicast();
+        let is_local_dest = iface.bindings.v6.matches(pkt.dst) || pkt.dst.is_multicast();
         if !is_local_dest {
             let mut pkt = pkt;
             pkt.hop_limit = pkt.hop_limit.saturating_sub(1);
@@ -361,6 +361,15 @@ impl Drop for IOContext {
     }
 }
 
+#[derive(Debug)]
+pub enum LinkLayerResult {
+    PassThrough(Message),
+    Consumed(),
+    NetworkingPacket(Message, IfId),
+    Timeout(Message),
+}
+
+#[derive(Debug)]
 pub enum NetworkLayerResult {
     PassThrough(Message),
     TransportLayerPacket(IpPacket, MessageHeader),

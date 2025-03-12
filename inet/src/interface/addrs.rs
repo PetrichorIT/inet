@@ -1,73 +1,55 @@
 use std::{
     fmt,
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
-    ops,
     time::Duration,
 };
 
 use des::time::SimTime;
 use types::{iface::MacAddress, ip::Ipv6AddrExt};
 
-use crate::{ctx::IOContext, ipv6::addrs::CanidateAddr};
+use crate::ipv6::addrs::CanidateAddr;
 
 use super::IfId;
 
 #[derive(Debug, Clone, Default)]
-pub struct InterfaceAddrs {
-    pub(crate) v4: InterfaceAddrsV4,
-    pub(crate) v6: InterfaceAddrsV6,
+pub struct InterfaceAddrBindings {
+    pub v4: InterfaceAddrsV4,
+    pub v6: InterfaceAddrsV6,
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct InterfaceAddrsV4 {
-    pub(super) bindings: Vec<InterfaceAddrV4>,
+    pub unicast: Vec<InterfaceAddrV4>,
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct InterfaceAddrsV6 {
-    pub(super) unicast: Vec<InterfaceAddrV6>,
-    pub(super) multicast: Vec<Ipv6Addr>,
+    pub unicast: Vec<InterfaceAddrV6>,
+    pub multicast: Vec<Ipv6Addr>,
 }
 
-impl InterfaceAddrs {
-    pub fn new(addrs: Vec<InterfaceAddr>) -> Self {
-        let mut this = Self::default();
-        for binding in addrs {
-            match binding {
-                InterfaceAddr::Inet(binding) => this.v4.bindings.push(binding),
-                InterfaceAddr::Inet6(binding) => this.v6.unicast.push(binding),
-            }
-        }
-
-        this
-    }
-
-    pub fn add(&mut self, binding: InterfaceAddr) {
-        match binding {
-            InterfaceAddr::Inet(binding) => self.v4.add(binding),
-            InterfaceAddr::Inet6(binding) => self.v6.add(binding),
-        }
+impl InterfaceAddrBindings {
+    pub fn addrs(&self) -> impl Iterator<Item = IpAddr> + '_ {
+        self.v4
+            .unicast
+            .iter()
+            .map(|binding| binding.addr.into())
+            .chain(self.v6.unicast.iter().map(|binding| binding.addr.into()))
     }
 
     pub fn has_v4_capability(&self) -> bool {
-        !self.v4.bindings.is_empty()
+        !self.v4.unicast.is_empty()
     }
 
     pub fn has_v6_capability(&self) -> bool {
         !self.v6.unicast.is_empty()
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = InterfaceAddr> + '_ {
-        self.v4
-            .bindings
-            .iter()
-            .map(|binding| InterfaceAddr::Inet(binding.clone()))
-            .chain(
-                self.v6
-                    .unicast
-                    .iter()
-                    .map(|binding| InterfaceAddr::Inet6(binding.clone())),
-            )
+    pub fn matches(&self, dst: IpAddr) -> bool {
+        match dst {
+            IpAddr::V4(addr) => self.v4.matches(addr),
+            IpAddr::V6(addr) => self.v6.matches(addr),
+        }
     }
 
     pub fn multicast_scopes(&self) -> &[Ipv6Addr] {
@@ -78,18 +60,18 @@ impl InterfaceAddrs {
 impl InterfaceAddrsV4 {
     pub fn add(&mut self, unicast: InterfaceAddrV4) {
         assert!(
-            !self.bindings.contains(&unicast),
+            !self.unicast.contains(&unicast),
             "cannot assign ipv6 binding '{unicast}': address allready assigned"
         );
         assert!(
             !unicast.addr.is_multicast(),
             "cannot assign ipv6 binding '{unicast}': address is multicast scope"
         );
-        self.bindings.push(unicast);
+        self.unicast.push(unicast);
     }
 
     pub fn matches(&self, dst: Ipv4Addr) -> bool {
-        self.bindings.iter().any(|binding| binding.matches(dst))
+        self.unicast.iter().any(|binding| binding.matches(dst))
     }
 }
 
@@ -172,26 +154,10 @@ impl InterfaceAddrsV6 {
     }
 }
 
-impl FromIterator<InterfaceAddr> for InterfaceAddrs {
-    fn from_iter<T: IntoIterator<Item = InterfaceAddr>>(iter: T) -> Self {
-        let addrs = iter.into_iter().collect::<Vec<_>>();
-        Self::new(addrs)
-    }
-}
-
-/// A interface addr.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum InterfaceAddr {
-    /// An Ipv4 declaration
-    Inet(InterfaceAddrV4),
-    /// The Ipv6 declaration
-    Inet6(InterfaceAddrV6),
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct InterfaceAddrV4 {
     pub addr: Ipv4Addr,
-    pub netmask: Ipv4Addr,
+    pub mask: Ipv4Addr,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -210,61 +176,12 @@ pub struct InterfaceAddrV6Flags {
     pub care_of_addr: bool,
 }
 
-impl InterfaceAddr {
-    /// Returns the addrs for a loopback interface.
-    pub const LOOPBACK: [Self; 2] = [
-        InterfaceAddr::Inet(InterfaceAddrV4::LOCALHOST),
-        InterfaceAddr::Inet6(InterfaceAddrV6::LOCALHOST),
-    ];
-
-    pub fn ipv6_link_local(mac: MacAddress) -> Self {
-        Self::Inet6(InterfaceAddrV6::new_link_local(mac))
-    }
-
-    pub fn to_ip(&self) -> IpAddr {
-        match self {
-            Self::Inet(addr) => addr.addr.into(),
-            Self::Inet6(addr) => addr.addr.into(),
-        }
-    }
-
-    /// Returns the addrs for a loopback interface.
-    pub fn en0(v4: Ipv4Addr) -> [Self; 2] {
-        let v6 = v4.to_ipv6_compatible();
-        [
-            InterfaceAddr::Inet(InterfaceAddrV4 {
-                addr: v4,
-                netmask: Ipv4Addr::new(255, 255, 255, 0),
-            }),
-            InterfaceAddr::Inet6(InterfaceAddrV6::new_static(v6, 64)),
-        ]
-    }
-
-    pub fn matches(&self, dst: IpAddr) -> bool {
-        match (dst, self) {
-            (IpAddr::V4(dst), InterfaceAddr::Inet(binding)) => binding.matches(dst),
-            (IpAddr::V6(dst), InterfaceAddr::Inet6(binding)) => binding.matches(dst),
-            _ => false,
-        }
-    }
-
-    pub fn matches_subnet(&self, dst: IpAddr) -> bool {
-        match (dst, self) {
-            (IpAddr::V4(dst), InterfaceAddr::Inet(binding)) => binding.matches_subnet(dst),
-            (IpAddr::V6(dst), InterfaceAddr::Inet6(binding)) => binding.matches_subnet(dst),
-            _ => false,
-        }
-    }
-}
-
 impl InterfaceAddrV4 {
-    pub const LOCALHOST: InterfaceAddrV4 = InterfaceAddrV4 {
-        addr: Ipv4Addr::LOCALHOST,
-        netmask: Ipv4Addr::new(255, 255, 255, 0),
-    };
-
     pub fn new(addr: Ipv4Addr, netmask: Ipv4Addr) -> InterfaceAddrV4 {
-        Self { addr, netmask }
+        Self {
+            addr,
+            mask: netmask,
+        }
     }
 
     pub fn matches(&self, dst: Ipv4Addr) -> bool {
@@ -281,7 +198,7 @@ impl InterfaceAddrV4 {
         } else {
             let ip_u32 = u32::from_be_bytes(dst.octets());
             let addr_u32 = u32::from_be_bytes(self.addr.octets());
-            let mask_u32 = u32::from_be_bytes(self.netmask.octets());
+            let mask_u32 = u32::from_be_bytes(self.mask.octets());
 
             mask_u32 & ip_u32 == mask_u32 & addr_u32
         }
@@ -289,20 +206,6 @@ impl InterfaceAddrV4 {
 }
 
 impl InterfaceAddrV6 {
-    pub const LOCALHOST: InterfaceAddrV6 = InterfaceAddrV6 {
-        addr: Ipv6Addr::LOCALHOST,
-        mask: Ipv6Addr::new(
-            0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff,
-        ),
-        deadline: SimTime::MAX,
-        validity: Duration::MAX,
-        flags: InterfaceAddrV6Flags {
-            temporary: false,
-            home_addr: false,
-            care_of_addr: false,
-        },
-    };
-
     pub const MULTICAST_ALL_NODES: InterfaceAddrV6 = InterfaceAddrV6 {
         addr: Ipv6Addr::MULTICAST_ALL_NODES,
         mask: Ipv6Addr::ONES,
@@ -386,32 +289,9 @@ impl InterfaceAddrV6 {
     }
 }
 
-impl ops::Deref for InterfaceAddrsV4 {
-    type Target = [InterfaceAddrV4];
-    fn deref(&self) -> &Self::Target {
-        &self.bindings
-    }
-}
-
-impl ops::Deref for InterfaceAddrsV6 {
-    type Target = [InterfaceAddrV6];
-    fn deref(&self) -> &Self::Target {
-        &self.unicast
-    }
-}
-
-impl fmt::Display for InterfaceAddr {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
-        match self {
-            Self::Inet(inet4) => inet4.fmt(f),
-            Self::Inet6(inet6) => inet6.fmt(f),
-        }
-    }
-}
-
 impl fmt::Display for InterfaceAddrV4 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "inet {} netmask {}", self.addr, self.netmask)
+        write!(f, "inet {} netmask {}", self.addr, self.mask)
     }
 }
 
@@ -430,20 +310,13 @@ impl fmt::Display for InterfaceAddrV6 {
     }
 }
 
-impl IOContext {}
-
 #[cfg(test)]
 mod tests {
-    use std::str::FromStr;
-
     use super::*;
 
     #[test]
     fn singular_addr_space_v4() {
-        let iface = InterfaceAddr::Inet(InterfaceAddrV4::new(
-            Ipv4Addr::new(192, 168, 2, 110),
-            Ipv4Addr::BROADCAST,
-        ));
+        let iface = InterfaceAddrV4::new(Ipv4Addr::new(192, 168, 2, 110), Ipv4Addr::BROADCAST);
 
         assert_eq!(
             iface.matches_subnet(Ipv4Addr::new(192, 168, 2, 110).into()),
@@ -453,22 +326,11 @@ mod tests {
             iface.matches_subnet(Ipv4Addr::new(192, 168, 2, 111).into()),
             false
         );
-        assert_eq!(
-            iface.matches_subnet(Ipv4Addr::new(192, 168, 2, 110).to_ipv6_compatible().into()),
-            false
-        );
-        assert_eq!(
-            iface.matches_subnet(Ipv4Addr::new(192, 168, 2, 110).to_ipv6_mapped().into()),
-            false
-        );
     }
 
     #[test]
     fn loopback_namespace_v4() {
-        let iface = InterfaceAddr::Inet(InterfaceAddrV4::new(
-            Ipv4Addr::LOCALHOST,
-            Ipv4Addr::new(255, 255, 255, 0),
-        ));
+        let iface = InterfaceAddrV4::new(Ipv4Addr::LOCALHOST, Ipv4Addr::new(255, 255, 255, 0));
 
         assert_eq!(iface.matches_subnet(Ipv4Addr::LOCALHOST.into()), true);
         assert_eq!(
@@ -483,28 +345,11 @@ mod tests {
             iface.matches_subnet(Ipv4Addr::new(192, 168, 2, 111).into()),
             false
         );
-        assert_eq!(
-            iface.matches_subnet(Ipv4Addr::new(127, 0, 0, 19).to_ipv6_compatible().into()),
-            false
-        );
-        assert_eq!(
-            iface.matches_subnet(Ipv4Addr::new(127, 0, 0, 19).to_ipv6_mapped().into()),
-            false
-        );
     }
 
     #[test]
     fn broadcast_v4() {
-        let iface = InterfaceAddr::Inet(InterfaceAddrV4::new(
-            Ipv4Addr::new(192, 168, 2, 110),
-            Ipv4Addr::BROADCAST,
-        ));
-
+        let iface = InterfaceAddrV4::new(Ipv4Addr::new(192, 168, 2, 110), Ipv4Addr::BROADCAST);
         assert_eq!(iface.matches_subnet(Ipv4Addr::BROADCAST.into()), true);
-
-        assert_eq!(
-            iface.matches_subnet(IpAddr::from_str("fe80::").unwrap()),
-            false
-        );
     }
 }
