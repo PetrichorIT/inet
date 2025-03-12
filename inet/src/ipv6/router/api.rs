@@ -5,7 +5,7 @@ use types::ip::{Ipv6AddrExt, Ipv6Prefix};
 
 use crate::{
     ctx::IOContext,
-    interface::{Interface, InterfaceAddr, InterfaceAddrV6, NetworkDevice},
+    interface::{InterfaceDef, NetworkDevice, DEFAULT_V6_MASK},
     ipv6::cfg::{RouterInterfaceConfiguration, RouterPrefix},
 };
 
@@ -58,7 +58,7 @@ impl IOContext {
         addrs: &[Ipv6Addr],
         adv: bool,
     ) -> io::Result<()> {
-        let mut interface = Interface::eth_empty(name, device);
+        let mut interface = InterfaceDef::new(name.as_ref(), device);
         let addrs = addrs.into_iter().map(|&addr| {
             if addr == Ipv6Addr::LINK_LOCAL {
                 interface.device.addr.embed_into(Ipv6Addr::LINK_LOCAL)
@@ -67,9 +67,9 @@ impl IOContext {
             }
         });
 
-        interface.addrs = addrs
-            .map(|addr| InterfaceAddr::Inet6(InterfaceAddrV6::new_static(addr, 64)))
-            .collect();
+        for addr in addrs {
+            interface.addrs.ipv6.push((addr, DEFAULT_V6_MASK))
+        }
         interface.flags.router = true;
 
         let ifid = interface.name.id();

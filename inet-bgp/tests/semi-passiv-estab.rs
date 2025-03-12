@@ -7,7 +7,7 @@ use des::{
     time::sleep,
 };
 use inet::{
-    interface::{add_interface, Interface, InterfaceName, NetworkDevice},
+    interface::{add_interface, InterfaceDef, InterfaceName, NetworkDevice},
     TcpListener,
 };
 use inet_bgp::{
@@ -24,7 +24,7 @@ fn semi_passiv_estab() {
         "as-1000",
         AsyncFn::io(|_| async move {
             let addr = Ipv4Addr::new(192, 168, 1, 100);
-            add_interface(Interface::ethv4(NetworkDevice::eth(), addr))?;
+            add_interface(InterfaceDef::new("en0", NetworkDevice::eth()).ip(addr.into()))?;
 
             let (etx, erx) = channel(8);
             let (itx, mut irx) = channel(8);
@@ -81,7 +81,7 @@ fn semi_passiv_estab() {
         "as-2000",
         AsyncFn::io(|_| async move {
             let addr = Ipv4Addr::new(192, 168, 1, 200);
-            add_interface(Interface::ethv4(NetworkDevice::eth(), addr))?;
+            add_interface(InterfaceDef::new("en0", NetworkDevice::eth()).ip(addr.into()))?;
 
             let (etx, erx) = channel(8);
             let (itx, mut irx) = channel(8);
@@ -163,7 +163,7 @@ fn semi_passiv_estab_delayed_client() {
         "as-1000",
         AsyncFn::io(|_| async move {
             let addr = Ipv4Addr::new(192, 168, 1, 100);
-            add_interface(Interface::ethv4(NetworkDevice::eth(), addr))?;
+            add_interface(InterfaceDef::new("en0", NetworkDevice::eth()).ip(addr.into()))?;
 
             let (etx, erx) = channel(8);
             let (itx, mut irx) = channel(8);
@@ -222,7 +222,7 @@ fn semi_passiv_estab_delayed_client() {
         "as-2000",
         AsyncFn::io(|_| async move {
             let addr = Ipv4Addr::new(192, 168, 1, 200);
-            add_interface(Interface::ethv4(NetworkDevice::eth(), addr))?;
+            add_interface(InterfaceDef::new("en0", NetworkDevice::eth()).ip(addr.into()))?;
 
             let (etx, erx) = channel(8);
             let (itx, mut irx) = channel(8);
@@ -304,7 +304,7 @@ fn semi_passiv_estab_delayed_open() {
         "as-1000",
         AsyncFn::io(|_| async move {
             let addr = Ipv4Addr::new(192, 168, 1, 100);
-            add_interface(Interface::ethv4(NetworkDevice::eth(), addr))?;
+            add_interface(InterfaceDef::new("en0", NetworkDevice::eth()).ip(addr.into()))?;
 
             let (etx, erx) = channel(8);
             let (itx, mut irx) = channel(8);
@@ -363,7 +363,7 @@ fn semi_passiv_estab_delayed_open() {
         "as-2000",
         AsyncFn::io(|_| async move {
             let addr = Ipv4Addr::new(192, 168, 1, 200);
-            add_interface(Interface::ethv4(NetworkDevice::eth(), addr))?;
+            add_interface(InterfaceDef::new("en0", NetworkDevice::eth()).ip(addr.into()))?;
 
             let (etx, erx) = channel(8);
             let (itx, mut irx) = channel(8);

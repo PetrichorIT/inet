@@ -8,7 +8,7 @@ use des::{
 use serial_test::serial;
 
 use crate::{
-    interface::{add_interface, Interface, NetworkDevice},
+    interface::{add_interface, InterfaceDef, NetworkDevice},
     tcp2::{set_config, Config, TcpListener, TcpStream},
 };
 
@@ -44,10 +44,10 @@ fn connect_ip_version_missmatch() {
     sim.node(
         "alice",
         AsyncFn::io(|_| async move {
-            add_interface(Interface::ethv4(
-                NetworkDevice::eth(),
-                Ipv4Addr::new(42, 0, 0, 42),
-            ))?;
+            add_interface(
+                InterfaceDef::new("en0", NetworkDevice::eth())
+                    .ip(Ipv4Addr::new(42, 0, 0, 42).into()),
+            )?;
 
             let stream = TcpStream::connect("2000:132:32::0:8000").await;
             let err = stream.unwrap_err();
@@ -78,10 +78,10 @@ fn connect_without_ipv4_gateway() {
     sim.node(
         "alice",
         AsyncFn::io(|_| async move {
-            add_interface(Interface::ethv4(
-                NetworkDevice::eth(),
-                Ipv4Addr::new(42, 0, 0, 42),
-            ))?;
+            add_interface(
+                InterfaceDef::new("en0", NetworkDevice::eth())
+                    .ip(Ipv4Addr::new(42, 0, 0, 42).into()),
+            )?;
 
             let stream = TcpStream::connect("69.0.0.69:8000").await;
             let err = stream.unwrap_err();
@@ -112,10 +112,10 @@ fn connect_to_non_listener_peer() {
     sim.node(
         "alice",
         AsyncFn::io(|_| async move {
-            add_interface(Interface::ethv4(
-                NetworkDevice::eth(),
-                Ipv4Addr::new(100, 0, 0, 42),
-            ))?;
+            add_interface(
+                InterfaceDef::new("en0", NetworkDevice::eth())
+                    .ip(Ipv4Addr::new(100, 0, 0, 42).into()),
+            )?;
 
             let stream = TcpStream::connect("100.0.0.69:8000").await;
             let err = stream.unwrap_err();
@@ -129,10 +129,10 @@ fn connect_to_non_listener_peer() {
     sim.node(
         "bob",
         AsyncFn::io(|_| async move {
-            add_interface(Interface::ethv4(
-                NetworkDevice::eth(),
-                Ipv4Addr::new(100, 0, 0, 69),
-            ))?;
+            add_interface(
+                InterfaceDef::new("en0", NetworkDevice::eth())
+                    .ip(Ipv4Addr::new(100, 0, 0, 69).into()),
+            )?;
             Ok(())
         }),
     );
@@ -147,10 +147,10 @@ fn connect_syn_timeout_no_rst() {
     sim.node(
         "alice",
         AsyncFn::io(|_| async move {
-            add_interface(Interface::ethv4(
-                NetworkDevice::eth(),
-                Ipv4Addr::new(100, 0, 0, 42),
-            ))?;
+            add_interface(
+                InterfaceDef::new("en0", NetworkDevice::eth())
+                    .ip(Ipv4Addr::new(100, 0, 0, 42).into()),
+            )?;
 
             let stream = TcpStream::connect("100.0.0.69:8000").await;
             tracing::info!("CONNECT OR ERR");
@@ -168,10 +168,10 @@ fn connect_syn_timeout_no_rst() {
     sim.node(
         "bob",
         AsyncFn::io(|_| async move {
-            add_interface(Interface::ethv4(
-                NetworkDevice::eth(),
-                Ipv4Addr::new(100, 0, 0, 69),
-            ))?;
+            add_interface(
+                InterfaceDef::new("en0", NetworkDevice::eth())
+                    .ip(Ipv4Addr::new(100, 0, 0, 69).into()),
+            )?;
             set_config(Config {
                 rst_for_syn: false,
                 ..Default::default()
@@ -190,10 +190,10 @@ fn connect_success() {
     sim.node(
         "alice",
         AsyncFn::io(|_| async move {
-            add_interface(Interface::ethv4(
-                NetworkDevice::eth(),
-                Ipv4Addr::new(100, 0, 0, 42),
-            ))?;
+            add_interface(
+                InterfaceDef::new("en0", NetworkDevice::eth())
+                    .ip(Ipv4Addr::new(100, 0, 0, 42).into()),
+            )?;
 
             let _stream = TcpStream::connect("100.0.0.69:8000").await?;
             tracing::info!("CONNECT");
@@ -205,10 +205,10 @@ fn connect_success() {
     sim.node(
         "bob",
         AsyncFn::io(|_| async move {
-            add_interface(Interface::ethv4(
-                NetworkDevice::eth(),
-                Ipv4Addr::new(100, 0, 0, 69),
-            ))?;
+            add_interface(
+                InterfaceDef::new("en0", NetworkDevice::eth())
+                    .ip(Ipv4Addr::new(100, 0, 0, 69).into()),
+            )?;
             let list = TcpListener::bind("0.0.0.0:8000").await?;
             let (_sock, _from) = list.accept().await?;
             Ok(())
@@ -226,10 +226,10 @@ fn connect_success_without_accept() {
     sim.node(
         "alice",
         AsyncFn::io(|_| async move {
-            add_interface(Interface::ethv4(
-                NetworkDevice::eth(),
-                Ipv4Addr::new(100, 0, 0, 42),
-            ))?;
+            add_interface(
+                InterfaceDef::new("en0", NetworkDevice::eth())
+                    .ip(Ipv4Addr::new(100, 0, 0, 42).into()),
+            )?;
 
             let _stream = TcpStream::connect("100.0.0.69:8000").await?;
             tracing::info!("CONNECT");
@@ -241,10 +241,10 @@ fn connect_success_without_accept() {
     sim.node(
         "bob",
         AsyncFn::io(|_| async move {
-            add_interface(Interface::ethv4(
-                NetworkDevice::eth(),
-                Ipv4Addr::new(100, 0, 0, 69),
-            ))?;
+            add_interface(
+                InterfaceDef::new("en0", NetworkDevice::eth())
+                    .ip(Ipv4Addr::new(100, 0, 0, 69).into()),
+            )?;
             let list = TcpListener::bind("0.0.0.0:8000").await?;
             des::time::sleep(Duration::from_secs(10)).await;
             drop(list);

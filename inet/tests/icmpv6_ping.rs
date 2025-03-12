@@ -15,7 +15,7 @@ use des::{
     runtime::{Builder, RuntimeError},
 };
 use inet::{
-    interface::{add_interface, interface_status, Interface, NetworkDevice},
+    interface::{add_interface, interface_status, InterfaceDef, NetworkDevice},
     ipv6::{self, util::setup_router},
     routing::RoutingPort,
     utils,
@@ -29,7 +29,7 @@ struct AliceSuccess {
 
 impl Module for AliceSuccess {
     fn at_sim_start(&mut self, _stage: usize) {
-        add_interface(Interface::ethv6_autocfg(NetworkDevice::eth())).unwrap();
+        add_interface(InterfaceDef::ethv6_autocfg(NetworkDevice::eth())).unwrap();
 
         let done = self.done.clone();
         tokio::spawn(async move {
@@ -64,7 +64,7 @@ struct AliceFailure {
 
 impl Module for AliceFailure {
     fn at_sim_start(&mut self, _stage: usize) {
-        add_interface(Interface::ethv6_autocfg(NetworkDevice::eth())).unwrap();
+        add_interface(InterfaceDef::ethv6_autocfg(NetworkDevice::eth())).unwrap();
 
         let done = self.done.clone();
         tokio::spawn(async move {
@@ -99,7 +99,7 @@ struct Bob;
 impl Module for Bob {
     fn at_sim_start(&mut self, _stage: usize) {
         // add_interface(Interface::loopback()).unwrap();
-        add_interface(Interface::ethv6_autocfg(NetworkDevice::eth())).unwrap();
+        add_interface(InterfaceDef::ethv6_autocfg(NetworkDevice::eth())).unwrap();
 
         tokio::spawn(async {
             des::time::sleep(Duration::from_secs(5)).await;

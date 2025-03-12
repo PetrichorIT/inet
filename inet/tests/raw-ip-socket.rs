@@ -5,7 +5,7 @@ use std::{
 
 use des::{prelude::*, registry, time::sleep};
 use inet::{
-    interface::{add_interface, Interface, NetworkDevice},
+    interface::{add_interface, InterfaceDef, NetworkDevice},
     socket::RawIpSocket,
 };
 use tokio::spawn;
@@ -21,15 +21,12 @@ struct Emitter;
 
 impl Module for Emitter {
     fn at_sim_start(&mut self, _stage: usize) {
-        add_interface(Interface::eth_mixed(
-            "en0",
-            NetworkDevice::eth(),
-            (
-                Ipv4Addr::new(192, 168, 0, 103),
-                Ipv4Addr::new(255, 255, 255, 0),
-            ),
-            ("fe80::02".parse::<Ipv6Addr>().unwrap(), 64),
-        ))
+        add_interface(
+            InterfaceDef::new("en0", NetworkDevice::eth())
+                .ip(Ipv4Addr::new(192, 168, 0, 103).into())
+                .ip(Ipv4Addr::new(255, 255, 255, 0).into())
+                .ip("fe80::02".parse::<IpAddr>().unwrap()),
+        )
         .unwrap();
 
         spawn(async move {
@@ -93,15 +90,12 @@ struct Receiver;
 
 impl Module for Receiver {
     fn at_sim_start(&mut self, _: usize) {
-        add_interface(Interface::eth_mixed(
-            "en0",
-            NetworkDevice::eth(),
-            (
-                Ipv4Addr::new(192, 168, 0, 1),
-                Ipv4Addr::new(255, 255, 255, 0),
-            ),
-            ("fe80::01".parse::<Ipv6Addr>().unwrap(), 64),
-        ))
+        add_interface(
+            InterfaceDef::new("en0", NetworkDevice::eth())
+                .ip(Ipv4Addr::new(192, 168, 0, 1).into())
+                .ip(Ipv4Addr::new(255, 255, 255, 0).into())
+                .ip("fe80::01".parse::<IpAddr>().unwrap()),
+        )
         .unwrap();
 
         spawn(async move {

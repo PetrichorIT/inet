@@ -25,7 +25,7 @@ struct SocketBind {
 
 impl Module for SocketBind {
     fn at_sim_start(&mut self, _: usize) {
-        add_interface(Interface::loopback()).unwrap();
+        add_interface(InterfaceDef::loopback()).unwrap();
 
         let done = self.done.clone();
         tokio::spawn(async move {
@@ -96,12 +96,11 @@ struct UdpEcho4200;
 
 impl Module for UdpEcho4200 {
     fn at_sim_start(&mut self, _: usize) {
-        add_interface(Interface::ethv4_named(
-            "en0",
-            NetworkDevice::eth(),
-            Ipv4Addr::new(1, 1, 1, 42),
-            Ipv4Addr::new(255, 255, 255, 0),
-        ))
+        add_interface(
+            InterfaceDef::new("en0", NetworkDevice::eth())
+                .ip(Ipv4Addr::new(1, 1, 1, 42).into())
+                .ip(Ipv4Addr::new(255, 255, 255, 0).into()),
+        )
         .unwrap();
 
         tokio::spawn(async move {
@@ -133,12 +132,11 @@ struct UdpSingleEchoSender {
 
 impl Module for UdpSingleEchoSender {
     fn at_sim_start(&mut self, _: usize) {
-        add_interface(Interface::ethv4_named(
-            "en0",
-            NetworkDevice::eth(),
-            Ipv4Addr::new(1, 1, 1, 1),
-            Ipv4Addr::new(255, 255, 255, 0),
-        ))
+        add_interface(
+            InterfaceDef::new("en0", NetworkDevice::eth())
+                .ip(Ipv4Addr::new(1, 1, 1, 1).into())
+                .ip(Ipv4Addr::new(255, 255, 255, 0).into()),
+        )
         .unwrap();
 
         let done = self.done.clone();
@@ -205,12 +203,11 @@ struct UdpSingleClusteredSender {
 
 impl Module for UdpSingleClusteredSender {
     fn at_sim_start(&mut self, _: usize) {
-        add_interface(Interface::ethv4_named(
-            "en0",
-            NetworkDevice::eth(),
-            Ipv4Addr::new(1, 1, 1, 1),
-            Ipv4Addr::new(255, 255, 255, 0),
-        ))
+        add_interface(
+            InterfaceDef::new("en0", NetworkDevice::eth())
+                .ip(Ipv4Addr::new(1, 1, 1, 1).into())
+                .ip(Ipv4Addr::new(255, 255, 255, 0).into()),
+        )
         .unwrap();
 
         let done = self.done.clone();
@@ -286,12 +283,11 @@ struct UdpConcurrentClients {
 
 impl Module for UdpConcurrentClients {
     fn at_sim_start(&mut self, _: usize) {
-        add_interface(Interface::ethv4_named(
-            "en0",
-            NetworkDevice::eth(),
-            Ipv4Addr::new(1, 1, 1, 1),
-            Ipv4Addr::new(255, 255, 255, 0),
-        ))
+        add_interface(
+            InterfaceDef::new("en0", NetworkDevice::eth())
+                .ip(Ipv4Addr::new(1, 1, 1, 1).into())
+                .ip(Ipv4Addr::new(255, 255, 255, 0).into()),
+        )
         .unwrap();
 
         let done = self.done.clone();
@@ -405,7 +401,7 @@ fn interface_does_not_use_busy_channel() -> Result<(), RuntimeError> {
             set_node_cfg(HostConfiguration {
                 dup_addr_detect_transmits: 0,
             })?;
-            add_interface(Interface::empty("en0", NetworkDevice::eth()))?;
+            add_interface(InterfaceDef::new("en0", NetworkDevice::eth()).v6())?;
 
             // Sleep to prevent MLD messags from blocking the sender
             des::time::sleep(Duration::from_secs(1)).await;
@@ -439,7 +435,7 @@ fn interface_does_not_use_busy_channel() -> Result<(), RuntimeError> {
             set_node_cfg(HostConfiguration {
                 dup_addr_detect_transmits: 0,
             })?;
-            add_interface(Interface::empty("en0", NetworkDevice::eth()))?;
+            add_interface(InterfaceDef::new("en0", NetworkDevice::eth()).v6())?;
 
             let mut count = 0;
             let mut sock = RawIpSocket::new_v6()?;
@@ -487,8 +483,6 @@ fn interface_does_not_use_busy_channel() -> Result<(), RuntimeError> {
 #[test]
 #[serial]
 fn interface_will_use_idle_channel_fcfs() -> Result<(), RuntimeError> {
-    // des::tracing::init();
-
     static DONE: AtomicBool = AtomicBool::new(false);
 
     let mut sim = Sim::new(()).with_stack(inet::init);
@@ -498,7 +492,7 @@ fn interface_will_use_idle_channel_fcfs() -> Result<(), RuntimeError> {
             set_node_cfg(HostConfiguration {
                 dup_addr_detect_transmits: 0,
             })?;
-            add_interface(Interface::empty("en0", NetworkDevice::eth()))?;
+            add_interface(InterfaceDef::new("en0", NetworkDevice::eth()).v6())?;
 
             // Sleep to prevent MLD messags from blocking the sender
             des::time::sleep(Duration::from_secs(1)).await;
@@ -528,7 +522,7 @@ fn interface_will_use_idle_channel_fcfs() -> Result<(), RuntimeError> {
             set_node_cfg(HostConfiguration {
                 dup_addr_detect_transmits: 0,
             })?;
-            add_interface(Interface::empty("en0", NetworkDevice::eth()))?;
+            add_interface(InterfaceDef::new("en0", NetworkDevice::eth()).v6())?;
 
             let mut count = 0;
             let mut sock = RawIpSocket::new_v6()?;

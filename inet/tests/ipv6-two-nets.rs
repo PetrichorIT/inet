@@ -9,7 +9,7 @@ use des::{
     runtime::{Builder, RuntimeError},
 };
 use inet::{
-    interface::{add_interface, interface_status, Interface, NetworkDevice},
+    interface::{add_interface, interface_status, InterfaceDef, NetworkDevice},
     ipv6::router,
     utils, UdpSocket,
 };
@@ -20,7 +20,7 @@ struct Host;
 
 impl Module for Host {
     fn at_sim_start(&mut self, _stage: usize) {
-        add_interface(Interface::ethv6_autocfg(NetworkDevice::eth())).unwrap();
+        add_interface(InterfaceDef::ethv6_autocfg(NetworkDevice::eth())).unwrap();
         tokio::spawn(async move {
             des::time::sleep(Duration::from_secs(2)).await;
             interface_status("en0").unwrap().write_to_par().unwrap();

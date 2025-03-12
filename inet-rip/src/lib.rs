@@ -6,7 +6,7 @@ use fxhash::{FxBuildHasher, FxHashMap};
 use std::net::{IpAddr, Ipv4Addr};
 
 use inet::{
-    interface::{add_interface, interface_status_by_ifid, Interface},
+    interface::{add_interface, interface_status_by_ifid, InterfaceDef},
     routing::add_routing_entry,
     Current, UdpSocket,
 };
@@ -77,13 +77,7 @@ impl RipRoutingDeamon {
         port: RoutingPort,
         cfg: RipConfig,
     ) -> Self {
-        add_interface(Interface::ethv4_named(
-            "lan",
-            port.clone().into(),
-            raddr,
-            mask,
-        ))
-        .unwrap();
+        add_interface(InterfaceDef::new("lan", port.clone().into()).ipv4(raddr, mask)).unwrap();
 
         let ports = RoutingInformation::collect();
         let mut c = 0;
@@ -101,12 +95,8 @@ impl RipRoutingDeamon {
                 }
 
                 if chan {
-                    let iface = Interface::ethv4_named(
-                        format!("en{c}"),
-                        new_port.into(),
-                        raddr,
-                        Ipv4Addr::UNSPECIFIED,
-                    );
+                    let iface = InterfaceDef::new(&format!("en{c}"), new_port.into())
+                        .ipv4(raddr, Ipv4Addr::UNSPECIFIED);
                     add_interface(iface).unwrap();
                     c += 1;
                 }

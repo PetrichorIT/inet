@@ -2,7 +2,7 @@ use des::{net::AsyncFn, prelude::*, time::sleep};
 use serial_test::serial;
 
 use crate::{
-    interface::{add_interface, Interface, NetworkDevice},
+    interface::{add_interface, InterfaceDef, NetworkDevice},
     UdpSocket,
 };
 
@@ -21,18 +21,12 @@ fn specific_bind_recv_restrictivly() -> Result<(), RuntimeError> {
         "receiver",
         AsyncFn::io(|_| async move {
             add_interface(
-                Interface::ethv4(
-                    NetworkDevice::gate("net-a", 0).unwrap(),
-                    Ipv4Addr::new(192, 168, 2, 100),
-                )
-                .named("net-a"),
+                InterfaceDef::new("net-a", NetworkDevice::gate("net-a", 0).unwrap())
+                    .ip(Ipv4Addr::new(192, 168, 2, 100).into()),
             )?;
             add_interface(
-                Interface::ethv4(
-                    NetworkDevice::gate("net-b", 0).unwrap(),
-                    Ipv4Addr::new(10, 20, 30, 100),
-                )
-                .named("net-b"),
+                InterfaceDef::new("net-b", NetworkDevice::gate("net-b", 0).unwrap())
+                    .ip(Ipv4Addr::new(10, 20, 30, 100).into()),
             )?;
 
             // ignore packet from 10.20.30.101
@@ -48,10 +42,10 @@ fn specific_bind_recv_restrictivly() -> Result<(), RuntimeError> {
     sim.node(
         "net-a-sender",
         AsyncFn::io(|_| async move {
-            add_interface(Interface::ethv4(
-                NetworkDevice::eth(),
-                Ipv4Addr::new(192, 168, 2, 101),
-            ))?;
+            add_interface(
+                InterfaceDef::new("en0", NetworkDevice::eth())
+                    .ip(Ipv4Addr::new(192, 168, 2, 101).into()),
+            )?;
 
             // This is the correct packet, send it later
             sleep(Duration::from_secs(5)).await;
@@ -68,10 +62,10 @@ fn specific_bind_recv_restrictivly() -> Result<(), RuntimeError> {
     sim.node(
         "net-b-sender",
         AsyncFn::io(|_| async move {
-            add_interface(Interface::ethv4(
-                NetworkDevice::eth(),
-                Ipv4Addr::new(10, 20, 30, 101),
-            ))?;
+            add_interface(
+                InterfaceDef::new("en0", NetworkDevice::eth())
+                    .ip(Ipv4Addr::new(10, 20, 30, 101).into()),
+            )?;
 
             UdpSocket::bind("0.0.0.0:0")
                 .await?
@@ -102,18 +96,12 @@ fn zero_bind_recv_all() -> Result<(), RuntimeError> {
         "receiver",
         AsyncFn::io(|_| async move {
             add_interface(
-                Interface::ethv4(
-                    NetworkDevice::gate("net-a", 0).unwrap(),
-                    Ipv4Addr::new(192, 168, 2, 100),
-                )
-                .named("net-a"),
+                InterfaceDef::new("net-a", NetworkDevice::gate("net-a", 0).unwrap())
+                    .ip(Ipv4Addr::new(192, 168, 2, 100).into()),
             )?;
             add_interface(
-                Interface::ethv4(
-                    NetworkDevice::gate("net-b", 0).unwrap(),
-                    Ipv4Addr::new(10, 20, 30, 100),
-                )
-                .named("net-b"),
+                InterfaceDef::new("net-b", NetworkDevice::gate("net-b", 0).unwrap())
+                    .ip(Ipv4Addr::new(10, 20, 30, 100).into()),
             )?;
 
             let udp = UdpSocket::bind("0.0.0.0:100").await?;
@@ -131,10 +119,10 @@ fn zero_bind_recv_all() -> Result<(), RuntimeError> {
     sim.node(
         "net-a-sender",
         AsyncFn::io(|_| async move {
-            add_interface(Interface::ethv4(
-                NetworkDevice::eth(),
-                Ipv4Addr::new(192, 168, 2, 101),
-            ))?;
+            add_interface(
+                InterfaceDef::new("en0", NetworkDevice::eth())
+                    .ip(Ipv4Addr::new(192, 168, 2, 101).into()),
+            )?;
 
             sleep(Duration::from_secs(5)).await;
 
@@ -150,10 +138,10 @@ fn zero_bind_recv_all() -> Result<(), RuntimeError> {
     sim.node(
         "net-b-sender",
         AsyncFn::io(|_| async move {
-            add_interface(Interface::ethv4(
-                NetworkDevice::eth(),
-                Ipv4Addr::new(10, 20, 30, 101),
-            ))?;
+            add_interface(
+                InterfaceDef::new("en0", NetworkDevice::eth())
+                    .ip(Ipv4Addr::new(10, 20, 30, 101).into()),
+            )?;
 
             UdpSocket::bind("0.0.0.0:0")
                 .await?

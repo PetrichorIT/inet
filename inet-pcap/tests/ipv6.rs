@@ -7,7 +7,7 @@ use des::{
     runtime::{Builder, RuntimeError},
 };
 use inet::{
-    interface::{add_interface, Interface, NetworkDevice},
+    interface::{add_interface, InterfaceDef, NetworkDevice},
     ipv6::{icmp::ping::ping, util::setup_router},
     routing::RoutingPort,
     socket::RawIpSocket,
@@ -26,7 +26,7 @@ impl Module for HostAlice {
     fn at_sim_start(&mut self, _stage: usize) {
         pcap(File::create("out/ipv6_icmp_stack_alice.pcap").unwrap()).unwrap();
 
-        add_interface(Interface::ethv6_autocfg(NetworkDevice::eth())).unwrap();
+        add_interface(InterfaceDef::ethv6_autocfg(NetworkDevice::eth())).unwrap();
 
         tokio::spawn(async move {
             des::time::sleep(Duration::from_secs(2)).await;
@@ -64,7 +64,7 @@ impl Module for HostBob {
     fn at_sim_start(&mut self, _stage: usize) {
         pcap(File::create("out/ipv6_icmp_stack_bob.pcap").unwrap()).unwrap();
 
-        add_interface(Interface::ethv6_autocfg(NetworkDevice::eth())).unwrap();
+        add_interface(InterfaceDef::ethv6_autocfg(NetworkDevice::eth())).unwrap();
 
         tokio::spawn(async move {
             let udp = UdpSocket::bind(":::4000").await.unwrap();

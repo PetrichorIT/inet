@@ -12,7 +12,7 @@ use des::{
 };
 
 use crate::{
-    interface::{add_interface, Interface, NetworkDevice},
+    interface::{add_interface, InterfaceDef, NetworkDevice},
     utils::LinkLayerSwitch,
 };
 
@@ -85,14 +85,7 @@ impl SimpleSim {
             AsyncFn::io(move |_rx| {
                 let f = f();
                 async move {
-                    match addr {
-                        IpAddr::V4(addr) => {
-                            add_interface(Interface::ethv4(NetworkDevice::eth(), addr))?;
-                        }
-                        IpAddr::V6(addr) => {
-                            add_interface(Interface::ethv6(NetworkDevice::eth(), addr))?;
-                        }
-                    }
+                    add_interface(InterfaceDef::new("en0", NetworkDevice::eth()).ip(addr))?;
                     f.await
                 }
             }),
@@ -118,14 +111,7 @@ impl SimpleSim {
                 // TODO: add option to ensure no packet escapes the IOContext, aka rx remains empty
                 let f = f();
                 async move {
-                    match addr {
-                        IpAddr::V4(addr) => {
-                            add_interface(Interface::ethv4(NetworkDevice::eth(), addr))?;
-                        }
-                        IpAddr::V6(addr) => {
-                            add_interface(Interface::ethv6(NetworkDevice::eth(), addr))?;
-                        }
-                    }
+                    add_interface(InterfaceDef::new("en0", NetworkDevice::eth()).ip(addr))?;
                     let r = f.await;
                     r
                 }

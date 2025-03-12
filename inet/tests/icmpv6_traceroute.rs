@@ -6,7 +6,7 @@ use des::net::{
     topology::Topology,
 };
 use inet::{
-    interface::{add_interface, Interface, InterfaceAddr, NetworkDevice},
+    interface::{add_interface, InterfaceDef, NetworkDevice},
     ipv6::router,
     routing::{declare_ipv6_router, Ipv6RouterConfig},
     UdpSocket,
@@ -24,7 +24,7 @@ impl Module for Host {
         tokio::spawn(async move {
             let secs = des::runtime::random::<f64>();
             des::time::sleep(Duration::from_secs_f64(secs)).await;
-            add_interface(Interface::ethv6_autocfg(NetworkDevice::eth())).unwrap();
+            add_interface(InterfaceDef::ethv6_autocfg(NetworkDevice::eth())).unwrap();
             des::time::sleep(Duration::from_secs(1)).await;
 
             if current().path().as_str() == "net[0].host[0]" {
@@ -64,15 +64,11 @@ impl Module for Router {
         .unwrap();
 
         // LAN interface
-        let mut iface = Interface::ethv6_named(
-            "eth-lan",
-            NetworkDevice::eth_select(|p| p.name == "lan"),
-            addr,
-        );
+        let mut iface =
+            InterfaceDef::new("eth-lan", NetworkDevice::eth_select(|p| p.name == "lan"))
+                .ip(addr.into())
+                .ipv6_link_local();
         iface.flags.router = true;
-        iface
-            .addrs
-            .add(InterfaceAddr::ipv6_link_local(iface.device.addr));
         add_interface(iface).unwrap();
 
         // WAN route probing
@@ -97,7 +93,8 @@ impl Module for Router {
                     MacAddress::from([0, 0, 0, prefix.addr().octets()[5], 0, local_idx as u8]);
 
                 let ip = device.addr.embed_into(Ipv6Addr::LINK_LOCAL);
-                let mut iface = Interface::ethv6_named(format!("eth-{local_idx}"), device, ip);
+                let mut iface =
+                    InterfaceDef::new(&format!("eth-{local_idx}"), device).ip(ip.into());
                 iface.flags.router = true;
 
                 let ifid = iface.name.id();

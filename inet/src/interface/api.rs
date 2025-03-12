@@ -1,5 +1,5 @@
 use super::{
-    IfId, Interface, InterfaceAddr, InterfaceAddrs, InterfaceAddrsV6, InterfaceBusyState,
+    def::InterfaceDef, IfId, InterfaceAddr, InterfaceAddrs, InterfaceAddrsV6, InterfaceBusyState,
     InterfaceFlags, InterfaceName, InterfaceStatus, MacAddress,
 };
 use crate::{
@@ -14,6 +14,7 @@ use des::{
     time::SimTime,
 };
 use std::{
+    fmt::Debug,
     io::{self, Error, ErrorKind},
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
 };
@@ -21,7 +22,7 @@ use tracing::Level;
 use types::ip::Ipv6AddrExt;
 
 /// Declares and activiates an new network interface on the current module
-pub fn add_interface(iface: Interface) -> io::Result<()> {
+pub fn add_interface(iface: InterfaceDef) -> io::Result<()> {
     IOContext::failable_api(|ctx| ctx.add_interface(iface))
 }
 
@@ -63,7 +64,9 @@ impl InterfaceState {
 }
 
 impl IOContext {
-    pub fn add_interface(&mut self, iface: Interface) -> io::Result<()> {
+    pub fn add_interface(&mut self, def: InterfaceDef) -> io::Result<()> {
+        let iface = def.into_legacy();
+
         if self.ifaces.get(&iface.name.id).is_some() {
             return Err(Error::new(
                 ErrorKind::Other,

@@ -7,7 +7,7 @@ use des::{
 };
 use serial_test::serial;
 
-use inet::interface::{add_interface, Interface, NetworkDevice};
+use inet::interface::{add_interface, InterfaceDef, NetworkDevice};
 use inet::tcp2::TcpStream;
 
 #[serial]
@@ -17,10 +17,10 @@ fn connect_no_local_ip_version() {
     sim.node(
         "sender",
         AsyncFn::io(|_| async move {
-            add_interface(Interface::ethv4(
-                NetworkDevice::eth(),
-                Ipv4Addr::new(42, 0, 0, 42),
-            ))?;
+            add_interface(
+                InterfaceDef::new("en0", NetworkDevice::eth())
+                    .ip(Ipv4Addr::new(42, 0, 0, 42).into()),
+            )?;
 
             let stream = TcpStream::connect("2000:132:32::0:8000").await;
             let err = stream.unwrap_err();

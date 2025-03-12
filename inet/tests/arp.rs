@@ -2,7 +2,7 @@ use bytes_io::Bytes;
 use des::{prelude::*, registry, time::sleep};
 use inet::{
     arp::arpa,
-    interface::{add_interface, Interface, NetworkDevice},
+    interface::{add_interface, InterfaceDef, NetworkDevice},
     socket::RawIpSocket,
 };
 use serial_test::serial;
@@ -26,7 +26,7 @@ impl Default for Node {
 impl Module for Node {
     fn at_sim_start(&mut self, _stage: usize) {
         let ip = par("addr").unwrap().parse().unwrap();
-        add_interface(Interface::eth(NetworkDevice::eth(), ip)).unwrap();
+        add_interface(InterfaceDef::new("en0", NetworkDevice::eth()).ip(ip)).unwrap();
 
         self.ip = ip;
 

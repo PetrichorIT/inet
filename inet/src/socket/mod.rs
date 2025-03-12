@@ -484,7 +484,7 @@ impl IOContext {
 mod tests {
     use super::*;
 
-    use crate::interface::{Interface, NetworkDevice};
+    use crate::interface::{InterfaceDef, NetworkDevice};
     use des::prelude::ModuleId;
     use std::net::Ipv6Addr;
 
@@ -557,8 +557,8 @@ mod tests {
     }
 
     impl IOContext {
-        fn mock_add_interface(&mut self, iface: Interface) -> Result<()> {
-            self.ifaces.insert(iface.name.id(), iface);
+        fn mock_add_interface(&mut self, iface: InterfaceDef) -> Result<()> {
+            self.ifaces.insert(iface.name.id(), iface.into_legacy());
             Ok(())
         }
     }
@@ -567,12 +567,12 @@ mod tests {
     fn bind_specified() -> Result<()> {
         let mut ctx = IOContext::new(ModuleId::NULL);
         ctx.mock_add_interface(
-            Interface::ethv4(NetworkDevice::loopback(), Ipv4Addr::new(192, 168, 2, 101))
-                .named("en0"),
+            InterfaceDef::new("en0", NetworkDevice::loopback())
+                .ip(Ipv4Addr::new(192, 168, 2, 101).into()),
         )?;
         ctx.mock_add_interface(
-            Interface::ethv4(NetworkDevice::loopback(), Ipv4Addr::new(10, 100, 28, 101))
-                .named("en1"),
+            InterfaceDef::new("en1", NetworkDevice::loopback())
+                .ip(Ipv4Addr::new(10, 100, 28, 101).into()),
         )?;
 
         // port0 bind
@@ -600,8 +600,8 @@ mod tests {
     fn bind_specifed_socket_does_not_exist() -> Result<()> {
         let mut ctx = IOContext::new(ModuleId::NULL);
         ctx.mock_add_interface(
-            Interface::ethv4(NetworkDevice::loopback(), Ipv4Addr::new(192, 168, 2, 101))
-                .named("en0"),
+            InterfaceDef::new("en0", NetworkDevice::loopback())
+                .ip(Ipv4Addr::new(192, 168, 2, 101).into()),
         )?;
 
         let fd = ctx.socket(AF_INET, SOCK_DGRAM, 0)?;
@@ -616,8 +616,8 @@ mod tests {
     fn bind_specifed_address_already_exist() -> Result<()> {
         let mut ctx = IOContext::new(ModuleId::NULL);
         ctx.mock_add_interface(
-            Interface::ethv4(NetworkDevice::loopback(), Ipv4Addr::new(192, 168, 2, 101))
-                .named("en0"),
+            InterfaceDef::new("en0", NetworkDevice::loopback())
+                .ip(Ipv4Addr::new(192, 168, 2, 101).into()),
         )?;
 
         let fd = ctx.socket(AF_INET, SOCK_DGRAM, 0)?;
@@ -635,8 +635,8 @@ mod tests {
     fn bind_specifed_address_not_available() -> Result<()> {
         let mut ctx = IOContext::new(ModuleId::NULL);
         ctx.mock_add_interface(
-            Interface::ethv4(NetworkDevice::loopback(), Ipv4Addr::new(192, 168, 2, 101))
-                .named("en0"),
+            InterfaceDef::new("en0", NetworkDevice::loopback())
+                .ip(Ipv4Addr::new(192, 168, 2, 101).into()),
         )?;
 
         let fd = ctx.socket(AF_INET, SOCK_DGRAM, 0)?;
@@ -651,8 +651,8 @@ mod tests {
     fn bind_unspecifed() -> Result<()> {
         let mut ctx = IOContext::new(ModuleId::NULL);
         ctx.mock_add_interface(
-            Interface::ethv4(NetworkDevice::loopback(), Ipv4Addr::new(192, 168, 2, 101))
-                .named("en0"),
+            InterfaceDef::new("en0", NetworkDevice::loopback())
+                .ip(Ipv4Addr::new(192, 168, 2, 101).into()),
         )?;
 
         let fd = ctx.socket(AF_INET, SOCK_DGRAM, 0)?;
@@ -673,8 +673,8 @@ mod tests {
     fn bind_unspecified_socket_does_not_exist() -> Result<()> {
         let mut ctx = IOContext::new(ModuleId::NULL);
         ctx.mock_add_interface(
-            Interface::ethv4(NetworkDevice::loopback(), Ipv4Addr::new(192, 168, 2, 101))
-                .named("en0"),
+            InterfaceDef::new("en0", NetworkDevice::loopback())
+                .ip(Ipv4Addr::new(192, 168, 2, 101).into()),
         )?;
 
         let fd = ctx.socket(AF_INET, SOCK_DGRAM, 0)?;
@@ -688,7 +688,7 @@ mod tests {
     #[test]
     fn bind_unspecified_address_not_available() -> Result<()> {
         let mut ctx = IOContext::new(ModuleId::NULL);
-        ctx.mock_add_interface(Interface::ethv6_autocfg(NetworkDevice::loopback()).named("en0"))?;
+        ctx.mock_add_interface(InterfaceDef::ethv6_autocfg(NetworkDevice::loopback()))?;
 
         let fd = ctx.socket(AF_INET, SOCK_DGRAM, 0)?;
         let addr = SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), 2000);
@@ -702,8 +702,8 @@ mod tests {
     fn bind_unspecified_address_already_in_use() -> Result<()> {
         let mut ctx = IOContext::new(ModuleId::NULL);
         ctx.mock_add_interface(
-            Interface::ethv4(NetworkDevice::loopback(), Ipv4Addr::new(192, 168, 2, 101))
-                .named("en0"),
+            InterfaceDef::new("en0", NetworkDevice::loopback())
+                .ip(Ipv4Addr::new(192, 168, 2, 101).into()),
         )?;
         let fd = ctx.socket(AF_INET, SOCK_DGRAM, 0)?;
         let addr = SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), 2000);
@@ -720,8 +720,8 @@ mod tests {
     fn bind_different_sockets_bind_to_same_port() -> Result<()> {
         let mut ctx = IOContext::new(ModuleId::NULL);
         ctx.mock_add_interface(
-            Interface::ethv4(NetworkDevice::loopback(), Ipv4Addr::new(192, 168, 2, 101))
-                .named("en0"),
+            InterfaceDef::new("en0", NetworkDevice::loopback())
+                .ip(Ipv4Addr::new(192, 168, 2, 101).into()),
         )?;
 
         let addr = SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), 2000);
@@ -741,8 +741,8 @@ mod tests {
     fn set_peer() -> Result<()> {
         let mut ctx = IOContext::new(ModuleId::NULL);
         ctx.mock_add_interface(
-            Interface::ethv4(NetworkDevice::loopback(), Ipv4Addr::new(192, 168, 2, 101))
-                .named("en0"),
+            InterfaceDef::new("en0", NetworkDevice::loopback())
+                .ip(Ipv4Addr::new(192, 168, 2, 101).into()),
         )?;
 
         let addr = SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), 2000);
@@ -763,8 +763,8 @@ mod tests {
     fn set_peer_ip_missmatch() -> Result<()> {
         let mut ctx = IOContext::new(ModuleId::NULL);
         ctx.mock_add_interface(
-            Interface::ethv4(NetworkDevice::loopback(), Ipv4Addr::new(192, 168, 2, 101))
-                .named("en0"),
+            InterfaceDef::new("en0", NetworkDevice::loopback())
+                .ip(Ipv4Addr::new(192, 168, 2, 101).into()),
         )?;
 
         let addr = SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), 2000);
@@ -783,8 +783,8 @@ mod tests {
     fn get_peer_no_peer() -> Result<()> {
         let mut ctx = IOContext::new(ModuleId::NULL);
         ctx.mock_add_interface(
-            Interface::ethv4(NetworkDevice::loopback(), Ipv4Addr::new(192, 168, 2, 101))
-                .named("en0"),
+            InterfaceDef::new("en0", NetworkDevice::loopback())
+                .ip(Ipv4Addr::new(192, 168, 2, 101).into()),
         )?;
 
         let addr = SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), 2000);

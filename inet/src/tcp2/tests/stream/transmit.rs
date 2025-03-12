@@ -10,7 +10,7 @@ use serial_test::serial;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use crate::{
-    interface::{add_interface, Interface, NetworkDevice},
+    interface::{add_interface, InterfaceDef, NetworkDevice},
     tcp2::{set_config, Config, TcpListener, TcpStream},
 };
 
@@ -30,10 +30,10 @@ fn large_stream() {
         AsyncFn::io(move |_| {
             let bytes = bytes.clone();
             async move {
-                add_interface(Interface::ethv4(
-                    NetworkDevice::eth(),
-                    Ipv4Addr::new(100, 0, 0, 42),
-                ))?;
+                add_interface(
+                    InterfaceDef::new("en0", NetworkDevice::eth())
+                        .ip(Ipv4Addr::new(100, 0, 0, 42).into()),
+                )?;
 
                 set_config(Config {
                     // enable_congestion_control: true,
@@ -56,10 +56,10 @@ fn large_stream() {
         AsyncFn::io(move |_| {
             let bytes = bytes2.clone();
             async move {
-                add_interface(Interface::ethv4(
-                    NetworkDevice::eth(),
-                    Ipv4Addr::new(100, 0, 0, 69),
-                ))?;
+                add_interface(
+                    InterfaceDef::new("en0", NetworkDevice::eth())
+                        .ip(Ipv4Addr::new(100, 0, 0, 69).into()),
+                )?;
 
                 set_config(Config {
                     // enable_congestion_control: true,
@@ -134,10 +134,10 @@ fn lossful_stream() {
         AsyncFn::io(move |_| {
             let bytes = bytes.clone();
             async move {
-                add_interface(Interface::ethv4(
-                    NetworkDevice::eth(),
-                    Ipv4Addr::new(100, 0, 0, 42),
-                ))?;
+                add_interface(
+                    InterfaceDef::new("en0", NetworkDevice::eth())
+                        .ip(Ipv4Addr::new(100, 0, 0, 42).into()),
+                )?;
 
                 set_config(Config {
                     enable_congestion_control: true,
@@ -160,10 +160,10 @@ fn lossful_stream() {
         AsyncFn::io(move |_| {
             let bytes = bytes2.clone();
             async move {
-                add_interface(Interface::ethv4(
-                    NetworkDevice::eth(),
-                    Ipv4Addr::new(100, 0, 0, 69),
-                ))?;
+                add_interface(
+                    InterfaceDef::new("en0", NetworkDevice::eth())
+                        .ip(Ipv4Addr::new(100, 0, 0, 69).into()),
+                )?;
 
                 set_config(Config {
                     enable_congestion_control: true,

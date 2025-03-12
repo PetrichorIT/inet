@@ -6,7 +6,7 @@ use des::{
     runtime::{Builder, RuntimeError},
 };
 use inet::{
-    interface::{add_interface, Interface, NetworkDevice},
+    interface::{add_interface, InterfaceDef, NetworkDevice},
     ipv6::util::setup_router,
     routing::RoutingPort,
     utils::{self, getaddrinfo},
@@ -20,7 +20,7 @@ impl Module for HostAlice {
     fn at_sim_start(&mut self, _stage: usize) {
         pcap(File::create("out/ipv6_tentative_alice.pcap").unwrap()).unwrap();
 
-        add_interface(Interface::empty("en0", NetworkDevice::eth())).unwrap();
+        add_interface(InterfaceDef::new("en0", NetworkDevice::eth()).v6()).unwrap();
     }
 
     fn at_sim_end(&mut self) -> Result<(), RuntimeError> {
@@ -37,7 +37,7 @@ impl Module for HostBob {
     fn at_sim_start(&mut self, _stage: usize) {
         pcap(File::create("out/ipv6_tentative_bob.pcap").unwrap()).unwrap();
 
-        add_interface(Interface::empty("en0", NetworkDevice::eth())).unwrap();
+        add_interface(InterfaceDef::new("en0", NetworkDevice::eth()).v6()).unwrap();
     }
 
     fn at_sim_end(&mut self) -> Result<(), RuntimeError> {

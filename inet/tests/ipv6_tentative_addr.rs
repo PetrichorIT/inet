@@ -10,7 +10,7 @@ use des::{
     runtime::{Builder, RuntimeError},
 };
 use inet::{
-    interface::{add_interface, interface_status, Interface, NetworkDevice},
+    interface::{add_interface, interface_status, InterfaceDef, NetworkDevice},
     ipv6::{api::set_node_cfg, cfg::HostConfiguration},
 };
 use serial_test::serial;
@@ -21,7 +21,7 @@ struct WithChecks;
 
 impl Module for WithChecks {
     fn at_sim_start(&mut self, _stage: usize) {
-        add_interface(Interface::empty("en0", NetworkDevice::eth())).unwrap();
+        add_interface(InterfaceDef::new("en0", NetworkDevice::eth()).v6()).unwrap();
 
         let state = interface_status("en0").unwrap();
         assert_eq!(state.addrs.iter().count(), 0);
@@ -47,7 +47,7 @@ impl Module for WithoutChecks {
         })
         .unwrap();
 
-        add_interface(Interface::empty("en0", NetworkDevice::eth())).unwrap();
+        add_interface(InterfaceDef::new("en0", NetworkDevice::eth()).v6()).unwrap();
         let state = interface_status("en0").unwrap();
         assert_eq!(state.addrs.iter().count(), 1);
         assert_eq!(state.addrs.multicast_scopes().len(), 2); // sol-multicast + all nodes multicast
@@ -66,11 +66,7 @@ struct ManualAssignWithoutDedup;
 
 impl Module for ManualAssignWithoutDedup {
     fn at_sim_start(&mut self, _stage: usize) {
-        add_interface(Interface::ethv6_named_linklocal(
-            "en0",
-            NetworkDevice::eth(),
-        ))
-        .unwrap();
+        add_interface(InterfaceDef::ethv6_autocfg(NetworkDevice::eth())).unwrap();
 
         let state = interface_status("en0").unwrap();
         assert_eq!(state.addrs.iter().count(), 1);
@@ -108,7 +104,7 @@ impl Module for AssignSameAddr {
         let mac = MacAddress::from([1, 2, 3, 4, 5, 6]);
         assert!(!mac.is_multicast());
         device.addr = mac;
-        add_interface(Interface::empty("en0", device)).unwrap();
+        add_interface(InterfaceDef::new("en0", device)).unwrap();
     }
 
     fn at_sim_end(&mut self) -> Result<(), RuntimeError> {

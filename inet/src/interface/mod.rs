@@ -11,11 +11,12 @@ use std::{
 use crate::socket::Fd;
 use crate::IOContext;
 use des::prelude::*;
+use types::arp::ArpPacket;
 use types::arp::KIND_ARP;
 use types::iface::MacAddress;
-use types::{arp::ArpPacket, ip::Ipv6AddrExt};
 
 mod def;
+pub use self::def::*;
 
 mod api;
 pub use self::api::*;
@@ -86,155 +87,7 @@ impl Interface {
             addrs: InterfaceAddrs::new(Vec::new()),
             status: InterfaceStatus::Active,
             state: InterfaceBusyState::Idle,
-            prio: 0,
-            buffer: VecDeque::new(),
-            send_q: 0,
-        }
-    }
-
-    pub fn ethv6_autocfg(device: NetworkDevice) -> Self {
-        let link_local = InterfaceAddr::ipv6_link_local(device.addr);
-        Self {
-            name: InterfaceName::new("en0"),
-            device,
-            flags: InterfaceFlags::en0(true),
-            addrs: InterfaceAddrs::new(vec![link_local]),
-            status: InterfaceStatus::Active,
-            state: InterfaceBusyState::Idle,
             prio: 200,
-            buffer: VecDeque::new(),
-            send_q: 0,
-        }
-    }
-
-    /// Creates a new ethernet interface using the given device
-    /// and an IP address for binding to a LAN.
-    pub fn eth(device: NetworkDevice, ip: IpAddr) -> Interface {
-        match ip {
-            IpAddr::V4(v4) => Self::ethv4(device, v4),
-            IpAddr::V6(v6) => Self::ethv6(device, v6),
-        }
-    }
-
-    /// Creates a new ethernet interface bound to an Ipv4/24 network.
-    pub fn ethv4(device: NetworkDevice, v4: Ipv4Addr) -> Interface {
-        Self::ethv4_named("en0", device, v4, Ipv4Addr::new(255, 255, 255, 0))
-    }
-
-    /// Creates a new ethernet interface bound to an Ipv6/64 network.
-    pub fn ethv6(device: NetworkDevice, v6: Ipv6Addr) -> Interface {
-        Self::ethv6_named("en1", device, v6)
-    }
-
-    /// Sets the name of the interface.
-    pub fn named(mut self, name: impl AsRef<str>) -> Self {
-        self.name = InterfaceName::new(name);
-        self
-    }
-
-    /// Creates a new ethernet interface using the provided parameters.
-    pub fn ethv4_named(
-        name: impl AsRef<str>,
-        device: NetworkDevice,
-        subnet: Ipv4Addr,
-        mask: Ipv4Addr,
-    ) -> Interface {
-        Interface {
-            name: InterfaceName::new(name),
-            device,
-            flags: InterfaceFlags::en0(false),
-            addrs: InterfaceAddrs::new(vec![InterfaceAddr::Inet(InterfaceAddrV4 {
-                addr: subnet,
-                netmask: mask,
-            })]),
-            status: InterfaceStatus::Active,
-            state: InterfaceBusyState::Idle,
-            prio: 100,
-            buffer: VecDeque::new(),
-            send_q: 0,
-        }
-    }
-
-    pub fn ethv6_named_linklocal(name: impl AsRef<str>, device: NetworkDevice) -> Interface {
-        let addr = device.addr.embed_into(Ipv6Addr::LINK_LOCAL);
-        Self::ethv6_named(name, device, addr)
-    }
-
-    pub fn eth_empty(name: impl AsRef<str>, device: NetworkDevice) -> Interface {
-        Interface {
-            name: InterfaceName::new(name),
-            device,
-            flags: InterfaceFlags::en0(false),
-            addrs: InterfaceAddrs::new(Vec::new()),
-            status: InterfaceStatus::Active,
-            state: InterfaceBusyState::Idle,
-            prio: 200,
-            buffer: VecDeque::new(),
-            send_q: 0,
-        }
-    }
-
-    /// Creates a new ethernet interface using the provided parameters.
-    pub fn ethv6_named(
-        name: impl AsRef<str>,
-        device: NetworkDevice,
-        subnet: Ipv6Addr,
-    ) -> Interface {
-        assert!(
-            !subnet.is_multicast() && !subnet.is_unspecified(),
-            "requires unicast address for interface definition"
-        );
-        Interface {
-            name: InterfaceName::new(name),
-            device,
-            flags: InterfaceFlags::en0(true),
-            addrs: InterfaceAddrs::new(vec![InterfaceAddr::Inet6(InterfaceAddrV6::new_static(
-                subnet, 64,
-            ))]),
-            status: InterfaceStatus::Active,
-            state: InterfaceBusyState::Idle,
-            prio: 200,
-            buffer: VecDeque::new(),
-            send_q: 0,
-        }
-    }
-
-    /// Creates a new ethernet interface using the provided parameters.
-    pub fn eth_mixed(
-        name: impl AsRef<str>,
-        device: NetworkDevice,
-        v4: (Ipv4Addr, Ipv4Addr),
-        v6: (Ipv6Addr, usize),
-    ) -> Interface {
-        Interface {
-            name: InterfaceName::new(name),
-            device,
-            flags: InterfaceFlags::en0(true),
-            addrs: InterfaceAddrs::new(vec![
-                InterfaceAddr::Inet(InterfaceAddrV4 {
-                    addr: v4.0,
-                    netmask: v4.1,
-                }),
-                InterfaceAddr::Inet6(InterfaceAddrV6::new_static(v6.0, v6.1)),
-            ]),
-            status: InterfaceStatus::Active,
-            state: InterfaceBusyState::Idle,
-            prio: 100,
-            buffer: VecDeque::new(),
-            send_q: 0,
-        }
-    }
-
-    /// Creates a loopback interface
-    pub fn loopback() -> Self {
-        Interface {
-            name: "lo0".into(),
-            device: NetworkDevice::loopback(),
-            flags: InterfaceFlags::loopback(),
-            addrs: InterfaceAddrs::new(Vec::from(InterfaceAddr::LOOPBACK)),
-            status: InterfaceStatus::Active,
-            prio: 100,
-            state: InterfaceBusyState::Idle,
             buffer: VecDeque::new(),
             send_q: 0,
         }

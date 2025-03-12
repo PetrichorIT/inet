@@ -2,7 +2,7 @@ use std::str::FromStr;
 
 use des::{prelude::*, registry};
 use inet::{
-    interface::{add_interface, Interface, NetworkDevice},
+    interface::{add_interface, InterfaceDef, NetworkDevice},
     routing::{RoutingInformation, RoutingPeer},
 };
 
@@ -17,19 +17,17 @@ struct Main;
 
 impl Module for A {
     fn at_sim_start(&mut self, _stage: usize) {
-        add_interface(Interface::ethv4(
-            NetworkDevice::eth(),
-            Ipv4Addr::from_str("192.168.2.100").unwrap(),
-        ))
+        add_interface(
+            InterfaceDef::new("en0", NetworkDevice::eth()).ip("192.168.2.100".parse().unwrap()),
+        )
         .unwrap();
     }
 }
 impl Module for B {
     fn at_sim_start(&mut self, _stage: usize) {
-        add_interface(Interface::ethv4(
-            NetworkDevice::eth(),
-            Ipv4Addr::from_str("192.168.2.200").unwrap(),
-        ))
+        add_interface(
+            InterfaceDef::new("en0", NetworkDevice::eth()).ip("192.168.2.200".parse().unwrap()),
+        )
         .unwrap();
     }
 }

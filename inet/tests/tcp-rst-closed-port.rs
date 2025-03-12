@@ -5,7 +5,7 @@ use std::sync::{
 
 use des::{prelude::*, registry, time::sleep};
 use inet::{
-    interface::{add_interface, Interface, NetworkDevice},
+    interface::{add_interface, InterfaceDef, NetworkDevice},
     *,
 };
 use tokio::spawn;
@@ -17,10 +17,9 @@ struct OneAttemptClient {
 
 impl Module for OneAttemptClient {
     fn at_sim_start(&mut self, _: usize) {
-        add_interface(Interface::ethv4(
-            NetworkDevice::eth(),
-            Ipv4Addr::new(69, 0, 0, 100),
-        ))
+        add_interface(
+            InterfaceDef::new("en0", NetworkDevice::eth()).ip(Ipv4Addr::new(69, 0, 0, 200).into()),
+        )
         .unwrap();
 
         let done = self.done.clone();
@@ -45,10 +44,9 @@ struct MultipleAttemptClient<const EXPECT: bool> {
 
 impl<const EXPECT: bool> Module for MultipleAttemptClient<EXPECT> {
     fn at_sim_start(&mut self, _: usize) {
-        add_interface(Interface::ethv4(
-            NetworkDevice::eth(),
-            Ipv4Addr::new(69, 0, 0, 100),
-        ))
+        add_interface(
+            InterfaceDef::new("en0", NetworkDevice::eth()).ip(Ipv4Addr::new(69, 0, 0, 100).into()),
+        )
         .unwrap();
 
         let done = self.done.clone();
@@ -76,10 +74,9 @@ struct EmptyServer {}
 
 impl Module for EmptyServer {
     fn at_sim_start(&mut self, _: usize) {
-        add_interface(Interface::ethv4(
-            NetworkDevice::eth(),
-            Ipv4Addr::new(69, 0, 0, 69),
-        ))
+        add_interface(
+            InterfaceDef::new("en0", NetworkDevice::eth()).ip(Ipv4Addr::new(69, 0, 0, 69).into()),
+        )
         .unwrap();
     }
 }
@@ -89,10 +86,9 @@ struct BoundServer {}
 
 impl Module for BoundServer {
     fn at_sim_start(&mut self, _: usize) {
-        add_interface(Interface::ethv4(
-            NetworkDevice::eth(),
-            Ipv4Addr::new(69, 0, 0, 69),
-        ))
+        add_interface(
+            InterfaceDef::new("en0", NetworkDevice::eth()).ip(Ipv4Addr::new(69, 0, 0, 69).into()),
+        )
         .unwrap();
 
         spawn(async move {

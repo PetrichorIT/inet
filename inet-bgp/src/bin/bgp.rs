@@ -2,7 +2,7 @@ use std::{error::Error, fs::File, io::BufWriter};
 
 use des::{prelude::*, registry, time::sleep_until};
 use inet::{
-    interface::{add_interface, Interface, NetworkDevice},
+    interface::{add_interface, InterfaceDef, NetworkDevice},
     routing::route,
 };
 use inet_bgp::{pkt::Nlri, types::AsNumber, BgpDeamon};
@@ -58,13 +58,8 @@ impl Module for BgpNode {
             let n = xored.leading_zeros();
             let mask = Ipv4Addr::from(!(u32::MAX >> n));
 
-            add_interface(Interface::ethv4_named(
-                format!("link-{iface}"),
-                device,
-                addr,
-                mask,
-            ))
-            .unwrap();
+            add_interface(InterfaceDef::new(&format!("link-{iface}"), device).ipv4(addr, mask))
+                .unwrap();
         }
 
         let mut deamon = BgpDeamon::new(as_num, addr);

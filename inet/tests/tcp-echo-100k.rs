@@ -38,10 +38,9 @@ struct TcpServer {
 
 impl Module for TcpServer {
     fn at_sim_start(&mut self, _: usize) {
-        add_interface(Interface::ethv4(
-            NetworkDevice::eth(),
-            Ipv4Addr::new(69, 0, 0, 100),
-        ))
+        add_interface(
+            InterfaceDef::new("en0", NetworkDevice::eth()).ip(Ipv4Addr::new(69, 0, 0, 100).into()),
+        )
         .unwrap();
 
         let done = self.done.clone();
@@ -102,10 +101,9 @@ struct TcpClient {
 
 impl Module for TcpClient {
     fn at_sim_start(&mut self, _: usize) {
-        add_interface(Interface::ethv4(
-            NetworkDevice::eth(),
-            Ipv4Addr::new(69, 0, 0, 200),
-        ))
+        add_interface(
+            InterfaceDef::new("en0", NetworkDevice::eth()).ip(Ipv4Addr::new(69, 0, 0, 200).into()),
+        )
         .unwrap();
 
         let done = self.done.clone();

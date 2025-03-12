@@ -4,7 +4,7 @@ use des::{
     runtime::{Builder, RuntimeError},
 };
 use inet::{
-    interface::{add_interface, Interface, InterfaceAddr, NetworkDevice},
+    interface::{add_interface, InterfaceDef, NetworkDevice},
     ipv6::util::setup_router,
     routing::{declare_ipv6_router, Ipv6RouterConfig, RoutingPort},
     utils::{self, getaddrinfo},
@@ -20,7 +20,7 @@ impl Module for Expect3Addrs {
     fn at_sim_start(&mut self, _stage: usize) {
         pcap(File::create("out/ipv6_timeout_alice.pcap").unwrap()).unwrap();
 
-        add_interface(Interface::empty("en0", NetworkDevice::eth())).unwrap();
+        add_interface(InterfaceDef::new("en0", NetworkDevice::eth()).v6()).unwrap();
     }
 
     fn at_sim_end(&mut self) -> Result<(), RuntimeError> {
@@ -37,7 +37,7 @@ impl Module for Expect3Then1Addrs {
     fn at_sim_start(&mut self, _stage: usize) {
         pcap(File::create("out/ipv6_timeout_bob.pcap").unwrap()).unwrap();
 
-        add_interface(Interface::empty("en0", NetworkDevice::eth())).unwrap();
+        add_interface(InterfaceDef::new("en0", NetworkDevice::eth()).v6()).unwrap();
     }
 
     fn at_sim_end(&mut self) -> Result<(), RuntimeError> {
@@ -74,13 +74,12 @@ impl Module for RouterWithoutAdv {
         pcap(File::create("out/ipv6_timeout_router.pcap").unwrap()).unwrap();
 
         for port in RoutingPort::collect() {
-            let mut iface = Interface::empty(
+            let mut iface = InterfaceDef::new(
                 &format!("en-{}", port.output.str()),
                 NetworkDevice::from(port),
-            );
-            iface
-                .addrs
-                .add(InterfaceAddr::ipv6_link_local(iface.device.addr));
+            )
+            .ipv6_link_local();
+
             iface.flags.router = true;
             add_interface(iface).unwrap();
         }

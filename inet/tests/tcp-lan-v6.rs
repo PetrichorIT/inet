@@ -5,7 +5,7 @@ use std::sync::{
 
 use des::{prelude::*, registry, time::sleep};
 use inet::{
-    interface::{add_interface, Interface, NetworkDevice},
+    interface::{add_interface, InterfaceDef, NetworkDevice},
     TcpListener, TcpStream,
 };
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -24,7 +24,7 @@ impl Module for Node {
         }
 
         let ip = par("addr").unwrap().parse().unwrap();
-        add_interface(Interface::ethv6(NetworkDevice::eth(), ip)).unwrap();
+        add_interface(InterfaceDef::new("en0", NetworkDevice::eth()).ip(ip)).unwrap();
 
         let target: String = par("targets").unwrap().into_inner();
         let targets = target
