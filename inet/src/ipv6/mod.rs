@@ -3,6 +3,7 @@ use std::{io, net::Ipv6Addr, time::Duration};
 use bitflags::bitflags;
 use des::net::message::{schedule_in, Message};
 use fxhash::{FxBuildHasher, FxHashMap};
+use multicast::{GroupEvent, MulticastListenerDiscoveryCtrl, NodeEvent, RouterEvent};
 use tracing::Level;
 use types::ip::{Ipv6AddrExt, Ipv6Packet, Ipv6Prefix, KIND_IPV6};
 
@@ -12,7 +13,6 @@ use self::{
     addrs::PolicyTable,
     cfg::{HostConfiguration, RouterInterfaceConfiguration},
     icmp::{ping::PingCtrl, tracerouter::TracerouteCB},
-    mld::MulticastListenerDiscoveryCtrl,
     ndp::{
         DefaultRouterList, DestinationCache, NeighborCache, PrefixList, QueryType, Solicitations,
     },
@@ -25,7 +25,7 @@ pub mod addrs;
 pub mod api;
 pub mod cfg;
 pub mod icmp;
-pub mod mld;
+pub mod multicast;
 pub mod ndp;
 pub mod router;
 pub mod state;
@@ -35,12 +35,14 @@ pub mod util;
 pub struct Ipv6 {
     pub timer: TimerCtrl,
 
+    // Unicast addr mappings
     pub solicitations: Solicitations,
     pub neighbors: NeighborCache,
     pub destinations: DestinationCache,
     pub prefixes: PrefixList,
     pub default_routers: DefaultRouterList,
 
+    // Multicast management
     pub iface_state: FxHashMap<IfId, InterfaceState>,
     pub mld: FxHashMap<IfId, MulticastListenerDiscoveryCtrl>,
 
@@ -252,6 +254,7 @@ impl IOContext {
     pub fn ipv6_handle_timer(&mut self, msg: Message) -> io::Result<()> {
         use timer::TimerToken::*;
         let tokens = self.ipv6.timer.recv(&msg);
+
         for token in tokens {
             // tracing::debug!("timer exceeded: {token:?}");
             match token {
@@ -278,13 +281,36 @@ impl IOContext {
                     let needs_mld_report = iface.bindings.v6.join(multicast);
 
                     if needs_mld_report {
-                        self.mld_on_event(ifid, mld::Event::StartListening, multicast)?;
+                        self.mld_on_event(ifid, NodeEvent::StartListening, multicast)?;
                     }
                 }
+
+                // MLD events
                 MulticastListenerDiscoverySendReport {
                     ifid,
                     multicast_addr,
-                } => self.mld_on_event(ifid, mld::Event::TimerExpired(token), multicast_addr)?,
+                } => self.mld_on_event(ifid, NodeEvent::TimerExpired, multicast_addr)?,
+                MulticastListenerDiscoveryGeneralQuery { ifid } => {
+                    self.mld_querier_on_event(ifid, RouterEvent::GeneralQueryTimerExpired(token))?;
+                }
+                MulticastListenerDiscoveryOtherQuerierPresent { ifid } => {
+                    self.mld_querier_on_event(
+                        ifid,
+                        RouterEvent::OtherQueriesPresentTimerExpired(token),
+                    )?;
+                }
+                MulticastListenerDiscoveryQuerierGroupTimer { ifid, addr } => {
+                    self.mld_querier_on_event(
+                        ifid,
+                        RouterEvent::GroupEvent(addr, GroupEvent::TimerExpired(token)),
+                    )?;
+                }
+                MulticastListenerDiscoveryQuerierGroupRetransmissionTimer { ifid, addr } => {
+                    self.mld_querier_on_event(
+                        ifid,
+                        RouterEvent::GroupEvent(addr, GroupEvent::RetransmitTimerExpired(token)),
+                    )?;
+                }
             }
         }
 

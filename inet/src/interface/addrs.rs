@@ -26,6 +26,7 @@ pub struct InterfaceAddrsV4 {
 pub struct InterfaceAddrsV6 {
     pub unicast: Vec<InterfaceAddrV6>,
     pub multicast: Vec<Ipv6Addr>,
+    pub recv_all_multicast: bool,
 }
 
 impl InterfaceAddrBindings {
@@ -127,16 +128,18 @@ impl InterfaceAddrsV6 {
     }
 
     pub fn valid_src_mac(&self, mac_addr: MacAddress) -> bool {
-        self.multicast
-            .iter()
-            .any(|addr| MacAddress::ipv6_multicast(*addr) == mac_addr)
+        (self.recv_all_multicast && mac_addr.is_multicast())
+            || self
+                .multicast
+                .iter()
+                .any(|addr| MacAddress::ipv6_multicast(*addr) == mac_addr)
     }
 
     /// Whether the bindings of this interface can be used as a receiver
     /// for a packet addressed to `dst`
     pub fn matches(&self, dst: Ipv6Addr) -> bool {
         if dst.is_multicast() {
-            self.multicast.iter().any(|multicast| *multicast == dst)
+            self.recv_all_multicast || self.multicast.iter().any(|multicast| *multicast == dst)
         } else {
             self.unicast.iter().any(|binding| binding.matches(dst))
         }

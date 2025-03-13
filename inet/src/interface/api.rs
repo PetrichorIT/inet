@@ -5,7 +5,7 @@ use super::{
 use crate::{
     arp::ArpEntryInternal,
     interface::{InterfaceAddrV4, InterfaceAddrV6},
-    ipv6::{mld, ndp::QueryType},
+    ipv6::{multicast::NodeEvent, ndp::QueryType},
     routing::{FwdEntryV4, Ipv4Gateway, Ipv6Gateway, RoutingTableId},
     IOContext,
 };
@@ -285,7 +285,7 @@ impl IOContext {
             iface.bindings.v6.add(binding);
 
             if needs_mld_report {
-                self.mld_on_event(ifid, mld::Event::StartListening, multicast)?;
+                self.mld_on_event(ifid, NodeEvent::StartListening, multicast)?;
             }
             Ok(())
         }

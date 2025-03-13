@@ -21,7 +21,7 @@ use types::{
     ip::{IpPacket, Ipv6AddrExt, Ipv6Packet, Ipv6Prefix},
 };
 
-use super::{mld, ndp::QueryType};
+use super::{multicast::NodeEvent, ndp::QueryType};
 
 pub mod ping;
 pub mod tracerouter;
@@ -91,7 +91,9 @@ impl IOContext {
             IcmpV6Packet::MulticastListenerReport(report) => {
                 return self.ipv6_icmp_recv_multicast_listener_discovery_report(ip, ifid, report);
             }
-            IcmpV6Packet::MulticastListenerDone(_) => {}
+            IcmpV6Packet::MulticastListenerDone(done) => {
+                return self.ipv6_icmp_recv_multicast_listener_discovery_done(ip, ifid, done);
+            }
 
             IcmpV6Packet::RouterSolicitation(req) => {
                 // See RFC 4861 :: 6.1.1
@@ -730,7 +732,7 @@ impl IOContext {
 
                 let needs_mld_report = iface.bindings.v6.join(multicast);
                 if needs_mld_report {
-                    self.mld_on_event(ifid, mld::Event::StartListening, multicast)?;
+                    self.mld_on_event(ifid, NodeEvent::StartListening, multicast)?;
                 }
             }
         }

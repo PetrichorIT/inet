@@ -33,6 +33,20 @@ pub enum TimerToken {
         ifid: IfId,
         multicast_addr: Ipv6Addr,
     },
+    MulticastListenerDiscoveryGeneralQuery {
+        ifid: IfId,
+    },
+    MulticastListenerDiscoveryOtherQuerierPresent {
+        ifid: IfId,
+    },
+    MulticastListenerDiscoveryQuerierGroupTimer {
+        ifid: IfId,
+        addr: Ipv6Addr,
+    },
+    MulticastListenerDiscoveryQuerierGroupRetransmissionTimer {
+        ifid: IfId,
+        addr: Ipv6Addr,
+    },
 }
 
 #[derive(Debug)]

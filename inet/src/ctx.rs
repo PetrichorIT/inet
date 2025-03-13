@@ -181,6 +181,12 @@ impl IOContext {
 
         self.current.ifid = ifid.clone();
 
+        tracing::info!(
+            "{ifid}: {} / {}",
+            msg.str(),
+            msg.try_content::<Ipv6Packet>().unwrap().dst
+        );
+
         let l3 = self.recv_network_layer(msg, ifid);
         let (pkt, header) = match l3 {
             NetworkLayerResult::PassThrough(msg) => return Some(msg),

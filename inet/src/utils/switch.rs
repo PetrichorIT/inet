@@ -54,9 +54,9 @@ impl Module for LinkLayerSwitch {
         }
 
         let in_port = self.store_sender(&msg);
-        let dest = MacAddress::from(msg.header().dest);
+        let dst = MacAddress::from(msg.header().dest);
 
-        if dest.is_broadcast() || dest.is_multicast() {
+        if dst.is_broadcast() || dst.is_multicast() {
             for i in 0..self.info.ports.len() {
                 if Some(i) == in_port {
                     continue;
@@ -84,10 +84,10 @@ impl Module for LinkLayerSwitch {
                 )
             }
         } else {
-            let Some(port) = self.mapping.get(&dest) else {
+            let Some(port) = self.mapping.get(&dst) else {
                 tracing::error!(
                     "could not find addr {} in local mapping: either not existent or not active",
-                    dest
+                    dst
                 );
                 return;
             };
