@@ -433,7 +433,7 @@ impl IOContext {
             let fd = self.socket(domain, SocketType::SOCK_STREAM, 0)?;
 
             addr = self.socket_bind(fd, addr).map_err(|e| {
-                self.socket_close(self.fd).expect("cannot handle error");
+                self.socket_close(fd).expect("cannot handle error");
                 e
             })?;
             fd

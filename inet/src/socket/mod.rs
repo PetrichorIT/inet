@@ -8,6 +8,7 @@ use crate::interface::IfId;
 
 use super::{interface::InterfaceName, IOContext};
 use std::{
+    cell::Cell,
     fmt::Display,
     io::{Error, ErrorKind, Result},
 };
@@ -33,13 +34,17 @@ use SocketType::*;
 
 #[derive(Debug)]
 pub(super) struct Sockets {
-    sockets: FxHashMap<Fd, Socket>,
-    pub(super) handlers: FxHashMap<(u8, SocketDomain), (Fd, Sender<IpPacket>)>,
+    pub next_fd: Fd,
+    pub next_port: Cell<u16>,
+    pub sockets: FxHashMap<Fd, Socket>,
+    pub handlers: FxHashMap<(u8, SocketDomain), (Fd, Sender<IpPacket>)>,
 }
 
 impl Sockets {
     pub(super) fn new() -> Sockets {
         Sockets {
+            next_fd: 100,
+            next_port: Cell::new(1024),
             sockets: FxHashMap::with_hasher(FxBuildHasher::default()),
             handlers: FxHashMap::with_hasher(FxBuildHasher::default()),
         }
@@ -142,11 +147,11 @@ impl IOContext {
 
     pub(super) fn fd_generate(&mut self) -> Fd {
         loop {
-            self.fd = self.fd.wrapping_add(1);
-            if self.sockets.get(&self.fd).is_some() {
+            self.sockets.next_fd = self.sockets.next_fd.wrapping_add(1);
+            if self.sockets.get(&self.sockets.next_fd).is_some() {
                 continue;
             }
-            return self.fd;
+            return self.sockets.next_fd;
         }
     }
 
@@ -263,7 +268,7 @@ impl IOContext {
 
         let mut port = addr.port();
         if port == 0 {
-            port = self.port;
+            port = self.sockets.next_port.get();
             while self
                 .sockets
                 .values()
@@ -271,7 +276,7 @@ impl IOContext {
             {
                 port = port.wrapping_add(1);
             }
-            self.port = port.wrapping_add(1);
+            self.sockets.next_port.set(port.wrapping_add(1));
         } else {
             if self
                 .sockets
@@ -325,8 +330,9 @@ impl IOContext {
                 // Unspecified port
                 let mut naddr = SocketAddr::new(next, port);
                 loop {
-                    naddr.set_port(self.port);
-                    self.port += 1;
+                    let port = self.sockets.next_port.get();
+                    naddr.set_port(port);
+                    self.sockets.next_port.set(port + 1);
 
                     if !self
                         .sockets

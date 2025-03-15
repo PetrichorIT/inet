@@ -35,29 +35,27 @@ thread_local! {
 }
 
 pub(crate) struct IOContext {
+    // Link-Layer
     #[allow(unused)]
     pub(super) id: ModuleId,
     pub(super) ifaces: FxHashMap<IfId, InterfaceController>,
-
-    pub(super) ipv6: Ipv6,
-
     pub(super) arp: ArpTable,
+
+    // Networking Layer
+    pub(super) ipv6: Ipv6,
     pub(super) ipv4_fwd: FwdV4,
     pub(super) ipv6router: Ipv6RoutingTable,
     pub(super) icmp: Icmp,
 
-    pub(super) dns: DnsResolver,
-
+    // Transport Layer
     pub(super) sockets: Sockets,
     pub(super) udp: Udp,
     pub(super) tcp: Tcp,
     pub(super) tcp2: tcp2::Tcp,
 
+    // Application Layer
+    pub(super) dns: DnsResolver,
     pub(super) fs: Fs,
-
-    pub(super) fd: Fd,
-    pub(super) port: u16,
-
     pub(super) extensions: Extensions,
 
     pub(super) current: Current,
@@ -102,10 +100,6 @@ impl IOContext {
             fs: Fs::new(),
 
             extensions: Extensions::new(),
-
-            fd: 100,
-            port: 1024,
-
             current: Current { ifid: IfId::NULL },
             meta_changed: true,
         }
