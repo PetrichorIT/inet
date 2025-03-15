@@ -10,7 +10,6 @@ pub mod icmpv4;
 pub mod icmpv6;
 pub mod iface;
 pub mod ip;
-pub mod routing;
 pub mod tcp;
 pub mod udp;
 pub mod util;

@@ -1,0 +1,13 @@
+[package]
+name = "inet-ospf"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+tracing = "0.1"
+bytes-io = { path = "../util/bytes-io" }
+pcapng = { path = "../util/pcapng" }
+macros = { path = "../util/macros" }
+inet = { path = "../inet" }
+bitflags = "*"
+rand = "*"

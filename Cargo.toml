@@ -10,7 +10,7 @@ members = [
     "inet-dns",
     "inet-uds",
     "util/*",
-    "examples/*",
+    "examples/*", "inet-ospf",
 ]
 
 [patch.crates-io]
