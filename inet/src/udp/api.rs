@@ -1,5 +1,6 @@
 use bytes_io::BufMut;
 
+use crate::interface::IfId;
 use crate::io::{Interest, Ready};
 use crate::{
     dns::{lookup_host, ToSocketAddrs},
@@ -7,6 +8,7 @@ use crate::{
     socket::{AsRawFd, Fd},
     IOContext,
 };
+use std::net::Ipv6Addr;
 use std::{
     io::{Error, ErrorKind, Result},
     net::SocketAddr,
@@ -435,6 +437,14 @@ impl UdpSocket {
                 "SimContext lost socket handle",
             )),
         })
+    }
+
+    pub fn join_multicast_v6(&mut self, addr: Ipv6Addr, interface: Option<IfId>) -> Result<()> {
+        IOContext::failable_api(|ctx| ctx.udp_join_multicast_v6(self.fd, addr, interface))
+    }
+
+    pub fn leave_multicast_v6(&mut self, addr: Ipv6Addr, _: Option<IfId>) -> Result<()> {
+        IOContext::failable_api(|ctx| ctx.udp_leave_multicast_v6(self.fd, addr))
     }
 
     /// Gets the value of the IP_TTL option for this socket.

@@ -21,7 +21,7 @@ use des::time::SimTime;
 use tracing::Level;
 use types::{
     icmpv6::{IcmpV6MulticastListenerMessage, IcmpV6Packet, PROTO_ICMPV6},
-    ip::Ipv6Packet,
+    ip::{Ipv6AddrExt, Ipv6Packet},
 };
 
 use crate::{
@@ -29,6 +29,8 @@ use crate::{
     interface::IfId,
     ipv6::{timer::TimerToken, Ipv6SendFlags},
 };
+
+use super::{GroupEvent, RouterEvent};
 
 const DEFAULT_UNSOLICITD_MAX_RESPONSE_DELAY: Duration = Duration::from_millis(500);
 
@@ -141,7 +143,7 @@ impl IOContext {
 
         let ctrl = self.ipv6.mld.entry(ifid).or_default();
         let state = *ctrl
-            .group_memberships
+            .memberships
             .get(&multicast_addr)
             .unwrap_or(&NodeState::default());
 
@@ -184,7 +186,7 @@ impl IOContext {
         })?;
 
         let ctrl = self.ipv6.mld.entry(ifid).or_default();
-        ctrl.group_memberships.insert(multicast_addr, new_state);
+        ctrl.memberships.insert(multicast_addr, new_state);
 
         Ok(())
     }
@@ -192,25 +194,33 @@ impl IOContext {
     pub(super) fn ipv6_icmp_send_mld_report(
         &mut self,
         ifid: IfId,
-        multicast: Ipv6Addr,
+        multicast_addr: Ipv6Addr,
     ) -> io::Result<()> {
         let iface = self.ifaces.get(&ifid).unwrap();
         if iface.flags.loopback {
             return Ok(());
         }
 
-        let msg = IcmpV6Packet::MulticastListenerReport(IcmpV6MulticastListenerMessage {
+        let msg = IcmpV6MulticastListenerMessage {
             maximum_response_delay: Duration::ZERO,
-            multicast_addr: multicast,
-        });
+            multicast_addr,
+        };
+
+        if let Some(_) = self.ipv6.mld.entry(ifid).or_default().querier {
+            self.mld_querier_on_event(
+                ifid,
+                RouterEvent::GroupEvent(multicast_addr, GroupEvent::ReportRecevied),
+            )?;
+        }
+
         let pkt = Ipv6Packet {
             traffic_class: 0,
             flow_label: 0,
             next_header: PROTO_ICMPV6,
             hop_limit: 2,
             src: Ipv6Addr::UNSPECIFIED,
-            dst: multicast,
-            content: msg.write_to_bytes()?,
+            dst: multicast_addr,
+            content: IcmpV6Packet::MulticastListenerReport(msg).write_to_bytes()?,
         };
 
         // TODO: this should ?? always use fe80 addrs, but what to do when no such addr is availabel ??
@@ -229,18 +239,26 @@ impl IOContext {
             return Ok(());
         }
 
-        let msg = IcmpV6Packet::MulticastListenerDone(IcmpV6MulticastListenerMessage {
+        let msg = IcmpV6MulticastListenerMessage {
             maximum_response_delay: Duration::ZERO,
             multicast_addr,
-        });
+        };
+
+        if let Some(_) = self.ipv6.mld.entry(ifid).or_default().querier {
+            self.mld_querier_on_event(
+                ifid,
+                RouterEvent::GroupEvent(multicast_addr, GroupEvent::DoneReceived),
+            )?;
+        }
+
         let pkt = Ipv6Packet {
             traffic_class: 0,
             flow_label: 0,
             next_header: PROTO_ICMPV6,
             hop_limit: 1,
             src: Ipv6Addr::UNSPECIFIED,
-            dst: multicast_addr,
-            content: msg.write_to_bytes()?,
+            dst: Ipv6Addr::MULTICAST_ALL_NODES,
+            content: IcmpV6Packet::MulticastListenerDone(msg).write_to_bytes()?,
         };
 
         // TODO: this should ?? always use fe80 addrs, but what to do when no such addr is availabel ??
@@ -251,6 +269,7 @@ impl IOContext {
 #[cfg(test)]
 mod tests {
     use des::runtime::{Application, Builder, EventLifecycle, RuntimeError};
+    use serial_test::serial;
 
     use super::*;
 
@@ -274,6 +293,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn on_start_listening_new() -> Result<(), RuntimeError> {
         rng_sim(|| {
             let mut state = NodeState::NonListener;
@@ -293,6 +313,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn on_stop_delayed_listener() -> Result<(), RuntimeError> {
         rng_sim(|| {
             // NO FLAG
@@ -325,6 +346,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn on_stop_idle_listener() -> Result<(), RuntimeError> {
         rng_sim(|| {
             // NO FLAG
@@ -355,6 +377,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn on_query_delayed_listener() -> Result<(), RuntimeError> {
         rng_sim(|| {
             // Max resp time < current time
@@ -397,6 +420,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn on_query_idle_listener() -> Result<(), RuntimeError> {
         rng_sim(|| {
             let mut state = NodeState::IdleListener(true);
@@ -421,6 +445,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn on_report_delayed_listener() -> Result<(), RuntimeError> {
         rng_sim(|| {
             let mut state = NodeState::DelayedListener(true, 100.0.into());
@@ -445,6 +470,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn on_report_timeout() -> Result<(), RuntimeError> {
         rng_sim(|| {
             let mut state = NodeState::DelayedListener(true, 100.0.into());

@@ -1,15 +1,16 @@
 use std::{
     future::Future,
     io,
-    net::{IpAddr, Ipv4Addr},
+    net::{IpAddr, Ipv4Addr, Ipv6Addr},
     time::Duration,
 };
 
 use des::{
     net::{processing::ProcessingStack, AsyncFn, Sim},
-    prelude::{Channel, ChannelDropBehaviour, ChannelMetrics},
+    prelude::{Channel, ChannelDropBehaviour, ChannelMetrics, Message},
     runtime::{Builder, RuntimeError},
 };
+use tokio::sync::mpsc::Receiver;
 
 use crate::{
     interface::{add_interface, InterfaceDef, NetworkDevice},
@@ -27,6 +28,7 @@ pub struct SimpleSim {
     clients: Vec<IpAddr>,
     sim: Sim<()>,
     pub metrics: ChannelMetrics,
+    pub v6: bool,
 }
 
 impl SimpleSim {
@@ -38,6 +40,7 @@ impl SimpleSim {
             sim,
             clients: Vec::new(),
             metrics: DEFAULT_CHANNEL_METRICS,
+            v6: false,
         }
     }
 
@@ -48,17 +51,48 @@ impl SimpleSim {
                 addr
             }
             Err(_) => {
-                for i in 1..255 {
-                    let addr = Ipv4Addr::new(192, 168, 2, i);
-                    if !self.clients.contains(&addr.into()) {
-                        self.clients.push(addr.into());
-                        return addr.into();
+                if self.v6 {
+                    for i in 1..255 {
+                        let addr = Ipv6Addr::new(0xfe80, 0, 0, 0, 0, 0, 0, i);
+                        if !self.clients.contains(&addr.into()) {
+                            self.clients.push(addr.into());
+                            return addr.into();
+                        }
+                    }
+                } else {
+                    for i in 1..255 {
+                        let addr = Ipv4Addr::new(192, 168, 2, i);
+                        if !self.clients.contains(&addr.into()) {
+                            self.clients.push(addr.into());
+                            return addr.into();
+                        }
                     }
                 }
 
                 panic!("no address available")
             }
         }
+    }
+
+    pub fn raw<F, Fut>(&mut self, name: &str, f: F)
+    where
+        F: Fn(Receiver<Message>) -> Fut,
+        F: Send + 'static,
+        Fut: Future<Output = io::Result<()>> + Send,
+        Fut: 'static,
+    {
+        self.sim.node(
+            name,
+            AsyncFn::io(move |rx| {
+                let f = f(rx);
+                async move { f.await }
+            })
+            .require_join(),
+        );
+        self.sim.gate(name, "port").connect(
+            self.sim.gate("switch", &format!("port-${name}")),
+            Some(Channel::new(self.metrics)),
+        );
     }
 
     pub fn node<F, Fut>(&mut self, key: &str, f: F)
@@ -144,6 +178,7 @@ impl Default for SimpleSim {
             sim,
             clients: Vec::new(),
             metrics: DEFAULT_CHANNEL_METRICS,
+            v6: false,
         }
     }
 }

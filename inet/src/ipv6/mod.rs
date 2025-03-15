@@ -147,12 +147,10 @@ impl IOContext {
                 .iter_mut()
                 .find(|(_, iface)| iface.flags.loopback)
             {
-                println!("lo fallback");
                 lo_iface.send_buffered(Message::new().kind(KIND_IPV6).content(pkt).build())?;
                 return Ok(());
             } else {
                 // FIXME: dangerous since this execut4e directly
-                tracing::warn!("DANGER");
                 let iface = self.ifaces.get(&ifid).unwrap();
                 schedule_in(
                     Message::new()
@@ -291,24 +289,21 @@ impl IOContext {
                     multicast_addr,
                 } => self.mld_on_event(ifid, NodeEvent::TimerExpired, multicast_addr)?,
                 MulticastListenerDiscoveryGeneralQuery { ifid } => {
-                    self.mld_querier_on_event(ifid, RouterEvent::GeneralQueryTimerExpired(token))?;
+                    self.mld_querier_on_event(ifid, RouterEvent::GeneralQueryTimerExpired)?;
                 }
                 MulticastListenerDiscoveryOtherQuerierPresent { ifid } => {
-                    self.mld_querier_on_event(
-                        ifid,
-                        RouterEvent::OtherQueriesPresentTimerExpired(token),
-                    )?;
+                    self.mld_querier_on_event(ifid, RouterEvent::OtherQueriesPresentTimerExpired)?;
                 }
                 MulticastListenerDiscoveryQuerierGroupTimer { ifid, addr } => {
                     self.mld_querier_on_event(
                         ifid,
-                        RouterEvent::GroupEvent(addr, GroupEvent::TimerExpired(token)),
+                        RouterEvent::GroupEvent(addr, GroupEvent::TimerExpired),
                     )?;
                 }
                 MulticastListenerDiscoveryQuerierGroupRetransmissionTimer { ifid, addr } => {
                     self.mld_querier_on_event(
                         ifid,
-                        RouterEvent::GroupEvent(addr, GroupEvent::RetransmitTimerExpired(token)),
+                        RouterEvent::GroupEvent(addr, GroupEvent::RetransmitTimerExpired),
                     )?;
                 }
             }

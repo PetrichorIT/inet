@@ -2,12 +2,12 @@
 use super::{socket::*, IOContext};
 use crate::interface::IfId;
 use bytes_io::{BufMut, Bytes, FromBytes, ToBytes};
-use fxhash::{FxBuildHasher, FxHashMap};
+use fxhash::{FxBuildHasher, FxHashMap, FxHashSet};
 use std::{
     collections::VecDeque,
     io::{Error, ErrorKind, Result},
     mem::MaybeUninit,
-    net::{IpAddr, SocketAddr},
+    net::{IpAddr, Ipv6Addr, SocketAddr},
 };
 use types::{
     ip::{IpPacket, IpPacketRef, Ipv4Flags, Ipv4Packet, Ipv6Packet},
@@ -37,6 +37,7 @@ impl Udp {
 
 pub(super) struct UdpControlBlock {
     pub(super) local_addr: SocketAddr,
+    pub(super) multicast_listeners_v6: FxHashSet<Ipv6Addr>,
     pub(super) state: UdpSocketState,
     pub(super) incoming: VecDeque<(SocketAddr, SocketAddr, UdpPacket)>,
 
@@ -68,6 +69,15 @@ pub(super) enum UdpSocketState {
 }
 
 impl UdpControlBlock {
+    fn is_valid_dst_for(&self, dst: SocketAddr) -> bool {
+        let ip_match = match dst.ip() {
+            IpAddr::V4(dst) => dst.is_broadcast(),
+            IpAddr::V6(dst) => self.multicast_listeners_v6.contains(&dst),
+        };
+
+        ip_match && dst.port() == self.local_addr.port()
+    }
+
     pub(super) fn push_incoming(&mut self, src: SocketAddr, dest: SocketAddr, udp: UdpPacket) {
         self.incoming.push_back((src, dest, udp));
 
@@ -83,10 +93,10 @@ impl UdpControlBlock {
     }
 }
 
-fn is_broadcast(ip: IpAddr) -> bool {
+fn is_multi_target(ip: IpAddr) -> bool {
     match ip {
         IpAddr::V4(v4) => v4.is_broadcast(),
-        _ => false,
+        IpAddr::V6(v6) => v6.is_multicast(),
     }
 }
 
@@ -111,8 +121,7 @@ impl IOContext {
     pub(super) fn capture_udp_packet(&mut self, packet: IpPacketRef, ifid: IfId) -> bool {
         assert_eq!(packet.tos(), PROTO_UDP);
 
-        let is_broadcast = is_broadcast(packet.dst());
-
+        let is_multi_target = is_multi_target(packet.dst());
         let Ok(udp) = UdpPacket::peek_from(packet.content()) else {
             tracing::error!(
                 "received ip-packet with proto=0x11 (udp) but content was no udp-packet"
@@ -121,28 +130,29 @@ impl IOContext {
         };
 
         let src = SocketAddr::new(packet.src(), udp.src_port);
-        let dest = SocketAddr::new(packet.dst(), udp.dst_port);
+        let dst = SocketAddr::new(packet.dst(), udp.dst_port);
 
-        let mut iter = self.sockets.iter_mut().filter(|(_, sock)| {
-            sock.typ == SocketType::SOCK_DGRAM && is_valid_dst_for(&sock.addr, &dest)
+        let mut canidates = self.sockets.iter_mut().filter(|(_, sock)| {
+            sock.typ == SocketType::SOCK_DGRAM && sock.interface.contains(&ifid)
         });
 
-        if is_broadcast {
+        if is_multi_target {
             let mut recvd = false;
-            for (fd, sock) in iter {
-                sock.recv_q += udp.content.len();
-
+            for (fd, sock) in canidates {
                 let Some(mng) = self.udp.binds.get_mut(fd) else {
-                    tracing::error!("found udp socket, but missing udp manager");
-                    return false;
+                    continue;
                 };
 
-                mng.push_incoming(src, dest, udp.clone());
-                recvd = true;
+                if mng.is_valid_dst_for(dst) {
+                    sock.recv_q += udp.content.len();
+                    mng.push_incoming(src, dst, udp.clone());
+                    recvd = true;
+                }
             }
             recvd
         } else {
-            let Some((fd, sock)) = iter.next() else {
+            let Some((fd, sock)) = canidates.find(|(_, sock)| is_valid_dst_for(&sock.addr, &dst))
+            else {
                 self.icmp_port_unreachable(ifid, packet);
                 return false;
             };
@@ -158,7 +168,7 @@ impl IOContext {
                 return false;
             };
 
-            mng.push_incoming(src, dest, udp);
+            mng.push_incoming(src, dst, udp);
             true
         }
     }
@@ -196,6 +206,8 @@ impl IOContext {
 
         let manager = UdpControlBlock {
             local_addr: baddr,
+            multicast_listeners_v6: FxHashSet::default(),
+
             state: UdpSocketState::Bound,
             incoming: VecDeque::new(),
 
@@ -238,13 +250,16 @@ impl IOContext {
         }
 
         // (1.2) Check Broadcast
-        if let IpAddr::V4(dst_addr) = target.ip() {
-            if dst_addr.is_broadcast() && !mng.broadcast {
-                return Err(Error::new(
-                    ErrorKind::InvalidInput,
-                    "cannot send broadcast without broadcast flag enabled",
-                ));
+        match target.ip() {
+            IpAddr::V4(dst) => {
+                if dst.is_broadcast() && !mng.broadcast {
+                    return Err(Error::new(
+                        ErrorKind::InvalidInput,
+                        "cannot send broadcast without broadcast flag enabled",
+                    ));
+                }
             }
+            IpAddr::V6(_) => {}
         }
 
         if target.ip().is_unspecified() {
@@ -405,6 +420,36 @@ impl IOContext {
         Ok((n, *src))
     }
 
+    fn udp_join_multicast_v6(&mut self, fd: Fd, addr: Ipv6Addr, ifid: Option<IfId>) -> Result<()> {
+        let Some(socket) = self.udp.binds.get_mut(&fd) else {
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                "invalid fd - socket dropped",
+            ));
+        };
+
+        if !socket.multicast_listeners_v6.insert(addr) {
+            return Err(Error::new(ErrorKind::AddrInUse, "address already in use"));
+        }
+
+        self.ipv6_join_multicast_group(addr, ifid)
+    }
+
+    fn udp_leave_multicast_v6(&mut self, fd: Fd, addr: Ipv6Addr) -> Result<()> {
+        let Some(socket) = self.udp.binds.get_mut(&fd) else {
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                "invalid fd - socket dropped",
+            ));
+        };
+
+        if !socket.multicast_listeners_v6.remove(&addr) {
+            return Err(Error::new(ErrorKind::AddrInUse, "address already in use"));
+        }
+
+        self.ipv6_leave_multicast_group(addr)
+    }
+
     fn udp_take_error(&mut self, fd: Fd) -> Result<Option<Error>> {
         let Some(mng) = self.udp.binds.get_mut(&fd) else {
             return Err(Error::new(
@@ -417,7 +462,11 @@ impl IOContext {
     }
 
     fn udp_drop(&mut self, fd: Fd) {
-        self.udp.binds.remove(&fd);
+        if let Some(sock) = self.udp.binds.remove(&fd) {
+            for group in sock.multicast_listeners_v6 {
+                let _ = self.ipv6_leave_multicast_group(group);
+            }
+        }
         let _ = self.socket_close(fd);
     }
 }

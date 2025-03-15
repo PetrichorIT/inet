@@ -5,7 +5,7 @@
 
 use crate::{interface::IfId, IOContext};
 use fxhash::{FxBuildHasher, FxHashMap};
-use std::{io, net::Ipv6Addr};
+use std::{io, net::Ipv6Addr, time::Duration};
 use types::{
     icmpv6::IcmpV6MulticastListenerMessage,
     ip::{Ipv6AddrExt, Ipv6AddrScope, Ipv6Packet},
@@ -14,8 +14,21 @@ use types::{
 mod discovery_host;
 mod discovery_router;
 
+#[cfg(test)]
+mod tests;
+
 pub use discovery_host::*;
 pub use discovery_router::*;
+
+const ROBUSTNESS: u32 = 2;
+const QUERY_INTERVAL: Duration = Duration::from_secs(125); // 125s
+const QUERY_RESPONSE_INTERVAL: Duration = Duration::from_secs(10); // 10s
+const MULTICAST_LISTENER_INTERVAL: Duration = Duration::from_secs(260); // ROBUSTNESS * QUERY_INTERVAL + QUERY_RESPONSE_INTERVAL
+const OTHER_QUERIES_PRESENT_INTERVAL: Duration = Duration::from_secs(255); //ROBUSTNESS * QUERY_INTERVAL + QUERY_RESPONSE_INTERVAL/2
+                                                                           // const STARTUP_QUERY_INTERVAL
+                                                                           // const STARTUP_QUERY_COUNT
+const LAST_LISTENER_QUERY_INTERVAL: Duration = Duration::from_secs(1);
+const LAST_LISTENER_QUERY_COUNT: u32 = ROBUSTNESS;
 
 pub fn join_multicast_group(addr: Ipv6Addr, ifid: Option<IfId>) -> io::Result<()> {
     IOContext::failable_api(|ctx| ctx.ipv6_join_multicast_group(addr, ifid))
@@ -29,17 +42,21 @@ pub fn designate_mdl(ifid: IfId) -> io::Result<()> {
     IOContext::failable_api(|ctx| ctx.designate_ipv6_mld_querier(ifid))
 }
 
+pub fn undesignate_mdl(ifid: IfId) -> io::Result<()> {
+    IOContext::failable_api(|ctx| ctx.undesignate_ipv6_mld_querier(ifid))
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MulticastListenerDiscoveryCtrl {
     pub querier: Option<RouterState>,
-    pub group_memberships: FxHashMap<Ipv6Addr, NodeState>,
+    pub memberships: FxHashMap<Ipv6Addr, NodeState>,
 }
 
 impl Default for MulticastListenerDiscoveryCtrl {
     fn default() -> Self {
         Self {
             querier: None,
-            group_memberships: FxHashMap::with_hasher(FxBuildHasher::default()),
+            memberships: FxHashMap::with_hasher(FxBuildHasher::default()),
         }
     }
 }
@@ -89,10 +106,18 @@ impl IOContext {
 
     pub fn ipv6_icmp_recv_multicast_listener_query(
         &mut self,
-        _pkt: &Ipv6Packet,
+        pkt_src: Ipv6Addr,
         ifid: IfId,
         query: IcmpV6MulticastListenerMessage,
     ) -> io::Result<bool> {
+        let ctrl = self.ipv6.mld.entry(ifid).or_default();
+        if let Some(_) = ctrl.querier {
+            let src = self.ipv6_icmp_mld_src_addr(ifid)?;
+            if pkt_src < src {
+                self.mld_querier_on_event(ifid, RouterEvent::QueryFromLowerIpReceived(pkt_src))?;
+            }
+        }
+
         let general_query = query.multicast_addr == Ipv6Addr::UNSPECIFIED;
         if general_query {
             // When a node receives a General Query, it sets a delay timer for each

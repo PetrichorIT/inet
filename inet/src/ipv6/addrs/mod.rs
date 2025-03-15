@@ -25,6 +25,7 @@ pub struct PolicyTable {
 }
 
 struct PolicyEntry {
+    #[allow(unused)]
     precedence: usize,
     label: usize,
 }
@@ -382,11 +383,13 @@ impl SrcAddrCanidateSet {
     }
 }
 
+#[allow(unused)]
 #[derive(Debug, Clone)]
 pub(super) struct AddrSelection {
     destinations: Vec<(Ipv6Addr, CanidateAddr, SrcAddrCanidateSet)>,
 }
 
+#[allow(unused)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct Selection {
     src: Ipv6Addr,
@@ -394,6 +397,7 @@ pub(super) struct Selection {
     dst: Ipv6Addr,
 }
 
+#[allow(unused)]
 impl AddrSelection {
     fn new(destinations: Vec<Ipv6Addr>, f: impl Fn(Ipv6Addr) -> SrcAddrCanidateSet) -> Self {
         AddrSelection {

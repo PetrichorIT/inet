@@ -86,7 +86,7 @@ impl IOContext {
             }
 
             IcmpV6Packet::MulticastListenerQuery(query) => {
-                return self.ipv6_icmp_recv_multicast_listener_query(ip, ifid, query);
+                return self.ipv6_icmp_recv_multicast_listener_query(ip.src, ifid, query);
             }
             IcmpV6Packet::MulticastListenerReport(report) => {
                 return self.ipv6_icmp_recv_multicast_listener_discovery_report(ip, ifid, report);
