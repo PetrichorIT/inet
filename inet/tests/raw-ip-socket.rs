@@ -63,8 +63,9 @@ impl Module for Emitter {
                     let pkt = Ipv6Packet {
                         traffic_class: 0,
                         flow_label: i as u32,
-                        next_header: PROTO,
+                        proto: PROTO,
                         hop_limit: 64,
+                        extension_headers: Vec::new(),
                         src: "fe80::02".parse::<Ipv6Addr>().unwrap(),
                         dst: "fe80::01".parse::<Ipv6Addr>().unwrap(),
                         content: iter::repeat_with(|| random::<u8>()).take(16).collect(),

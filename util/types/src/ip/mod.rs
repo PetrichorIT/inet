@@ -11,7 +11,7 @@ mod v4;
 pub use v4::{Ipv4Flags, Ipv4Packet};
 
 mod v6;
-pub use v6::{Ipv6AddrExt, Ipv6AddrScope, Ipv6LongestPrefixTable, Ipv6Packet, Ipv6Prefix};
+pub use v6::*;
 
 pub const KIND_IPV4: MessageKind = 0x0800;
 pub const KIND_IPV6: MessageKind = 0x86DD;
@@ -40,7 +40,7 @@ impl IpPacketRef<'_> {
     pub fn tos(&self) -> u8 {
         match self {
             Self::V4(v4) => v4.proto,
-            Self::V6(v6) => v6.next_header,
+            Self::V6(v6) => v6.proto,
         }
     }
 
@@ -86,8 +86,9 @@ impl IpPacketRef<'_> {
             IpPacketRef::V6(pkt) => IpPacket::V6(Ipv6Packet {
                 traffic_class: pkt.traffic_class,
                 flow_label: pkt.flow_label,
-                next_header: pkt.next_header,
+                proto: pkt.proto,
                 hop_limit: 20,
+                extension_headers: Vec::new(),
                 src: pkt.dst,
                 dst: pkt.src,
                 content,
@@ -110,7 +111,7 @@ impl IpPacket {
     pub fn tos(&self) -> u8 {
         match self {
             Self::V4(v4) => v4.proto,
-            Self::V6(v6) => v6.next_header,
+            Self::V6(v6) => v6.proto,
         }
     }
 
@@ -170,8 +171,9 @@ impl IpPacket {
             (V6(src), V6(dst)) => IpPacket::V6(Ipv6Packet {
                 traffic_class: 0,
                 flow_label: 0,
-                next_header: 0,
+                proto: 0,
                 hop_limit: 128,
+                extension_headers: Vec::new(),
                 src,
                 dst,
                 content,

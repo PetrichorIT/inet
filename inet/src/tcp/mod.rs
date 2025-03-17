@@ -1678,8 +1678,8 @@ impl TransmissionControlBlock {
                 traffic_class: 0,
                 flow_label: 0,
                 hop_limit: 64,
-                next_header: PROTO_TCP,
-
+                proto: PROTO_TCP,
+                extension_headers: Vec::new(),
                 src: *local.ip(),
                 dst: if let IpAddr::V6(addr) = self.peer_addr.ip() {
                     addr

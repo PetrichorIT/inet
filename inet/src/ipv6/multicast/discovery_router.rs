@@ -376,8 +376,9 @@ impl IOContext {
         let pkt = Ipv6Packet {
             traffic_class: 0,
             flow_label: 0,
-            next_header: PROTO_ICMPV6,
+            proto: PROTO_ICMPV6,
             hop_limit: 64,
+            extension_headers: Vec::new(),
             src,
             dst: Ipv6Addr::MULTICAST_ALL_NODES,
             content: icmp.write_to_bytes()?,

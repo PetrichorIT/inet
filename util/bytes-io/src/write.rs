@@ -157,6 +157,13 @@ impl Debug for BytesWriter<'_> {
 
 //# Impls
 
+impl<'a, T: ToBytes> ToBytes for &'a T {
+    type Error = T::Error;
+    fn to_bytes(&self, stream: &mut BytesWriter) -> Result<(), Self::Error> {
+        (**self).to_bytes(stream)
+    }
+}
+
 impl ToBytes for [u8] {
     type Error = std::io::Error;
     fn to_bytes(&self, stream: &mut BytesWriter) -> Result<(), Self::Error> {

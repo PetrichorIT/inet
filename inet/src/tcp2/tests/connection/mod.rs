@@ -293,8 +293,9 @@ fn record(
                     &Ipv6Packet {
                         traffic_class: 0,
                         flow_label: 0,
-                        next_header: PROTO_TCP,
+                        proto: PROTO_TCP,
                         hop_limit: 64,
+                        extension_headers: Vec::new(),
                         src,
                         dst,
                         content: pkt.write_to_bytes_mut()?.freeze(),

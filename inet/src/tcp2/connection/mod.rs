@@ -147,8 +147,9 @@ impl Connection {
                 (V6(src), V6(dst)) => IpPacket::V6(Ipv6Packet {
                     traffic_class: 0,
                     flow_label: 0,
-                    next_header: PROTO_TCP2,
+                    proto: PROTO_TCP2,
                     hop_limit: self.cfg.ttl,
+                    extension_headers: Vec::new(),
                     src,
                     dst,
                     content: tcp.write_to_bytes().expect("failed to encodes"),

@@ -299,7 +299,7 @@ impl IOContext {
             return NetworkLayerResult::Consumed();
         }
 
-        match pkt.next_header {
+        match pkt.proto {
             PROTO_ICMPV6 => {
                 let _consumed = self.ipv6_icmp_recv(&pkt, ifid);
                 NetworkLayerResult::Consumed()

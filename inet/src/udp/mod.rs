@@ -309,8 +309,9 @@ impl IOContext {
                 let ip = Ipv6Packet {
                     traffic_class: 0,
                     flow_label: 0,
-                    next_header: PROTO_UDP,
+                    proto: PROTO_UDP,
                     hop_limit: 128,
+                    extension_headers: Vec::new(),
 
                     src: local,
                     dst: target,

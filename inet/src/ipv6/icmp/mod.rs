@@ -28,7 +28,7 @@ pub mod tracerouter;
 
 impl IOContext {
     pub(crate) fn ipv6_icmp_recv(&mut self, ip: &Ipv6Packet, ifid: IfId) -> io::Result<bool> {
-        assert_eq!(ip.next_header, PROTO_ICMPV6);
+        assert_eq!(ip.proto, PROTO_ICMPV6);
 
         let Ok(msg) = IcmpV6Packet::peek_from(&ip.content[..]) else {
             tracing::error!(
@@ -56,8 +56,9 @@ impl IOContext {
                 let pkt = Ipv6Packet {
                     traffic_class: 0,
                     flow_label: 0,
-                    next_header: PROTO_ICMPV6,
+                    proto: PROTO_ICMPV6,
                     hop_limit: 64,
+                    extension_headers: Vec::new(),
                     src: ip.dst,
                     dst: ip.src,
                     content: msg.write_to_bytes()?,
@@ -74,8 +75,9 @@ impl IOContext {
                     let pkt = Ipv6Packet {
                         traffic_class: 0,
                         flow_label: 0,
-                        next_header: PROTO_ICMPV6,
+                        proto: PROTO_ICMPV6,
                         hop_limit: 64,
+                        extension_headers: Vec::new(),
                         src: ip.dst,
                         dst: ip.src,
                         content: msg.write_to_bytes()?,
@@ -255,8 +257,9 @@ impl IOContext {
         let pkt = Ipv6Packet {
             traffic_class: 0,
             flow_label: 0,
-            next_header: PROTO_ICMPV6,
+            proto: PROTO_ICMPV6,
             hop_limit: 32,
+            extension_headers: Vec::new(),
             src: Ipv6Addr::UNSPECIFIED,
             dst: pkt.src,
             content: msg.write_to_bytes()?,
@@ -390,8 +393,9 @@ impl IOContext {
         let pkt = Ipv6Packet {
             traffic_class: 0,
             flow_label: 0,
-            next_header: PROTO_ICMPV6,
+            proto: PROTO_ICMPV6,
             hop_limit: 255,
+            extension_headers: Vec::new(),
             src: Ipv6Addr::UNSPECIFIED,
             dst,
             content: msg.write_to_bytes()?,
@@ -434,8 +438,9 @@ impl IOContext {
         let pkt = Ipv6Packet {
             traffic_class: 0,
             flow_label: 0,
-            next_header: PROTO_ICMPV6,
+            proto: PROTO_ICMPV6,
             hop_limit: 255,
+            extension_headers: Vec::new(),
             src: src.unwrap_or(Ipv6Addr::UNSPECIFIED),
             dst: Ipv6Addr::MULTICAST_ALL_ROUTERS,
             content: msg.write_to_bytes()?,
@@ -664,8 +669,9 @@ impl IOContext {
         let pkt = Ipv6Packet {
             traffic_class: 0,
             flow_label: 0,
-            next_header: PROTO_ICMPV6,
+            proto: PROTO_ICMPV6,
             hop_limit: 255,
+            extension_headers: Vec::new(),
             src: Ipv6Addr::UNSPECIFIED,
             dst,
             content: msg.write_to_bytes()?,
@@ -782,8 +788,9 @@ impl IOContext {
         let pkt = Ipv6Packet {
             traffic_class: 0,
             flow_label: 0,
-            next_header: PROTO_ICMPV6,
+            proto: PROTO_ICMPV6,
             hop_limit: 255,
+            extension_headers: Vec::new(),
             src: src.unwrap_or(Ipv6Addr::UNSPECIFIED),
             dst,
             content: msg.write_to_bytes()?,
@@ -864,8 +871,9 @@ impl IOContext {
                 let ip = Ipv6Packet {
                     traffic_class: 0,
                     flow_label: 0,
-                    next_header: PROTO_ICMPV6,
+                    proto: PROTO_ICMPV6,
                     hop_limit: 0,
+                    extension_headers: Vec::new(),
                     src: *addr,
                     dst: *addr,
                     content: msg.write_to_bytes()?,
@@ -925,8 +933,9 @@ impl IOContext {
         let pkt = Ipv6Packet {
             traffic_class: 0,
             flow_label: 0,
-            next_header: PROTO_ICMPV6,
+            proto: PROTO_ICMPV6,
             hop_limit: 255,
+            extension_headers: Vec::new(),
             src: addr,
             dst: Ipv6Addr::MULTICAST_ALL_NODES,
             content: msg.write_to_bytes()?,

@@ -81,8 +81,9 @@ impl Module for HostBob {
                 .try_send(IpPacket::V6(Ipv6Packet {
                     traffic_class: 0,
                     flow_label: 0,
-                    next_header: 58,
+                    proto: 58,
                     hop_limit: 255,
+                    extension_headers: Vec::new(),
                     src: Ipv6Addr::UNSPECIFIED,
                     dst: Ipv6Addr::MULTICAST_ALL_NODES,
                     content: {

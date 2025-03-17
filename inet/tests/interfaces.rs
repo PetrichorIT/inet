@@ -414,8 +414,9 @@ fn interface_does_not_use_busy_channel() -> Result<(), RuntimeError> {
             sock.try_send(IpPacket::V6(Ipv6Packet {
                 traffic_class: 0,
                 flow_label: 0,
-                next_header: 42,
+                proto: 42,
                 hop_limit: 32,
+                extension_headers: Vec::new(),
                 src: Ipv6Addr::UNSPECIFIED,
                 dst: Ipv6Addr::MULTICAST_ALL_NODES,
                 content: Bytes::new(),
@@ -501,8 +502,9 @@ fn interface_will_use_idle_channel_fcfs() -> Result<(), RuntimeError> {
             sock.try_send(IpPacket::V6(Ipv6Packet {
                 traffic_class: 0,
                 flow_label: 0,
-                next_header: 42,
+                proto: 42,
                 hop_limit: 32,
+                extension_headers: Vec::new(),
                 src: Ipv6Addr::UNSPECIFIED,
                 dst: Ipv6Addr::MULTICAST_ALL_NODES,
                 content: Bytes::new(),
