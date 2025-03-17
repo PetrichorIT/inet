@@ -1,22 +1,24 @@
-use std::{io, net::Ipv4Addr, time::Duration};
+use std::{io, time::Duration};
 
 use bitflags::bitflags;
 use bytes_io::{BE, BytesReader, BytesWriter, FromBytes, ReadBytesExt, ToBytes, WriteBytesExt};
 
+mod ipv6;
 mod lsa;
 
+pub use self::ipv6::*;
 pub use self::lsa::*;
 
 pub const PROTO_OSPF: u8 = 89;
+pub const OSPF_VERSION: u8 = 3;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OspfPacket {
-    pub version: u8,
-    // kind
+    // version: u8,
+    // typ: u8
     pub router_id: RouterId,
     pub area_id: AreaId,
-    pub au_type: u16,
-    pub au: u64,
+    pub instance_id: u8,
     pub content: OspfPacketType,
 }
 
@@ -53,14 +55,14 @@ impl OspfPacketType {
 impl ToBytes for OspfPacket {
     type Error = io::Error;
     fn to_bytes(&self, writer: &mut BytesWriter) -> Result<(), Self::Error> {
-        writer.write_u8(self.version)?;
+        writer.write_u8(OSPF_VERSION)?;
         writer.write_u8(self.content.typ() as u8)?;
         let marker = writer.marker::<u16>();
         writer.write_u32::<BE>(self.router_id)?;
         writer.write_u32::<BE>(self.area_id)?;
         writer.write_u16::<BE>(0)?; // checksum
-        writer.write_u16::<BE>(self.au_type)?;
-        writer.write_u64::<BE>(self.au)?;
+        writer.write_u8(self.instance_id)?;
+        writer.write_u8(0)?; // reserved
 
         match self.content {
             OspfPacketType::Hello(ref packet) => packet.to_bytes(writer)?,
@@ -82,14 +84,14 @@ impl FromBytes for OspfPacket {
     fn from_bytes(stream: &mut BytesReader) -> Result<Self, Self::Error> {
         let version = stream.read_u8()?;
         let typ = stream.read_u8()?;
-        let len = stream.read_u16::<BE>()? as usize - 24;
+        let len = stream.read_u16::<BE>()? as usize - 16;
 
         let router_id = stream.read_u32::<BE>()?;
         let area_id = stream.read_u32::<BE>()?;
 
         let _ = stream.read_u16::<BE>()?;
-        let au_type = stream.read_u16::<BE>()?;
-        let au = stream.read_u64::<BE>()?;
+        let instance_id = stream.read_u8()?;
+        let _ = stream.read_u8()?;
 
         let content = stream.extract(len, |body| match typ {
             KIND_HELLO => Ok(OspfPacketType::Hello(OspfHelloPacket::from_bytes(body)?)),
@@ -111,12 +113,12 @@ impl FromBytes for OspfPacket {
             )),
         })?;
 
+        assert_eq!(version, OSPF_VERSION);
+
         Ok(Self {
-            version,
             router_id,
             area_id,
-            au_type,
-            au,
+            instance_id,
             content,
         })
     }
@@ -124,7 +126,7 @@ impl FromBytes for OspfPacket {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OspfHelloPacket {
-    pub network_mask: Ipv4Addr,
+    pub interface_id: u32,
     pub hello_interval: Duration,
     pub options: OspfOptions,
     pub router_priority: u8,
@@ -137,13 +139,14 @@ pub struct OspfHelloPacket {
 impl ToBytes for OspfHelloPacket {
     type Error = io::Error;
     fn to_bytes(&self, writer: &mut BytesWriter) -> Result<(), Self::Error> {
-        self.network_mask.to_bytes(writer)?;
+        writer.write_u32::<BE>(self.interface_id)?;
+
+        let dword = ((self.router_priority as u32) << 24) | (self.options.bits() & 0x00_ff_ff_ff);
+        writer.write_u32::<BE>(dword)?;
 
         writer.write_u16::<BE>(self.hello_interval.as_secs() as u16)?;
-        writer.write_u8(self.options.bits())?;
-        writer.write_u8(self.router_priority)?;
+        writer.write_u16::<BE>(self.router_dead_interval.as_secs() as u16)?;
 
-        writer.write_u32::<BE>(self.router_dead_interval.as_secs() as u32)?;
         writer.write_u32::<BE>(self.designated_router_id)?;
         writer.write_u32::<BE>(self.backup_router_id)?;
 
@@ -157,20 +160,22 @@ impl ToBytes for OspfHelloPacket {
 impl FromBytes for OspfHelloPacket {
     type Error = io::Error;
     fn from_bytes(stream: &mut BytesReader) -> Result<Self, Self::Error> {
-        let mask = stream.read_u32::<BE>()?;
+        let interface_id = stream.read_u32::<BE>()?;
+        let dword = stream.read_u32::<BE>()?;
         let hello_interval = stream.read_u16::<BE>()?;
-        let options = OspfOptions::from_bits(stream.read_u8()?)
-            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "options failed to parse"))?;
-        let router_priority = stream.read_u8()?;
-        let router_dead_interval = Duration::from_secs(stream.read_u32::<BE>()? as u64);
+        let router_dead_interval = Duration::from_secs(stream.read_u16::<BE>()? as u64);
         let designated_router_id = stream.read_u32::<BE>()?;
         let backup_router_id = stream.read_u32::<BE>()?;
         let mut neighbor_ids = Vec::new();
         while stream.has_remaining() {
             neighbor_ids.push(stream.read_u32::<BE>()?);
         }
+
+        let router_priority = u8::try_from((dword & 0xff_00_00_00) >> 24).expect("cannot fail");
+        let options = OspfOptions::from_bits_truncate(dword);
+
         Ok(Self {
-            network_mask: Ipv4Addr::from(mask),
+            interface_id,
             hello_interval: Duration::from_secs(hello_interval as u64),
             options,
             router_priority,
@@ -192,7 +197,7 @@ pub struct OspfDatabaseDescriptionPacket {
 }
 
 bitflags! {
-    pub struct OspfDatabaseDescriptionOptions: u8 {
+    pub struct OspfDatabaseDescriptionOptions: u16 {
         const MASTER_SLAVE  = 0b0000_0001;
         const MORE          = 0b0000_0010;
         const INIT          = 0b0000_0100;
@@ -202,10 +207,9 @@ bitflags! {
 impl ToBytes for OspfDatabaseDescriptionPacket {
     type Error = io::Error;
     fn to_bytes(&self, writer: &mut BytesWriter) -> Result<(), Self::Error> {
+        writer.write_u32::<BE>(self.options.bits())?;
         writer.write_u16::<BE>(self.interface_mtu)?;
-        writer.write_u8(self.options.bits())?;
-        writer.write_u8(self.db_options.bits())?;
-
+        writer.write_u16::<BE>(self.db_options.bits())?;
         writer.write_u32::<BE>(self.dd_sequence_number)?;
         for lsa in &self.lsas {
             lsa.to_bytes(writer)?;
@@ -218,9 +222,10 @@ impl ToBytes for OspfDatabaseDescriptionPacket {
 impl FromBytes for OspfDatabaseDescriptionPacket {
     type Error = io::Error;
     fn from_bytes(stream: &mut BytesReader) -> Result<Self, Self::Error> {
+        let options = OspfOptions::from_bits_truncate(stream.read_u32::<BE>()?);
         let interface_mtu = stream.read_u16::<BE>()?;
-        let options = OspfOptions::from_bits_truncate(stream.read_u8()?);
-        let db_options = OspfDatabaseDescriptionOptions::from_bits_truncate(stream.read_u8()?);
+        let db_options =
+            OspfDatabaseDescriptionOptions::from_bits_truncate(stream.read_u16::<BE>()?);
         let dd_sequence_number = stream.read_u32::<BE>()?;
 
         let mut lsas = Vec::new();
@@ -238,7 +243,7 @@ impl FromBytes for OspfDatabaseDescriptionPacket {
 }
 
 bitflags! {
-    pub struct OspfOptions: u8 {
+    pub struct OspfOptions: u32 {
         const EXTERNAL              = 0b0000_0010;
         const MULTICAST             = 0b0000_0100;
         // const NP                    = 0b0000_1000;
@@ -247,9 +252,10 @@ bitflags! {
     }
 }
 
+// this shoudl be a vec
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OspfLinkStateRequestPacket {
-    pub ls_typ: u8,
+    pub ls_typ: u16,
     pub link_state_id: u32,
     pub advertising_router: RouterId,
 }
@@ -259,7 +265,7 @@ impl ToBytes for OspfLinkStateRequestPacket {
     fn to_bytes(&self, writer: &mut BytesWriter) -> Result<(), Self::Error> {
         writer.write_u32::<BE>(self.ls_typ as u32)?;
         writer.write_u32::<BE>(self.link_state_id)?;
-        writer.write_u32::<BE>(self.advertising_router.into())?;
+        writer.write_u32::<BE>(self.advertising_router)?;
         Ok(())
     }
 }
@@ -267,7 +273,9 @@ impl ToBytes for OspfLinkStateRequestPacket {
 impl FromBytes for OspfLinkStateRequestPacket {
     type Error = io::Error;
     fn from_bytes(stream: &mut BytesReader) -> Result<Self, Self::Error> {
-        let ls_typ = u8::try_from(stream.read_u32::<BE>()?).unwrap();
+        println!("- link state: {:?}", stream.chunk());
+
+        let ls_typ = u16::try_from(stream.read_u32::<BE>()? & 0xff_ff).expect("cannot fail");
         let link_state_id = stream.read_u32::<BE>()?;
         let advertising_router = stream.read_u32::<BE>()?;
         Ok(OspfLinkStateRequestPacket {
@@ -342,11 +350,9 @@ mod test {
     impl OspfPacket {
         pub fn random() -> Self {
             OspfPacket {
-                version: 2,
                 router_id: rng().random(),
                 area_id: rng().random(),
-                au_type: 0,
-                au: 0,
+                instance_id: rng().random(),
                 content: match 1 + (rng().random::<u8>() % 5) {
                     KIND_HELLO => OspfPacketType::Hello(OspfHelloPacket::random()),
                     KIND_DATABASE_DESCRIPTION => {
@@ -377,7 +383,7 @@ mod test {
     impl OspfHelloPacket {
         fn random() -> Self {
             OspfHelloPacket {
-                network_mask: Ipv4Addr::from(rng().random::<u32>()),
+                interface_id: rng().random::<u32>(),
                 hello_interval: Duration::from_secs(rng().random::<u64>() % 200),
                 options: OspfOptions::from_bits_truncate(rng().random()),
                 router_dead_interval: Duration::from_secs(rng().random::<u64>() % 200),
@@ -424,7 +430,7 @@ mod test {
     impl OspfLinkStateRequestPacket {
         fn random() -> Self {
             OspfLinkStateRequestPacket {
-                ls_typ: rng().random::<u8>() % 6,
+                ls_typ: rng().random::<u16>() % 6,
                 link_state_id: rng().random(),
                 advertising_router: rng().random(),
             }

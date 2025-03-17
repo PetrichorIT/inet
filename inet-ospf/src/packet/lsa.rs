@@ -1,6 +1,6 @@
 use std::{
     io::{self, Write},
-    net::Ipv4Addr,
+    net::Ipv6Addr,
     time::Duration,
 };
 
@@ -8,18 +8,25 @@ use bitflags::bitflags;
 use bytes_io::{BE, BytesReader, BytesWriter, FromBytes, ReadBytesExt, ToBytes, WriteBytesExt};
 use macros::repr_enum;
 
-use super::{OspfOptions, RouterId};
+use super::{Ipv6Prefix, OspfOptions, RouterId};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Lsa {
     pub ls_age: Duration,
-    pub options: OspfOptions,
     pub link_state_id: u32,
     pub advertising_router: u32,
     pub ls_seq_no: u32,
-    // checksum: u16
-    // length: u16 including 20 byte header
+    pub flags: LasTypeFlags,
     pub content: LsaKind,
+}
+
+impl Lsa {
+    fn typ(&self) -> LsaType {
+        LsaType {
+            flags: self.flags,
+            code: self.content.typ(),
+        }
+    }
 }
 
 impl ToBytes for Lsa {
@@ -27,8 +34,7 @@ impl ToBytes for Lsa {
 
     fn to_bytes(&self, writer: &mut BytesWriter) -> Result<(), Self::Error> {
         writer.write_u16::<BE>(self.ls_age.as_secs() as u16)?;
-        writer.write_u8(self.options.bits())?;
-        writer.write_u8(self.content.typ())?;
+        self.typ().to_bytes(writer)?;
 
         writer.write_u32::<BE>(self.link_state_id)?;
         writer.write_u32::<BE>(self.advertising_router)?;
@@ -40,9 +46,10 @@ impl ToBytes for Lsa {
         match self.content {
             LsaKind::RouterLsa(ref lsa) => lsa.to_bytes(writer)?,
             LsaKind::NetworkLsa(ref lsa) => lsa.to_bytes(writer)?,
-            LsaKind::SummaryLsa(ref lsa) => lsa.to_bytes(writer)?,
-            LsaKind::SummaryLsaAsbr(ref lsa) => lsa.to_bytes(writer)?,
+            LsaKind::InterAreaPrefixLsa(ref lsa) => lsa.to_bytes(writer)?,
+            LsaKind::InterAreaRouterLsa(ref lsa) => lsa.to_bytes(writer)?,
             LsaKind::AsExternalLsa(ref lsa) => lsa.to_bytes(writer)?,
+            LsaKind::LinkLsa(ref lsa) => lsa.to_bytes(writer)?,
         }
 
         let len = writer.bytes_written_since(&marker) + 20;
@@ -56,8 +63,7 @@ impl FromBytes for Lsa {
     type Error = io::Error;
     fn from_bytes(stream: &mut BytesReader) -> Result<Self, Self::Error> {
         let ls_age = Duration::from_secs(stream.read_u16::<BE>()? as u64);
-        let options = OspfOptions::from_bits_truncate(stream.read_u8()?);
-        let typ = stream.read_u8()?;
+        let typ = LsaType::from_bytes(stream)?;
 
         let link_state_id = stream.read_u32::<BE>()?;
         let advertising_router = stream.read_u32::<BE>()?;
@@ -66,12 +72,17 @@ impl FromBytes for Lsa {
         let _ = stream.read_u16::<BE>()?; // checksum
         let len = stream.read_u16::<BE>()? - 20;
 
-        let content = stream.extract(len as usize, |body| match typ {
+        let content = stream.extract(len as usize, |body| match typ.code {
             KIND_ROUTER_LSA => Ok(LsaKind::RouterLsa(RouterLsa::from_bytes(body)?)),
             KIND_NETWORK_LSA => Ok(LsaKind::NetworkLsa(NetworkLsa::from_bytes(body)?)),
-            KIND_SUMMARY_LSA => Ok(LsaKind::SummaryLsa(SummaryLsa::from_bytes(body)?)),
-            KIND_SUMMARY_LSA_ASBR => Ok(LsaKind::SummaryLsaAsbr(SummaryLsa::from_bytes(body)?)),
+            KIND_INTER_AREA_PREFIX_LSA => Ok(LsaKind::InterAreaPrefixLsa(
+                InterAreaPrefixLsa::from_bytes(body)?,
+            )),
+            KIND_INTER_AREA_ROUTER_LSA => Ok(LsaKind::InterAreaRouterLsa(
+                InterAreaRouterLsa::from_bytes(body)?,
+            )),
             KIND_AS_EXTERNAL_LSA => Ok(LsaKind::AsExternalLsa(AsExternalLsa::from_bytes(body)?)),
+            KIND_LINK_LSA => Ok(LsaKind::LinkLsa(LinkLsa::from_bytes(body)?)),
             _ => Err(io::Error::new(
                 io::ErrorKind::InvalidData,
                 "invalid lsa type",
@@ -80,11 +91,44 @@ impl FromBytes for Lsa {
 
         Ok(Lsa {
             ls_age,
-            options,
             link_state_id,
             advertising_router,
             ls_seq_no,
             content,
+            flags: typ.flags,
+        })
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LsaType {
+    pub flags: LasTypeFlags,
+    pub code: u16, // u13
+}
+
+bitflags! {
+    pub struct LasTypeFlags: u16 {
+        const U     = 0b1000_0000_0000_0000;
+        const S2    = 0b0100_0000_0000_0000;
+        const S1    = 0b0010_0000_0000_0000;
+    }
+}
+
+impl ToBytes for LsaType {
+    type Error = io::Error;
+    fn to_bytes(&self, writer: &mut BytesWriter) -> Result<(), Self::Error> {
+        writer.write_u16::<BE>(self.flags.bits() | (self.code & 0x1FFF))?;
+        Ok(())
+    }
+}
+
+impl FromBytes for LsaType {
+    type Error = io::Error;
+    fn from_bytes(stream: &mut BytesReader) -> Result<Self, Self::Error> {
+        let word = stream.read_u16::<BE>()?;
+        Ok(Self {
+            flags: LasTypeFlags::from_bits_truncate(word),
+            code: word & 0x1FFF,
         })
     }
 }
@@ -92,11 +136,13 @@ impl FromBytes for Lsa {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LsaOnlyHeader {
     pub ls_age: Duration,
-    pub typ: u8,
-    pub options: OspfOptions,
+    pub typ: LsaType,
+
     pub link_state_id: u32,
     pub advertising_router: u32,
     pub ls_seq_no: u32,
+
+    // checksum
     pub length: u16,
 }
 
@@ -104,8 +150,7 @@ impl From<Lsa> for LsaOnlyHeader {
     fn from(lsa: Lsa) -> Self {
         LsaOnlyHeader {
             ls_age: lsa.ls_age,
-            typ: lsa.content.typ(),
-            options: lsa.options,
+            typ: lsa.typ(),
             link_state_id: lsa.link_state_id,
             advertising_router: lsa.advertising_router,
             ls_seq_no: lsa.ls_seq_no,
@@ -118,8 +163,7 @@ impl ToBytes for LsaOnlyHeader {
     type Error = io::Error;
     fn to_bytes(&self, writer: &mut BytesWriter) -> Result<(), Self::Error> {
         writer.write_u16::<BE>(self.ls_age.as_secs() as u16)?;
-        writer.write_u8(self.options.bits())?;
-        writer.write_u8(self.typ)?;
+        self.typ.to_bytes(writer)?;
 
         writer.write_u32::<BE>(self.link_state_id)?;
         writer.write_u32::<BE>(self.advertising_router)?;
@@ -135,8 +179,7 @@ impl FromBytes for LsaOnlyHeader {
     type Error = io::Error;
     fn from_bytes(stream: &mut BytesReader) -> Result<Self, Self::Error> {
         let ls_age = Duration::from_secs(stream.read_u16::<BE>()? as u64);
-        let options = OspfOptions::from_bits_truncate(stream.read_u8()?);
-        let typ = stream.read_u8()?;
+        let typ = LsaType::from_bytes(stream)?;
 
         let link_state_id = stream.read_u32::<BE>()?;
         let advertising_router = stream.read_u32::<BE>()?;
@@ -147,7 +190,6 @@ impl FromBytes for LsaOnlyHeader {
 
         Ok(LsaOnlyHeader {
             ls_age,
-            options,
             link_state_id,
             advertising_router,
             ls_seq_no,
@@ -161,25 +203,28 @@ impl FromBytes for LsaOnlyHeader {
 pub enum LsaKind {
     RouterLsa(RouterLsa),
     NetworkLsa(NetworkLsa),
-    SummaryLsa(SummaryLsa),
-    SummaryLsaAsbr(SummaryLsa),
+    InterAreaPrefixLsa(InterAreaPrefixLsa),
+    InterAreaRouterLsa(InterAreaRouterLsa),
     AsExternalLsa(AsExternalLsa),
+    LinkLsa(LinkLsa),
 }
 
-const KIND_ROUTER_LSA: u8 = 1;
-const KIND_NETWORK_LSA: u8 = 2;
-const KIND_SUMMARY_LSA: u8 = 3;
-const KIND_SUMMARY_LSA_ASBR: u8 = 4;
-const KIND_AS_EXTERNAL_LSA: u8 = 5;
+const KIND_ROUTER_LSA: u16 = 1;
+const KIND_NETWORK_LSA: u16 = 2;
+const KIND_INTER_AREA_PREFIX_LSA: u16 = 3;
+const KIND_INTER_AREA_ROUTER_LSA: u16 = 4;
+const KIND_AS_EXTERNAL_LSA: u16 = 5;
+const KIND_LINK_LSA: u16 = 8;
 
 impl LsaKind {
-    fn typ(&self) -> u8 {
+    fn typ(&self) -> u16 {
         match self {
             LsaKind::RouterLsa(_) => KIND_ROUTER_LSA,
             LsaKind::NetworkLsa(_) => KIND_NETWORK_LSA,
-            LsaKind::SummaryLsa(_) => KIND_SUMMARY_LSA,
-            LsaKind::SummaryLsaAsbr(_) => KIND_SUMMARY_LSA_ASBR,
+            LsaKind::InterAreaPrefixLsa(_) => KIND_INTER_AREA_PREFIX_LSA,
+            LsaKind::InterAreaRouterLsa(_) => KIND_INTER_AREA_ROUTER_LSA,
             LsaKind::AsExternalLsa(_) => KIND_AS_EXTERNAL_LSA,
+            LsaKind::LinkLsa(_) => KIND_LINK_LSA,
         }
     }
 }
@@ -187,14 +232,14 @@ impl LsaKind {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RouterLsa {
     pub flags: RouterLsaFlags,
+    pub options: OspfOptions,
     pub links: Vec<RouterLsaLink>,
 }
 
 impl ToBytes for RouterLsa {
     type Error = io::Error;
     fn to_bytes(&self, writer: &mut BytesWriter) -> Result<(), Self::Error> {
-        writer.write_u16::<BE>(self.flags.bits())?;
-        writer.write_u16::<BE>(self.links.len() as u16)?;
+        writer.write_u32::<BE>(self.flags.bits() | self.options.bits())?;
         for link in &self.links {
             link.to_bytes(writer)?;
         }
@@ -205,43 +250,47 @@ impl ToBytes for RouterLsa {
 impl FromBytes for RouterLsa {
     type Error = io::Error;
     fn from_bytes(stream: &mut BytesReader) -> Result<Self, Self::Error> {
-        let flags = RouterLsaFlags::from_bits_truncate(stream.read_u16::<BE>()?);
-        let num_links = stream.read_u16::<BE>()?;
-        let mut links = Vec::with_capacity(num_links as usize);
-        for _ in 0..num_links {
+        let dword = stream.read_u32::<BE>()?;
+        let mut links = Vec::new();
+        while stream.has_remaining() {
             links.push(RouterLsaLink::from_bytes(stream)?);
         }
-        Ok(Self { flags, links })
+        Ok(Self {
+            flags: RouterLsaFlags::from_bits_truncate(dword),
+            options: OspfOptions::from_bits_truncate(dword),
+            links,
+        })
     }
 }
 
 bitflags! {
-    pub struct RouterLsaFlags: u16 {
-        const VIRTUAL_LINK_ENDPOINT = 1 << 10;
-        const EXTERNAL_BOUNDARY_ROUTER = 1 << 9;
-        const AREA_BORDER_ROUTER = 1 << 8;
+    pub struct RouterLsaFlags: u32 {
+        const VIRTUAL_LINK_ENDPOINT = 1 << 26;
+        const EXTERNAL_BOUNDARY_ROUTER = 1 << 25;
+        const AREA_BORDER_ROUTER = 1 << 24;
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RouterLsaLink {
-    pub link_id: u32,
-    pub link_data: [u8; 4],
     pub link_typ: RouterLsaLinkType,
-    pub tos: u8,
+    // 0u8
     pub metric: u16,
+    pub interface_id: u32,
+    pub neighbor_interface_id: u32,
+    pub neighbor_router_id: u32,
 }
 
 impl ToBytes for RouterLsaLink {
     type Error = io::Error;
     fn to_bytes(&self, writer: &mut BytesWriter) -> Result<(), Self::Error> {
-        writer.write_u32::<BE>(self.link_id)?;
-        writer.write_all(&self.link_data)?;
-
         writer.write_u8(self.link_typ.to_raw_repr())?;
-        writer.write_u8(self.tos)?;
-        writer.write_u16::<BE>(self.metric)?; // probably must be 0 , or we must implement more TOS metrics
+        writer.write_u8(0)?;
+        writer.write_u16::<BE>(self.metric)?;
 
+        writer.write_u32::<BE>(self.interface_id)?;
+        writer.write_u32::<BE>(self.neighbor_interface_id)?;
+        writer.write_u32::<BE>(self.neighbor_router_id)?;
         Ok(())
     }
 }
@@ -249,17 +298,20 @@ impl ToBytes for RouterLsaLink {
 impl FromBytes for RouterLsaLink {
     type Error = io::Error;
     fn from_bytes(stream: &mut BytesReader) -> Result<Self, Self::Error> {
-        let link_id = stream.read_u32::<BE>()?;
-        let link_data = stream.read_u32::<BE>()?;
-        let typ = RouterLsaLinkType::from_raw_repr(stream.read_u8()?)?;
-        let tos = stream.read_u8()?;
+        let link_typ = RouterLsaLinkType::from_raw_repr(stream.read_u8()?)?;
+        let _ = stream.read_u8()?;
         let metric = stream.read_u16::<BE>()?;
+
+        let interface_id = stream.read_u32::<BE>()?;
+        let neighbor_interface_id = stream.read_u32::<BE>()?;
+        let neighbor_router_id = stream.read_u32::<BE>()?;
+
         Ok(Self {
-            link_id,
-            link_data: link_data.to_be_bytes(),
-            link_typ: typ,
-            tos,
+            link_typ,
             metric,
+            interface_id,
+            neighbor_interface_id,
+            neighbor_router_id,
         })
     }
 }
@@ -278,14 +330,14 @@ repr_enum! {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NetworkLsa {
-    pub netmask: Ipv4Addr,
+    pub options: OspfOptions,
     pub attached_routers: Vec<RouterId>,
 }
 
 impl ToBytes for NetworkLsa {
     type Error = io::Error;
     fn to_bytes(&self, writer: &mut BytesWriter) -> Result<(), Self::Error> {
-        self.netmask.to_bytes(writer)?;
+        writer.write_u32::<BE>(self.options.bits())?;
         for router in &self.attached_routers {
             writer.write_u32::<BE>(*router)?;
         }
@@ -296,94 +348,113 @@ impl ToBytes for NetworkLsa {
 impl FromBytes for NetworkLsa {
     type Error = io::Error;
     fn from_bytes(stream: &mut BytesReader) -> Result<Self, Self::Error> {
-        let netmask = Ipv4Addr::from(stream.read_u32::<BE>()?);
+        let options = OspfOptions::from_bits_truncate(stream.read_u32::<BE>()?);
         let mut attached_routers = Vec::new();
         while stream.has_remaining() {
             attached_routers.push(RouterId::from(stream.read_u32::<BE>()?));
         }
         Ok(NetworkLsa {
-            netmask,
+            options,
             attached_routers,
         })
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SummaryLsa {
-    pub netmask: Ipv4Addr,
-    pub metrics: Vec<(u32, u8)>, // first TOS must be 0
+pub struct InterAreaPrefixLsa {
+    pub metric: u32,
+    pub prefix: Ipv6Prefix,
 }
 
-impl ToBytes for SummaryLsa {
+impl ToBytes for InterAreaPrefixLsa {
     type Error = io::Error;
     fn to_bytes(&self, writer: &mut BytesWriter) -> Result<(), Self::Error> {
-        writer.write_u32::<BE>(u32::from(self.netmask))?;
-        if self.metrics.first().map_or(true, |(_, tos)| *tos != 0) {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "first TOS must be 0",
-            ));
-        }
+        writer.write_u32::<BE>(self.metric & 0x00_ff_ff_ff)?;
+        self.prefix.to_bytes(writer)
+    }
+}
 
-        for (metric, tos) in &self.metrics {
-            writer.write_u32::<BE>(((*tos as u32) << 24) | (metric & 0x00_ff_ff_ff))?;
-        }
+impl FromBytes for InterAreaPrefixLsa {
+    type Error = io::Error;
+    fn from_bytes(stream: &mut BytesReader) -> Result<Self, Self::Error> {
+        let metric = stream.read_u32::<BE>()? & 0x00_ff_ff_ff;
+        let prefix = Ipv6Prefix::from_bytes(stream)?;
+        Ok(InterAreaPrefixLsa { metric, prefix })
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InterAreaRouterLsa {
+    pub options: OspfOptions,
+    pub metric: u32,
+    pub destination_router_id: u32,
+}
+
+impl ToBytes for InterAreaRouterLsa {
+    type Error = io::Error;
+    fn to_bytes(&self, writer: &mut BytesWriter) -> Result<(), Self::Error> {
+        writer.write_u32::<BE>(self.options.bits())?;
+        writer.write_u32::<BE>(self.metric & 0x00_ff_ff_ff)?;
+        writer.write_u32::<BE>(self.destination_router_id)?;
         Ok(())
     }
 }
 
-impl FromBytes for SummaryLsa {
+impl FromBytes for InterAreaRouterLsa {
     type Error = io::Error;
-    fn from_bytes(reader: &mut BytesReader) -> Result<Self, Self::Error> {
-        let netmask = Ipv4Addr::from(reader.read_u32::<BE>()?);
-        let mut metrics = Vec::new();
-        while reader.has_remaining() {
-            let dword = reader.read_u32::<BE>()?;
-            let tos = ((dword & 0xff_00_00_00) >> 24) as u8;
-            let metric = dword & 0x00_ff_ff_ff;
-            metrics.push((metric, tos));
-        }
-
-        if metrics.first().map_or(true, |(_, tos)| *tos != 0) {
-            dbg!(metrics);
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "first TOS must be 0",
-            ));
-        }
-
-        Ok(SummaryLsa { netmask, metrics })
+    fn from_bytes(stream: &mut BytesReader) -> Result<Self, Self::Error> {
+        let options = OspfOptions::from_bits_truncate(stream.read_u32::<BE>()?);
+        let metric = stream.read_u32::<BE>()? & 0x00_ff_ff_ff;
+        let destination_router_id = stream.read_u32::<BE>()?;
+        Ok(InterAreaRouterLsa {
+            options,
+            metric,
+            destination_router_id,
+        })
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AsExternalLsa {
-    pub netmask: Ipv4Addr,
-    pub components: Vec<AsExternal>,
+    pub metric: u32,
+    pub metric_external: bool,
+    pub prefix: Ipv6Prefix,
+    pub fwd_addr: Option<Ipv6Addr>,
+    pub external_route_tag: Option<u32>,
+    pub reference_link_state_id: Option<(u16, u32)>, // (ls, additional)
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AsExternal {
-    pub metric: u32, // u24,
-    pub tos: u8,     // u7
-    pub metric_external: bool,
-    pub fwd_addr: Ipv4Addr,
-    pub external_route_tag: u32,
+bitflags! {
+    struct AsExternalLsaFlags: u32 {
+        const T = 0x01_00_00_00;
+        const F = 0x02_00_00_00;
+        const E = 0x04_00_00_00;
+    }
 }
 
 impl ToBytes for AsExternalLsa {
     type Error = io::Error;
     fn to_bytes(&self, writer: &mut BytesWriter) -> Result<(), Self::Error> {
-        writer.write_u32::<BE>(u32::from(self.netmask))?;
+        let mut flags = AsExternalLsaFlags::empty();
+        flags.set(AsExternalLsaFlags::E, self.metric_external);
+        flags.set(AsExternalLsaFlags::F, self.fwd_addr.is_some());
+        flags.set(AsExternalLsaFlags::T, self.external_route_tag.is_some());
 
-        for comp in &self.components {
-            let overlay = comp.metric_external.then_some(0x80_00_00_00).unwrap_or(0)
-                | (comp.tos as u32 & 0x7f) << 24;
-            writer.write_u32::<BE>((0x00_ff_ff_ff & comp.metric) | overlay)?;
+        writer.write_u32::<BE>(flags.bits() | (self.metric & 0x00_ff_ff_ff))?;
 
-            writer.write_u32::<BE>(u32::from(comp.fwd_addr))?;
-            writer.write_u32::<BE>(comp.external_route_tag)?;
+        // a roundabout way, to insert the ls type into the encoding
+        let mut buf = Vec::with_capacity(16);
+        self.prefix.write_to(&mut buf)?;
+        if let Some((ls, _)) = self.reference_link_state_id {
+            (&mut buf[2..4]).write_u16::<BE>(ls)?;
         }
+        writer.write_all(&buf)?;
+
+        self.fwd_addr.map_or(Ok(()), |addr| addr.to_bytes(writer))?;
+        self.external_route_tag
+            .map_or(Ok(()), |tag| writer.write_u32::<BE>(tag))?;
+        self.reference_link_state_id
+            .map_or(Ok(()), |(_, additional)| writer.write_u32::<BE>(additional))?;
 
         Ok(())
     }
@@ -392,32 +463,86 @@ impl ToBytes for AsExternalLsa {
 impl FromBytes for AsExternalLsa {
     type Error = io::Error;
     fn from_bytes(stream: &mut BytesReader) -> Result<Self, Self::Error> {
-        let netmask = Ipv4Addr::from(stream.read_u32::<BE>()?);
-        let mut components = Vec::new();
-        while stream.has_remaining() {
-            let dword = stream.read_u32::<BE>()?;
-            let fwd_addr = Ipv4Addr::from(stream.read_u32::<BE>()?);
-            let external_route_tag = stream.read_u32::<BE>()?;
+        let dword = stream.read_u32::<BE>()?;
 
-            let metric_external = dword & 0x80_00_00_00 != 0;
-            let tos = u8::try_from((dword & 0x7f_00_00_00) >> 24).expect("must work");
-            let metric = dword & 0x00_ff_ff_ff;
+        let referenced_ls_type = 0xff_ff & stream.peek().read_u32::<BE>()?;
+        let prefix = Ipv6Prefix::from_bytes(stream)?;
 
-            components.push(AsExternal {
-                metric,
-                metric_external,
-                tos,
-                fwd_addr,
-                external_route_tag,
-            })
+        let flags = AsExternalLsaFlags::from_bits_truncate(dword);
+        let metric = dword & 0x00_ff_ff_ff;
+
+        let mut fwd_addr = None;
+        let mut external_route_tag = None;
+        let mut reference_link_state_id = None;
+
+        if flags.contains(AsExternalLsaFlags::F) {
+            fwd_addr = Some(Ipv6Addr::from_bytes(stream)?);
+        }
+        if flags.contains(AsExternalLsaFlags::T) {
+            external_route_tag = Some(stream.read_u32::<BE>()?);
+        }
+        if referenced_ls_type != 0 {
+            reference_link_state_id = Some((referenced_ls_type as u16, stream.read_u32::<BE>()?));
         }
 
         Ok(Self {
-            netmask,
-            components,
+            metric,
+            metric_external: flags.contains(AsExternalLsaFlags::E),
+            prefix,
+            fwd_addr,
+            external_route_tag,
+            reference_link_state_id,
         })
     }
 }
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LinkLsa {
+    pub routing_prio: u8,
+    pub options: OspfOptions,
+    pub link_local_addr: Ipv6Addr,
+    pub prefixes: Vec<Ipv6Prefix>,
+}
+
+impl ToBytes for LinkLsa {
+    type Error = io::Error;
+    fn to_bytes(&self, writer: &mut BytesWriter) -> Result<(), Self::Error> {
+        writer.write_u32::<BE>(((self.routing_prio as u32) << 24) | self.options.bits())?;
+        self.link_local_addr.to_bytes(writer)?;
+        writer.write_u32::<BE>(self.prefixes.len() as u32)?;
+        for prefix in &self.prefixes {
+            prefix.to_bytes(writer)?;
+        }
+        Ok(())
+    }
+}
+
+impl FromBytes for LinkLsa {
+    type Error = io::Error;
+    fn from_bytes(stream: &mut BytesReader) -> Result<Self, Self::Error> {
+        let dword = stream.read_u32::<BE>()?;
+        let options = OspfOptions::from_bits_truncate(dword);
+        let routing_prio = u8::try_from((0xff_00_00_00 & dword) >> 24).expect("cannot fail");
+        let link_local_addr = Ipv6Addr::from_bytes(stream)?;
+        let num_prefix = stream.read_u32::<BE>()? as usize;
+        let mut prefixes = Vec::with_capacity(num_prefix);
+        for _ in 0..num_prefix {
+            prefixes.push(Ipv6Prefix::from_bytes(stream)?);
+        }
+        Ok(LinkLsa {
+            routing_prio,
+            options,
+            link_local_addr,
+            prefixes,
+        })
+    }
+}
+
+// #[derive(Debug, Clone, PartialEq, Eq)]
+// pub struct IntraAreaPrefixLsa {
+//     pub referenced_ls_type: u16,
+
+// }
 
 #[cfg(test)]
 mod tests {
@@ -429,16 +554,21 @@ mod tests {
         pub fn random() -> Self {
             Lsa {
                 ls_age: Duration::from_secs(rng().random::<u64>() % 200),
-                options: OspfOptions::from_bits_truncate(rng().random()),
                 link_state_id: rng().random::<u32>(),
                 advertising_router: rng().random::<u32>(),
                 ls_seq_no: rng().random::<u32>(),
-                content: match 1 + rng().random::<u8>() % 5 {
+                flags: LasTypeFlags::S1,
+                content: match [1, 2, 3, 4, 5, 8][rng().random::<u16>() as usize % 6] {
                     KIND_ROUTER_LSA => LsaKind::RouterLsa(RouterLsa::random()),
                     KIND_NETWORK_LSA => LsaKind::NetworkLsa(NetworkLsa::random()),
-                    KIND_SUMMARY_LSA => LsaKind::SummaryLsa(SummaryLsa::random()),
-                    KIND_SUMMARY_LSA_ASBR => LsaKind::SummaryLsaAsbr(SummaryLsa::random()),
+                    KIND_INTER_AREA_PREFIX_LSA => {
+                        LsaKind::InterAreaPrefixLsa(InterAreaPrefixLsa::random())
+                    }
+                    KIND_INTER_AREA_ROUTER_LSA => {
+                        LsaKind::InterAreaRouterLsa(InterAreaRouterLsa::random())
+                    }
                     KIND_AS_EXTERNAL_LSA => LsaKind::AsExternalLsa(AsExternalLsa::random()),
+                    KIND_LINK_LSA => LsaKind::LinkLsa(LinkLsa::random()),
                     v => unreachable!("r {v}"),
                 },
             }
@@ -473,6 +603,7 @@ mod tests {
         fn random() -> Self {
             RouterLsa {
                 flags: RouterLsaFlags::from_bits_truncate(rng().random()),
+                options: OspfOptions::from_bits_truncate(rng().random()),
                 links: std::iter::repeat_with(RouterLsaLink::random)
                     .take((rng().random::<u8>() % 8) as usize)
                     .collect(),
@@ -492,11 +623,11 @@ mod tests {
     impl RouterLsaLink {
         fn random() -> Self {
             RouterLsaLink {
-                link_id: rng().random::<u32>().into(),
-                link_data: rng().random::<u32>().to_be_bytes(),
                 link_typ: RouterLsaLinkType::from_raw_repr(1 + (rng().random::<u8>() % 4)).unwrap(),
-                tos: 0,
                 metric: rng().random::<u16>(),
+                interface_id: rng().random::<u32>(),
+                neighbor_router_id: rng().random::<u32>(),
+                neighbor_interface_id: rng().random::<u32>(),
             }
         }
     }
@@ -513,7 +644,7 @@ mod tests {
     impl NetworkLsa {
         fn random() -> Self {
             NetworkLsa {
-                netmask: rng().random::<u32>().into(),
+                options: OspfOptions::from_bits_truncate(rng().random::<u32>().into()),
                 attached_routers: std::iter::repeat_with(|| rng().random())
                     .take((rng().random::<u8>() % 3) as usize + 1)
                     .collect(),
@@ -530,25 +661,37 @@ mod tests {
         assert_encoding_e2e(&fuzzed);
     }
 
-    impl SummaryLsa {
+    impl InterAreaPrefixLsa {
         fn random() -> Self {
-            SummaryLsa {
-                netmask: rng().random::<u32>().into(),
-                metrics: std::iter::once((rng().random::<u32>() & 0x00_ff_ff_ff, 0))
-                    .chain(
-                        std::iter::repeat_with(|| {
-                            (rng().random::<u32>() & 0x00_ff_ff_ff, rng().random())
-                        })
-                        .take((rng().random::<u8>() % 4) as usize),
-                    )
-                    .collect(),
+            InterAreaPrefixLsa {
+                metric: rng().random::<u32>() & 0x00_ff_ff_ff,
+                prefix: Ipv6Prefix::random(),
             }
         }
     }
 
     #[test]
-    fn e2e_encoding_summary_lsa() {
-        let fuzzed = std::iter::repeat_with(SummaryLsa::random)
+    fn e2e_encoding_inter_area_prefix_lsa() {
+        let fuzzed = std::iter::repeat_with(InterAreaPrefixLsa::random)
+            .take(100)
+            .collect::<Vec<_>>();
+
+        assert_encoding_e2e(&fuzzed);
+    }
+
+    impl InterAreaRouterLsa {
+        fn random() -> Self {
+            InterAreaRouterLsa {
+                options: OspfOptions::from_bits_truncate(rng().random()),
+                metric: rng().random::<u32>() & 0x00_ff_ff_ff,
+                destination_router_id: rng().random::<u32>(),
+            }
+        }
+    }
+
+    #[test]
+    fn e2e_encoding_inter_area_router_lsa() {
+        let fuzzed = std::iter::repeat_with(InterAreaRouterLsa::random)
             .take(100)
             .collect::<Vec<_>>();
 
@@ -558,22 +701,15 @@ mod tests {
     impl AsExternalLsa {
         fn random() -> Self {
             AsExternalLsa {
-                netmask: rng().random::<u32>().into(),
-                components: std::iter::repeat_with(AsExternal::random)
-                    .take((rng().random::<u8>() % 3) as usize + 1)
-                    .collect(),
-            }
-        }
-    }
-
-    impl AsExternal {
-        fn random() -> Self {
-            AsExternal {
                 metric: rng().random::<u32>() & 0x00_ff_ff_ff,
-                tos: rng().random::<u8>() & 0x7f,
                 metric_external: rng().random(),
-                fwd_addr: rng().random::<u32>().into(),
-                external_route_tag: rng().random(),
+                prefix: Ipv6Prefix::random(),
+                fwd_addr: Some(Ipv6Addr::from(rng().random::<u128>())),
+                external_route_tag: Some(rng().random::<u32>()),
+                reference_link_state_id: Some((
+                    rng().random::<u16>() % 6 + 1,
+                    rng().random::<u32>(),
+                )),
             }
         }
     }
@@ -581,6 +717,28 @@ mod tests {
     #[test]
     fn e2e_encoding_external_lsa() {
         let fuzzed = std::iter::repeat_with(AsExternalLsa::random)
+            .take(100)
+            .collect::<Vec<_>>();
+
+        assert_encoding_e2e(&fuzzed);
+    }
+
+    impl LinkLsa {
+        fn random() -> Self {
+            LinkLsa {
+                options: OspfOptions::from_bits_truncate(rng().random()),
+                routing_prio: rng().random(),
+                link_local_addr: Ipv6Addr::from(rng().random::<u128>()),
+                prefixes: std::iter::repeat_with(Ipv6Prefix::random)
+                    .take((rng().random::<u8>() % 5) as usize + 1)
+                    .collect(),
+            }
+        }
+    }
+
+    #[test]
+    fn e2e_encoding_link_lsa() {
+        let fuzzed = std::iter::repeat_with(LinkLsa::random)
             .take(100)
             .collect::<Vec<_>>();
 
