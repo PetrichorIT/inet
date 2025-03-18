@@ -3,7 +3,6 @@ mod macros;
 
 pub mod dns;
 pub mod extensions;
-pub mod fs;
 pub mod interface;
 pub mod io;
 pub mod socket;

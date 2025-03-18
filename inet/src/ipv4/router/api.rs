@@ -58,7 +58,8 @@ impl IOContext {
             ));
         };
 
-        self.ipv4_fwd
+        self.ipv4
+            .fwd
             .set_default_gw(Ipv4Gateway::Gateway(ip), iface.name.clone());
 
         Ok(())
@@ -84,7 +85,7 @@ impl IOContext {
             return Err(Error::new(ErrorKind::Other, "interface not found"));
         };
 
-        self.ipv4_fwd.add_entry(
+        self.ipv4.fwd.add_entry(
             FwdEntryV4 {
                 dest,
                 mask,
@@ -98,10 +99,10 @@ impl IOContext {
     }
 
     fn route(&mut self) -> Vec<FwdEntryV4> {
-        self.ipv4_fwd.entries()
+        self.ipv4.fwd.entries()
     }
 
     fn add_routing_table(&mut self) -> io::Result<RoutingTableId> {
-        self.ipv4_fwd.add_table()
+        self.ipv4.fwd.add_table()
     }
 }

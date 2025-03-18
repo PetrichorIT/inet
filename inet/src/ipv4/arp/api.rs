@@ -77,9 +77,9 @@ pub fn set_arp_config(cfg: ArpConfig) -> Result<()> {
 
 impl IOContext {
     fn arpa(&mut self) -> Vec<ArpEntry> {
-        let mut results = Vec::with_capacity(self.arp.len());
+        let mut results = Vec::with_capacity(self.ipv4.arp.len());
         let now = SimTime::now();
-        for entry in self.arp.entries() {
+        for entry in self.ipv4.arp.entries() {
             if entry.expires < now {
                 continue;
             }
@@ -109,7 +109,7 @@ impl IOContext {
         mac: MacAddress,
         if_name: InterfaceName,
     ) -> Result<()> {
-        let sendable = self.arp.update(super::ArpEntryInternal {
+        let sendable = self.ipv4.arp.update(super::ArpEntryInternal {
             negated: false,
             hostname: None,
             ip,
@@ -127,7 +127,7 @@ impl IOContext {
     }
 
     fn set_arp_config(&mut self, cfg: ArpConfig) -> Result<()> {
-        self.arp.config = cfg;
+        self.ipv4.arp.config = cfg;
         Ok(())
     }
 }

@@ -32,6 +32,7 @@ pub use self::ping::*;
 mod traceroute;
 pub use self::traceroute::*;
 
+#[derive(Debug)]
 pub(crate) struct Icmp {
     pings: FxHashMap<u16, PingCB>,
     pub traceroutes: FxHashMap<Ipv4Addr, TracerouteCB>,
@@ -92,7 +93,7 @@ impl IOContext {
                 identifier,
                 sequence,
             } => {
-                let Some(ping) = self.icmp.pings.get_mut(&identifier) else {
+                let Some(ping) = self.ipv4.icmp.pings.get_mut(&identifier) else {
                     tracing::warn!("missguided icmp echo reply");
                     return false;
                 };
@@ -104,7 +105,7 @@ impl IOContext {
                     ping.current_seq_no += 1;
                     self.icmp_send_ping(ip_icmp.src, identifier, sequence + 1)
                 } else {
-                    self.icmp.pings.remove(&identifier);
+                    self.ipv4.icmp.pings.remove(&identifier);
                 }
             }
             IcmpV4Type::DestinationUnreachable { next_hop_mtu, code } => {
@@ -112,8 +113,12 @@ impl IOContext {
                 let unreachable = ip.dst;
 
                 // (0) check for recent pings
-                if let Some((ident, ping)) =
-                    self.icmp.pings.iter_mut().find(|p| p.1.addr == unreachable)
+                if let Some((ident, ping)) = self
+                    .ipv4
+                    .icmp
+                    .pings
+                    .iter_mut()
+                    .find(|p| p.1.addr == unreachable)
                 {
                     ping.publish.take().map(|s| {
                         s.send(Err(Error::new(
@@ -123,7 +128,7 @@ impl IOContext {
                     });
 
                     let ident = *ident;
-                    self.icmp.pings.remove(&ident);
+                    self.ipv4.icmp.pings.remove(&ident);
                     return true;
                 };
 
@@ -158,7 +163,7 @@ impl IOContext {
                 let ip = pkt.contained().unwrap();
                 let unreachable = ip.dst;
 
-                if let Some(trace) = self.icmp.traceroutes.get_mut(&unreachable) {
+                if let Some(trace) = self.ipv4.icmp.traceroutes.get_mut(&unreachable) {
                     let dur = SimTime::now() - trace.last_send;
                     let _ = trace.recent_err.replace((ip_icmp.src, dur));
                     // Contimue to let UDP socket handlers forward the error

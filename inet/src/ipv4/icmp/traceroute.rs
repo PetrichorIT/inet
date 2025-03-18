@@ -13,6 +13,7 @@ use std::{
 };
 
 #[allow(dead_code)]
+#[derive(Debug)]
 pub(crate) struct TracerouteCB {
     pub fd: Fd,
     pub target: Ipv4Addr,
@@ -108,7 +109,7 @@ pub async fn traceroute(addr: Ipv4Addr) -> Result<Traceroute> {
 
 impl IOContext {
     fn traceroute_create(&mut self, fd: Fd, target: Ipv4Addr) {
-        self.icmp.traceroutes.insert(
+        self.ipv4.icmp.traceroutes.insert(
             target,
             TracerouteCB {
                 fd,
@@ -120,14 +121,14 @@ impl IOContext {
     }
 
     fn traceroute_register_send(&mut self, target: Ipv4Addr) {
-        let Some(trace) = self.icmp.traceroutes.get_mut(&target) else {
+        let Some(trace) = self.ipv4.icmp.traceroutes.get_mut(&target) else {
             return;
         };
         trace.last_send = SimTime::now();
     }
 
     fn traceroute_get_error(&mut self, target: Ipv4Addr) -> Option<(Ipv4Addr, Duration)> {
-        let Some(trace) = self.icmp.traceroutes.get_mut(&target) else {
+        let Some(trace) = self.ipv4.icmp.traceroutes.get_mut(&target) else {
             return None;
         };
         trace.recent_err.take()

@@ -45,7 +45,7 @@ impl IOContext {
 
                 // (0) Add sender entry to local arp table
                 if !arp.src_ip_addr().is_unspecified() {
-                    let sendable = self.arp.update(ArpEntryInternal {
+                    let sendable = self.ipv4.arp.update(ArpEntryInternal {
                         negated: false,
                         hostname: None,
                         ip: arp.src_ipv4_addr(),
@@ -110,7 +110,7 @@ impl IOContext {
             ARPOperation::Response => {
                 // (0) Add response data to ARP table (not requester, was allready added)
                 if !arp.dst_ip_addr().is_unspecified() {
-                    let sendable = self.arp.update(ArpEntryInternal {
+                    let sendable = self.ipv4.arp.update(ArpEntryInternal {
                         negated: false,
                         hostname: None,
                         ip: arp.dst_ipv4_addr(),
@@ -141,15 +141,16 @@ impl IOContext {
     }
 
     pub fn recv_arp_wakeup(&mut self) {
-        self.arp.active_wakeup = false;
+        self.ipv4.arp.active_wakeup = false;
 
         // (0) Collect retry info
-        for addr in self.arp.requests.keys().copied().collect::<Vec<_>>() {
-            let req = self.arp.requests.get_mut(&addr).unwrap();
+        for addr in self.ipv4.arp.requests.keys().copied().collect::<Vec<_>>() {
+            let req = self.ipv4.arp.requests.get_mut(&addr).unwrap();
             if req.deadline <= SimTime::now() {
                 // retry
                 if req.itr >= 1 {
                     let rem = self
+                        .ipv4
                         .arp
                         .update(ArpEntryInternal {
                             negated: true,
@@ -157,7 +158,7 @@ impl IOContext {
                             ip: addr,
                             mac: MacAddress::NULL,
                             iface: IfId::NULL,
-                            expires: SimTime::now() + self.arp.config.validity / 4,
+                            expires: SimTime::now() + self.ipv4.arp.config.validity / 4,
                         })
                         .unwrap_or((addr, Vec::new()));
 
@@ -169,9 +170,9 @@ impl IOContext {
                     }
 
                     tracing::error!("could not resolve for {addr} dropping packets");
-                    self.arp.requests.remove(&addr);
+                    self.ipv4.arp.requests.remove(&addr);
                 } else {
-                    req.deadline = SimTime::now() + self.arp.config.timeout;
+                    req.deadline = SimTime::now() + self.ipv4.arp.config.timeout;
                     req.itr += 1;
                     let dst = req.buffer[0].dst;
                     let binding = SocketIfaceBinding::Bound(req.iface);
@@ -180,12 +181,12 @@ impl IOContext {
             }
         }
 
-        if !self.arp.requests.is_empty() {
+        if !self.ipv4.arp.requests.is_empty() {
             schedule_in(
                 Message::new().kind(KIND_IO_TIMEOUT).id(KIND_ARP).build(),
-                self.arp.config.timeout,
+                self.ipv4.arp.config.timeout,
             );
-            self.arp.active_wakeup = true;
+            self.ipv4.arp.active_wakeup = true;
         }
     }
 
@@ -212,7 +213,8 @@ impl IOContext {
         dst: Ipv4Addr,
         preferred_iface: &SocketIfaceBinding,
     ) -> Option<(bool, MacAddress, IfId)> {
-        self.arp
+        self.ipv4
+            .arp
             .lookup(&dst)
             .map(|e| (e.negated, e.mac, e.iface))
             .or_else(|| match preferred_iface {
@@ -253,8 +255,8 @@ impl IOContext {
         pkt: Ipv4Packet,
         dst: Ipv4Addr,
     ) -> io::Result<()> {
-        let active_lookup = self.arp.active_lookup(&dst);
-        self.arp.wait_for_arp(pkt, dst);
+        let active_lookup = self.ipv4.arp.active_lookup(&dst);
+        self.ipv4.arp.wait_for_arp(pkt, dst);
 
         if active_lookup {
             return Ok(());
@@ -312,7 +314,7 @@ impl IOContext {
             }
         };
 
-        self.arp.requests.get_mut(&dst).unwrap().iface = iface.name.id;
+        self.ipv4.arp.requests.get_mut(&dst).unwrap().iface = iface.name.id;
 
         tracing::trace!(
             "missing address resolution for {}, initiating ARP request at {}",
@@ -337,11 +339,11 @@ impl IOContext {
             .content(request)
             .build();
 
-        if !self.arp.active_wakeup {
-            self.arp.active_wakeup = true;
+        if !self.ipv4.arp.active_wakeup {
+            self.ipv4.arp.active_wakeup = true;
             schedule_in(
                 Message::new().kind(KIND_IO_TIMEOUT).id(KIND_ARP).build(),
-                self.arp.config.timeout,
+                self.ipv4.arp.config.timeout,
             );
         }
 

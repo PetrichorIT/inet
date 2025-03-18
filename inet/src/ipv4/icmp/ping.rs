@@ -10,6 +10,7 @@ use types::ip::{IpPacket, Ipv4Flags, Ipv4Packet};
 use crate::socket::SocketIfaceBinding;
 use crate::IOContext;
 
+#[derive(Debug)]
 pub struct PingCB {
     pub addr: Ipv4Addr,
     pub values: Vec<Duration>,
@@ -61,7 +62,7 @@ impl IOContext {
     ) -> Result<oneshot::Receiver<Result<Ping>>> {
         let (tx, rx) = oneshot::channel();
         let identifier = random();
-        self.icmp.pings.insert(
+        self.ipv4.icmp.pings.insert(
             identifier,
             PingCB {
                 addr,

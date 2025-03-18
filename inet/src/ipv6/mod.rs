@@ -62,6 +62,7 @@ pub struct Ipv6 {
 
     pub policies: PolicyTable,
 
+    // ICMP utils
     pub ping_ctrl: FxHashMap<u16, PingCtrl>,
     pub traceroute_ctrl: FxHashMap<Ipv6Addr, TracerouteCB>,
 }

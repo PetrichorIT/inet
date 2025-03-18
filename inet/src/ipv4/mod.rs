@@ -3,8 +3,10 @@ use std::{
     net::Ipv4Addr,
 };
 
+use arp::ArpTable;
 use des::prelude::Message;
-use router::Ipv4Gateway;
+use icmp::Icmp;
+use router::{FwdV4, Ipv4Gateway};
 use types::{
     icmpv4::PROTO_ICMPV4,
     iface::MacAddress,
@@ -16,6 +18,23 @@ use crate::{ctx::NetworkLayerResult, interface::IfId, socket::SocketIfaceBinding
 pub mod arp;
 pub mod icmp;
 pub mod router;
+
+#[derive(Debug)]
+pub(super) struct Ipv4 {
+    pub arp: ArpTable,
+    pub icmp: Icmp,
+    pub fwd: FwdV4,
+}
+
+impl Default for Ipv4 {
+    fn default() -> Self {
+        Self {
+            arp: ArpTable::new(),
+            icmp: Icmp::new(),
+            fwd: FwdV4::new(),
+        }
+    }
+}
 
 impl IOContext {
     pub fn ipv4_recv(&mut self, msg: Message, ifid: IfId) -> NetworkLayerResult {
@@ -92,7 +111,7 @@ impl IOContext {
     ) -> io::Result<()> {
         // (0) Routing table destintation lookup
 
-        let Some((route, rifid)) = self.ipv4_fwd.lookup(pkt.dst) else {
+        let Some((route, rifid)) = self.ipv4.fwd.lookup(pkt.dst) else {
             return Err(Error::new(
                 ErrorKind::ConnectionRefused,
                 "no gateway network reachable",

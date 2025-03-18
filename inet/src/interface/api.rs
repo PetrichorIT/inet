@@ -84,7 +84,7 @@ impl IOContext {
         // (0) Check if the iface can be used as a valid broadcast target.
         if !iface.flags.loopback && iface.flags.broadcast {
             if v4 {
-                let _ = self.arp.update(ArpEntryInternal {
+                let _ = self.ipv4.arp.update(ArpEntryInternal {
                     negated: false,
                     hostname: None,
                     ip: Ipv4Addr::BROADCAST,
@@ -93,7 +93,7 @@ impl IOContext {
                     expires: SimTime::MAX,
                 });
 
-                self.ipv4_fwd.add_entry(
+                self.ipv4.fwd.add_entry(
                     FwdEntryV4::broadcast(iface.name.clone()),
                     RoutingTableId::DEFAULT,
                 );
@@ -104,7 +104,7 @@ impl IOContext {
         for addr in iface.bindings.addrs() {
             match addr {
                 IpAddr::V4(binding) => {
-                    let _ = self.arp.update(ArpEntryInternal {
+                    let _ = self.ipv4.arp.update(ArpEntryInternal {
                         negated: false,
                         hostname: Some(current().name()),
                         ip: binding,
@@ -121,7 +121,7 @@ impl IOContext {
         if let Some((addr, mask)) = iface.ipv4_subnet() {
             // TODO: Maybe this needs to be added allways, but lets try to restrict to LANs
             if !mask.is_unspecified() {
-                self.ipv4_fwd.add_entry(
+                self.ipv4.fwd.add_entry(
                     FwdEntryV4 {
                         dest: addr,
                         mask,

@@ -3,6 +3,8 @@ use crate::ctx::IOMeta;
 use des::net::gate::GateKind;
 use des::prelude::*;
 
+pub mod fs;
+
 /// A collection of information readable
 /// from the topology alone.
 #[derive(Debug, Clone, PartialEq, Eq)]

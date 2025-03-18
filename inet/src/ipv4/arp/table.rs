@@ -5,6 +5,7 @@ use std::{hash::Hash, net::Ipv4Addr, time::Duration};
 use crate::interface::IfId;
 use types::{iface::MacAddress, ip::Ipv4Packet};
 
+#[derive(Debug)]
 pub(crate) struct ArpTable {
     pub(super) map: FxHashMap<Ipv4Addr, ArpEntryInternal>,
     pub(super) config: ArpConfig,
@@ -13,6 +14,7 @@ pub(crate) struct ArpTable {
 }
 
 /// Configuration options for the Address Resolution Protocol (ARP)
+#[derive(Debug)]
 pub struct ArpConfig {
     /// The duration in which a entry is considered valid, without
     /// an explicit ARP handshake.
@@ -32,6 +34,7 @@ pub(crate) struct ArpEntryInternal {
     pub expires: SimTime,
 }
 
+#[derive(Debug)]
 pub(super) struct ActiveRequest {
     pub iface: IfId,
     pub deadline: SimTime,

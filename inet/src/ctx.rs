@@ -1,9 +1,9 @@
 use crate::{
     dns::{default_dns_resolve, DnsResolver},
+    env::fs::Fs,
     extensions::Extensions,
-    fs::Fs,
     interface::{IfId, InterfaceController, ID_IPV6_TIMEOUT, KIND_LINK_UPDATE},
-    ipv4::{arp::ArpTable, icmp::Icmp, router::FwdV4},
+    ipv4::Ipv4,
     ipv6::Ipv6,
     tcp2::{self, PROTO_TCP2},
     Udp,
@@ -33,12 +33,10 @@ pub(crate) struct IOContext {
     #[allow(unused)]
     pub(super) id: ModuleId,
     pub(super) ifaces: FxHashMap<IfId, InterfaceController>,
-    pub(super) arp: ArpTable,
 
     // Networking Layer
+    pub(super) ipv4: Ipv4,
     pub(super) ipv6: Ipv6,
-    pub(super) ipv4_fwd: FwdV4,
-    pub(super) icmp: Icmp,
 
     // Transport Layer
     pub(super) sockets: Sockets,
@@ -76,14 +74,11 @@ impl IOContext {
         Self {
             id,
             ifaces: FxHashMap::with_hasher(FxBuildHasher::default()),
+
+            ipv4: Ipv4::default(),
             ipv6: Ipv6::new(),
 
-            arp: ArpTable::new(),
-            ipv4_fwd: FwdV4::new(),
-            icmp: Icmp::new(),
-
             dns: default_dns_resolve,
-
             sockets: Sockets::new(),
             udp: Udp::new(),
             tcp: Tcp::new(),

@@ -495,7 +495,7 @@ mod tests {
         app.node(
             "main",
             AsyncFn::io(|_| async move {
-                let tmp = inet::fs::tempdir().unwrap();
+                let tmp = inet::env::fs::tempdir().unwrap();
 
                 // Bind each socket to a filesystem path
                 let tx_path = tmp.path().join("tx");
