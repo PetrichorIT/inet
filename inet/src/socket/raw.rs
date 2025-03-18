@@ -7,15 +7,15 @@ use std::{
 use tokio::sync::mpsc::{self, Receiver, Sender};
 use types::ip::IpPacket;
 
-use crate::IOContext;
+use crate::{interface::IfId, IOContext};
 
 use super::{Fd, SocketDomain};
 
 /// A specialiced socket for capturing custom IP datagrams.
 pub struct RawIpSocket {
     fd: Fd,
-    rx: Receiver<IpPacket>,
-    tx: Sender<IpPacket>,
+    rx: Receiver<(IfId, IpPacket)>,
+    tx: Sender<(IfId, IpPacket)>,
 }
 
 impl RawIpSocket {
@@ -40,7 +40,7 @@ impl RawIpSocket {
     }
 
     /// Receives datagrams, if there are any (blockingly).
-    pub async fn recv(&mut self) -> Result<IpPacket> {
+    pub async fn recv(&mut self) -> Result<(IfId, IpPacket)> {
         self.rx
             .recv()
             .await
@@ -49,7 +49,7 @@ impl RawIpSocket {
 
     /// Non-blockingly receives datagrams, or WouldBlock
     /// if non are present.
-    pub fn try_recv(&mut self) -> Result<IpPacket> {
+    pub fn try_recv(&mut self) -> Result<(IfId, IpPacket)> {
         self.rx
             .try_recv()
             .map_err(|_| Error::new(ErrorKind::WouldBlock, "would block"))
@@ -86,7 +86,12 @@ impl IOContext {
         Ok(RawIpSocket { fd, rx, tx })
     }
 
-    fn proto_bind_raw_ip_socket(&mut self, fd: Fd, proto: u8, tx: Sender<IpPacket>) -> Result<()> {
+    fn proto_bind_raw_ip_socket(
+        &mut self,
+        fd: Fd,
+        proto: u8,
+        tx: Sender<(IfId, IpPacket)>,
+    ) -> Result<()> {
         let Some(socket) = self.sockets.get(&fd) else {
             return Err(Error::new(ErrorKind::InvalidInput, "no socket under fd"));
         };

@@ -171,16 +171,6 @@ impl ArpPacket {
     }
 
     #[must_use]
-    pub fn new_request(src_haddr: MacAddress, src_paddr: IpAddr, dst_paddr: IpAddr) -> Self {
-        use IpAddr::{V4, V6};
-        match (src_paddr, dst_paddr) {
-            (V4(src), V4(dst)) => Self::new_v4_request(src_haddr, src, dst),
-            (V6(src), V6(dst)) => Self::new_v6_request(src_haddr, src, dst),
-            _ => unreachable!(),
-        }
-    }
-
-    #[must_use]
     pub fn new_v4_request(src_haddr: MacAddress, src_paddr: Ipv4Addr, dst_paddr: Ipv4Addr) -> Self {
         let mut raw = Vec::with_capacity(20);
         raw.extend(src_haddr.as_slice());
@@ -192,23 +182,6 @@ impl ArpPacket {
             ptype: 0x0800,
             haddrlen: 6,
             paddrlen: 4,
-            operation: ARPOperation::Request,
-            raw,
-        }
-    }
-
-    #[must_use]
-    pub fn new_v6_request(src_haddr: MacAddress, src_paddr: Ipv6Addr, dst_paddr: Ipv6Addr) -> Self {
-        let mut raw = Vec::with_capacity(44);
-        raw.extend(src_haddr.as_slice());
-        raw.extend(src_paddr.octets());
-        raw.extend(MacAddress::NULL.as_slice());
-        raw.extend(dst_paddr.octets());
-        Self {
-            htype: 0x0001,
-            ptype: 0x86DD,
-            haddrlen: 6,
-            paddrlen: 16,
             operation: ARPOperation::Request,
             raw,
         }
@@ -303,18 +276,11 @@ mod tests {
 
     #[test]
     fn e2e_encoding() {
-        assert_encoding_e2e(&[
-            ArpPacket::new_v4_request(
-                MacAddress::from([1, 2, 3, 4, 5, 6]),
-                Ipv4Addr::new(123, 4, 49, 3),
-                Ipv4Addr::new(49, 131, 4, 5),
-            ),
-            ArpPacket::new_v6_request(
-                MacAddress::from([1, 2, 3, 4, 5, 6]),
-                Ipv6Addr::new(123, 4, 49, 3, 14, 14, 4, 1),
-                Ipv6Addr::new(49, 131, 4, 5, 536, 63, 67, 4),
-            ),
-        ]);
+        assert_encoding_e2e(&[ArpPacket::new_v4_request(
+            MacAddress::from([1, 2, 3, 4, 5, 6]),
+            Ipv4Addr::new(123, 4, 49, 3),
+            Ipv4Addr::new(49, 131, 4, 5),
+        )]);
     }
 
     #[test]
@@ -339,29 +305,5 @@ mod tests {
         assert_eq!(r.dst_mac_addr(), [0, 0, 0, 0, 0, 0].into());
         assert_eq!(r.src_ipv4_addr(), Ipv4Addr::new(1, 2, 3, 4));
         assert_eq!(r.dst_ipv4_addr(), Ipv4Addr::new(255, 254, 253, 252));
-    }
-
-    #[test]
-    fn ipv6_ethernet_request() {
-        let r = ArpPacket::new_v6_request(
-            [1, 2, 3, 4, 5, 6].into(),
-            Ipv6Addr::new(1, 2, 3, 4, 5, 6, 7, 8),
-            Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 0),
-        );
-
-        assert_eq!(r.htype, 1);
-        assert_eq!(r.ptype, 0x86DD);
-        assert_eq!(r.src_mac_addr(), [1, 2, 3, 4, 5, 6].into());
-        assert_eq!(r.dst_mac_addr(), [0, 0, 0, 0, 0, 0].into());
-        assert_eq!(r.src_ipv6_addr(), Ipv6Addr::new(1, 2, 3, 4, 5, 6, 7, 8));
-        assert_eq!(r.dst_ipv6_addr(), Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 0));
-
-        let r = ArpPacket::peek_from(&r.write_to_vec().unwrap()[..]).unwrap();
-        assert_eq!(r.htype, 1);
-        assert_eq!(r.ptype, 0x86DD);
-        assert_eq!(r.src_mac_addr(), [1, 2, 3, 4, 5, 6].into());
-        assert_eq!(r.dst_mac_addr(), [0, 0, 0, 0, 0, 0].into());
-        assert_eq!(r.src_ipv6_addr(), Ipv6Addr::new(1, 2, 3, 4, 5, 6, 7, 8));
-        assert_eq!(r.dst_ipv6_addr(), Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 0));
     }
 }

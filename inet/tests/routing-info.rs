@@ -2,8 +2,8 @@ use std::str::FromStr;
 
 use des::{prelude::*, registry};
 use inet::{
+    env::{RoutingInformation, RoutingPeer},
     interface::{add_interface, InterfaceDef, NetworkDevice},
-    routing::{RoutingInformation, RoutingPeer},
 };
 
 #[derive(Default)]

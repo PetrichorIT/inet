@@ -6,7 +6,7 @@ use des::{
     time::SimTime,
 };
 
-use crate::routing::{RoutingInformation, RoutingPort};
+use crate::env::{RoutingInformation, RoutingPort};
 
 use super::{InterfaceBusyState, MacAddress};
 

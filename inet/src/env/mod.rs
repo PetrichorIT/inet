@@ -3,16 +3,6 @@ use crate::ctx::IOMeta;
 use des::net::gate::GateKind;
 use des::prelude::*;
 
-mod tablev6;
-pub use self::tablev6::Ipv6RouterConfig;
-pub(crate) use self::tablev6::*;
-
-mod api;
-pub use self::api::*;
-
-mod fwdv4;
-pub use self::fwdv4::*;
-
 /// A collection of information readable
 /// from the topology alone.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -128,34 +118,6 @@ impl RoutingPort {
 
 unsafe impl Send for RoutingPort {}
 unsafe impl Sync for RoutingPort {}
-
-#[derive(Debug)]
-pub(crate) enum IpGateway {
-    Local,
-    Broadcast,
-    Gateway(IpAddr),
-}
-
-impl From<Ipv4Gateway> for IpGateway {
-    fn from(value: Ipv4Gateway) -> Self {
-        match value {
-            Ipv4Gateway::Local => IpGateway::Local,
-            Ipv4Gateway::Broadcast => IpGateway::Broadcast,
-            Ipv4Gateway::Gateway(ip) => IpGateway::Gateway(ip.into()),
-        }
-    }
-}
-
-impl From<Ipv6Gateway> for IpGateway {
-    fn from(value: Ipv6Gateway) -> Self {
-        match value {
-            Ipv6Gateway::Local => IpGateway::Local,
-            Ipv6Gateway::Broadcast => IpGateway::Broadcast,
-            Ipv6Gateway::Gateway(ip) => IpGateway::Gateway(ip.into()),
-            _ => todo!(),
-        }
-    }
-}
 
 fn merge_str(lhs: &str, rhs: &str) -> String {
     let mut s = String::with_capacity(lhs.len().max(rhs.len()));

@@ -443,8 +443,8 @@ fn interface_does_not_use_busy_channel() -> Result<(), RuntimeError> {
             sock.bind_proto(42)?;
             loop {
                 tokio::select! {
-                    pkt = sock.recv() => {
-                        let pkt = pkt.unwrap();
+                    frame = sock.recv() => {
+                        let (_, pkt) = frame.unwrap();
                         if pkt.tos() != 58 {
                             assert_eq!(count, 64);
                             DONE.store(true, std::sync::atomic::Ordering::SeqCst);
@@ -531,8 +531,8 @@ fn interface_will_use_idle_channel_fcfs() -> Result<(), RuntimeError> {
             sock.bind_proto(42)?;
             loop {
                 tokio::select! {
-                    pkt = sock.recv() => {
-                        let pkt = pkt.unwrap();
+                    frame = sock.recv() => {
+                        let (_, pkt) = frame.unwrap();
                         if pkt.tos() != 58 {
                             assert_eq!(count, 0);
 

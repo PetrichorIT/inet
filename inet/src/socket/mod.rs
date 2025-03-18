@@ -37,7 +37,7 @@ pub(super) struct Sockets {
     pub next_fd: Fd,
     pub next_port: Cell<u16>,
     pub sockets: FxHashMap<Fd, Socket>,
-    pub handlers: FxHashMap<(u8, SocketDomain), (Fd, Sender<IpPacket>)>,
+    pub handlers: FxHashMap<(u8, SocketDomain), (Fd, Sender<(IfId, IpPacket)>)>,
 }
 
 impl Sockets {

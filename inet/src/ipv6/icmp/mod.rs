@@ -1,5 +1,4 @@
 use crate::{
-    arp::ArpEntryInternal,
     ctx::IOContext,
     interface::{IfId, InterfaceAddrV6},
     ipv6::{addrs::CanidateAddr, timer::TimerToken, Ipv6SendFlags},
@@ -310,14 +309,6 @@ impl IOContext {
             }) {
                 self.ipv6.neighbors.update(ip.src, mac, ifid, false);
                 // TODO: remove this, ARP is not used for Ipv6
-                let _ = self.arp.update(ArpEntryInternal {
-                    negated: false,
-                    hostname: None,
-                    ip: ip.src.into(),
-                    mac,
-                    iface: ifid,
-                    expires: SimTime::now() + Duration::from_secs(120),
-                });
             }
         }
 
@@ -493,14 +484,6 @@ impl IOContext {
                     self.ipv6.neighbors.update(ip.src, *mac, ifid, true);
 
                     // TODO: remove this, ARP is not used for Ipv6
-                    let _ = self.arp.update(ArpEntryInternal {
-                        negated: false,
-                        hostname: None,
-                        ip: ip.src.into(),
-                        mac: *mac,
-                        iface: ifid,
-                        expires: SimTime::now() + Duration::from_secs(120),
-                    });
                 }
                 IcmpV6NDPOption::Mtu(mtu) => {
                     iface_cfg.link_mtu = mtu.mtu;

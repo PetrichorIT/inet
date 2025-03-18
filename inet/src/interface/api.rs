@@ -3,10 +3,12 @@ use super::{
     InterfaceFlags, InterfaceName, MacAddress,
 };
 use crate::{
-    arp::ArpEntryInternal,
     interface::{InterfaceAddrV4, InterfaceAddrV6},
+    ipv4::{
+        arp::ArpEntryInternal,
+        router::{FwdEntryV4, Ipv4Gateway, RoutingTableId},
+    },
     ipv6::{multicast::NodeEvent, ndp::QueryType},
-    routing::{FwdEntryV4, Ipv4Gateway, Ipv6Gateway, RoutingTableId},
     IOContext,
 };
 use des::{
@@ -85,7 +87,7 @@ impl IOContext {
                 let _ = self.arp.update(ArpEntryInternal {
                     negated: false,
                     hostname: None,
-                    ip: IpAddr::V4(Ipv4Addr::BROADCAST),
+                    ip: Ipv4Addr::BROADCAST,
                     mac: MacAddress::BROADCAST,
                     iface: iface.name.id(),
                     expires: SimTime::MAX,
@@ -94,27 +96,6 @@ impl IOContext {
                 self.ipv4_fwd.add_entry(
                     FwdEntryV4::broadcast(iface.name.clone()),
                     RoutingTableId::DEFAULT,
-                );
-            }
-
-            if v6 {
-                let _ = self.arp.update(ArpEntryInternal {
-                    negated: false,
-                    hostname: None,
-                    ip: IpAddr::V6(Ipv6Addr::new(0xf801, 0, 0, 0, 0, 0, 0, 1)),
-                    mac: MacAddress::BROADCAST,
-                    iface: iface.name.id(),
-                    expires: SimTime::MAX,
-                });
-
-                self.ipv6router.add_entry(
-                    Ipv6Addr::new(0xf801, 0, 0, 0, 0, 0, 0, 1),
-                    Ipv6Addr::new(
-                        0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff,
-                    ),
-                    Ipv6Gateway::Broadcast,
-                    iface.name.id(),
-                    usize::MAX,
                 );
             }
         }
@@ -126,22 +107,13 @@ impl IOContext {
                     let _ = self.arp.update(ArpEntryInternal {
                         negated: false,
                         hostname: Some(current().name()),
-                        ip: IpAddr::V4(binding),
+                        ip: binding,
                         mac: iface.device.addr,
                         iface: iface.name.id(),
                         expires: SimTime::MAX,
                     });
                 }
-                IpAddr::V6(addr) => {
-                    let _ = self.arp.update(ArpEntryInternal {
-                        negated: false,
-                        hostname: Some(current().name()),
-                        ip: IpAddr::V6(addr),
-                        mac: iface.device.addr,
-                        iface: iface.name.id(),
-                        expires: SimTime::MAX,
-                    });
-                }
+                IpAddr::V6(_) => {}
             }
         }
 
@@ -162,15 +134,6 @@ impl IOContext {
         }
 
         // (3) Add interface subnet to routing table.
-        if let Some((addr, mask)) = iface.ipv6_subnet() {
-            self.ipv6router.add_entry(
-                addr,
-                mask,
-                Ipv6Gateway::Local,
-                iface.name.id(),
-                usize::MAX / 4,
-            )
-        }
 
         let ifid = iface.name.id();
         let router = iface.flags.router;

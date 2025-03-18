@@ -15,9 +15,9 @@ use des::{
     runtime::{Builder, RuntimeError},
 };
 use inet::{
+    env::RoutingPort,
     interface::{add_interface, interface_status, InterfaceDef, NetworkDevice},
     ipv6::{self, util::setup_router},
-    routing::RoutingPort,
     utils,
 };
 use serial_test::serial;

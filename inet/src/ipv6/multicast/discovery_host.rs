@@ -217,7 +217,7 @@ impl IOContext {
             traffic_class: 0,
             flow_label: 0,
             proto: PROTO_ICMPV6,
-            hop_limit: 2,
+            hop_limit: 1,
             extension_headers: Vec::new(),
             src: Ipv6Addr::UNSPECIFIED,
             dst: multicast_addr,

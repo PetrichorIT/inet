@@ -5,9 +5,16 @@ use des::net::message::{schedule_in, Message};
 use fxhash::{FxBuildHasher, FxHashMap};
 use multicast::{GroupEvent, MulticastListenerDiscoveryCtrl, NodeEvent, RouterEvent};
 use tracing::Level;
-use types::ip::{Ipv6AddrExt, Ipv6Packet, Ipv6Prefix, KIND_IPV6};
+use types::{
+    icmpv6::PROTO_ICMPV6,
+    ip::{IpPacket, Ipv6AddrExt, Ipv6Packet, Ipv6Prefix, KIND_IPV6},
+};
 
-use crate::{ctx::IOContext, interface::IfId};
+use crate::{
+    ctx::{IOContext, NetworkLayerResult},
+    interface::IfId,
+    socket::SocketIfaceBinding,
+};
 
 use self::{
     addrs::PolicyTable,
@@ -94,6 +101,55 @@ bitflags! {
         const DEFAULT = 0b0000_0000;
         const ALLOW_SRC_UNSPECIFIED = 0b0000_0001;
         const REQUIRED_SRC_UNSPECIFIED = 0b0000_0010;
+    }
+}
+
+impl IOContext {
+    pub fn ipv6_recv(&mut self, msg: Message, ifid: IfId) -> NetworkLayerResult {
+        let Ok((pkt, header)) = msg.try_cast::<Ipv6Packet>() else {
+            tracing::error!(
+                "received eth-packet with kind=0x86DD (ip) but content was no ipv6-packet"
+            );
+            return NetworkLayerResult::Consumed();
+        };
+
+        let iface = self
+            .ifaces
+            .get(&ifid)
+            .expect("interface was already resolved");
+
+        let is_local_dest = iface.bindings.v6.matches(pkt.dst) || pkt.dst.is_multicast();
+        if !is_local_dest {
+            let mut pkt = pkt;
+
+            if pkt.hop_limit == 0 {
+                tracing::warn!("dropped ipv6-packet with ttl 0");
+                self.ipv6_icmp_send_ttl_expired(&pkt, ifid)
+                    .expect("ttl expired failed");
+                return NetworkLayerResult::Consumed();
+            }
+            pkt.hop_limit = pkt.hop_limit.saturating_sub(1);
+
+            if let Err(error) = self.send_ip_packet(
+                SocketIfaceBinding::Any(self.ifaces.keys().cloned().collect()),
+                IpPacket::V6(pkt.clone()), // TODO: to not copy, use a result Err(Packet)
+                true,
+            ) {
+                tracing::error!("failed to forward ip-packet {error}");
+                panic!("TODO: cannot send ipv6 packet")
+            }
+
+            return NetworkLayerResult::Consumed();
+        }
+
+        match pkt.proto {
+            PROTO_ICMPV6 => {
+                let _consumed = self.ipv6_icmp_recv(&pkt, ifid);
+                NetworkLayerResult::Consumed()
+            }
+            0 => NetworkLayerResult::PassThrough(Message::from_parts(header, Some(pkt))),
+            _ => NetworkLayerResult::TransportLayerPacket(IpPacket::V6(pkt), header),
+        }
     }
 }
 

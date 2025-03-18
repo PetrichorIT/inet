@@ -3,7 +3,7 @@ use std::{error::Error, fs::File, io::BufWriter};
 use des::{prelude::*, registry, time::sleep_until};
 use inet::{
     interface::{add_interface, InterfaceDef, NetworkDevice},
-    routing::route,
+    ipv4::router::route,
 };
 use inet_bgp::{pkt::Nlri, types::AsNumber, BgpDeamon};
 use inet_pcap::pcap;

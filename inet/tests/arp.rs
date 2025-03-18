@@ -1,8 +1,8 @@
 use bytes_io::Bytes;
 use des::{prelude::*, registry, time::sleep};
 use inet::{
-    arp::arpa,
     interface::{add_interface, InterfaceDef, NetworkDevice},
+    ipv4::arp::arpa,
     socket::RawIpSocket,
 };
 use serial_test::serial;

@@ -13,17 +13,16 @@
 //!
 
 use std::io::{self, Error, ErrorKind};
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+use std::net::Ipv4Addr;
 
 use crate::ctx::LinkLayerResult;
-use crate::routing::{IpGateway, Ipv6Gateway};
 use crate::socket::SocketIfaceBinding;
 use crate::{interface::*, IOContext};
 use des::prelude::{schedule_in, Message};
 use des::time::SimTime;
 use types::arp::{ARPOperation, ArpPacket, KIND_ARP};
 use types::iface::MacAddress;
-use types::ip::{IpPacket, Ipv6Packet, KIND_IPV4, KIND_IPV6};
+use types::ip::Ipv4Packet;
 
 mod table;
 pub use self::table::*;
@@ -49,7 +48,7 @@ impl IOContext {
                     let sendable = self.arp.update(ArpEntryInternal {
                         negated: false,
                         hostname: None,
-                        ip: arp.src_ip_addr().into(),
+                        ip: arp.src_ipv4_addr(),
                         mac: arp.src_mac_addr(),
                         iface: ifid,
                         expires: SimTime::ZERO,
@@ -61,7 +60,7 @@ impl IOContext {
                             sendable.len()
                         );
                         for pkt in sendable {
-                            self.send_lan_local_ip_packet(
+                            self.ipv4_send_lan_local(
                                 SocketIfaceBinding::Bound(ifid),
                                 trg,
                                 pkt,
@@ -114,7 +113,7 @@ impl IOContext {
                     let sendable = self.arp.update(ArpEntryInternal {
                         negated: false,
                         hostname: None,
-                        ip: arp.dst_ip_addr().into(),
+                        ip: arp.dst_ipv4_addr(),
                         mac: arp.dst_mac_addr(),
                         iface: ifid,
                         expires: SimTime::ZERO,
@@ -132,13 +131,8 @@ impl IOContext {
                     };
 
                     for pkt in sendable {
-                        self.send_lan_local_ip_packet(
-                            SocketIfaceBinding::Bound(ifid),
-                            trg,
-                            pkt,
-                            true,
-                        )
-                        .unwrap();
+                        self.ipv4_send_lan_local(SocketIfaceBinding::Bound(ifid), trg, pkt, true)
+                            .unwrap();
                     }
                 }
                 Consumed()
@@ -146,7 +140,7 @@ impl IOContext {
         }
     }
 
-    pub(super) fn recv_arp_wakeup(&mut self) {
+    pub fn recv_arp_wakeup(&mut self) {
         self.arp.active_wakeup = false;
 
         // (0) Collect retry info
@@ -168,15 +162,10 @@ impl IOContext {
                         .unwrap_or((addr, Vec::new()));
 
                     for pkt in rem.1 {
-                        match pkt {
-                            IpPacket::V4(pkt) => {
-                                self.icmp_routing_failed(
-                                    Error::new(ErrorKind::NotConnected, "Host unreachable"),
-                                    &pkt,
-                                );
-                            }
-                            IpPacket::V6(_) => todo!(),
-                        }
+                        self.icmp_routing_failed(
+                            Error::new(ErrorKind::NotConnected, "Host unreachable"),
+                            &pkt,
+                        );
                     }
 
                     tracing::error!("could not resolve for {addr} dropping packets");
@@ -184,9 +173,9 @@ impl IOContext {
                 } else {
                     req.deadline = SimTime::now() + self.arp.config.timeout;
                     req.itr += 1;
-                    let dest = req.buffer[0].dst();
+                    let dst = req.buffer[0].dst;
                     let binding = SocketIfaceBinding::Bound(req.iface);
-                    self.arp_send_request(binding, dest).unwrap();
+                    self.arp_send_request(binding, dst).unwrap();
                 }
             }
         }
@@ -218,221 +207,21 @@ impl IOContext {
     // (3) To send a packet, the system may buffer the packet and initiate a ARP request to find the next hop.
     // (4) Send the packet with the appropriate MAC address
 
-    pub fn send_ip_packet(
-        &mut self,
-        ifid: SocketIfaceBinding,
-        pkt: IpPacket,
-        buffered: bool,
-    ) -> io::Result<()> {
-        if let IpPacket::V6(pkt) = pkt {
-            return self.ipv6_send(pkt, ifid.unwrap_ifid());
-        }
-
-        // (0) Routing table destintation lookup
-
-        let (route, rifid, pkt): (IpGateway, IfId, IpPacket) = match pkt {
-            IpPacket::V4(pkt) => {
-                let Some((route, rifid)) = self.ipv4_fwd.lookup(pkt.dst) else {
-                    return Err(Error::new(
-                        ErrorKind::ConnectionRefused,
-                        "no gateway network reachable",
-                    ));
-                };
-                (route.clone().into(), rifid.id, IpPacket::V4(pkt))
-            }
-            IpPacket::V6(pkt) => {
-                let Some((route, rifid)) = self.ipv6router.loopuk_gateway(pkt.dst) else {
-                    return Err(Error::new(
-                        ErrorKind::ConnectionRefused,
-                        "no gateway network reachable",
-                    ));
-                };
-
-                if let Ipv6Gateway::Multicast(dest) = route {
-                    return self.multicast_ipv6_packet(ifid, dest, pkt, buffered);
-                }
-
-                (route.into(), rifid, IpPacket::V6(pkt))
-            }
-        };
-
-        match route {
-            IpGateway::Local => self.send_lan_local_ip_packet(
-                SocketIfaceBinding::Bound(rifid),
-                pkt.dst(),
-                pkt,
-                buffered,
-            ),
-            IpGateway::Gateway(gw) => {
-                self.send_lan_local_ip_packet(SocketIfaceBinding::Bound(rifid), gw, pkt, buffered)
-            }
-            // TODO: move logic to extra, non-arp fn
-            IpGateway::Broadcast => self.broadcast_ip_packet(ifid, pkt, buffered),
-        }
-    }
-
-    pub fn broadcast_ip_packet(
-        &mut self,
-        ifid: SocketIfaceBinding,
-        pkt: IpPacket,
-        buffered: bool,
-    ) -> io::Result<()> {
-        // Since we are broadcasting, use ff
-        match ifid {
-            SocketIfaceBinding::Bound(_) => {
-                self.send_lan_local_ip_packet(ifid, pkt.dst(), pkt, buffered)
-            }
-            _ => {
-                for (_ifid, iface) in &mut self.ifaces {
-                    match pkt.clone() {
-                        IpPacket::V4(mut pkt) => {
-                            if pkt.src.is_unspecified() {
-                                pkt.src = iface.ipv4_subnet().unwrap().0;
-                            }
-                            let msg = Message::new()
-                                .kind(KIND_IPV4)
-                                .src(iface.device.addr.into())
-                                .dest(MacAddress::BROADCAST.into())
-                                .content(pkt)
-                                .build();
-
-                            if buffered {
-                                iface.send_buffered(msg)?;
-                            } else {
-                                iface.send(msg)?;
-                            }
-                        }
-                        IpPacket::V6(mut pkt) => {
-                            if pkt.src.is_unspecified() {
-                                pkt.src = iface.ipv6_subnet().unwrap().0;
-                            }
-                            let msg = Message::new()
-                                .kind(KIND_IPV6)
-                                .src(iface.device.addr.into())
-                                .dest(MacAddress::BROADCAST.into())
-                                .content(pkt)
-                                .build();
-
-                            if buffered {
-                                iface.send_buffered(msg)?;
-                            } else {
-                                iface.send(msg)?;
-                            }
-                        }
-                    }
-                }
-                Ok(())
-            }
-        }
-    }
-
-    fn multicast_ipv6_packet(
-        &mut self,
-        ifid: SocketIfaceBinding,
-        _multicast: Ipv6Addr,
-        pkt: Ipv6Packet,
-        buffered: bool,
-    ) -> io::Result<()> {
-        let ifid = ifid.unwrap_ifid();
-
-        let iface = self.get_mut_iface(ifid)?;
-        let msg = Message::new()
-            .kind(KIND_IPV6)
-            .src(iface.device.addr.into())
-            .dest(MacAddress::BROADCAST.into())
-            .content(pkt)
-            .build();
-
-        if buffered {
-            iface.send_buffered(msg)
-        } else {
-            iface.send(msg)
-        }
-    }
-
-    pub fn send_lan_local_ip_packet(
-        &mut self,
-        ifid: SocketIfaceBinding,
-        dest: IpAddr,
-        pkt: IpPacket,
-        buffered: bool,
-    ) -> io::Result<()> {
-        let Some((negated, mac, ifid)) = self.arp_lookup(dest, &ifid) else {
-            self.arp_missing_addr_mapping(ifid, pkt, dest)?;
-            return Ok(());
-        };
-
-        if negated {
-            return Err(Error::new(ErrorKind::NotConnected, "Host unreachable"));
-        }
-
-        let Some(iface) = self.ifaces.get_mut(&ifid) else {
-            return Err(Error::new(
-                ErrorKind::Other,
-                "interface does not exist anymore",
-            ));
-        };
-
-        if mac == MacAddress::BROADCAST && !iface.flags.broadcast {
-            return Err(Error::new(
-                ErrorKind::AddrNotAvailable,
-                "cannot send broadcast packet on non-broadcast interface",
-            ));
-        }
-
-        match pkt {
-            IpPacket::V4(mut pkt) => {
-                if pkt.src.is_unspecified() {
-                    pkt.src = iface.ipv4_subnet().unwrap().0;
-                }
-                let msg = Message::new()
-                    .kind(KIND_IPV4)
-                    .src(iface.device.addr.into())
-                    .dest(mac.into())
-                    .content(pkt)
-                    .build();
-
-                if buffered {
-                    iface.send_buffered(msg)
-                } else {
-                    iface.send(msg)
-                }
-            }
-            IpPacket::V6(mut pkt) => {
-                if pkt.src.is_unspecified() {
-                    pkt.src = iface.ipv6_subnet().unwrap().0;
-                }
-                let msg = Message::new()
-                    .kind(KIND_IPV6)
-                    .src(iface.device.addr.into())
-                    .dest(mac.into())
-                    .content(pkt)
-                    .build();
-
-                if buffered {
-                    iface.send_buffered(msg)
-                } else {
-                    iface.send(msg)
-                }
-            }
-        }
-    }
-
-    fn arp_lookup(
+    pub fn arp_lookup(
         &self,
-        dest: IpAddr,
+        dst: Ipv4Addr,
         preferred_iface: &SocketIfaceBinding,
     ) -> Option<(bool, MacAddress, IfId)> {
         self.arp
-            .lookup(&dest)
+            .lookup(&dst)
             .map(|e| (e.negated, e.mac, e.iface))
             .or_else(|| match preferred_iface {
                 SocketIfaceBinding::Bound(ifid) => {
                     let Some(iface) = self.ifaces.get(&ifid) else {
                         return None;
                     };
-                    let looback = iface.flags.loopback && dest.is_loopback();
-                    let self_addr = iface.bindings.matches(dest);
+                    let looback = iface.flags.loopback && dst.is_loopback();
+                    let self_addr = iface.bindings.v4.matches(dst);
                     if looback || self_addr {
                         Some((false, iface.device.addr, iface.name.id))
                     } else {
@@ -444,8 +233,8 @@ impl IOContext {
                         let Some(iface) = self.ifaces.get(&ifid) else {
                             continue;
                         };
-                        let looback = iface.flags.loopback && dest.is_loopback();
-                        let self_addr = iface.bindings.matches(dest);
+                        let looback = iface.flags.loopback && dst.is_loopback();
+                        let self_addr = iface.bindings.v4.matches(dst);
                         if looback || self_addr {
                             return Some((false, iface.device.addr, iface.name.id));
                         }
@@ -453,32 +242,32 @@ impl IOContext {
                     None
                 }
 
-                _ => panic!("not yet implemented: {} {:?}", dest, preferred_iface),
+                _ => panic!("not yet implemented: {} {:?}", dst, preferred_iface),
             })
         // .map(|(addr, ifid)| (addr, self.map_to_valid_ifid(ifid)))
     }
 
-    fn arp_missing_addr_mapping(
+    pub fn arp_missing_addr_mapping(
         &mut self,
         ifid: SocketIfaceBinding,
-        pkt: IpPacket,
-        dest: IpAddr,
+        pkt: Ipv4Packet,
+        dst: Ipv4Addr,
     ) -> io::Result<()> {
-        let active_lookup = self.arp.active_lookup(&dest);
-        self.arp.wait_for_arp(pkt, dest);
+        let active_lookup = self.arp.active_lookup(&dst);
+        self.arp.wait_for_arp(pkt, dst);
 
         if active_lookup {
             return Ok(());
         }
 
-        self.arp_send_request(ifid, dest)
+        self.arp_send_request(ifid, dst)
     }
 
-    fn arp_send_request(&mut self, ifid: SocketIfaceBinding, dest: IpAddr) -> io::Result<()> {
+    pub fn arp_send_request(&mut self, ifid: SocketIfaceBinding, dst: Ipv4Addr) -> io::Result<()> {
         let iface = match ifid {
             SocketIfaceBinding::Bound(ifid) => {
                 let mut iface = self.ifaces.get_mut(&ifid).unwrap();
-                if iface.flags.loopback && !dest.is_loopback() {
+                if iface.flags.loopback && !dst.is_loopback() {
                     let name = iface.name.clone();
                     let Some(eth) = self
                         .ifaces
@@ -499,7 +288,7 @@ impl IOContext {
             }
             SocketIfaceBinding::Any(ifids) => {
                 let mut iface = self.ifaces.get_mut(&ifids[0]).unwrap();
-                if iface.flags.loopback && !dest.is_loopback() {
+                if iface.flags.loopback && !dst.is_loopback() {
                     let name = iface.name.clone();
                     let Some(eth) = self
                         .ifaces
@@ -523,30 +312,22 @@ impl IOContext {
             }
         };
 
-        self.arp.requests.get_mut(&dest).unwrap().iface = iface.name.id;
+        self.arp.requests.get_mut(&dst).unwrap().iface = iface.name.id;
 
         tracing::trace!(
             "missing address resolution for {}, initiating ARP request at {}",
-            dest,
+            dst,
             iface.name
         );
 
-        let request = ArpPacket::new_request(
+        let request = ArpPacket::new_v4_request(
             iface.device.addr,
-            if dest.is_ipv4() {
-                iface
-                    .ipv4_subnet()
-                    .map(|v| v.0)
-                    .unwrap_or(Ipv4Addr::UNSPECIFIED)
-                    .into()
-            } else {
-                iface
-                    .ipv6_subnet()
-                    .map(|v| v.0)
-                    .unwrap_or(Ipv6Addr::UNSPECIFIED)
-                    .into()
-            },
-            dest,
+            iface
+                .ipv4_subnet()
+                .map(|v| v.0)
+                .unwrap_or(Ipv4Addr::UNSPECIFIED)
+                .into(),
+            dst,
         );
 
         let msg = Message::new()

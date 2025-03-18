@@ -6,9 +6,9 @@ use des::{
     runtime::{Builder, RuntimeError},
 };
 use inet::{
+    env::RoutingPort,
     interface::{add_interface, InterfaceDef, NetworkDevice},
     ipv6::util::setup_router,
-    routing::RoutingPort,
     utils::{self, getaddrinfo},
 };
 use inet_pcap::pcap;

@@ -1,6 +1,6 @@
 use std::{collections::VecDeque, iter::repeat_with};
 
-use crate::routing::RoutingInformation;
+use crate::env::RoutingInformation;
 use des::prelude::*;
 use fxhash::{FxBuildHasher, FxHashMap};
 use types::{

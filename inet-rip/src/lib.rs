@@ -7,12 +7,12 @@ use std::net::{IpAddr, Ipv4Addr};
 
 use inet::{
     interface::{add_interface, interface_status_by_ifid, InterfaceDef},
-    routing::add_routing_entry,
+    ipv4::router::add_routing_entry,
     Current, UdpSocket,
 };
 
-use inet::routing::RoutingInformation;
-use inet::routing::RoutingPort;
+use inet::env::RoutingInformation;
+use inet::env::RoutingPort;
 
 mod pkt;
 pub use self::pkt::*;

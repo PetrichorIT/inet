@@ -8,7 +8,7 @@ use adj_in::{AdjIn, Peer, Route};
 use adj_out::AdjRIBOut;
 use des::time::SimTime;
 use fxhash::{FxBuildHasher, FxHashMap};
-use inet::{interface::InterfaceName, routing::add_routing_table, TcpListener};
+use inet::{interface::InterfaceName, ipv4::router::add_routing_table, TcpListener};
 use kernel::{DefaultBgpKernel, Kernel};
 use loc_rib::LocRibWithKernel;
 use peering::{BgpPeeringCfg, NeighborDeamon, NeighborHandle};
@@ -306,7 +306,7 @@ impl BgpDeamon {
                             adj_in.unset_dirty()
                         }
 
-                        let Some(hndl) =  neighbor_send_handles.get(&peer.addr) else {
+                        let Some(hndl) = neighbor_send_handles.get(&peer.addr) else {
                             todo!()
                         };
 

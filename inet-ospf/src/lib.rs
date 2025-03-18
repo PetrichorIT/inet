@@ -4,7 +4,7 @@ pub mod packet;
 mod tests {
     use std::{fs::File, net::Ipv4Addr};
 
-    use bytes_io::{FromBytes, ToBytes};
+    use bytes_io::ToBytes;
     use inet::types::ip::{Ipv4Flags, Ipv4Packet, KIND_IPV4};
     use pcapng::{BlockWriter, DefaultBlockWriter, Linktype};
 

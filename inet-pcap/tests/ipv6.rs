@@ -7,9 +7,9 @@ use des::{
     runtime::{Builder, RuntimeError},
 };
 use inet::{
+    env::RoutingPort,
     interface::{add_interface, InterfaceDef, NetworkDevice},
     ipv6::{icmp::ping::ping, util::setup_router},
-    routing::RoutingPort,
     socket::RawIpSocket,
     utils, UdpSocket,
 };

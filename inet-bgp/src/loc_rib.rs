@@ -5,7 +5,7 @@ use std::{
 
 use des::time::SimTime;
 use fxhash::{FxBuildHasher, FxHashMap};
-use inet::routing::RoutingTableId;
+use inet::ipv4::router::RoutingTableId;
 
 use crate::{
     adj_in::{AdjIn, Peer, PeerId, Route, RouteId},
@@ -171,7 +171,9 @@ impl LocRib {
     }
 
     pub fn advertise_dest(&self, dest: Nlri, out: &mut AdjRIBOut) {
-        let Some((route, peer)) = self.lookup(dest) else { return };
+        let Some((route, peer)) = self.lookup(dest) else {
+            return;
+        };
         out.advertise_to_all(RIBEntry {
             nlri: vec![dest],
             next_hop: peer.next_hop,
@@ -182,7 +184,9 @@ impl LocRib {
     }
 
     pub fn withdraw_and_advertise_new(&self, dest: Nlri, out: &mut AdjRIBOut) {
-        let Some((route, peer)) = self.lookup(dest) else { return };
+        let Some((route, peer)) = self.lookup(dest) else {
+            return;
+        };
         out.withdraw_and_adverise(dest, route, peer);
     }
 

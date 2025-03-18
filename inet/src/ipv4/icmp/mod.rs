@@ -24,7 +24,6 @@ use types::{
     ip::{IpPacket, IpPacketRef, Ipv4Flags, Ipv4Packet},
 };
 
-use self::ping::PingCB;
 use crate::{interface::IfId, socket::SocketIfaceBinding, IOContext};
 
 mod ping;
@@ -48,7 +47,7 @@ impl Icmp {
 }
 
 impl IOContext {
-    pub(super) fn recv_icmpv4_packet(&mut self, ip_icmp: &Ipv4Packet, ifid: IfId) -> bool {
+    pub fn recv_icmpv4_packet(&mut self, ip_icmp: &Ipv4Packet, ifid: IfId) -> bool {
         assert_eq!(ip_icmp.proto, PROTO_ICMPV4);
 
         let Ok(pkt) = IcmpV4Packet::peek_from(&ip_icmp.content[..]) else {
@@ -197,7 +196,7 @@ impl IOContext {
         true
     }
 
-    pub(super) fn icmp_routing_failed(&mut self, e: Error, pkt: &Ipv4Packet) {
+    pub fn icmp_routing_failed(&mut self, e: Error, pkt: &Ipv4Packet) {
         match e.kind() {
             ErrorKind::ConnectionRefused => {
                 // Gateway error
@@ -238,7 +237,7 @@ impl IOContext {
         }
     }
 
-    pub(super) fn icmp_ttl_expired(&mut self, ifid: IfId, pkt: &Ipv4Packet) {
+    pub fn icmp_ttl_expired(&mut self, ifid: IfId, pkt: &Ipv4Packet) {
         let icmp = IcmpV4Packet::new(
             IcmpV4Type::TimeExceeded {
                 code: IcmpV4TimeExceededCode::TimeToLifeInTransit,
@@ -253,7 +252,7 @@ impl IOContext {
             .unwrap();
     }
 
-    pub(super) fn icmp_port_unreachable(&mut self, ifid: IfId, pkt: IpPacketRef) {
+    pub fn icmp_port_unreachable(&mut self, ifid: IfId, pkt: IpPacketRef) {
         if let IpPacketRef::V4(pkt) = pkt {
             let icmp = IcmpV4Packet::new(
                 IcmpV4Type::DestinationUnreachable {

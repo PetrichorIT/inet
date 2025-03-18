@@ -1,17 +1,18 @@
 #[macro_use]
 mod macros;
 
-pub mod arp;
 pub mod dns;
 pub mod extensions;
 pub mod fs;
-pub mod icmp;
 pub mod interface;
 pub mod io;
-pub mod ipv6;
-pub mod routing;
 pub mod socket;
 pub mod utils;
+
+pub mod env;
+
+pub mod ipv4;
+pub mod ipv6;
 
 cfg_libpcap! {
     pub mod libpcap;

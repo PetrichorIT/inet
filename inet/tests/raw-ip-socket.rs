@@ -102,7 +102,7 @@ impl Module for Receiver {
         spawn(async move {
             let mut sock = RawIpSocket::new_v4().unwrap();
             sock.bind_proto(PROTO).unwrap();
-            while let Ok(pkt) = sock.recv().await {
+            while let Ok((_, pkt)) = sock.recv().await {
                 tracing::info!("v4::received {:?}", pkt.content());
                 V4.fetch_sub(1, Ordering::SeqCst);
             }
@@ -111,7 +111,7 @@ impl Module for Receiver {
         spawn(async move {
             let mut sock = RawIpSocket::new_v6().unwrap();
             sock.bind_proto(PROTO).unwrap();
-            while let Ok(pkt) = sock.recv().await {
+            while let Ok((_, pkt)) = sock.recv().await {
                 tracing::info!("v6::received {:?}", pkt.content());
                 V6.fetch_sub(1, Ordering::SeqCst);
             }

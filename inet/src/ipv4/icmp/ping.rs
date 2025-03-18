@@ -10,7 +10,7 @@ use types::ip::{IpPacket, Ipv4Flags, Ipv4Packet};
 use crate::socket::SocketIfaceBinding;
 use crate::IOContext;
 
-pub(super) struct PingCB {
+pub struct PingCB {
     pub addr: Ipv4Addr,
     pub values: Vec<Duration>,
     pub identifier: u16,
@@ -78,7 +78,7 @@ impl IOContext {
         Ok(rx)
     }
 
-    pub(super) fn icmp_send_ping(&mut self, addr: Ipv4Addr, identifier: u16, sequence: u16) {
+    pub fn icmp_send_ping(&mut self, addr: Ipv4Addr, identifier: u16, sequence: u16) {
         let mut ip = Ipv4Packet {
             enc: 0,
             dscp: 0,
@@ -113,7 +113,7 @@ impl IOContext {
 }
 
 impl PingCB {
-    pub(super) fn recv_echo_reply(&mut self, identifer: u16, sequence: u16) -> bool {
+    pub fn recv_echo_reply(&mut self, identifer: u16, sequence: u16) -> bool {
         // Check Seq NO;
         assert_eq!(self.identifier, identifer);
         assert_eq!(self.current_seq_no, sequence);

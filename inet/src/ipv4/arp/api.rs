@@ -1,4 +1,4 @@
-use std::{fmt::Display, io::Result, net::IpAddr};
+use std::{fmt::Display, io::Result, net::Ipv4Addr};
 
 use des::time::SimTime;
 use types::iface::MacAddress;
@@ -12,7 +12,7 @@ pub struct ArpEntry {
     /// A human-readable name for the resolved node
     pub hostname: Option<String>,
     /// The IP address mapped to the MAC address
-    pub ip: IpAddr,
+    pub ip: Ipv4Addr,
     /// The MAC address of the related IP address
     pub mac: MacAddress,
     /// An identifier for the related interface
@@ -45,7 +45,7 @@ impl Display for ArpEntry {
 /// # Examples
 ///
 /// ```no_run
-/// use inet::arp::arpa;
+/// use inet::ipv4::arp::arpa;
 ///
 /// /* ... */
 /// # fn main() -> std::io::Result<()> {
@@ -63,7 +63,7 @@ pub fn arpa() -> Result<Vec<ArpEntry>> {
 }
 
 /// Adds a permantent entry to the IP network neighbor table
-pub fn set_arp_entry(ip: IpAddr, mac: MacAddress, if_name: InterfaceName) -> Result<()> {
+pub fn set_arp_entry(ip: Ipv4Addr, mac: MacAddress, if_name: InterfaceName) -> Result<()> {
     IOContext::failable_api(|ctx| ctx.set_arp_entry(ip, mac, if_name))
 }
 
@@ -103,7 +103,12 @@ impl IOContext {
         results
     }
 
-    fn set_arp_entry(&mut self, ip: IpAddr, mac: MacAddress, if_name: InterfaceName) -> Result<()> {
+    fn set_arp_entry(
+        &mut self,
+        ip: Ipv4Addr,
+        mac: MacAddress,
+        if_name: InterfaceName,
+    ) -> Result<()> {
         let sendable = self.arp.update(super::ArpEntryInternal {
             negated: false,
             hostname: None,
@@ -114,13 +119,8 @@ impl IOContext {
         });
         if let Some((trg, sendable)) = sendable {
             for pkt in sendable {
-                self.send_lan_local_ip_packet(
-                    SocketIfaceBinding::Bound(if_name.id),
-                    trg,
-                    pkt,
-                    true,
-                )
-                .unwrap();
+                self.ipv4_send_lan_local(SocketIfaceBinding::Bound(if_name.id), trg, pkt, true)
+                    .unwrap();
             }
         }
         Ok(())

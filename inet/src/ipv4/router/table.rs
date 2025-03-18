@@ -3,6 +3,7 @@ use std::{fmt::Display, io, net::Ipv4Addr};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct RoutingTableId(usize);
+
 impl RoutingTableId {
     pub const DEFAULT: RoutingTableId = RoutingTableId(0);
 }
