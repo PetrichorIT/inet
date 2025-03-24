@@ -2,11 +2,14 @@ use std::{
     cmp::Ordering,
     error,
     fmt::{self, Debug},
+    io,
     net::{AddrParseError, Ipv6Addr},
     num::ParseIntError,
     ops,
     str::FromStr,
 };
+
+use serde::{Deserialize, Deserializer};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
@@ -227,6 +230,16 @@ impl fmt::Display for Ipv6Prefix {
     }
 }
 
+impl<'de> Deserialize<'de> for Ipv6Prefix {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        s.parse().map_err(serde::de::Error::custom)
+    }
+}
+
 impl FromStr for Ipv6Prefix {
     type Err = Ipv6PrefixParsingError;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -346,6 +359,12 @@ impl fmt::Display for Ipv6PrefixParsingError {
 }
 
 impl error::Error for Ipv6PrefixParsingError {}
+
+impl From<Ipv6PrefixParsingError> for io::Error {
+    fn from(value: Ipv6PrefixParsingError) -> Self {
+        io::Error::new(io::ErrorKind::InvalidData, value)
+    }
+}
 
 #[cfg(test)]
 mod tests {

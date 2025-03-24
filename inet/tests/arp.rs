@@ -1,5 +1,5 @@
 use bytes_io::Bytes;
-use des::{prelude::*, registry, time::sleep};
+use des::{net::globals, prelude::*, registry, time::sleep};
 use inet::{
     interface::{add_interface, InterfaceDef, NetworkDevice},
     ipv4::arp::arpa,
@@ -25,16 +25,23 @@ impl Default for Node {
 
 impl Module for Node {
     fn at_sim_start(&mut self, _stage: usize) {
-        let ip = par("addr").unwrap().parse().unwrap();
+        let ip = current()
+            .prop::<Option<IpAddr>>("addr")
+            .unwrap()
+            .get()
+            .unwrap();
         add_interface(InterfaceDef::new("en0", NetworkDevice::eth()).ip(ip)).unwrap();
 
         self.ip = ip;
 
         let mut valid_addrs = Vec::with_capacity(5);
         for i in 0..5 {
-            let ip: IpAddr = par_for("addr", &format!("node[{i}]"))
+            let ip = globals()
+                .node(&format!("node[{i}]"))
                 .unwrap()
-                .parse()
+                .prop::<Option<IpAddr>>("addr")
+                .unwrap()
+                .get()
                 .unwrap();
             valid_addrs.push(ip)
         }
@@ -87,13 +94,12 @@ impl Module for Node {
 #[test]
 #[serial]
 fn v4() -> Result<(), RuntimeError> {
-    let mut app = Sim::new(())
+    let app = Sim::new(())
         .with_stack(inet::init)
+        .with_cfg(include_str!("arp/v4.par.yml"))
         .with_ndl("tests/arp/main.yml", registry![Node, Switch, else _])
         .map_err(|e| println!("{e}"))
         .unwrap();
-    app.include_par_file("tests/arp/v4.par.yml").unwrap();
-
     let rt = Builder::seeded(123).max_itr(1000).build(app);
     rt.run().map(|_| ())
 }

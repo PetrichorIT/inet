@@ -87,23 +87,7 @@ impl IOContext {
 }
 
 impl IOContext {
-    pub fn send_ip_packet(
-        &mut self,
-        ifid: SocketIfaceBinding,
-        pkt: IpPacket,
-        buffered: bool,
-    ) -> io::Result<()> {
-        if let IpPacket::V6(pkt) = pkt {
-            return self.ipv6_send(pkt, ifid.unwrap_ifid());
-        }
-
-        match pkt {
-            IpPacket::V4(pkt) => self.send_ip_packet_v4(ifid, pkt, buffered),
-            IpPacket::V6(pkt) => self.ipv6_send(pkt, ifid.unwrap_ifid()),
-        }
-    }
-
-    pub fn send_ip_packet_v4(
+    pub fn ipv4_send(
         &mut self,
         ifid: SocketIfaceBinding,
         pkt: Ipv4Packet,

@@ -126,7 +126,7 @@ impl TimerCtrl {
         };
 
         if let Some(wakeup) = self.wakeups.first() {
-            if *wakeup < next {
+            if *wakeup <= next {
                 return;
             }
         }

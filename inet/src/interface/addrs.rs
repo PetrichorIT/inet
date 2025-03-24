@@ -4,7 +4,7 @@ use std::{
     time::Duration,
 };
 
-use des::time::SimTime;
+use des::{prelude::current, time::SimTime};
 use types::{iface::MacAddress, ip::Ipv6AddrExt};
 
 use crate::ipv6::addrs::CanidateAddr;
@@ -86,7 +86,11 @@ impl InterfaceAddrsV6 {
             !unicast.addr.is_multicast(),
             "cannot assign ipv6 binding '{unicast}': address is multicast scope"
         );
-        tracing::debug!(addr = %unicast, "assiging unicast address");
+
+        if let Ok(mut addrs) = current().prop::<Vec<Ipv6Addr>>("inet.addrs.v6") {
+            addrs.update(|addrs| addrs.push(unicast.addr));
+        }
+
         self.unicast.push(unicast);
     }
 
@@ -95,6 +99,11 @@ impl InterfaceAddrsV6 {
             if self.unicast[i].matches(addr) {
                 let addr = self.unicast.remove(i);
                 tracing::debug!(%addr, "unassigning unicast address");
+
+                if let Ok(mut addrs) = current().prop::<Vec<Ipv6Addr>>("inet.addrs.v6") {
+                    addrs.update(|addrs| addrs.retain(|a| *a != addr.addr));
+                }
+
                 return Some(addr);
             }
         }
@@ -108,7 +117,6 @@ impl InterfaceAddrsV6 {
             "cannot join multicast group '{multicast}': address is not multicast"
         );
         if !self.multicast.iter().any(|addr| *addr == multicast) {
-            tracing::debug!(addr = %multicast, "joining multicast scope");
             self.multicast.push(multicast);
             true
         } else {

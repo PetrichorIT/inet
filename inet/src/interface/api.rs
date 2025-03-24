@@ -51,15 +51,16 @@ pub struct InterfaceState {
 
 impl InterfaceState {
     pub fn write_to_par(&self) -> Result<(), ParError> {
-        let base_key = self.name.to_string();
-        par(base_key.clone() + ":flags").set(self.flags)?;
-        par(base_key + ":addrs").set(
-            self.addrs
-                .addrs()
-                .map(|addr| addr.to_string())
-                .collect::<Vec<_>>()
-                .join(", "),
-        )?;
+        current()
+            .prop::<InterfaceFlags>(&format!("inet.{}.flags", self.name.to_string()))
+            .unwrap()
+            .set(self.flags);
+
+        current()
+            .prop::<Vec<IpAddr>>(&format!("inet.{}.addrs", self.name.to_string()))
+            .unwrap()
+            .set(self.addrs.addrs().collect::<Vec<_>>());
+
         Ok(())
     }
 }

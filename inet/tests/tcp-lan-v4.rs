@@ -3,7 +3,7 @@ use std::sync::{
     Arc,
 };
 
-use des::{prelude::*, registry, time::sleep};
+use des::{net::globals, prelude::*, registry, time::sleep};
 use inet::{
     interface::{add_interface, InterfaceDef, NetworkDevice},
     TcpListener, TcpStream,
@@ -23,18 +23,22 @@ impl Module for Node {
             return;
         }
 
-        let ip = par("addr").unwrap().parse().unwrap();
+        dbg!(current().props());
+
+        let ip = current()
+            .prop::<Option<IpAddr>>("addr")
+            .unwrap()
+            .get()
+            .unwrap();
         add_interface(InterfaceDef::new("en0", NetworkDevice::eth()).ip(ip)).unwrap();
 
-        let target: String = par("targets").unwrap().into_inner();
+        let target = current().prop::<Vec<u8>>("targets").unwrap().get();
         let targets = target
-            .trim()
-            .split(',')
-            .filter(|s| !s.is_empty())
-            .map(|v| Ipv4Addr::new(100, 0, 0, v.parse::<u8>().unwrap() + 100))
+            .into_iter()
+            .map(|v| Ipv4Addr::new(100, 0, 0, v + 100))
             .collect::<Vec<_>>();
 
-        let expected: usize = par("expected").unwrap().parse().unwrap();
+        let expected: usize = current().prop::<usize>("expected").unwrap().get();
 
         let done = self.done.clone();
         tokio::spawn(async move {
@@ -97,21 +101,23 @@ impl Module for Main {
     fn at_sim_start(&mut self, _stage: usize) {
         let mut targets = Vec::new();
         for i in 0..5 {
-            let s = par_for("targets", &format!("node[{i}]"))
-                .unwrap()
-                .into_inner();
-            targets.extend(
-                s.trim()
-                    .split(',')
-                    .filter(|s| !s.is_empty())
-                    .map(|v| v.parse::<u8>().unwrap()),
-            )
+            let s = globals()
+                .node(&format!("node[{i}]"))
+                .expect("no node found")
+                .prop::<Vec<u8>>("targets")
+                .expect("no prop found")
+                .get();
+            targets.extend(s)
         }
 
         for i in 0..5 {
             let c = targets.iter().filter(|e| **e == i).count();
-            let par = par_for("expected", &format!("node[{i}]"));
-            par.set(c).unwrap();
+            globals()
+                .node(&format!("node[{i}]"))
+                .unwrap()
+                .prop::<usize>("expected")
+                .unwrap()
+                .set(c);
         }
     }
 }
@@ -120,12 +126,12 @@ impl Module for Main {
 fn tcp_lan_v4() -> Result<(), RuntimeError> {
     // des::tracing::init();
 
-    let mut app = Sim::new(())
+    let app = Sim::new(())
         .with_stack(inet::init)
+        .with_cfg(include_str!("tcp-lan/v4.par.yml"))
         .with_ndl("tests/tcp-lan/main.yml", registry![Node, Switch, Main])
         .map_err(|e| println!("{e}"))
         .unwrap();
-    app.include_par_file("tests/tcp-lan/v4.par.yml").unwrap();
     let rt = Builder::seeded(123).build(app);
     rt.run().map(|_| ())
 }

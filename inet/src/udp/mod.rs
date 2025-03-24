@@ -302,7 +302,7 @@ impl IOContext {
 
                 let ifid = socket_info.interface.clone();
 
-                self.send_ip_packet(ifid, IpPacket::V4(ip), true)?;
+                self.ipv4_send(ifid, ip, true)?;
                 Ok(buf.len())
             }
             (IpAddr::V6(local), IpAddr::V6(target)) => {
@@ -327,7 +327,8 @@ impl IOContext {
 
                 let ifid = socket_info.interface.clone();
 
-                self.send_ip_packet(ifid, IpPacket::V6(ip), true)?;
+                // TODO: this should not work for '::
+                self.ipv6_send(ip, ifid.unwrap_ifid())?;
                 Ok(buf.len())
             }
             _ => unreachable!(),

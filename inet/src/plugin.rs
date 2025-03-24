@@ -1,3 +1,5 @@
+use std::net::IpAddr;
+
 use super::IOContext;
 use des::{
     net::{module::current, processing::ProcessingElement},
@@ -39,7 +41,9 @@ impl ProcessingElement for IOPlugin {
 
         if ctx.meta_changed {
             ctx.meta_changed = false;
-            current().set_meta(ctx.meta());
+            if let Ok(mut prop) = current().prop::<Option<IpAddr>>("inet.meta") {
+                prop.set(ctx.get_ip());
+            }
         }
     }
 }

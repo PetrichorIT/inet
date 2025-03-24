@@ -148,16 +148,9 @@ impl IOContext {
             .unwrap_or(&NodeState::default());
 
         let new_state = state.on(event, |action| match action {
-            NodeAction::SendReport => {
-                tracing::info!("send report");
-                self.ipv6_icmp_send_mld_report(ifid, multicast_addr)
-            }
-            NodeAction::SendDone => {
-                tracing::info!("send done");
-                self.ipv6_icmp_send_mld_done(ifid, multicast_addr)
-            }
+            NodeAction::SendReport => self.ipv6_icmp_send_mld_report(ifid, multicast_addr),
+            NodeAction::SendDone => self.ipv6_icmp_send_mld_done(ifid, multicast_addr),
             NodeAction::StartTimer(deadline) => {
-                tracing::info!("start timer {deadline}");
                 let token = TimerToken::MulticastListenerDiscoverySendReport {
                     ifid,
                     multicast_addr,
@@ -166,7 +159,6 @@ impl IOContext {
                 Ok(())
             }
             NodeAction::ResetTimer(new_deadline) => {
-                tracing::info!("reset timer");
                 let token = TimerToken::MulticastListenerDiscoverySendReport {
                     ifid,
                     multicast_addr,
@@ -175,7 +167,6 @@ impl IOContext {
                 Ok(())
             }
             NodeAction::StopTimer => {
-                tracing::info!("stop timer");
                 let token = TimerToken::MulticastListenerDiscoverySendReport {
                     ifid,
                     multicast_addr,

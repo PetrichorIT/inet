@@ -1,7 +1,7 @@
 use std::{
     error::Error,
     io::ErrorKind,
-    net::Ipv6Addr,
+    net::{IpAddr, Ipv6Addr},
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
@@ -10,7 +10,7 @@ use std::{
 };
 
 use des::{
-    net::{module::Module, par_for, Sim},
+    net::{globals, module::Module, Sim},
     registry,
     runtime::{Builder, RuntimeError},
 };
@@ -34,16 +34,18 @@ impl Module for AliceSuccess {
         let done = self.done.clone();
         tokio::spawn(async move {
             des::time::sleep(Duration::from_secs(10)).await;
-            let _ping = ipv6::icmp::ping::ping(
-                par_for("en0:addrs", "bob")
-                    .unwrap()
-                    .split(",")
-                    .next()
-                    .unwrap()
-                    .trim()
-                    .parse::<Ipv6Addr>()
-                    .unwrap(),
-            )
+            let addr = globals()
+                .node("bob")
+                .unwrap()
+                .prop::<Vec<IpAddr>>("inet.en0.addrs")
+                .unwrap()
+                .get()
+                .remove(0);
+
+            let _ping = ipv6::icmp::ping::ping(match addr {
+                IpAddr::V6(addr) => addr,
+                _ => panic!("Unexpected address type"),
+            })
             .await
             .unwrap();
 

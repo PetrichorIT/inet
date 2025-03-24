@@ -224,7 +224,7 @@ impl IOContext {
             for (ifid, iface) in &self.ifaces {
                 for addr in iface.bindings.v6.addrs() {
                     addrs.push(CanidateAddr {
-                        addr: addr,
+                        addr,
                         ifid: *ifid,
                         preferred: false,
                         deprecated: false,

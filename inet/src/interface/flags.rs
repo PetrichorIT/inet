@@ -1,5 +1,7 @@
+use serde::Deserialize;
+
 /// Flags indicating the state and capabilities of a network interface
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash, Deserialize)]
 #[allow(missing_docs)]
 pub struct InterfaceFlags {
     /// Whether the interface is connected

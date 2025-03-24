@@ -1,9 +1,14 @@
-use std::{io, net::Ipv6Addr, time::Duration};
+use std::{
+    io,
+    net::{IpAddr, Ipv6Addr},
+    time::Duration,
+};
 
 use des::{
     net::{
+        globals,
         module::{current, Module},
-        par, par_for, Sim,
+        Sim,
     },
     registry,
     runtime::{Builder, RuntimeError},
@@ -28,13 +33,13 @@ impl Module for Host {
             if current().path().as_str() == "net[0].host[0]" {
                 des::time::sleep(Duration::from_secs(1)).await;
 
-                let trg: Ipv6Addr = par_for("en0:addrs", "net[1].host[1]")
+                let trg = globals()
+                    .node("net[1].host[1]")
                     .unwrap()
-                    .split(',')
-                    .collect::<Vec<_>>()[1]
-                    .trim()
-                    .parse()
-                    .unwrap();
+                    .prop::<Vec<IpAddr>>("inet.en0.addrs")
+                    .unwrap()
+                    .get()
+                    .remove(0);
 
                 tracing::info!("inital query to {trg}");
                 let conn = UdpSocket::bind(":::0").await?;
@@ -69,8 +74,16 @@ struct Router;
 
 impl Module for Router {
     fn at_sim_start(&mut self, _stage: usize) {
-        let prefix: Ipv6Prefix = par("prefix").unwrap().parse().unwrap();
-        let peering_addr: Ipv6Addr = par("peering_addr").unwrap().parse().unwrap();
+        let prefix = current()
+            .prop::<Option<Ipv6Prefix>>("prefix")
+            .unwrap()
+            .get()
+            .unwrap();
+        let peering_addr = current()
+            .prop::<Option<Ipv6Addr>>("peering_addr")
+            .unwrap()
+            .get()
+            .unwrap();
         router::declare_router().unwrap();
         router::add_routing_prefix(prefix).unwrap();
 
@@ -98,10 +111,15 @@ impl Module for Router {
             .path_end()
             .unwrap()
             .owner();
-        let peers_prefix: Ipv6Prefix = par_for("prefix", peer.path()).unwrap().parse().unwrap();
-        let peers_addr: Ipv6Addr = par_for("peering_addr", peer.path())
+        let peers_prefix = peer
+            .prop::<Option<Ipv6Prefix>>("prefix")
             .unwrap()
-            .parse()
+            .get()
+            .unwrap();
+        let peers_addr = peer
+            .prop::<Option<Ipv6Addr>>("peering_addr")
+            .unwrap()
+            .get()
             .unwrap();
 
         router::add_routing_entry(peers_prefix, peers_addr, peering_addr).unwrap();
@@ -115,11 +133,13 @@ type Switch = utils::LinkLayerSwitch;
 fn ipv6_two_nets() -> Result<(), RuntimeError> {
     // des::tracing::init();
 
-    let mut app = Sim::new(()).with_stack(inet::init).with_ndl(
-        "tests/ipv6_two_nets.yml",
-        registry![Host, Switch, Router, else _],
-    )?;
-    app.include_par_file("tests/ipv6_two_nets.par.yml").unwrap();
+    let mut app = Sim::new(())
+        .with_stack(inet::init)
+        .with_cfg(include_str!("ipv6_two_nets.par.yml"))
+        .with_ndl(
+            "tests/ipv6_two_nets.yml",
+            registry![Host, Switch, Router, else _],
+        )?;
     let rt = Builder::seeded(123).max_time(10.0.into()).build(app);
     rt.run().map(|_| ())
 }

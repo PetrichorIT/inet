@@ -2,15 +2,10 @@ use bytes_io::ToBytes;
 use des::{runtime::RuntimeError, time::sleep};
 use inet::{
     interface::IfId,
-    ipv6::multicast::{designate_mdl, join_multicast_group, leave_multicast_group},
-    socket::RawIpSocket,
+    ipv6::multicast::{designate_mdl, join_multicast_group},
     test_util::SimpleSim,
 };
 use std::{net::Ipv6Addr, time::Duration};
-use types::{
-    icmpv6::{IcmpV6MulticastListenerMessage, IcmpV6Packet, PROTO_ICMPV6},
-    ip::{IpPacket, Ipv6AddrExt, Ipv6Packet},
-};
 
 #[test]
 fn run() -> Result<(), RuntimeError> {

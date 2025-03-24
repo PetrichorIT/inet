@@ -16,7 +16,6 @@ use fxhash::{FxBuildHasher, FxHashMap};
 use std::{
     cell::RefCell,
     io::{Error, ErrorKind, Result},
-    net::IpAddr,
     panic::UnwindSafe,
 };
 use types::ip::{IpPacket, KIND_IPV4, KIND_IPV6};
@@ -51,11 +50,6 @@ pub(crate) struct IOContext {
 
     pub(super) current: Current,
     pub(super) meta_changed: bool,
-}
-
-#[derive(Debug, Default, Clone)]
-pub struct IOMeta {
-    pub ip: Option<IpAddr>,
 }
 
 #[derive(Debug, Clone)]
@@ -144,10 +138,6 @@ impl IOContext {
 }
 
 impl IOContext {
-    pub fn meta(&self) -> IOMeta {
-        IOMeta { ip: self.get_ip() }
-    }
-
     pub fn recv(&mut self, msg: Message) -> Option<Message> {
         // Packets that are passed to the networking layer, are
         // not nessecarily addressed to any valid ip addr, but are valid for
@@ -235,6 +225,22 @@ impl IOContext {
         }
 
         None
+    }
+
+    pub fn send_ip_packet(
+        &mut self,
+        ifid: SocketIfaceBinding,
+        pkt: IpPacket,
+        buffered: bool,
+    ) -> Result<()> {
+        if let IpPacket::V6(pkt) = pkt {
+            return self.ipv6_send(pkt, ifid.unwrap_ifid());
+        }
+
+        match pkt {
+            IpPacket::V4(pkt) => self.ipv4_send(ifid, pkt, buffered),
+            IpPacket::V6(pkt) => self.ipv6_send(pkt, ifid.unwrap_ifid()),
+        }
     }
 }
 

@@ -1,5 +1,4 @@
 //! Routing utility and networking layer processing.
-use crate::ctx::IOMeta;
 use des::net::gate::GateKind;
 use des::prelude::*;
 
@@ -103,8 +102,9 @@ impl RoutingPort {
                         .path_end()
                         .map(|end| {
                             end.owner()
-                                .meta::<IOMeta>()
-                                .map(|io| io.ip)
+                                .prop::<Option<IpAddr>>("inet.meta")
+                                .ok()
+                                .map(|io| io.get())
                                 .flatten()
                                 .map(|addr| RoutingPeer { addr })
                         })

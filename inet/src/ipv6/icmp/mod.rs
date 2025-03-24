@@ -891,7 +891,9 @@ impl IOContext {
             if binding.validity != Duration::MAX {
                 binding.deadline = SimTime::now() + binding.validity;
             }
+
             iface.bindings.v6.add(binding);
+
             Ok(())
         }
     }

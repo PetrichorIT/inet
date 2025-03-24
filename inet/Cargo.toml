@@ -21,6 +21,7 @@ rand = "*"
 types = { path = "../util/types" }
 bytes-io = { path = "../util/bytes-io" }
 bitflags = ">2.6.0"
+serde = { version = "1.0", features = ["derive"] }
 
 [dev-dependencies]
 serial_test = "2.0.0"

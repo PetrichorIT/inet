@@ -106,7 +106,7 @@ impl RouterState {
             RouterEvent::OtherQueriesPresentTimerExpired => {
                 assert_eq!(self.role, Role::NonQuerier);
                 self.role = Role::Querier;
-                tracing::info!("promote to querier");
+                tracing::trace!("promote to querier");
                 f(RouterAction::SendGeneralQuery)?;
                 f(RouterAction::StartGeneralQueryTimer(
                     SimTime::now() + QUERY_INTERVAL,
@@ -134,6 +134,7 @@ impl GroupState {
             GroupState::NoListenersPresent => match event {
                 GroupEvent::ReportRecevied => {
                     // Notify routing
+                    tracing::trace!("noticed new multicast group");
                     *self = GroupState::ListenersPresent;
                     f(GroupAction::StartTimer(
                         SimTime::now() + MULTICAST_LISTENER_INTERVAL,
@@ -226,12 +227,10 @@ impl IOContext {
                 }
 
                 RouterAction::SendGeneralQuery => {
-                    tracing::info!("sending general query");
                     self.ivp6_icmp_send_mld_query(ifid, None, QUERY_RESPONSE_INTERVAL)?;
                 }
                 RouterAction::GroupAction(addr, action) => match action {
                     GroupAction::SendSpecificQuery => {
-                        tracing::info!("sending specific query");
                         self.ivp6_icmp_send_mld_query(
                             ifid,
                             Some(addr),
@@ -241,7 +240,6 @@ impl IOContext {
                     GroupAction::StartTimer(deadline) => {
                         let token =
                             TimerToken::MulticastListenerDiscoveryQuerierGroupTimer { ifid, addr };
-                        tracing::info!("start {} timer ({})", addr, deadline);
                         self.ipv6.timer.reschedule(&token, deadline);
                     }
                     GroupAction::StartTimerOrMin(deadline) => {
@@ -252,7 +250,6 @@ impl IOContext {
                             .timer
                             .active(&token)
                             .map_or(deadline, |d| d.min(deadline));
-                        tracing::info!("start* {} timer ({})", addr, deadline);
                         self.ipv6.timer.reschedule(&token, deadline);
                     }
 
@@ -302,10 +299,7 @@ impl IOContext {
         let token = TimerToken::MulticastListenerDiscoveryGeneralQuery { ifid };
         let deadline = SimTime::now() + QUERY_INTERVAL;
 
-        tracing::info!("starting timer {deadline}");
         self.ipv6.timer.schedule(token, deadline);
-
-        tracing::info!("sending general query");
         self.ivp6_icmp_send_mld_query(ifid, None, QUERY_RESPONSE_INTERVAL)?; // STARTUP INTERVAL
 
         Ok(())

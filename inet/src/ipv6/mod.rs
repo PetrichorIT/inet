@@ -277,7 +277,7 @@ impl IOContext {
             }
         }
 
-        panic!("Could not specified addr")
+        panic!("Could not specifed src interface for addr {src}")
     }
 
     fn ipv6_next_hop_determination(
@@ -296,6 +296,7 @@ impl IOContext {
                     return Ok(v);
                 } else {
                     tracing::error!(%src, %dst, "cannot find route");
+                    tracing::debug!("{:#?}", self.ipv6.router)
                 };
             }
             self.ipv6
