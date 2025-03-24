@@ -133,7 +133,7 @@ type Switch = utils::LinkLayerSwitch;
 fn ipv6_two_nets() -> Result<(), RuntimeError> {
     // des::tracing::init();
 
-    let mut app = Sim::new(())
+    let app = Sim::new(())
         .with_stack(inet::init)
         .with_cfg(include_str!("ipv6_two_nets.par.yml"))
         .with_ndl(

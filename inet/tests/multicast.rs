@@ -1,4 +1,3 @@
-use bytes_io::ToBytes;
 use des::{runtime::RuntimeError, time::sleep};
 use inet::{
     interface::IfId,

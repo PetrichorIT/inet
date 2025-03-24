@@ -11,10 +11,7 @@ use crate::{
     ipv6::{multicast::NodeEvent, ndp::QueryType},
     IOContext,
 };
-use des::{
-    net::{module::current, par, ParError},
-    time::SimTime,
-};
+use des::{net::module::current, time::SimTime};
 use std::{
     fmt::Debug,
     io::{self, Error, ErrorKind},
@@ -50,15 +47,13 @@ pub struct InterfaceState {
 }
 
 impl InterfaceState {
-    pub fn write_to_par(&self) -> Result<(), ParError> {
+    pub fn write_to_par(&self) -> Result<(), Error> {
         current()
-            .prop::<InterfaceFlags>(&format!("inet.{}.flags", self.name.to_string()))
-            .unwrap()
+            .prop::<InterfaceFlags>(&format!("inet.{}.flags", self.name.to_string()))?
             .set(self.flags);
 
         current()
-            .prop::<Vec<IpAddr>>(&format!("inet.{}.addrs", self.name.to_string()))
-            .unwrap()
+            .prop::<Vec<IpAddr>>(&format!("inet.{}.addrs", self.name.to_string()))?
             .set(self.addrs.addrs().collect::<Vec<_>>());
 
         Ok(())

@@ -1,4 +1,4 @@
-use std::{io, iter::repeat_with, str::FromStr};
+use std::{io, iter::repeat_with};
 
 use bytes_io::BytesMut;
 use des::{
