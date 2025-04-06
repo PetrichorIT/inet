@@ -158,6 +158,10 @@ impl SimpleSim {
         );
     }
 
+    pub fn into_inner(self) -> Sim<()> {
+        self.sim
+    }
+
     pub fn run(self) -> Result<(), RuntimeError> {
         let rt = Builder::seeded(123).max_time(100.0.into()).build(self.sim);
         rt.run().map(|_| ())

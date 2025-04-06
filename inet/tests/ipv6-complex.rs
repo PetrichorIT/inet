@@ -261,6 +261,7 @@ fn pick_target_addr(hosts: &[&str]) -> Ipv6Addr {
         .prop::<Vec<Ipv6Addr>>("inet.addrs.v6")
         .expect("prop failed")
         .get()
+        .unwrap()
         .into_iter()
         .filter(|addr| addr.scope() >= Ipv6AddrScope::UnicastGlobal)
         .next()

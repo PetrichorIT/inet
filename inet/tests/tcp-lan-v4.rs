@@ -25,20 +25,24 @@ impl Module for Node {
 
         dbg!(current().props());
 
-        let ip = current()
-            .prop::<Option<IpAddr>>("addr")
-            .unwrap()
-            .get()
-            .unwrap();
+        let ip = current().prop::<IpAddr>("addr").unwrap().get().unwrap();
         add_interface(InterfaceDef::new("en0", NetworkDevice::eth()).ip(ip)).unwrap();
 
-        let target = current().prop::<Vec<u8>>("targets").unwrap().get();
+        let target = current()
+            .prop::<Vec<u8>>("targets")
+            .unwrap()
+            .or_default()
+            .get();
         let targets = target
             .into_iter()
             .map(|v| Ipv4Addr::new(100, 0, 0, v + 100))
             .collect::<Vec<_>>();
 
-        let expected: usize = current().prop::<usize>("expected").unwrap().get();
+        let expected: usize = current()
+            .prop::<usize>("expected")
+            .unwrap()
+            .or_default()
+            .get();
 
         let done = self.done.clone();
         tokio::spawn(async move {
@@ -106,7 +110,8 @@ impl Module for Main {
                 .expect("no node found")
                 .prop::<Vec<u8>>("targets")
                 .expect("no prop found")
-                .get();
+                .get()
+                .unwrap();
             targets.extend(s)
         }
 

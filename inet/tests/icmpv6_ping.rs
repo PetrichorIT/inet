@@ -40,6 +40,7 @@ impl Module for AliceSuccess {
                 .prop::<Vec<IpAddr>>("inet.en0.addrs")
                 .unwrap()
                 .get()
+                .unwrap()
                 .remove(0);
 
             let _ping = ipv6::icmp::ping::ping(match addr {

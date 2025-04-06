@@ -4,7 +4,7 @@ use std::{
     time::Duration,
 };
 
-use des::{prelude::current, time::SimTime};
+use des::{net::module::try_current, prelude::current, time::SimTime};
 use types::{iface::MacAddress, ip::Ipv6AddrExt};
 
 use crate::ipv6::addrs::CanidateAddr;
@@ -87,8 +87,10 @@ impl InterfaceAddrsV6 {
             "cannot assign ipv6 binding '{unicast}': address is multicast scope"
         );
 
-        if let Ok(mut addrs) = current().prop::<Vec<Ipv6Addr>>("inet.addrs.v6") {
-            addrs.update(|addrs| addrs.push(unicast.addr));
+        // try_current so that we can test without a module context present
+        if let Some(Ok(mut addrs)) = try_current().map(|c| c.prop::<Vec<Ipv6Addr>>("inet.addrs.v6"))
+        {
+            addrs.or_default().update(|addrs| addrs.push(unicast.addr));
         }
 
         self.unicast.push(unicast);
@@ -101,7 +103,9 @@ impl InterfaceAddrsV6 {
                 tracing::debug!(%addr, "unassigning unicast address");
 
                 if let Ok(mut addrs) = current().prop::<Vec<Ipv6Addr>>("inet.addrs.v6") {
-                    addrs.update(|addrs| addrs.retain(|a| *a != addr.addr));
+                    addrs
+                        .or_default()
+                        .update(|addrs| addrs.retain(|a| *a != addr.addr));
                 }
 
                 return Some(addr);

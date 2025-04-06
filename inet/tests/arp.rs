@@ -25,11 +25,7 @@ impl Default for Node {
 
 impl Module for Node {
     fn at_sim_start(&mut self, _stage: usize) {
-        let ip = current()
-            .prop::<Option<IpAddr>>("addr")
-            .unwrap()
-            .get()
-            .unwrap();
+        let ip = current().prop::<IpAddr>("addr").unwrap().get().unwrap();
         add_interface(InterfaceDef::new("en0", NetworkDevice::eth()).ip(ip)).unwrap();
 
         self.ip = ip;
@@ -39,7 +35,7 @@ impl Module for Node {
             let ip = globals()
                 .node(&format!("node[{i}]"))
                 .unwrap()
-                .prop::<Option<IpAddr>>("addr")
+                .prop::<IpAddr>("addr")
                 .unwrap()
                 .get()
                 .unwrap();

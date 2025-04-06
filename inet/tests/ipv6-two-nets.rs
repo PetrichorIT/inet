@@ -39,6 +39,7 @@ impl Module for Host {
                     .prop::<Vec<IpAddr>>("inet.en0.addrs")
                     .unwrap()
                     .get()
+                    .unwrap()
                     .remove(0);
 
                 tracing::info!("inital query to {trg}");
@@ -75,12 +76,12 @@ struct Router;
 impl Module for Router {
     fn at_sim_start(&mut self, _stage: usize) {
         let prefix = current()
-            .prop::<Option<Ipv6Prefix>>("prefix")
+            .prop::<Ipv6Prefix>("prefix")
             .unwrap()
             .get()
             .unwrap();
         let peering_addr = current()
-            .prop::<Option<Ipv6Addr>>("peering_addr")
+            .prop::<Ipv6Addr>("peering_addr")
             .unwrap()
             .get()
             .unwrap();
@@ -111,13 +112,9 @@ impl Module for Router {
             .path_end()
             .unwrap()
             .owner();
-        let peers_prefix = peer
-            .prop::<Option<Ipv6Prefix>>("prefix")
-            .unwrap()
-            .get()
-            .unwrap();
+        let peers_prefix = peer.prop::<Ipv6Prefix>("prefix").unwrap().get().unwrap();
         let peers_addr = peer
-            .prop::<Option<Ipv6Addr>>("peering_addr")
+            .prop::<Ipv6Addr>("peering_addr")
             .unwrap()
             .get()
             .unwrap();

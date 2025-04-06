@@ -106,7 +106,7 @@ impl RoutingPort {
                                 .ok()
                                 .map(|io| io.get())
                                 .flatten()
-                                .map(|addr| RoutingPeer { addr })
+                                .and_then(|addr| addr.map(|addr| RoutingPeer { addr }))
                         })
                         .flatten(),
                 }),

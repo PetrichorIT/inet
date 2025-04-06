@@ -5,8 +5,8 @@
 //! tokio-des-inet stack should not make use of this feature, these implementations
 //! replace the tokio-interal ones.
 
-mod ready;
-pub use ready::*;
-
 mod interest;
+mod ready;
+
 pub use interest::*;
+pub use ready::*;
