@@ -132,12 +132,11 @@ impl IOContext {
                     if pkt.src.is_unspecified() {
                         pkt.src = iface.ipv4_subnet().unwrap().0;
                     }
-                    let msg = Message::new()
+                    let msg = Message::default()
                         .kind(KIND_IPV4)
                         .src(iface.device.addr.into())
-                        .dest(MacAddress::BROADCAST.into())
-                        .content(pkt)
-                        .build();
+                        .dst(MacAddress::BROADCAST.into())
+                        .with_content(pkt);
 
                     if buffered {
                         iface.send_buffered(msg)?;
@@ -184,12 +183,11 @@ impl IOContext {
         if pkt.src.is_unspecified() {
             pkt.src = iface.ipv4_subnet().unwrap().0;
         }
-        let msg = Message::new()
+        let msg = Message::default()
             .kind(KIND_IPV4)
             .src(iface.device.addr.into())
-            .dest(mac.into())
-            .content(pkt)
-            .build();
+            .dst(mac.into())
+            .with_content(pkt);
 
         if buffered {
             iface.send_buffered(msg)

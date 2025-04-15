@@ -87,7 +87,7 @@ impl Module for Node {
     fn handle_message(&mut self, msg: Message) {
         panic!(
             "msg :: {} :: {} // {:?} -> {:?}",
-            msg.str(),
+            msg,
             current().name(),
             msg.content::<Ipv6Packet>().src,
             msg.content::<Ipv6Packet>().dst

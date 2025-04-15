@@ -653,10 +653,9 @@ impl Timers {
         if min < *next_scheduled {
             tracing::debug!("<TCP2> scheduling wakeup: {min}");
             schedule_at(
-                Message::new()
+                Message::default()
                     .kind(KIND_IO_TIMEOUT)
-                    .content(u32::MAX)
-                    .build(),
+                    .with_content(u32::MAX),
                 min,
             );
             self.scheduled.insert(0, min);

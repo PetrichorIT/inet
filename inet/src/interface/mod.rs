@@ -187,7 +187,7 @@ impl IOContext {
     pub fn recv_linklayer(&mut self, msg: Message) -> LinkLayerResult {
         use LinkLayerResult::*;
 
-        let dst = MacAddress::from(msg.header().dest);
+        let dst = MacAddress::from(msg.dst);
 
         // Precheck for link layer updates
         if msg.header().kind == KIND_LINK_UPDATE {

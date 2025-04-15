@@ -162,7 +162,7 @@ impl DHCPServer {
                 );
 
                 schedule_in(
-                    Message::new()
+                    Message::default()
                         .kind(MESSAGE_KIND_DHCP)
                         .content((
                             SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), 0),
@@ -179,7 +179,10 @@ impl DHCPServer {
                     offer,
                 );
                 send(
-                    Message::new().kind(MESSAGE_KIND_DHCP).content(udp).build(),
+                    Message::default()
+                        .kind(MESSAGE_KIND_DHCP)
+                        .content(udp)
+                        .build(),
                     self.gate.as_ref().expect("Failed to fetch gate"),
                 );
             }
@@ -217,7 +220,10 @@ impl DHCPServer {
                 );
 
                 send(
-                    Message::new().kind(MESSAGE_KIND_DHCP).content(udp).build(),
+                    Message::default()
+                        .kind(MESSAGE_KIND_DHCP)
+                        .content(udp)
+                        .build(),
                     self.gate.as_ref().expect("Failed to fetch gate"),
                 );
             }

@@ -3,11 +3,7 @@ use std::{collections::VecDeque, iter::repeat_with};
 use crate::env::RoutingInformation;
 use des::prelude::*;
 use fxhash::{FxBuildHasher, FxHashMap};
-use types::{
-    arp::ArpPacket,
-    iface::MacAddress,
-    ip::{Ipv4Packet, Ipv6Packet},
-};
+use types::iface::MacAddress;
 
 /// A marker to identify wakeup messages for the Switch.
 ///
@@ -54,7 +50,7 @@ impl Module for LinkLayerSwitch {
         }
 
         let in_port = self.store_sender(&msg);
-        let dst = MacAddress::from(msg.header().dest);
+        let dst = MacAddress::from(msg.dst);
 
         if dst.is_broadcast() || dst.is_multicast() {
             for i in 0..self.info.ports.len() {
@@ -63,25 +59,7 @@ impl Module for LinkLayerSwitch {
                 }
 
                 // Broadcast ethernet packet.
-                if msg.can_cast::<ArpPacket>() {
-                    self.forward(msg.dup::<ArpPacket>(), i);
-                    continue;
-                }
-
-                if msg.can_cast::<Ipv4Packet>() {
-                    self.forward(msg.dup::<Ipv4Packet>(), i);
-                    continue;
-                }
-
-                if msg.can_cast::<Ipv6Packet>() {
-                    self.forward(msg.dup::<Ipv6Packet>(), i);
-                    continue;
-                }
-
-                tracing::error!(
-                    "could not duplicate packet {}: unexpected content",
-                    msg.str()
-                )
+                self.forward(msg.clone(), i);
             }
         } else {
             let Some(port) = self.mapping.get(&dst) else {
@@ -141,7 +119,7 @@ impl LinkLayerSwitch {
                     // First message that was enqueued, no timeout in flight
                     let tft = ch.transmission_finish_time();
                     schedule_at(
-                        Message::new().kind(KIND_SWITCH_WAKEUP).content(i).build(),
+                        Message::default().kind(KIND_SWITCH_WAKEUP).with_content(i),
                         tft,
                     );
                 }
@@ -169,7 +147,7 @@ impl LinkLayerSwitch {
                 if let Some(ch) = gate.channel() {
                     let tft = ch.transmission_finish_time();
                     schedule_at(
-                        Message::new().kind(KIND_SWITCH_WAKEUP).content(i).build(),
+                        Message::default().kind(KIND_SWITCH_WAKEUP).with_content(i),
                         tft,
                     );
                     break;

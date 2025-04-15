@@ -407,7 +407,7 @@ fn interface_does_not_use_busy_channel() -> Result<(), RuntimeError> {
             des::time::sleep(Duration::from_secs(1)).await;
 
             for i in 0..32 {
-                send(Message::new().id(i).build(), "port");
+                send(Message::default().id(i), "port");
             }
 
             let sock = RawIpSocket::new_v6()?;
@@ -423,7 +423,7 @@ fn interface_does_not_use_busy_channel() -> Result<(), RuntimeError> {
             }))?;
 
             for i in 0..32 {
-                send(Message::new().id(32 + i).build(), "port");
+                send(Message::default().id(32 + i), "port");
             }
 
             Ok(())
@@ -511,7 +511,7 @@ fn interface_will_use_idle_channel_fcfs() -> Result<(), RuntimeError> {
             }))?;
 
             for i in 0..32 {
-                send(Message::new().id(32 + i).build(), "port");
+                send(Message::default().id(32 + i), "port");
             }
 
             Ok(())

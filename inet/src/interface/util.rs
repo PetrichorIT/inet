@@ -20,7 +20,9 @@ pub(crate) struct LinkUpdate(pub IfId);
 
 impl From<LinkUpdate> for Message {
     fn from(value: LinkUpdate) -> Self {
-        Message::new().kind(KIND_LINK_UPDATE).content(value).build()
+        Message::default()
+            .kind(KIND_LINK_UPDATE)
+            .with_content(value)
     }
 }
 

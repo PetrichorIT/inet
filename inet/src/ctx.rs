@@ -10,7 +10,7 @@ use crate::{
 };
 use des::{
     net::module::{current, try_current},
-    prelude::{Message, MessageHeader, ModuleId},
+    prelude::{Header, Message, ModuleId},
 };
 use fxhash::{FxBuildHasher, FxHashMap};
 use std::{
@@ -264,6 +264,6 @@ pub enum LinkLayerResult {
 #[derive(Debug)]
 pub enum NetworkLayerResult {
     PassThrough(Message),
-    TransportLayerPacket(IpPacket, MessageHeader),
+    TransportLayerPacket(IpPacket, Header),
     Consumed(),
 }

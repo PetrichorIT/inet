@@ -40,7 +40,7 @@ impl IOContext {
 
         match arp.operation {
             ARPOperation::Request => {
-                assert!(MacAddress::from(msg.header().dest).is_broadcast());
+                assert!(MacAddress::from(msg.dst).is_broadcast());
                 assert!(arp.dst_mac_addr().is_unspecified());
 
                 // (0) Add sender entry to local arp table
@@ -95,12 +95,11 @@ impl IOContext {
 
                     let response = arp.into_response(iface.device.addr);
 
-                    let msg = Message::new()
+                    let msg = Message::default()
                         .kind(KIND_ARP)
                         .src(iface.device.addr.into())
-                        .dest(arp.src_mac_addr().into())
-                        .content(response)
-                        .build();
+                        .dst(arp.src_mac_addr().into())
+                        .with_content(response);
 
                     iface.send_buffered(msg).unwrap();
                 }
@@ -183,7 +182,7 @@ impl IOContext {
 
         if !self.ipv4.arp.requests.is_empty() {
             schedule_in(
-                Message::new().kind(KIND_IO_TIMEOUT).id(KIND_ARP).build(),
+                Message::default().kind(KIND_IO_TIMEOUT).id(KIND_ARP),
                 self.ipv4.arp.config.timeout,
             );
             self.ipv4.arp.active_wakeup = true;
@@ -332,17 +331,16 @@ impl IOContext {
             dst,
         );
 
-        let msg = Message::new()
+        let msg = Message::default()
             .kind(KIND_ARP)
             .src(iface.device.addr.into())
-            .dest(MacAddress::BROADCAST.into())
-            .content(request)
-            .build();
+            .dst(MacAddress::BROADCAST.into())
+            .with_content(request);
 
         if !self.ipv4.arp.active_wakeup {
             self.ipv4.arp.active_wakeup = true;
             schedule_in(
-                Message::new().kind(KIND_IO_TIMEOUT).id(KIND_ARP).build(),
+                Message::default().kind(KIND_IO_TIMEOUT).id(KIND_ARP),
                 self.ipv4.arp.config.timeout,
             );
         }

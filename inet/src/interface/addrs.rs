@@ -88,8 +88,7 @@ impl InterfaceAddrsV6 {
         );
 
         // try_current so that we can test without a module context present
-        if let Some(Ok(mut addrs)) = try_current().map(|c| c.prop::<Vec<Ipv6Addr>>("inet.addrs.v6"))
-        {
+        if let Some(Ok(addrs)) = try_current().map(|c| c.prop::<Vec<Ipv6Addr>>("inet.addrs.v6")) {
             addrs.or_default().update(|addrs| addrs.push(unicast.addr));
         }
 
@@ -102,7 +101,7 @@ impl InterfaceAddrsV6 {
                 let addr = self.unicast.remove(i);
                 tracing::debug!(%addr, "unassigning unicast address");
 
-                if let Ok(mut addrs) = current().prop::<Vec<Ipv6Addr>>("inet.addrs.v6") {
+                if let Ok(addrs) = current().prop::<Vec<Ipv6Addr>>("inet.addrs.v6") {
                     addrs
                         .or_default()
                         .update(|addrs| addrs.retain(|a| *a != addr.addr));

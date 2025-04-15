@@ -204,19 +204,18 @@ impl IOContext {
                 .iter_mut()
                 .find(|(_, iface)| iface.flags.loopback)
             {
-                lo_iface.send_buffered(Message::new().kind(KIND_IPV6).content(pkt).build())?;
+                lo_iface.send_buffered(Message::default().kind(KIND_IPV6).with_content(pkt))?;
                 return Ok(());
             } else {
                 // FIXME: dangerous since this execut4e directly
                 let iface = self.ifaces.get(&ifid).unwrap();
                 schedule_in(
-                    Message::new()
+                    Message::default()
                         .last_gate(iface.device.input().unwrap())
                         .kind(KIND_IPV6)
                         .src(iface.device.addr.into())
-                        .dest(iface.device.addr.into())
-                        .content(pkt)
-                        .build(),
+                        .dst(iface.device.addr.into())
+                        .with_content(pkt),
                     Duration::ZERO,
                 );
                 return Ok(());
@@ -260,12 +259,11 @@ impl IOContext {
         };
 
         let iface = self.ifaces.get_mut(&ifid).unwrap();
-        let msg = Message::new()
+        let msg = Message::default()
             .src(iface.device.addr.into())
-            .dest(mac.into())
+            .dst(mac.into())
             .kind(KIND_IPV6)
-            .content(pkt)
-            .build();
+            .with_content(pkt);
 
         iface.send_buffered(msg)
     }

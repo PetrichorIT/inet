@@ -74,7 +74,7 @@ impl<W: BlockWriter<IfId>> LibPcapDeamon<W> {
             &ifid,
             SimTime::now().as_millis() as u64,
             msg.header().src,
-            msg.header().dest,
+            msg.header().dst,
             msg.header().kind,
             &self.pkt_as_buf(msg)?,
             None,

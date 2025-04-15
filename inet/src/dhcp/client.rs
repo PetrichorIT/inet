@@ -69,7 +69,7 @@ impl DHCPClient {
 
         tracing::trace!("<DHCPClient> Starting handshake {:x}", self.xid);
         send(
-            Message::new()
+            Message::default()
                 .kind(MESSAGE_KIND_DHCP)
                 .content(udp_message)
                 .build(),
@@ -120,7 +120,10 @@ impl DHCPClient {
                     req,
                 );
                 send(
-                    Message::new().kind(MESSAGE_KIND_DHCP).content(udp).build(),
+                    Message::default()
+                        .kind(MESSAGE_KIND_DHCP)
+                        .content(udp)
+                        .build(),
                     self.gate.as_ref().expect("Failed to provide valid gate"),
                 );
             }
@@ -146,7 +149,7 @@ impl DHCPClient {
                 // IOContext::eth_with_addr(self.addr, mac).set();
                 // FIXME
                 self.done = true;
-                send(Message::new().kind(1000).content(self.addr).build(), "out")
+                send(Message::default().kind(1000).with_content(self.addr), "out")
             }
             _ => {}
         }

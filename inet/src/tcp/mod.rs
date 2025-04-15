@@ -1739,11 +1739,10 @@ impl TransmissionControlBlock {
         );
         self.timer += 1;
         schedule_in(
-            Message::new()
+            Message::default()
                 .kind(KIND_IO_TIMEOUT)
                 .id(self.timer)
-                .content(self.fd)
-                .build(),
+                .with_content(self.fd),
             Duration::from_secs_f64(self.rto),
         );
     }
@@ -1768,11 +1767,10 @@ impl TransmissionControlBlock {
     fn set_timer(&mut self, expiration: Duration) {
         self.timer += 1;
         schedule_in(
-            Message::new()
+            Message::default()
                 .kind(KIND_IO_TIMEOUT)
                 .id(self.timer)
-                .content(self.fd)
-                .build(),
+                .with_content(self.fd),
             expiration,
         )
     }
