@@ -129,7 +129,8 @@ fn raw_ip_socket() -> Result<(), RuntimeError> {
         .with_stack(inet::init)
         .with_ndl("tests/emit.yml", registry![Emitter, Receiver, else _])
         .map_err(|e| println!("{e}"))
-        .unwrap();
+        .unwrap()
+        .freeze();
     let rt = Builder::seeded(123).build(rt);
     rt.run().map(|_| ())
 }

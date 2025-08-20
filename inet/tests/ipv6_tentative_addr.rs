@@ -3,7 +3,7 @@ use std::time::Duration;
 use bytes_io::FromBytes;
 use des::{
     net::{
-        channel::{Channel, ChannelDropBehaviour, ChannelMetrics},
+        channel::{ChannelDropBehaviour, DatarateChannel, DatarateChannelMetrics},
         module::Module,
         Sim,
     },
@@ -86,7 +86,7 @@ struct OnlyRouterSolOrMDL;
 
 impl Module for OnlyRouterSolOrMDL {
     fn handle_message(&mut self, msg: des::prelude::Message) {
-        let pkt = msg.content::<Ipv6Packet>();
+        let pkt = msg.body.content::<Ipv6Packet>();
         let icmp = IcmpV6Packet::peek_from(&pkt.content[..]).unwrap();
         assert!(matches!(
             icmp,
@@ -130,15 +130,15 @@ fn tentative_addr_with_checks() -> Result<(), RuntimeError> {
     let ag = app.gate("a", "port");
     let bg = app.gate("b", "port");
 
-    let chan = Channel::new(ChannelMetrics {
+    let chan = DatarateChannel::new(DatarateChannelMetrics {
         bitrate: 1000000,
         latency: Duration::from_millis(50),
         jitter: Duration::ZERO,
         drop_behaviour: ChannelDropBehaviour::Drop,
     });
-    ag.connect(bg, Some(chan));
+    ag.connect_with(bg, Some(chan));
 
-    let rt = Builder::seeded(123).build(app);
+    let rt = Builder::seeded(123).build(app.freeze());
     rt.run().map(|_| ())
 }
 
@@ -154,15 +154,15 @@ fn tentative_addr_without_checks() -> Result<(), RuntimeError> {
     let ag = app.gate("a", "port");
     let bg = app.gate("b", "port");
 
-    let chan = Channel::new(ChannelMetrics {
+    let chan = DatarateChannel::new(DatarateChannelMetrics {
         bitrate: 1000000,
         latency: Duration::from_millis(50),
         jitter: Duration::ZERO,
         drop_behaviour: ChannelDropBehaviour::Drop,
     });
-    ag.connect(bg, Some(chan));
+    ag.connect_with(bg, Some(chan));
 
-    let rt = Builder::seeded(123).build(app);
+    let rt = Builder::seeded(123).build(app.freeze());
     rt.run().map(|_| ())
 }
 
@@ -178,15 +178,15 @@ fn tentative_addr_no_checks_on_manual_no_dedup() -> Result<(), RuntimeError> {
     let ag = app.gate("a", "port");
     let bg = app.gate("b", "port");
 
-    let chan = Channel::new(ChannelMetrics {
+    let chan = DatarateChannel::new(DatarateChannelMetrics {
         bitrate: 1000000,
         latency: Duration::from_millis(50),
         jitter: Duration::ZERO,
         drop_behaviour: ChannelDropBehaviour::Drop,
     });
-    ag.connect(bg, Some(chan));
+    ag.connect_with(bg, Some(chan));
 
-    let rt = Builder::seeded(123).build(app);
+    let rt = Builder::seeded(123).build(app.freeze());
     rt.run().map(|_| ())
 }
 
@@ -202,14 +202,14 @@ fn tentative_addr_collision() -> Result<(), RuntimeError> {
     let ag = app.gate("a", "port");
     let bg = app.gate("b", "port");
 
-    let chan = Channel::new(ChannelMetrics {
+    let chan = DatarateChannel::new(DatarateChannelMetrics {
         bitrate: 1000000,
         latency: Duration::from_millis(50),
         jitter: Duration::ZERO,
         drop_behaviour: ChannelDropBehaviour::Drop,
     });
-    ag.connect(bg, Some(chan));
+    ag.connect_with(bg, Some(chan));
 
-    let rt = Builder::seeded(123).build(app);
+    let rt = Builder::seeded(123).build(app.freeze());
     rt.run().map(|_| ())
 }

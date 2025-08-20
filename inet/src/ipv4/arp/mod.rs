@@ -96,9 +96,9 @@ impl IOContext {
                     let response = arp.into_response(iface.device.addr);
 
                     let msg = Message::default()
-                        .kind(KIND_ARP)
-                        .src(iface.device.addr.into())
-                        .dst(arp.src_mac_addr().into())
+                        .with_kind(KIND_ARP)
+                        .with_src(iface.device.addr.into())
+                        .with_dst(arp.src_mac_addr().into())
                         .with_content(response);
 
                     iface.send_buffered(msg).unwrap();
@@ -182,7 +182,9 @@ impl IOContext {
 
         if !self.ipv4.arp.requests.is_empty() {
             schedule_in(
-                Message::default().kind(KIND_IO_TIMEOUT).id(KIND_ARP),
+                Message::default()
+                    .with_kind(KIND_IO_TIMEOUT)
+                    .with_id(KIND_ARP),
                 self.ipv4.arp.config.timeout,
             );
             self.ipv4.arp.active_wakeup = true;
@@ -224,7 +226,7 @@ impl IOContext {
                     let looback = iface.flags.loopback && dst.is_loopback();
                     let self_addr = iface.bindings.v4.matches(dst);
                     if looback || self_addr {
-                        Some((false, iface.device.addr, iface.name.id))
+                        Some((false, iface.device.addr, iface.name.id()))
                     } else {
                         None
                     }
@@ -237,7 +239,7 @@ impl IOContext {
                         let looback = iface.flags.loopback && dst.is_loopback();
                         let self_addr = iface.bindings.v4.matches(dst);
                         if looback || self_addr {
-                            return Some((false, iface.device.addr, iface.name.id));
+                            return Some((false, iface.device.addr, iface.name.id()));
                         }
                     }
                     None
@@ -313,7 +315,7 @@ impl IOContext {
             }
         };
 
-        self.ipv4.arp.requests.get_mut(&dst).unwrap().iface = iface.name.id;
+        self.ipv4.arp.requests.get_mut(&dst).unwrap().iface = iface.name.id();
 
         tracing::trace!(
             "missing address resolution for {}, initiating ARP request at {}",
@@ -332,15 +334,17 @@ impl IOContext {
         );
 
         let msg = Message::default()
-            .kind(KIND_ARP)
-            .src(iface.device.addr.into())
-            .dst(MacAddress::BROADCAST.into())
+            .with_kind(KIND_ARP)
+            .with_src(iface.device.addr.into())
+            .with_dst(MacAddress::BROADCAST.into())
             .with_content(request);
 
         if !self.ipv4.arp.active_wakeup {
             self.ipv4.arp.active_wakeup = true;
             schedule_in(
-                Message::default().kind(KIND_IO_TIMEOUT).id(KIND_ARP),
+                Message::default()
+                    .with_kind(KIND_IO_TIMEOUT)
+                    .with_id(KIND_ARP),
                 self.ipv4.arp.config.timeout,
             );
         }

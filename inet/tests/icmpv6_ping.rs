@@ -35,7 +35,7 @@ impl Module for AliceSuccess {
         tokio::spawn(async move {
             des::time::sleep(Duration::from_secs(10)).await;
             let addr = globals()
-                .node("bob")
+                .get(&"bob".into())
                 .unwrap()
                 .prop::<Vec<IpAddr>>("inet.en0.addrs")
                 .unwrap()
@@ -106,7 +106,7 @@ impl Module for Bob {
 
         tokio::spawn(async {
             des::time::sleep(Duration::from_secs(5)).await;
-            interface_status("en0").unwrap().write_to_par().unwrap();
+            interface_status("en0").unwrap().publish();
         });
     }
 }
@@ -141,7 +141,9 @@ fn icmpv6_ping_success() -> Result<(), Box<dyn Error>> {
         "tests/icmpv6_ping.yml",
         registry![Bob, Alice, Router, Switch, else _],
     )?;
-    let rt = Builder::seeded(123).max_time(30.0.into()).build(app);
+    let rt = Builder::seeded(123)
+        .max_time(30.0.into())
+        .build(app.freeze());
     let _res = rt.run();
 
     Ok(())
@@ -157,7 +159,9 @@ fn icmpv6_ping_failure() -> Result<(), Box<dyn Error>> {
         "tests/icmpv6_ping.yml",
         registry![Bob, Alice, Router, Switch, else _],
     )?;
-    let rt = Builder::seeded(123).max_time(100.0.into()).build(app);
+    let rt = Builder::seeded(123)
+        .max_time(100.0.into())
+        .build(app.freeze());
     let _res = rt.run();
 
     Ok(())

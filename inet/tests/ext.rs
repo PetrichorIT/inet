@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use des::{
-    net::{AsyncFn, Sim},
+    net::{handlers::AsyncHandler, Sim},
     runtime::{Builder, RuntimeError},
     time::sleep,
 };
@@ -17,7 +17,7 @@ fn basic_extension() -> Result<(), RuntimeError> {
     let mut sim = Sim::new(()).with_stack(inet::init);
     sim.node(
         "mynode",
-        AsyncFn::new(|_| async move {
+        AsyncHandler::new(|_| async move {
             load_ext(MyExt { value: 42 });
             sleep(Duration::from_secs(1)).await;
 
@@ -28,6 +28,6 @@ fn basic_extension() -> Result<(), RuntimeError> {
         }),
     );
 
-    let rt = Builder::new().build(sim);
+    let rt = Builder::new().build(sim.freeze());
     rt.run().map(|_| ())
 }

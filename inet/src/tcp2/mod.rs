@@ -15,14 +15,11 @@ use std::{
     io::{Error, ErrorKind},
     mem,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
-    sync::{
-        atomic::{AtomicU32, Ordering},
-        Arc,
-    },
+    sync::atomic::Ordering,
     task::{Context, Poll},
     u32,
 };
-use tokio::{io::ReadBuf, sync::mpsc};
+use tokio::io::ReadBuf;
 use types::{
     ip::IpPacketRef,
     tcp::{TcpFlags, TcpPacket, PROTO_TCP},
@@ -52,8 +49,8 @@ mod tests;
 
 pub struct Tcp {
     pub config: Config,
-    pub timers: Timers,
-    pub listeners: FxHashMap<Fd, Listener>,
+    timers: Timers,
+    listeners: FxHashMap<Fd, Listener>,
     pub streams: FxHashMap<Fd, Connection>,
     pub active: Vec<Fd>,
 }
@@ -439,16 +436,8 @@ impl IOContext {
             fd
         };
 
-        let (tx, rx) = mpsc::channel(32);
-
-        let backlog = Arc::new(AtomicU32::new(0));
-        let handle = Listener {
-            local_addr: addr,
-            backlog: backlog.clone(),
-            tx,
-            config: cfg.unwrap_or(self.tcp2.config.for_listener(addr)),
-        };
-
+        let (handle, rx, backlog) =
+            Listener::create(addr, cfg.unwrap_or(self.tcp2.config.for_listener(addr)));
         self.tcp2.listeners.insert(fd, handle);
 
         Ok(TcpListener::from_raw(fd, rx, backlog))
@@ -654,7 +643,7 @@ impl Timers {
             tracing::debug!("<TCP2> scheduling wakeup: {min}");
             schedule_at(
                 Message::default()
-                    .kind(KIND_IO_TIMEOUT)
+                    .with_kind(KIND_IO_TIMEOUT)
                     .with_content(u32::MAX),
                 min,
             );

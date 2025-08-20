@@ -38,7 +38,7 @@ impl Default for Ipv4 {
 
 impl IOContext {
     pub fn ipv4_recv(&mut self, msg: Message, ifid: IfId) -> NetworkLayerResult {
-        let Ok((pkt, header)) = msg.try_cast::<Ipv4Packet>() else {
+        let Ok((pkt, header)) = msg.try_into_content::<Ipv4Packet>() else {
             tracing::error!(
                 "received eth-packet with kind=0x0800 (ip) but content was no ipv4-packet"
             );
@@ -133,9 +133,9 @@ impl IOContext {
                         pkt.src = iface.ipv4_subnet().unwrap().0;
                     }
                     let msg = Message::default()
-                        .kind(KIND_IPV4)
-                        .src(iface.device.addr.into())
-                        .dst(MacAddress::BROADCAST.into())
+                        .with_kind(KIND_IPV4)
+                        .with_src(iface.device.addr.into())
+                        .with_dst(MacAddress::BROADCAST.into())
                         .with_content(pkt);
 
                     if buffered {
@@ -184,9 +184,9 @@ impl IOContext {
             pkt.src = iface.ipv4_subnet().unwrap().0;
         }
         let msg = Message::default()
-            .kind(KIND_IPV4)
-            .src(iface.device.addr.into())
-            .dst(mac.into())
+            .with_kind(KIND_IPV4)
+            .with_src(iface.device.addr.into())
+            .with_dst(mac.into())
             .with_content(pkt);
 
         if buffered {

@@ -67,7 +67,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let _ = Builder::seeded(123)
         .max_time(100.0.into())
-        .build(sim)
+        .build(sim.freeze())
         .run()
         .unwrap();
 

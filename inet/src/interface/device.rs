@@ -194,7 +194,7 @@ impl NetworkDevice {
 
                 if chan.is_busy() {
                     NetworkDeviceReadiness::Busy(
-                        chan.transmission_finish_time() + Duration::from_nanos(1),
+                        chan.transmission_finish_time().unwrap() + Duration::from_nanos(1),
                     )
                 } else {
                     NetworkDeviceReadiness::Ready
@@ -221,10 +221,11 @@ impl NetworkDevice {
                     // TODO: Is this delay still nessecary, since channels are now instantly
                     // busied with the call of send() thus channel updates are inorder before any
                     // link updates will arrive.
-                    let tft = channel.calculate_busy(&msg) + Duration::from_nanos(1);
-                    send(msg, output);
 
-                    NetworkDeviceReadiness::Busy(SimTime::now() + tft)
+                    send(msg, output);
+                    let tft = channel.transmission_finish_time().unwrap() + Duration::from_nanos(1);
+
+                    NetworkDeviceReadiness::Busy(tft)
                 } else {
                     send(msg, output);
                     NetworkDeviceReadiness::Ready

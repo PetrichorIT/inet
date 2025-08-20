@@ -6,10 +6,12 @@ version = "0.1.0"
 [features]
 full = ["dhcp"]
 
+props = []
 default = []
 dhcp = []
 libpcap = []
 test-util = []
+
 
 [dependencies]
 async-trait = "*"
@@ -22,6 +24,10 @@ types = { path = "../util/types" }
 bytes-io = { path = "../util/bytes-io" }
 bitflags = ">2.6.0"
 serde = { version = "1.0", features = ["derive"] }
+valuable = { git = "https://github.com/PetrichorIT/valuable", branch = "owned", features = [
+    "derive",
+] }
+
 
 [dev-dependencies]
 serial_test = "2.0.0"

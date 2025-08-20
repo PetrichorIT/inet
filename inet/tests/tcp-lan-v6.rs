@@ -89,8 +89,8 @@ impl Module for Node {
             "msg :: {} :: {} // {:?} -> {:?}",
             msg,
             current().name(),
-            msg.content::<Ipv6Packet>().src,
-            msg.content::<Ipv6Packet>().dst
+            msg.body.content::<Ipv6Packet>().src,
+            msg.body.content::<Ipv6Packet>().dst
         )
     }
 }
@@ -105,7 +105,7 @@ impl Module for Main {
         let mut targets = Vec::new();
         for i in 0..5 {
             let s = globals()
-                .node(&format!("node[{i}]"))
+                .get(&format!("node[{i}]").into())
                 .unwrap()
                 .prop::<Vec<u8>>("targets")
                 .unwrap()
@@ -117,7 +117,7 @@ impl Module for Main {
         for i in 0..5 {
             let c = targets.iter().filter(|e| **e == i).count();
             globals()
-                .node(&format!("node[{i}]"))
+                .get(&format!("node[{i}]").into())
                 .unwrap()
                 .prop::<usize>("expected")
                 .unwrap()
@@ -136,6 +136,6 @@ fn tcp_lan_v6() -> Result<(), RuntimeError> {
         .with_ndl("tests/tcp-lan/main.yml", registry![Node, Switch, Main])
         .map_err(|e| println!("{e}"))
         .unwrap();
-    let rt = Builder::seeded(123).build(app);
+    let rt = Builder::seeded(123).build(app.freeze());
     rt.run().map(|_| ())
 }

@@ -1,4 +1,4 @@
-use des::{net::AsyncFn, prelude::*, time::sleep};
+use des::{net::handlers::AsyncHandler, prelude::*, time::sleep};
 use serial_test::serial;
 
 use crate::{
@@ -6,7 +6,7 @@ use crate::{
     UdpSocket,
 };
 
-const CHANNEL: ChannelMetrics = ChannelMetrics::new(
+const CHANNEL: DatarateChannelMetrics = DatarateChannelMetrics::new(
     8_000_000,
     Duration::from_millis(20),
     Duration::ZERO,
@@ -19,7 +19,7 @@ fn specific_bind_recv_restrictivly() -> Result<(), RuntimeError> {
     let mut sim = Sim::new(()).with_stack(crate::init);
     sim.node(
         "receiver",
-        AsyncFn::io(|_| async move {
+        AsyncHandler::io(|_| async move {
             add_interface(
                 InterfaceDef::new("net-a", NetworkDevice::gate("net-a", 0).unwrap())
                     .ip(Ipv4Addr::new(192, 168, 2, 100).into()),
@@ -41,7 +41,7 @@ fn specific_bind_recv_restrictivly() -> Result<(), RuntimeError> {
 
     sim.node(
         "net-a-sender",
-        AsyncFn::io(|_| async move {
+        AsyncHandler::io(|_| async move {
             add_interface(
                 InterfaceDef::new("en0", NetworkDevice::eth())
                     .ip(Ipv4Addr::new(192, 168, 2, 101).into()),
@@ -61,7 +61,7 @@ fn specific_bind_recv_restrictivly() -> Result<(), RuntimeError> {
 
     sim.node(
         "net-b-sender",
-        AsyncFn::io(|_| async move {
+        AsyncHandler::io(|_| async move {
             add_interface(
                 InterfaceDef::new("en0", NetworkDevice::eth())
                     .ip(Ipv4Addr::new(10, 20, 30, 101).into()),
@@ -76,14 +76,18 @@ fn specific_bind_recv_restrictivly() -> Result<(), RuntimeError> {
         }),
     );
 
-    sim.gate("net-a-sender", "port")
-        .connect(sim.gate("receiver", "net-a"), Some(Channel::new(CHANNEL)));
-    sim.gate("net-b-sender", "port")
-        .connect(sim.gate("receiver", "net-b"), Some(Channel::new(CHANNEL)));
+    sim.gate("net-a-sender", "port").connect_with(
+        sim.gate("receiver", "net-a"),
+        Some(DatarateChannel::new(CHANNEL)),
+    );
+    sim.gate("net-b-sender", "port").connect_with(
+        sim.gate("receiver", "net-b"),
+        Some(DatarateChannel::new(CHANNEL)),
+    );
 
     Builder::seeded(132)
         .max_time(100.0.into())
-        .build(sim)
+        .build(sim.freeze())
         .run()
         .map(|_| ())
 }
@@ -94,7 +98,7 @@ fn zero_bind_recv_all() -> Result<(), RuntimeError> {
     let mut sim = Sim::new(()).with_stack(crate::init);
     sim.node(
         "receiver",
-        AsyncFn::io(|_| async move {
+        AsyncHandler::io(|_| async move {
             add_interface(
                 InterfaceDef::new("net-a", NetworkDevice::gate("net-a", 0).unwrap())
                     .ip(Ipv4Addr::new(192, 168, 2, 100).into()),
@@ -118,7 +122,7 @@ fn zero_bind_recv_all() -> Result<(), RuntimeError> {
 
     sim.node(
         "net-a-sender",
-        AsyncFn::io(|_| async move {
+        AsyncHandler::io(|_| async move {
             add_interface(
                 InterfaceDef::new("en0", NetworkDevice::eth())
                     .ip(Ipv4Addr::new(192, 168, 2, 101).into()),
@@ -137,7 +141,7 @@ fn zero_bind_recv_all() -> Result<(), RuntimeError> {
 
     sim.node(
         "net-b-sender",
-        AsyncFn::io(|_| async move {
+        AsyncHandler::io(|_| async move {
             add_interface(
                 InterfaceDef::new("en0", NetworkDevice::eth())
                     .ip(Ipv4Addr::new(10, 20, 30, 101).into()),
@@ -152,14 +156,18 @@ fn zero_bind_recv_all() -> Result<(), RuntimeError> {
         }),
     );
 
-    sim.gate("net-a-sender", "port")
-        .connect(sim.gate("receiver", "net-a"), Some(Channel::new(CHANNEL)));
-    sim.gate("net-b-sender", "port")
-        .connect(sim.gate("receiver", "net-b"), Some(Channel::new(CHANNEL)));
+    sim.gate("net-a-sender", "port").connect_with(
+        sim.gate("receiver", "net-a"),
+        Some(DatarateChannel::new(CHANNEL)),
+    );
+    sim.gate("net-b-sender", "port").connect_with(
+        sim.gate("receiver", "net-b"),
+        Some(DatarateChannel::new(CHANNEL)),
+    );
 
     Builder::seeded(132)
         .max_time(100.0.into())
-        .build(sim)
+        .build(sim.freeze())
         .run()
         .map(|_| ())
 }

@@ -84,6 +84,7 @@ impl IOContext {
 
         let iface = self.get_mut_iface(ifid)?;
         iface.bindings.v6.join(addr);
+        iface.status().publish();
 
         self.mld_on_event(ifid, NodeEvent::StartListening, addr)
     }

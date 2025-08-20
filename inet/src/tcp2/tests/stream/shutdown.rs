@@ -1,8 +1,8 @@
 use std::{net::Ipv4Addr, time::Duration};
 
 use des::{
-    net::{AsyncFn, Sim},
-    prelude::{Channel, ChannelDropBehaviour, ChannelMetrics},
+    net::{handlers::AsyncHandler, Sim},
+    prelude::{ChannelDropBehaviour, DatarateChannel, DatarateChannelMetrics},
     runtime::Builder,
 };
 use serial_test::serial;
@@ -20,7 +20,7 @@ fn test_tcp_removes_tcb() {
     let mut sim = Sim::new(()).with_stack(crate::init);
     sim.node(
         "client",
-        AsyncFn::io(|_| async move {
+        AsyncHandler::io(|_| async move {
             add_interface(
                 InterfaceDef::new("en0", NetworkDevice::eth())
                     .ip(Ipv4Addr::new(192, 168, 2, 100).into()),
@@ -43,7 +43,7 @@ fn test_tcp_removes_tcb() {
 
     sim.node(
         "server",
-        AsyncFn::io(|_| async move {
+        AsyncHandler::io(|_| async move {
             add_interface(
                 InterfaceDef::new("en0", NetworkDevice::eth())
                     .ip(Ipv4Addr::new(192, 168, 2, 200).into()),
@@ -75,9 +75,9 @@ fn test_tcp_removes_tcb() {
     let a = sim.gate("client", "port");
     let b = sim.gate("server", "port");
 
-    a.connect(
+    a.connect_with(
         b,
-        Some(Channel::new(ChannelMetrics::new(
+        Some(DatarateChannel::new(DatarateChannelMetrics::new(
             8000000,
             Duration::from_millis(20),
             Duration::ZERO,
@@ -85,6 +85,6 @@ fn test_tcp_removes_tcb() {
         ))),
     );
 
-    let rt = Builder::seeded(123).build(sim);
+    let rt = Builder::seeded(123).build(sim.freeze());
     let (_, _, _) = rt.run().unwrap();
 }

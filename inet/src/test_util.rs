@@ -6,8 +6,8 @@ use std::{
 };
 
 use des::{
-    net::{processing::ProcessingStack, AsyncFn, Sim},
-    prelude::{Channel, ChannelDropBehaviour, ChannelMetrics, Message},
+    net::{handlers::AsyncHandler, processing::ProcessingStack, Sim, SimBuilder},
+    prelude::{ChannelDropBehaviour, DatarateChannel, DatarateChannelMetrics, Message},
     runtime::{Builder, RuntimeError},
 };
 use tokio::sync::mpsc::Receiver;
@@ -17,7 +17,7 @@ use crate::{
     utils::LinkLayerSwitch,
 };
 
-const DEFAULT_CHANNEL_METRICS: ChannelMetrics = ChannelMetrics::new(
+const DEFAULT_CHANNEL_METRICS: DatarateChannelMetrics = DatarateChannelMetrics::new(
     8_000_000,
     Duration::from_millis(20),
     Duration::ZERO,
@@ -26,8 +26,8 @@ const DEFAULT_CHANNEL_METRICS: ChannelMetrics = ChannelMetrics::new(
 
 pub struct SimpleSim {
     clients: Vec<IpAddr>,
-    sim: Sim<()>,
-    pub metrics: ChannelMetrics,
+    sim: SimBuilder<()>,
+    pub metrics: DatarateChannelMetrics,
     pub v6: bool,
 }
 
@@ -83,15 +83,15 @@ impl SimpleSim {
     {
         self.sim.node(
             name,
-            AsyncFn::io(move |rx| {
+            AsyncHandler::io(move |rx| {
                 let f = f(rx);
                 async move { f.await }
             })
             .require_join(),
         );
-        self.sim.gate(name, "port").connect(
+        self.sim.gate(name, "port").connect_with(
             self.sim.gate("switch", &format!("port-${name}")),
-            Some(Channel::new(self.metrics)),
+            Some(DatarateChannel::new(self.metrics)),
         );
     }
 
@@ -116,7 +116,7 @@ impl SimpleSim {
         let key = key.replace(".", "_");
         self.sim.node(
             &key,
-            AsyncFn::io(move |_rx| {
+            AsyncHandler::io(move |_rx| {
                 let f = f();
                 async move {
                     add_interface(InterfaceDef::new("en0", NetworkDevice::eth()).ip(addr))?;
@@ -124,9 +124,9 @@ impl SimpleSim {
                 }
             }),
         );
-        self.sim.gate(&key, "port").connect(
+        self.sim.gate(&key, "port").connect_with(
             self.sim.gate("switch", &format!("port-${key}")),
-            Some(Channel::new(self.metrics)),
+            Some(DatarateChannel::new(self.metrics)),
         );
     }
 
@@ -141,7 +141,7 @@ impl SimpleSim {
         let key = key.replace(".", "_");
         self.sim.node(
             &key,
-            AsyncFn::io(move |_rx| {
+            AsyncHandler::io(move |_rx| {
                 // TODO: add option to ensure no packet escapes the IOContext, aka rx remains empty
                 let f = f();
                 async move {
@@ -152,23 +152,27 @@ impl SimpleSim {
             })
             .require_join(),
         );
-        self.sim.gate(&key, "port").connect(
+        self.sim.gate(&key, "port").connect_with(
             self.sim.gate("switch", &format!("port-${key}")),
-            Some(Channel::new(self.metrics)),
+            Some(DatarateChannel::new(self.metrics)),
         );
     }
 
     pub fn into_inner(self) -> Sim<()> {
-        self.sim
+        self.sim.freeze()
     }
 
     pub fn run(self) -> Result<(), RuntimeError> {
-        let rt = Builder::seeded(123).max_time(100.0.into()).build(self.sim);
+        let rt = Builder::seeded(123)
+            .max_time(100.0.into())
+            .build(self.sim.freeze());
         rt.run().map(|_| ())
     }
 
     pub fn run_max_time(self, f: f64) -> Result<(), RuntimeError> {
-        let rt = Builder::seeded(123).max_time(f.into()).build(self.sim);
+        let rt = Builder::seeded(123)
+            .max_time(f.into())
+            .build(self.sim.freeze());
         rt.run().map(|_| ())
     }
 }

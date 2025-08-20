@@ -131,32 +131,67 @@ fn sends_regular_queries() -> Result<(), RuntimeError> {
 
     sim.raw("observer", |mut rx| async move {
         assert_eq!(
-            IcmpV6Packet::peek_from(&rx.recv().await.unwrap().content::<Ipv6Packet>().content[..])?,
+            IcmpV6Packet::peek_from(
+                &rx.recv()
+                    .await
+                    .unwrap()
+                    .body
+                    .content::<Ipv6Packet>()
+                    .content[..]
+            )?,
             IcmpV6Packet::MulticastListenerReport(IcmpV6MulticastListenerMessage {
                 maximum_response_delay: Duration::ZERO,
                 multicast_addr: Ipv6Addr::solicied_node_multicast("fe80::1".parse().unwrap())
             })
         );
         assert!(matches!(
-            IcmpV6Packet::peek_from(&rx.recv().await.unwrap().content::<Ipv6Packet>().content[..])?,
+            IcmpV6Packet::peek_from(
+                &rx.recv()
+                    .await
+                    .unwrap()
+                    .body
+                    .content::<Ipv6Packet>()
+                    .content[..]
+            )?,
             IcmpV6Packet::RouterSolicitation(_)
         ));
         assert_eq!(
-            IcmpV6Packet::peek_from(&rx.recv().await.unwrap().content::<Ipv6Packet>().content[..])?,
+            IcmpV6Packet::peek_from(
+                &rx.recv()
+                    .await
+                    .unwrap()
+                    .body
+                    .content::<Ipv6Packet>()
+                    .content[..]
+            )?,
             IcmpV6Packet::MulticastListenerQuery(IcmpV6MulticastListenerMessage {
                 maximum_response_delay: QUERY_RESPONSE_INTERVAL,
                 multicast_addr: Ipv6Addr::UNSPECIFIED
             })
         );
         assert_eq!(
-            IcmpV6Packet::peek_from(&rx.recv().await.unwrap().content::<Ipv6Packet>().content[..])?,
+            IcmpV6Packet::peek_from(
+                &rx.recv()
+                    .await
+                    .unwrap()
+                    .body
+                    .content::<Ipv6Packet>()
+                    .content[..]
+            )?,
             IcmpV6Packet::MulticastListenerReport(IcmpV6MulticastListenerMessage {
                 maximum_response_delay: Duration::ZERO,
                 multicast_addr: Ipv6Addr::solicied_node_multicast("fe80::1".parse().unwrap())
             })
         ); // solicited ?
         assert_eq!(
-            IcmpV6Packet::peek_from(&rx.recv().await.unwrap().content::<Ipv6Packet>().content[..])?,
+            IcmpV6Packet::peek_from(
+                &rx.recv()
+                    .await
+                    .unwrap()
+                    .body
+                    .content::<Ipv6Packet>()
+                    .content[..]
+            )?,
             IcmpV6Packet::MulticastListenerQuery(IcmpV6MulticastListenerMessage {
                 maximum_response_delay: QUERY_RESPONSE_INTERVAL,
                 multicast_addr: Ipv6Addr::UNSPECIFIED

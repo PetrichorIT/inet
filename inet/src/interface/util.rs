@@ -1,4 +1,5 @@
 use des::prelude::*;
+use serde::{Deserialize, Serialize};
 use std::{
     collections::hash_map,
     ffi::CStr,
@@ -7,6 +8,7 @@ use std::{
     ops::Deref,
     str::from_utf8,
 };
+use valuable::Valuable;
 
 use crate::socket::Fd;
 
@@ -21,12 +23,12 @@ pub(crate) struct LinkUpdate(pub IfId);
 impl From<LinkUpdate> for Message {
     fn from(value: LinkUpdate) -> Self {
         Message::default()
-            .kind(KIND_LINK_UPDATE)
+            .with_kind(KIND_LINK_UPDATE)
             .with_content(value)
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash, MessageBody)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, MessageBody, Valuable, Serialize, Deserialize)]
 pub struct IfId {
     // byte 0..6 prefix
     // byte 7 hash
@@ -77,26 +79,21 @@ impl fmt::Debug for IfId {
 }
 
 /// A name for a network interface
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Valuable, Serialize, Deserialize)]
 pub struct InterfaceName {
     pub(crate) name: String,
-    pub(crate) id: IfId,
     pub(crate) parent: Option<Box<InterfaceName>>,
 }
 
 impl InterfaceName {
     pub fn id(&self) -> IfId {
-        self.id.clone()
+        IfId::new(&self.name)
     }
 
     /// Creates a new interface name from a string
     pub fn new(s: impl AsRef<str>) -> Self {
         let name = s.as_ref().to_string();
-        Self {
-            id: IfId::new(&name),
-            name,
-            parent: None,
-        }
+        Self { name, parent: None }
     }
 }
 
@@ -126,12 +123,13 @@ impl<T: AsRef<str>> From<T> for InterfaceName {
 // # Busy state
 
 /// The state of the interfaces sending half.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
 pub enum InterfaceBusyState {
     /// The sender has no current work, thus sending will not be delayed.
     ///
     /// This means that any sending operation on this inteface, will send it's
     /// first packet unbuffered, thus without a chance of client-side loss.
+    #[default]
     Idle,
     /// The sender is currently sending a packet, and will be finished
     /// at the timepoint specified in `until`. All sockets with an interest

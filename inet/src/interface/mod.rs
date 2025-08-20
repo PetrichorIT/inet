@@ -48,6 +48,16 @@ pub struct InterfaceController {
 }
 
 impl InterfaceController {
+    pub fn status(&self) -> InterfaceStatus {
+        InterfaceStatus {
+            name: self.name.clone(),
+            flags: self.flags,
+            addrs: self.bindings.clone(),
+            send_q: self.send_q,
+            queuelen: self.buffer.len(),
+        }
+    }
+
     pub fn empty(name: &str, device: NetworkDevice) -> Self {
         Self {
             name: InterfaceName::new(name),
@@ -133,6 +143,7 @@ impl InterfaceController {
         self.state.merge_new(self.device.send(msg).into());
         self.send_q += 1;
         self.schedule_link_update();
+        self.status().publish();
 
         Ok(())
     }
@@ -191,7 +202,7 @@ impl IOContext {
 
         // Precheck for link layer updates
         if msg.header().kind == KIND_LINK_UPDATE {
-            let Some(update) = msg.try_content::<LinkUpdate>() else {
+            let Some(update) = msg.body.try_content::<LinkUpdate>() else {
                 tracing::error!(
                     "found message with kind KIND_LINK_UPDATE, did not contain link updates"
                 );
@@ -237,7 +248,7 @@ impl IOContext {
         }
 
         if msg.header().kind == KIND_ARP {
-            let Some(arp) = msg.try_content::<ArpPacket>() else {
+            let Some(arp) = msg.body.try_content::<ArpPacket>() else {
                 tracing::error!(
                     "found message with kind 0x0806 (arp), but did not contain ARP packet"
                 );

@@ -1,10 +1,12 @@
-use des::time::SimTime;
+use des::{net::module::try_current, time::SimTime};
 use rand::distr::Uniform;
+use serde::{Deserialize, Serialize};
 use std::{io, net::Ipv6Addr, time::Duration};
 use types::{
     icmpv6::{NDP_MAX_DELAY_BETWEEN_RAS, NDP_MIN_DELAY_BETWEEN_RAS},
     ip::{Ipv6LongestPrefixTable, Ipv6Prefix},
 };
+use valuable::Valuable;
 
 use crate::{ctx::IOContext, interface::IfId};
 
@@ -31,11 +33,12 @@ pub struct Router {
     pub entries: Ipv6LongestPrefixTable<Entry>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Valuable, Serialize, Deserialize)]
 pub struct Entry {
     pub prefix: Ipv6Prefix,
     pub next_hop: Ipv6Addr,
     pub ifid: IfId,
+    #[valuable(skip)]
     pub expires: SimTime,
 }
 
@@ -43,6 +46,16 @@ impl Router {
     pub fn new() -> Self {
         Router {
             entries: Ipv6LongestPrefixTable::default(),
+        }
+    }
+
+    pub fn publish(&self) {
+        if cfg!(feature = "props") {
+            let Some(module) = try_current() else { return };
+            module
+                .prop::<Vec<Entry>>("inet.v6.router.entries")
+                .expect("typing failed")
+                .set(self.entries.as_ref().to_vec());
         }
     }
 
@@ -68,10 +81,12 @@ impl Router {
             expires,
         };
         self.entries.insert(prefix, entry);
+        self.publish();
     }
 
     pub fn time_out_entries(&mut self, until: SimTime) {
         self.entries.retain(|_, entry| entry.expires > until);
+        self.publish();
     }
 }
 

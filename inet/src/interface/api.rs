@@ -1,6 +1,6 @@
 use super::{
-    def::InterfaceDef, IfId, InterfaceAddrBindings, InterfaceAddrsV6, InterfaceBusyState,
-    InterfaceFlags, InterfaceName, MacAddress,
+    def::InterfaceDef, IfId, InterfaceAddrBindings, InterfaceAddrsV6, InterfaceFlags,
+    InterfaceName, MacAddress,
 };
 use crate::{
     interface::{InterfaceAddrV4, InterfaceAddrV6},
@@ -11,7 +11,11 @@ use crate::{
     ipv6::{multicast::NodeEvent, ndp::QueryType},
     IOContext,
 };
-use des::{net::module::current, time::SimTime};
+use des::{
+    net::module::{current, try_current},
+    time::SimTime,
+};
+use serde::{Deserialize, Serialize};
 use std::{
     fmt::Debug,
     io::{self, Error, ErrorKind},
@@ -19,6 +23,7 @@ use std::{
 };
 use tracing::Level;
 use types::ip::Ipv6AddrExt;
+use valuable::Valuable;
 
 /// Declares and activiates an new network interface on the current module
 pub fn add_interface(iface: InterfaceDef) -> io::Result<()> {
@@ -29,42 +34,41 @@ pub fn interface_add_addr(iface: impl AsRef<str>, addr: IpAddr) -> io::Result<()
     IOContext::failable_api(|ctx| ctx.interface_add_addr(iface.as_ref(), addr))
 }
 
-pub fn interface_status(iface: impl AsRef<str>) -> io::Result<InterfaceState> {
+pub fn interface_status(iface: impl AsRef<str>) -> io::Result<InterfaceStatus> {
     IOContext::failable_api(|ctx| ctx.interface_status(iface.as_ref()))
 }
 
-pub fn interface_status_by_ifid(ifid: IfId) -> io::Result<InterfaceState> {
+pub fn interface_status_by_ifid(ifid: IfId) -> io::Result<InterfaceStatus> {
     IOContext::failable_api(|ctx| ctx.interface_status_by_ifid(ifid))
 }
 
-#[derive(Debug, Clone)]
-pub struct InterfaceState {
+#[derive(Debug, Clone, Valuable, Serialize, Deserialize)]
+pub struct InterfaceStatus {
     pub name: InterfaceName,
     pub flags: InterfaceFlags,
     pub addrs: InterfaceAddrBindings,
-    pub busy: InterfaceBusyState,
+    pub send_q: usize,
     pub queuelen: usize,
 }
 
-impl InterfaceState {
-    pub fn write_to_par(&self) -> Result<(), Error> {
-        current()
-            .prop::<InterfaceFlags>(&format!("inet.{}.flags", self.name.to_string()))?
-            .set(self.flags);
-
-        current()
-            .prop::<Vec<IpAddr>>(&format!("inet.{}.addrs", self.name.to_string()))?
-            .set(self.addrs.addrs().collect::<Vec<_>>());
-
-        Ok(())
+impl InterfaceStatus {
+    pub fn publish(&self) {
+        if cfg!(feature = "props") {
+            let Some(module) = try_current() else { return };
+            module
+                .prop::<InterfaceStatus>(&format!("inet.iface.{}", self.name))
+                .unwrap()
+                .set(self.clone());
+        }
     }
 }
 
 impl IOContext {
     pub fn add_interface(&mut self, def: InterfaceDef) -> io::Result<()> {
         let iface = def.into_legacy();
+        let ifid = iface.name.id();
 
-        if self.ifaces.get(&iface.name.id).is_some() {
+        if self.ifaces.get(&iface.name.id()).is_some() {
             return Err(Error::new(
                 ErrorKind::Other,
                 format!("cannot duplicate interface with name {}", iface.name),
@@ -131,7 +135,6 @@ impl IOContext {
 
         // (3) Add interface subnet to routing table.
 
-        let ifid = iface.name.id();
         let router = iface.flags.router;
         let loopback = iface.flags.loopback;
         let mac = iface.device.addr;
@@ -140,6 +143,7 @@ impl IOContext {
         let mut addrs = InterfaceAddrsV6::default();
         std::mem::swap(&mut addrs, &mut iface.bindings.v6);
 
+        iface.status().publish();
         self.ifaces.insert(iface.name.id(), iface);
 
         if v6 && !router && !loopback {
@@ -171,6 +175,7 @@ impl IOContext {
             self.ipv6_schedule_unsolicited_router_adv(ifid)?;
         }
 
+        self.ifaces.get(&ifid).unwrap().status().publish();
         Ok(())
     }
 
@@ -192,6 +197,8 @@ impl IOContext {
                     addr,
                     mask: Ipv4Addr::BROADCAST,
                 });
+
+                iface.status().publish();
                 Ok(())
             }
             IpAddr::V6(addr) => {
@@ -216,17 +223,18 @@ impl IOContext {
         let Some(iface) = self.ifaces.get_mut(&ifid) else {
             todo!()
         };
-
         let _guard = tracing::span!(Level::INFO, "iface", id=%ifid).entered();
 
         if !iface.flags.multicast {
             tracing::debug!("assigning blind address '{binding}'");
             iface.bindings.v6.add(binding);
+            iface.status().publish();
             return Ok(());
         }
 
         if self.ipv6.cfg.dup_addr_detect_transmits > 0 && !no_dedup {
-            tracing::debug!("initiating tentative address checks for '{binding}'");
+            tracing::debug!(%binding, "initiating tentative address checks");
+
             self.ipv6_icmp_send_neighbor_solicitation(
                 binding.addr,
                 ifid,
@@ -243,6 +251,7 @@ impl IOContext {
             let needs_mld_report = iface.bindings.v6.join(multicast);
             iface.bindings.v6.add(binding);
 
+            iface.status().publish();
             if needs_mld_report {
                 self.mld_on_event(ifid, NodeEvent::StartListening, multicast)?;
             }
@@ -250,7 +259,7 @@ impl IOContext {
         }
     }
 
-    fn interface_status(&mut self, iface_name: &str) -> io::Result<InterfaceState> {
+    fn interface_status(&self, iface_name: &str) -> io::Result<InterfaceStatus> {
         let Some((_, iface)) = self
             .ifaces
             .iter()
@@ -261,28 +270,16 @@ impl IOContext {
                 "no such interface exists",
             ));
         };
-        Ok(InterfaceState {
-            name: iface.name.clone(),
-            flags: iface.flags,
-            addrs: iface.bindings.clone(),
-            busy: iface.state.clone(),
-            queuelen: iface.buffer.len(),
-        })
+        Ok(iface.status())
     }
 
-    fn interface_status_by_ifid(&mut self, ifid: IfId) -> io::Result<InterfaceState> {
+    fn interface_status_by_ifid(&self, ifid: IfId) -> io::Result<InterfaceStatus> {
         let Some(iface) = self.ifaces.get(&ifid) else {
             return Err(Error::new(
                 ErrorKind::InvalidInput,
                 "no such interface exists",
             ));
         };
-        Ok(InterfaceState {
-            name: iface.name.clone(),
-            flags: iface.flags,
-            addrs: iface.bindings.clone(),
-            busy: iface.state.clone(),
-            queuelen: iface.buffer.len(),
-        })
+        Ok(iface.status())
     }
 }

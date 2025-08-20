@@ -4,25 +4,27 @@ use std::{
     time::Duration,
 };
 
-use des::{net::module::try_current, prelude::current, time::SimTime};
+use des::time::SimTime;
+use serde::{Deserialize, Serialize};
 use types::{iface::MacAddress, ip::Ipv6AddrExt};
+use valuable::Valuable;
 
 use crate::ipv6::addrs::CanidateAddr;
 
 use super::IfId;
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Valuable, Serialize, Deserialize)]
 pub struct InterfaceAddrBindings {
     pub v4: InterfaceAddrsV4,
     pub v6: InterfaceAddrsV6,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Valuable, Serialize, Deserialize)]
 pub struct InterfaceAddrsV4 {
     pub unicast: Vec<InterfaceAddrV4>,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Valuable, Serialize, Deserialize)]
 pub struct InterfaceAddrsV6 {
     pub unicast: Vec<InterfaceAddrV6>,
     pub multicast: Vec<Ipv6Addr>,
@@ -87,11 +89,6 @@ impl InterfaceAddrsV6 {
             "cannot assign ipv6 binding '{unicast}': address is multicast scope"
         );
 
-        // try_current so that we can test without a module context present
-        if let Some(Ok(addrs)) = try_current().map(|c| c.prop::<Vec<Ipv6Addr>>("inet.addrs.v6")) {
-            addrs.or_default().update(|addrs| addrs.push(unicast.addr));
-        }
-
         self.unicast.push(unicast);
     }
 
@@ -100,13 +97,6 @@ impl InterfaceAddrsV6 {
             if self.unicast[i].matches(addr) {
                 let addr = self.unicast.remove(i);
                 tracing::debug!(%addr, "unassigning unicast address");
-
-                if let Ok(addrs) = current().prop::<Vec<Ipv6Addr>>("inet.addrs.v6") {
-                    addrs
-                        .or_default()
-                        .update(|addrs| addrs.retain(|a| *a != addr.addr));
-                }
-
                 return Some(addr);
             }
         }
@@ -168,22 +158,23 @@ impl InterfaceAddrsV6 {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Valuable, Serialize, Deserialize)]
 pub struct InterfaceAddrV4 {
     pub addr: Ipv4Addr,
     pub mask: Ipv4Addr,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Valuable, Serialize, Deserialize)]
 pub struct InterfaceAddrV6 {
     pub addr: Ipv6Addr,
     pub mask: Ipv6Addr,
+    #[valuable(skip)]
     pub deadline: SimTime,
     pub validity: Duration,
     pub flags: InterfaceAddrV6Flags,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Valuable, Serialize, Deserialize)]
 pub struct InterfaceAddrV6Flags {
     pub temporary: bool,
     pub home_addr: bool,

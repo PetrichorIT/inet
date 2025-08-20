@@ -893,6 +893,7 @@ impl IOContext {
             }
 
             iface.bindings.v6.add(binding);
+            iface.status().publish();
 
             Ok(())
         }

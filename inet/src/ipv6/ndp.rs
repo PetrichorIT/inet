@@ -1,12 +1,14 @@
-use des::time::SimTime;
+use des::{net::module::try_current, time::SimTime};
 use fxhash::{FxBuildHasher, FxHashMap};
+use serde::{Deserialize, Serialize};
+use std::{collections::VecDeque, fmt, net::Ipv6Addr, ops, time::Duration};
 use types::{
     icmpv6::{IcmpV6NDPOption, IcmpV6NeighborAdvertisment, IcmpV6PrefixInformation},
     iface::MacAddress,
     ip::{Ipv6Packet, Ipv6Prefix},
     util::FixedBuffer,
 };
-use std::{collections::VecDeque, fmt, net::Ipv6Addr, ops, time::Duration};
+use valuable::Valuable;
 
 use crate::interface::{IfId, InterfaceAddrV6};
 
@@ -15,7 +17,7 @@ pub struct Solicitations {
     queries: FxHashMap<Ipv6Addr, QueryType>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Valuable, Serialize, Deserialize)]
 pub enum QueryType {
     NeighborSolicitation,
     TentativeAddressCheck(InterfaceAddrV6),
@@ -28,12 +30,23 @@ impl Solicitations {
         }
     }
 
+    pub fn publish(&self) {
+        if cfg!(feature = "props") {
+            let Some(module) = try_current() else { return };
+            module
+                .prop::<FxHashMap<Ipv6Addr, QueryType>>("inet.v6.solicitations")
+                .expect("typing failed")
+                .set(self.queries.clone());
+        }
+    }
+
     pub fn register(&mut self, target: Ipv6Addr, typ: QueryType) {
         let entry = self.queries.insert(target, typ);
         assert!(
             entry.is_none(),
             "Doubly registered query {target}: allready existent entry {entry:?}"
         );
+        self.publish();
     }
 
     pub fn lookup(&self, target: Ipv6Addr) -> Option<QueryType> {
@@ -42,6 +55,7 @@ impl Solicitations {
 
     pub fn remove(&mut self, target: Ipv6Addr) {
         self.queries.remove(&target);
+        self.publish();
     }
 }
 
@@ -264,15 +278,26 @@ pub struct DestinationCache {
     pub(super) mapping: FxHashMap<Ipv6Addr, DestinationCacheEntry>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Valuable, Serialize, Deserialize)]
 pub struct DestinationCacheEntry {
     pub next_hop: Ipv6Addr,
     pub path_mtu: usize,
-    expires: SimTime,
+    #[valuable(skip)]
+    pub expires: SimTime,
     // RTT TIMERS ?
 }
 
 impl DestinationCache {
+    pub fn publish(&self) {
+        if cfg!(feature = "props") {
+            let Some(module) = try_current() else { return };
+            module
+                .prop::<FxHashMap<Ipv6Addr, DestinationCacheEntry>>("inet.v6.destinations")
+                .expect("typing failed")
+                .set(self.mapping.clone());
+        }
+    }
+
     pub fn set(&mut self, dst: Ipv6Addr, next_hop: Ipv6Addr) {
         let entry = self
             .mapping
@@ -284,9 +309,10 @@ impl DestinationCache {
             });
         entry.next_hop = next_hop;
         entry.expires = SimTime::now();
+        self.publish();
     }
 
-    pub fn lookup(&mut self, ip: Ipv6Addr, neighbor_cache: &NeighborCache) -> Option<Ipv6Addr> {
+    pub fn lookup(&self, ip: Ipv6Addr, neighbor_cache: &NeighborCache) -> Option<Ipv6Addr> {
         if ip.is_multicast() {
             return Some(ip);
         }

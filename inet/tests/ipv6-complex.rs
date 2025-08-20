@@ -1,14 +1,16 @@
+#![cfg(feature = "props")]
+
 use std::{io, iter::repeat_with};
 
 use bytes_io::BytesMut;
 use des::{
-    net::{globals, AsyncFn},
+    net::{globals, AsyncHandler},
     prelude::*,
     runtime::rng,
     time::sleep,
 };
 use inet::{
-    interface::{add_interface, InterfaceDef, NetworkDevice},
+    interface::{add_interface, InterfaceDef, InterfaceStatus, NetworkDevice},
     ipv6::router,
     utils::LinkLayerSwitch,
     UdpSocket,
@@ -56,7 +58,7 @@ fn run() -> Result<(), RuntimeError> {
 
     sim.node(
         "router-1",
-        AsyncFn::io(|_| async move {
+        AsyncHandler::io(|_| async move {
             router::declare_router()?;
             router::add_routing_prefix("2003:a:1::/64".parse()?)?;
             router::add_routing_prefix("2003:a:2::/64".parse()?)?;
@@ -90,7 +92,7 @@ fn run() -> Result<(), RuntimeError> {
     );
     sim.node(
         "router-2",
-        AsyncFn::io(|_| async move {
+        AsyncHandler::io(|_| async move {
             router::declare_router()?;
             router::add_routing_prefix("2003:b:1::/64".parse()?)?;
 
@@ -126,7 +128,7 @@ fn run() -> Result<(), RuntimeError> {
 
     sim.node(
         "host-1",
-        AsyncFn::io(|_| async move {
+        AsyncHandler::io(|_| async move {
             add_interface(InterfaceDef::ethv6_autocfg(NetworkDevice::eth()))?;
             tokio::spawn(pong(800));
 
@@ -142,7 +144,7 @@ fn run() -> Result<(), RuntimeError> {
     );
     sim.node(
         "host-2",
-        AsyncFn::io(|_| async move {
+        AsyncHandler::io(|_| async move {
             add_interface(InterfaceDef::ethv6_autocfg(NetworkDevice::eth()))?;
             tokio::spawn(pong(800));
 
@@ -158,7 +160,7 @@ fn run() -> Result<(), RuntimeError> {
     );
     sim.node(
         "host-3",
-        AsyncFn::io(|_| async move {
+        AsyncHandler::io(|_| async move {
             add_interface(InterfaceDef::ethv6_autocfg(NetworkDevice::eth()))?;
             tokio::spawn(pong(800));
 
@@ -174,7 +176,7 @@ fn run() -> Result<(), RuntimeError> {
     );
     sim.node(
         "host-4",
-        AsyncFn::io(|_| async move {
+        AsyncHandler::io(|_| async move {
             add_interface(InterfaceDef::ethv6_autocfg(NetworkDevice::eth()))?;
             tokio::spawn(pong(800));
 
@@ -190,7 +192,7 @@ fn run() -> Result<(), RuntimeError> {
     );
     sim.node(
         "host-5",
-        AsyncFn::io(|_| async move {
+        AsyncHandler::io(|_| async move {
             add_interface(InterfaceDef::ethv6_autocfg(NetworkDevice::eth()))?;
             tokio::spawn(pong(800));
 
@@ -206,7 +208,7 @@ fn run() -> Result<(), RuntimeError> {
     );
     sim.node(
         "host-6",
-        AsyncFn::io(|_| async move {
+        AsyncHandler::io(|_| async move {
             add_interface(InterfaceDef::ethv6_autocfg(NetworkDevice::eth()))?;
             tokio::spawn(pong(800));
 
@@ -247,7 +249,7 @@ fn run() -> Result<(), RuntimeError> {
 
     let (_, _, _) = Builder::seeded(213)
         .max_time(100.0.into())
-        .build(sim)
+        .build(sim.freeze())
         .run()?;
 
     Ok(())
@@ -255,19 +257,23 @@ fn run() -> Result<(), RuntimeError> {
 
 fn pick_target_addr(hosts: &[&str]) -> Ipv6Addr {
     let host = hosts.choose(&mut rng()).unwrap();
+
     let addr = globals()
         .node(*host)
         .expect("node must exists")
-        .prop::<Vec<Ipv6Addr>>("inet.addrs.v6")
+        .prop::<InterfaceStatus>("inet.iface.en0")
         .expect("prop failed")
         .get()
-        .unwrap()
+        .expect(&format!("no yet initalized for {}", host))
+        .addrs
+        .v6
+        .unicast
         .into_iter()
-        .filter(|addr| addr.scope() >= Ipv6AddrScope::UnicastGlobal)
+        .filter(|addr| addr.addr.scope() >= Ipv6AddrScope::UnicastGlobal)
         .next()
         .expect("no valid addr found");
 
-    addr
+    addr.addr
 }
 
 async fn ping(addr: Ipv6Addr, port: u16) -> io::Result<()> {

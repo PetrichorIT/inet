@@ -204,7 +204,7 @@ impl IOContext {
             return None;
         }
 
-        let Some(fd) = msg.try_content::<Fd>() else {
+        let Some(fd) = msg.body.try_content::<Fd>() else {
             return None;
         };
         let fd = *fd;

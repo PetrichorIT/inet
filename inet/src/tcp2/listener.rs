@@ -7,7 +7,10 @@ use std::{
     },
 };
 
+use des::net::module::try_current;
+use serde::{Deserialize, Serialize};
 use tokio::sync::{mpsc, Mutex};
+use valuable::Valuable;
 
 use crate::{
     dns::{lookup_host, ToSocketAddrs},
@@ -28,6 +31,53 @@ pub(super) struct Listener {
     pub tx: mpsc::Sender<Result<Fd, Error>>,
     pub backlog: Arc<AtomicU32>,
     pub config: Config,
+}
+
+#[derive(Debug, Valuable, Serialize, Deserialize)]
+pub struct ListenerInfo {}
+
+impl Listener {
+    pub fn create(
+        local_addr: SocketAddr,
+        config: Config,
+    ) -> (Self, mpsc::Receiver<Result<Fd, Error>>, Arc<AtomicU32>) {
+        let (tx, rx) = mpsc::channel(32);
+        let backlog = Arc::new(AtomicU32::new(0));
+        let handle = Self {
+            local_addr,
+            tx,
+            backlog: backlog.clone(),
+            config,
+        };
+
+        handle.publish();
+        (handle, rx, backlog)
+    }
+
+    pub fn info(&self) -> ListenerInfo {
+        ListenerInfo {}
+    }
+
+    pub fn publish(&self) {
+        if cfg!(feature = "props") {
+            let Some(module) = try_current() else { return };
+            module
+                .prop::<ListenerInfo>(&format!("inet.tcp2.listener.{}", self.local_addr))
+                .expect("typing failed")
+                .set(self.info());
+        }
+    }
+}
+
+impl Drop for Listener {
+    fn drop(&mut self) {
+        if cfg!(feature = "props") {
+            let Some(module) = try_current() else { return };
+            module
+                .prop_raw(&format!("inet.tcp2.listener.{}", self.local_addr))
+                .clear()
+        }
+    }
 }
 
 impl TcpListener {

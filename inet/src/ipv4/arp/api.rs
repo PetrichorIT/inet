@@ -114,12 +114,12 @@ impl IOContext {
             hostname: None,
             ip,
             mac,
-            iface: if_name.id,
+            iface: if_name.id(),
             expires: SimTime::MAX,
         });
         if let Some((trg, sendable)) = sendable {
             for pkt in sendable {
-                self.ipv4_send_lan_local(SocketIfaceBinding::Bound(if_name.id), trg, pkt, true)
+                self.ipv4_send_lan_local(SocketIfaceBinding::Bound(if_name.id()), trg, pkt, true)
                     .unwrap();
             }
         }

@@ -18,7 +18,7 @@ impl Module for Link {
     fn handle_message(&mut self, msg: Message) {
         // random packet drop 10 %
         if (random::<u64>() as usize % 10) == 7 {
-            let ippacket = msg.content::<Ipv4Packet>();
+            let ippacket = msg.body.content::<Ipv4Packet>();
             let tcp = TcpPacket::peek_from(&ippacket.content[..]).unwrap();
 
             tracing::error!(
@@ -211,6 +211,6 @@ fn tcp_missing_data_at_close() -> Result<(), RuntimeError> {
         .unwrap();
     let rt = Builder::seeded(1263431312323)
         .max_time(10.0.into())
-        .build(app);
+        .build(app.freeze());
     rt.run().map(|_| ())
 }

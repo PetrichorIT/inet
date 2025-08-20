@@ -76,7 +76,9 @@ fn routing_info() {
         .with_ndl("tests/triangle.yml", registry![A, B, C, Main])
         .map_err(|e| println!("{e}"))
         .unwrap();
-    let rt = Builder::seeded(123).max_time(100.0.into()).build(app);
+    let rt = Builder::seeded(123)
+        .max_time(100.0.into())
+        .build(app.freeze());
     match rt.run() {
         Ok((_, _, p)) if p.event_count == 0 => {}
         _ => panic!("unexpected runtime result"),

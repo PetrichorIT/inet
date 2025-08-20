@@ -28,13 +28,13 @@ impl Module for Host {
         add_interface(InterfaceDef::ethv6_autocfg(NetworkDevice::eth())).unwrap();
         tokio::spawn(async move {
             des::time::sleep(Duration::from_secs(2)).await;
-            interface_status("en0").unwrap().write_to_par().unwrap();
+            interface_status("en0").unwrap().publish();
 
             if current().path().as_str() == "net[0].host[0]" {
                 des::time::sleep(Duration::from_secs(1)).await;
 
                 let trg = globals()
-                    .node("net[1].host[1]")
+                    .get(&"net[1].host[1]".into())
                     .unwrap()
                     .prop::<Vec<IpAddr>>("inet.en0.addrs")
                     .unwrap()
@@ -137,6 +137,8 @@ fn ipv6_two_nets() -> Result<(), RuntimeError> {
             "tests/ipv6_two_nets.yml",
             registry![Host, Switch, Router, else _],
         )?;
-    let rt = Builder::seeded(123).max_time(10.0.into()).build(app);
+    let rt = Builder::seeded(123)
+        .max_time(10.0.into())
+        .build(app.freeze());
     rt.run().map(|_| ())
 }

@@ -3,6 +3,7 @@
 
 use bytes_io::{Bytes, BytesMut, FromBytes, ToBytes};
 use des::{
+    net::module::try_current,
     prelude::{current, schedule_in, GateRef, Message},
     time::SimTime,
 };
@@ -145,6 +146,18 @@ impl Tcp {
 }
 
 impl TransmissionControlBlock {
+    #[inline]
+    pub fn write_prop(&self) {
+        if cfg!(feature = "props") {
+            let Some(module) = try_current() else { return };
+
+            module
+                .prop::<SocketAddr>(&format!("inet.tcp.{}.peer", self.local_addr.port()))
+                .expect("typing failed")
+                .set(self.peer_addr);
+        }
+    }
+
     pub fn new(fd: Fd, addr: SocketAddr, config: TcpSocketConfig) -> Self {
         let peer = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0));
         let span = tracing::span!(Level::INFO, "stream", local = Empty, peer = Empty);
@@ -594,6 +607,7 @@ impl IOContext {
             // }
             self.socket_close(fd);
         } else {
+            ctrl.write_prop();
             self.tcp.streams.insert(fd, ctrl);
         }
     }
@@ -1740,8 +1754,8 @@ impl TransmissionControlBlock {
         self.timer += 1;
         schedule_in(
             Message::default()
-                .kind(KIND_IO_TIMEOUT)
-                .id(self.timer)
+                .with_kind(KIND_IO_TIMEOUT)
+                .with_id(self.timer)
                 .with_content(self.fd),
             Duration::from_secs_f64(self.rto),
         );
@@ -1768,8 +1782,8 @@ impl TransmissionControlBlock {
         self.timer += 1;
         schedule_in(
             Message::default()
-                .kind(KIND_IO_TIMEOUT)
-                .id(self.timer)
+                .with_kind(KIND_IO_TIMEOUT)
+                .with_id(self.timer)
                 .with_content(self.fd),
             expiration,
         )
@@ -1790,5 +1804,16 @@ impl TransmissionControlBlock {
 
         self.congestion_window = self.mss as u32;
         self.congestion_avoid_counter = 0;
+    }
+}
+
+impl Drop for TransmissionControlBlock {
+    fn drop(&mut self) {
+        if cfg!(feature = "props") {
+            let Some(module) = try_current() else { return };
+            module
+                .prop_raw(&format!("inet.tcp.{}.peer", self.local_addr.port()))
+                .clear();
+        }
     }
 }

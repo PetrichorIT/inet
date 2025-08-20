@@ -2,7 +2,9 @@
 use super::{socket::*, IOContext};
 use crate::interface::IfId;
 use bytes_io::{BufMut, Bytes, FromBytes, ToBytes};
+use des::net::module::try_current;
 use fxhash::{FxBuildHasher, FxHashMap, FxHashSet};
+use serde::{Deserialize, Serialize};
 use std::{
     collections::VecDeque,
     io::{Error, ErrorKind, Result},
@@ -13,6 +15,7 @@ use types::{
     ip::{IpPacket, IpPacketRef, Ipv4Flags, Ipv4Packet, Ipv6Packet},
     udp::{UdpPacket, PROTO_UDP},
 };
+use valuable::Valuable;
 
 mod api;
 pub use api::*;
@@ -51,17 +54,19 @@ pub(super) struct UdpControlBlock {
 }
 
 /// A public info over UDP sockets.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Valuable, Serialize, Deserialize)]
 pub struct UdpSocketInfo {
     /// The address the socket is bound to
     pub addr: SocketAddr,
     /// The peer socket if one was defined.
     pub peer: Option<SocketAddr>,
+    /// The multicast domains that are being listened to.
+    pub multicast: FxHashSet<Ipv6Addr>,
     /// The number of waiting packets
     pub in_queue_size: usize,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub(super) enum UdpSocketState {
     #[default]
     Bound,
@@ -69,6 +74,29 @@ pub(super) enum UdpSocketState {
 }
 
 impl UdpControlBlock {
+    pub fn info(&self) -> UdpSocketInfo {
+        UdpSocketInfo {
+            addr: self.local_addr,
+            peer: match self.state {
+                UdpSocketState::Connected(peer) => Some(peer),
+                _ => None,
+            },
+            multicast: self.multicast_listeners_v6.clone(),
+            in_queue_size: self.incoming.len(),
+        }
+    }
+
+    #[inline]
+    pub fn publish(&self) {
+        if cfg!(feature = "props") {
+            let Some(module) = try_current() else { return };
+            module
+                .prop::<UdpSocketInfo>(&format!("inet.udp.{}", self.local_addr))
+                .expect("typing failed")
+                .set(self.info());
+        }
+    }
+
     fn is_valid_dst_for(&self, dst: SocketAddr) -> bool {
         let ip_match = match dst.ip() {
             IpAddr::V4(dst) => dst.is_broadcast(),
@@ -80,16 +108,27 @@ impl UdpControlBlock {
 
     pub(super) fn push_incoming(&mut self, src: SocketAddr, dest: SocketAddr, udp: UdpPacket) {
         self.incoming.push_back((src, dest, udp));
-
         self.read_interest
             .drain(..)
             .for_each(UdpInterestGuard::wake);
+        self.publish();
     }
 
     pub fn on_write_ready(&mut self) {
         self.write_interest
             .drain(..)
             .for_each(UdpInterestGuard::wake);
+    }
+}
+
+impl Drop for UdpControlBlock {
+    fn drop(&mut self) {
+        if cfg!(feature = "props") {
+            let Some(module) = try_current() else { return };
+            module
+                .prop_raw(&format!("inet.udp.{}", self.local_addr))
+                .clear();
+        }
     }
 }
 
@@ -185,6 +224,7 @@ impl IOContext {
         if ip.dst() == addr.ip() {
             // TTL execeeded is correct
             let _ = mng.error.replace(e);
+            mng.publish();
         }
     }
 }
@@ -218,6 +258,7 @@ impl IOContext {
             read_interest: Vec::new(),
             write_interest: Vec::new(),
         };
+        manager.publish();
         self.udp.binds.insert(socket, manager);
 
         Ok(UdpSocket { fd: socket })
@@ -232,6 +273,7 @@ impl IOContext {
         };
 
         socket.state = UdpSocketState::Connected(peer);
+        socket.publish();
         self.socket_set_peer(fd, peer)?;
         Ok(())
     }
@@ -358,6 +400,7 @@ impl IOContext {
 
         let n = pkt.content.len().min(buf.len());
         buf[..n].copy_from_slice(&pkt.content[..n]);
+        socket.publish();
         Ok((n, src))
     }
 
@@ -393,6 +436,7 @@ impl IOContext {
             buf.advance_mut(n);
         }
 
+        socket.publish();
         Ok((n, src))
     }
 
@@ -419,6 +463,8 @@ impl IOContext {
 
         let n = pkt.content.len().min(buf.len());
         buf[..n].copy_from_slice(&pkt.content[..n]);
+
+        socket.publish();
         Ok((n, *src))
     }
 
@@ -434,6 +480,7 @@ impl IOContext {
             return Err(Error::new(ErrorKind::AddrInUse, "address already in use"));
         }
 
+        socket.publish();
         self.ipv6_join_multicast_group(addr, ifid)
     }
 
@@ -449,6 +496,7 @@ impl IOContext {
             return Err(Error::new(ErrorKind::AddrInUse, "address already in use"));
         }
 
+        socket.publish();
         self.ipv6_leave_multicast_group(addr)
     }
 
@@ -465,8 +513,8 @@ impl IOContext {
 
     fn udp_drop(&mut self, fd: Fd) {
         if let Some(sock) = self.udp.binds.remove(&fd) {
-            for group in sock.multicast_listeners_v6 {
-                let _ = self.ipv6_leave_multicast_group(group);
+            for group in &sock.multicast_listeners_v6 {
+                let _ = self.ipv6_leave_multicast_group(*group);
             }
         }
         let _ = self.socket_close(fd);

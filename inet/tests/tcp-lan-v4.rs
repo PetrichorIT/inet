@@ -23,7 +23,7 @@ impl Module for Node {
             return;
         }
 
-        dbg!(current().props());
+        dbg!(current().props_keys());
 
         let ip = current().prop::<IpAddr>("addr").unwrap().get().unwrap();
         add_interface(InterfaceDef::new("en0", NetworkDevice::eth()).ip(ip)).unwrap();
@@ -91,8 +91,8 @@ impl Module for Node {
             "msg :: {} :: {} // {:?} -> {:?}",
             msg,
             current().name(),
-            msg.content::<Ipv4Packet>().src,
-            msg.content::<Ipv4Packet>().dst
+            msg.body.content::<Ipv4Packet>().src,
+            msg.body.content::<Ipv4Packet>().dst
         )
     }
 }
@@ -106,7 +106,7 @@ impl Module for Main {
         let mut targets = Vec::new();
         for i in 0..5 {
             let s = globals()
-                .node(&format!("node[{i}]"))
+                .get(&format!("node[{i}]").into())
                 .expect("no node found")
                 .prop::<Vec<u8>>("targets")
                 .expect("no prop found")
@@ -118,7 +118,7 @@ impl Module for Main {
         for i in 0..5 {
             let c = targets.iter().filter(|e| **e == i).count();
             globals()
-                .node(&format!("node[{i}]"))
+                .get(&format!("node[{i}]").into())
                 .unwrap()
                 .prop::<usize>("expected")
                 .unwrap()
@@ -137,6 +137,6 @@ fn tcp_lan_v4() -> Result<(), RuntimeError> {
         .with_ndl("tests/tcp-lan/main.yml", registry![Node, Switch, Main])
         .map_err(|e| println!("{e}"))
         .unwrap();
-    let rt = Builder::seeded(123).build(app);
+    let rt = Builder::seeded(123).build(app.freeze());
     rt.run().map(|_| ())
 }

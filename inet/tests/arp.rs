@@ -33,7 +33,7 @@ impl Module for Node {
         let mut valid_addrs = Vec::with_capacity(5);
         for i in 0..5 {
             let ip = globals()
-                .node(&format!("node[{i}]"))
+                .get(&format!("node[{i}]").into())
                 .unwrap()
                 .prop::<IpAddr>("addr")
                 .unwrap()
@@ -67,14 +67,14 @@ impl Module for Node {
     }
 
     fn handle_message(&mut self, msg: Message) {
-        if msg.can_cast::<Ipv4Packet>() {
-            let msg = msg.content::<Ipv4Packet>();
+        if msg.body.is::<Ipv4Packet>() {
+            let msg = msg.body.content::<Ipv4Packet>();
             assert_eq!(msg.dst, self.ip);
             tracing::info!("received message from {}", msg.src);
         }
 
-        if msg.can_cast::<Ipv6Packet>() {
-            let msg = msg.content::<Ipv6Packet>();
+        if msg.body.is::<Ipv6Packet>() {
+            let msg = msg.body.content::<Ipv6Packet>();
             assert_eq!(msg.dst, self.ip);
             tracing::info!("received message from {}", msg.src);
         }
@@ -96,6 +96,6 @@ fn v4() -> Result<(), RuntimeError> {
         .with_ndl("tests/arp/main.yml", registry![Node, Switch, else _])
         .map_err(|e| println!("{e}"))
         .unwrap();
-    let rt = Builder::seeded(123).max_itr(1000).build(app);
+    let rt = Builder::seeded(123).max_itr(1000).build(app.freeze());
     rt.run().map(|_| ())
 }

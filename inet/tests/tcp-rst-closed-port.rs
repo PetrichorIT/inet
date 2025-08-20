@@ -115,7 +115,7 @@ fn tcp_rst_for_closed_port() -> Result<(), RuntimeError> {
         .with_ndl("tests/tcp2.yml", registry![Client, Server, else _])
         .map_err(|e| println!("{e}"))
         .unwrap();
-    let rt = Builder::seeded(233).build(app);
+    let rt = Builder::seeded(233).build(app.freeze());
 
     rt.run().map(|_| ())
 }
@@ -133,7 +133,7 @@ fn tcp_rst_on_multiple_tries() -> Result<(), RuntimeError> {
         .with_ndl("tests/tcp2.yml", registry![Client, Server, else _])
         .map_err(|e| println!("{e}"))
         .unwrap();
-    let rt = Builder::seeded(233).build(app);
+    let rt = Builder::seeded(233).build(app.freeze());
 
     rt.run().map(|_| ())
 }
@@ -151,7 +151,7 @@ fn tcp_rst_on_multiple_tries_with_success() -> Result<(), RuntimeError> {
         .with_ndl("tests/tcp2.yml", registry![Client, Server, else _])
         .map_err(|e| println!("{e}"))
         .unwrap();
-    let rt = Builder::seeded(233).build(app);
+    let rt = Builder::seeded(233).build(app.freeze());
 
     rt.run().map(|_| ())
 }

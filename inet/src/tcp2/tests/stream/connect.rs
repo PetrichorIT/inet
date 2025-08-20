@@ -1,7 +1,7 @@
 use std::{io::ErrorKind, net::Ipv4Addr, time::Duration};
 
 use des::{
-    net::{AsyncFn, Sim},
+    net::{handlers::AsyncHandler, Sim},
     runtime::Builder,
     time::SimTime,
 };
@@ -20,7 +20,7 @@ fn connect_without_interface() {
     let mut sim = Sim::new(()).with_stack(crate::init);
     sim.node(
         "alice",
-        AsyncFn::io(|_| async move {
+        AsyncHandler::io(|_| async move {
             let stream = TcpStream::connect("69.0.0.69:8000").await;
             let err = stream.unwrap_err();
             assert_eq!(err.kind(), ErrorKind::AddrNotAvailable);
@@ -33,7 +33,7 @@ fn connect_without_interface() {
     let _ = Builder::seeded(123)
         .max_time(100.0.into())
         .max_itr(100)
-        .build(sim)
+        .build(sim.freeze())
         .run();
 }
 
@@ -43,7 +43,7 @@ fn connect_ip_version_missmatch() {
     let mut sim = Sim::new(()).with_stack(crate::init);
     sim.node(
         "alice",
-        AsyncFn::io(|_| async move {
+        AsyncHandler::io(|_| async move {
             add_interface(
                 InterfaceDef::new("en0", NetworkDevice::eth())
                     .ip(Ipv4Addr::new(42, 0, 0, 42).into()),
@@ -63,7 +63,7 @@ fn connect_ip_version_missmatch() {
 
     sim.node(
         "bob",
-        AsyncFn::new(|_| async move {
+        AsyncHandler::new(|_| async move {
             // NOP
         }),
     );
@@ -77,7 +77,7 @@ fn connect_without_ipv4_gateway() {
     let mut sim = Sim::new(()).with_stack(crate::init);
     sim.node(
         "alice",
-        AsyncFn::io(|_| async move {
+        AsyncHandler::io(|_| async move {
             add_interface(
                 InterfaceDef::new("en0", NetworkDevice::eth())
                     .ip(Ipv4Addr::new(42, 0, 0, 42).into()),
@@ -97,7 +97,7 @@ fn connect_without_ipv4_gateway() {
 
     sim.node(
         "bob",
-        AsyncFn::new(|_| async move {
+        AsyncHandler::new(|_| async move {
             // NOP
         }),
     );
@@ -111,7 +111,7 @@ fn connect_to_non_listener_peer() {
     let mut sim = Sim::new(()).with_stack(crate::init);
     sim.node(
         "alice",
-        AsyncFn::io(|_| async move {
+        AsyncHandler::io(|_| async move {
             add_interface(
                 InterfaceDef::new("en0", NetworkDevice::eth())
                     .ip(Ipv4Addr::new(100, 0, 0, 42).into()),
@@ -128,7 +128,7 @@ fn connect_to_non_listener_peer() {
 
     sim.node(
         "bob",
-        AsyncFn::io(|_| async move {
+        AsyncHandler::io(|_| async move {
             add_interface(
                 InterfaceDef::new("en0", NetworkDevice::eth())
                     .ip(Ipv4Addr::new(100, 0, 0, 69).into()),
@@ -146,7 +146,7 @@ fn connect_syn_timeout_no_rst() {
     let mut sim = Sim::new(()).with_stack(crate::init);
     sim.node(
         "alice",
-        AsyncFn::io(|_| async move {
+        AsyncHandler::io(|_| async move {
             add_interface(
                 InterfaceDef::new("en0", NetworkDevice::eth())
                     .ip(Ipv4Addr::new(100, 0, 0, 42).into()),
@@ -167,7 +167,7 @@ fn connect_syn_timeout_no_rst() {
 
     sim.node(
         "bob",
-        AsyncFn::io(|_| async move {
+        AsyncHandler::io(|_| async move {
             add_interface(
                 InterfaceDef::new("en0", NetworkDevice::eth())
                     .ip(Ipv4Addr::new(100, 0, 0, 69).into()),
@@ -189,7 +189,7 @@ fn connect_success() {
     let mut sim = Sim::new(()).with_stack(crate::init);
     sim.node(
         "alice",
-        AsyncFn::io(|_| async move {
+        AsyncHandler::io(|_| async move {
             add_interface(
                 InterfaceDef::new("en0", NetworkDevice::eth())
                     .ip(Ipv4Addr::new(100, 0, 0, 42).into()),
@@ -204,7 +204,7 @@ fn connect_success() {
 
     sim.node(
         "bob",
-        AsyncFn::io(|_| async move {
+        AsyncHandler::io(|_| async move {
             add_interface(
                 InterfaceDef::new("en0", NetworkDevice::eth())
                     .ip(Ipv4Addr::new(100, 0, 0, 69).into()),
@@ -225,7 +225,7 @@ fn connect_success_without_accept() {
     let mut sim = Sim::new(()).with_stack(crate::init);
     sim.node(
         "alice",
-        AsyncFn::io(|_| async move {
+        AsyncHandler::io(|_| async move {
             add_interface(
                 InterfaceDef::new("en0", NetworkDevice::eth())
                     .ip(Ipv4Addr::new(100, 0, 0, 42).into()),
@@ -240,7 +240,7 @@ fn connect_success_without_accept() {
 
     sim.node(
         "bob",
-        AsyncFn::io(|_| async move {
+        AsyncHandler::io(|_| async move {
             add_interface(
                 InterfaceDef::new("en0", NetworkDevice::eth())
                     .ip(Ipv4Addr::new(100, 0, 0, 69).into()),

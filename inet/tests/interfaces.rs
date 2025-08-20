@@ -8,7 +8,7 @@ use std::{
 };
 
 use bytes_io::Bytes;
-use des::{net::AsyncFn, prelude::*};
+use des::{net::handlers::AsyncHandler, prelude::*};
 use inet::{
     interface::*,
     ipv6::{api::set_node_cfg, cfg::HostConfiguration},
@@ -87,7 +87,7 @@ fn udp_empty_socket_bind() -> Result<(), RuntimeError> {
     let mut app = Sim::new(()).with_stack(inet::init);
     app.node("root", SocketBind::default());
 
-    let rt = Builder::seeded(123).build(app);
+    let rt = Builder::seeded(123).build(app.freeze());
     rt.run().map(|_| ())
 }
 
@@ -179,16 +179,16 @@ fn udp_echo_single_client() {
     let so = app.gate("server", "port");
     let co = app.gate("client", "port");
 
-    let chan = Channel::new(ChannelMetrics::new(
+    let chan = DatarateChannel::new(DatarateChannelMetrics::new(
         100000,
         Duration::from_millis(100),
         Duration::ZERO,
         Default::default(),
     ));
 
-    so.connect(co, Some(chan));
+    so.connect_with(co, Some(chan));
 
-    let rt = Builder::seeded(123).build(app);
+    let rt = Builder::seeded(123).build(app.freeze());
     let Ok((_, time, _)) = rt.run() else {
         panic!("Unexpected runtime result")
     };
@@ -259,16 +259,16 @@ fn udp_echo_clustered_echo() {
     let so = app.gate("server", "port");
     let co = app.gate("client", "port");
 
-    let chan = Channel::new(ChannelMetrics::new(
+    let chan = DatarateChannel::new(DatarateChannelMetrics::new(
         100000,
         Duration::from_millis(100),
         Duration::ZERO,
         Default::default(),
     ));
 
-    so.connect(co, Some(chan));
+    so.connect_with(co, Some(chan));
 
-    let rt = Builder::seeded(123).build(app);
+    let rt = Builder::seeded(123).build(app.freeze());
     let Ok((_, time, _)) = rt.run() else {
         panic!("Unexpected runtime result")
     };
@@ -370,16 +370,16 @@ fn udp_echo_concurrent_clients() {
     let so = app.gate("server", "port");
     let co = app.gate("client", "port");
 
-    let chan = Channel::new(ChannelMetrics::new(
+    let chan = DatarateChannel::new(DatarateChannelMetrics::new(
         100000,
         Duration::from_millis(100),
         Duration::ZERO,
         Default::default(),
     ));
 
-    so.connect(co, Some(chan));
+    so.connect_with(co, Some(chan));
 
-    let rt = Builder::seeded(123).build(app);
+    let rt = Builder::seeded(123).build(app.freeze());
     let Ok((_, time, _)) = rt.run() else {
         panic!("Unexpected runtime result")
     };
@@ -397,7 +397,7 @@ fn interface_does_not_use_busy_channel() -> Result<(), RuntimeError> {
     let mut sim = Sim::new(()).with_stack(inet::init);
     sim.node(
         "sender",
-        AsyncFn::failable::<_, _, std::io::Error>(|_| async move {
+        AsyncHandler::failable::<_, _, std::io::Error>(|_| async move {
             set_node_cfg(HostConfiguration {
                 dup_addr_detect_transmits: 0,
             })?;
@@ -407,7 +407,7 @@ fn interface_does_not_use_busy_channel() -> Result<(), RuntimeError> {
             des::time::sleep(Duration::from_secs(1)).await;
 
             for i in 0..32 {
-                send(Message::default().id(i), "port");
+                send(Message::default().with_id(i), "port");
             }
 
             let sock = RawIpSocket::new_v6()?;
@@ -423,7 +423,7 @@ fn interface_does_not_use_busy_channel() -> Result<(), RuntimeError> {
             }))?;
 
             for i in 0..32 {
-                send(Message::default().id(32 + i), "port");
+                send(Message::default().with_id(32 + i), "port");
             }
 
             Ok(())
@@ -432,7 +432,7 @@ fn interface_does_not_use_busy_channel() -> Result<(), RuntimeError> {
 
     sim.node(
         "receiver",
-        AsyncFn::failable::<_, _, std::io::Error>(|mut rx| async move {
+        AsyncHandler::failable::<_, _, std::io::Error>(|mut rx| async move {
             set_node_cfg(HostConfiguration {
                 dup_addr_detect_transmits: 0,
             })?;
@@ -464,9 +464,9 @@ fn interface_does_not_use_busy_channel() -> Result<(), RuntimeError> {
     let tx = sim.gate("sender", "port");
     let rx = sim.gate("receiver", "port");
 
-    tx.connect(
+    tx.connect_with(
         rx,
-        Some(Channel::new(ChannelMetrics {
+        Some(DatarateChannel::new(DatarateChannelMetrics {
             bitrate: 1000_000,
             latency: Duration::from_millis(20),
             jitter: Duration::ZERO,
@@ -474,7 +474,7 @@ fn interface_does_not_use_busy_channel() -> Result<(), RuntimeError> {
         })),
     );
 
-    let rt = Builder::seeded(123).build(sim);
+    let rt = Builder::seeded(123).build(sim.freeze());
     let result = rt.run().map(|_| ());
 
     assert!(DONE.load(std::sync::atomic::Ordering::SeqCst));
@@ -489,7 +489,7 @@ fn interface_will_use_idle_channel_fcfs() -> Result<(), RuntimeError> {
     let mut sim = Sim::new(()).with_stack(inet::init);
     sim.node(
         "sender",
-        AsyncFn::failable::<_, _, std::io::Error>(|_| async move {
+        AsyncHandler::failable::<_, _, std::io::Error>(|_| async move {
             set_node_cfg(HostConfiguration {
                 dup_addr_detect_transmits: 0,
             })?;
@@ -511,7 +511,7 @@ fn interface_will_use_idle_channel_fcfs() -> Result<(), RuntimeError> {
             }))?;
 
             for i in 0..32 {
-                send(Message::default().id(32 + i), "port");
+                send(Message::default().with_id(32 + i), "port");
             }
 
             Ok(())
@@ -520,7 +520,7 @@ fn interface_will_use_idle_channel_fcfs() -> Result<(), RuntimeError> {
 
     sim.node(
         "receiver",
-        AsyncFn::failable::<_, _, std::io::Error>(|mut rx| async move {
+        AsyncHandler::failable::<_, _, std::io::Error>(|mut rx| async move {
             set_node_cfg(HostConfiguration {
                 dup_addr_detect_transmits: 0,
             })?;
@@ -555,9 +555,9 @@ fn interface_will_use_idle_channel_fcfs() -> Result<(), RuntimeError> {
     let so = sim.gate("sender", "port");
     let co = sim.gate("receiver", "port");
 
-    so.connect(
+    so.connect_with(
         co,
-        Some(Channel::new(ChannelMetrics {
+        Some(DatarateChannel::new(DatarateChannelMetrics {
             bitrate: 1000_000,
             latency: Duration::from_millis(20),
             jitter: Duration::ZERO,
@@ -565,7 +565,7 @@ fn interface_will_use_idle_channel_fcfs() -> Result<(), RuntimeError> {
         })),
     );
 
-    let rt = Builder::seeded(123).build(sim);
+    let rt = Builder::seeded(123).build(sim.freeze());
     let result = rt.run().map(|_| ());
 
     assert!(DONE.load(std::sync::atomic::Ordering::SeqCst));

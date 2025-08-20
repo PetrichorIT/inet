@@ -45,7 +45,7 @@ impl Module for LinkLayerSwitch {
 
     fn handle_message(&mut self, msg: Message) {
         if msg.header().kind == KIND_SWITCH_WAKEUP {
-            self.wakeup(*msg.content::<usize>());
+            self.wakeup(*msg.body.content::<usize>());
             return;
         }
 
@@ -117,9 +117,11 @@ impl LinkLayerSwitch {
                 self.queues[i].push_back(msg);
                 if self.queues[i].len() == 1 {
                     // First message that was enqueued, no timeout in flight
-                    let tft = ch.transmission_finish_time();
+                    let tft = ch.transmission_finish_time().unwrap();
                     schedule_at(
-                        Message::default().kind(KIND_SWITCH_WAKEUP).with_content(i),
+                        Message::default()
+                            .with_kind(KIND_SWITCH_WAKEUP)
+                            .with_content(i),
                         tft,
                     );
                 }
@@ -145,9 +147,11 @@ impl LinkLayerSwitch {
             let mut gate = gate;
             while let Some(next_gate) = gate.next_gate() {
                 if let Some(ch) = gate.channel() {
-                    let tft = ch.transmission_finish_time();
+                    let tft = ch.transmission_finish_time().unwrap();
                     schedule_at(
-                        Message::default().kind(KIND_SWITCH_WAKEUP).with_content(i),
+                        Message::default()
+                            .with_kind(KIND_SWITCH_WAKEUP)
+                            .with_content(i),
                         tft,
                     );
                     break;

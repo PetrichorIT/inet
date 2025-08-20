@@ -163,7 +163,7 @@ fn tcp_echo_100k() {
         )
         .map_err(|e| println!("{e}"))
         .unwrap();
-    let rt = Builder::seeded(123).build(app);
+    let rt = Builder::seeded(123).build(app.freeze());
     let (_, time, profiler) = rt.run().unwrap();
     assert_eq!(time.as_secs(), 6); // there is something wrong here
     assert!(profiler.event_count < 8000);

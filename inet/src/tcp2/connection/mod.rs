@@ -1,6 +1,7 @@
 use bytes_io::{BufMut, Bytes, BytesMut, FromBytes, ToBytes};
 use des::time::SimTime;
 use interface::UserInterface;
+use serde::{Deserialize, Serialize};
 use std::{
     cmp,
     collections::VecDeque,
@@ -14,12 +15,14 @@ use types::{
     ip::{IpPacket, Ipv4Flags, Ipv4Packet, Ipv6Packet},
     tcp::{TcpFlags, TcpOption, TcpPacket},
 };
+use valuable::Valuable;
 
 use crate::io::Interest;
 
 use super::{Quad, PROTO_TCP2};
 
 mod cfg;
+mod info;
 mod interface;
 mod rcv;
 mod reorder;
@@ -33,7 +36,7 @@ use rcv::RecvSequenceSpace;
 use snd::SendSequenceSpace;
 use timers::Timers;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Valuable, Serialize, Deserialize)]
 pub enum State {
     //Listen,
     SynSent,
@@ -523,6 +526,8 @@ impl Connection {
     }
 
     pub fn on_tick(&mut self) -> io::Result<()> {
+        self.publish();
+
         if let State::FinWait2 | State::Closed = self.state {
             // we have shutdown our write side and the other side acked, no need to (re)transmit anything
             return Ok(());

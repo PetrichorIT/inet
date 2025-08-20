@@ -1,8 +1,11 @@
 use std::{net::Ipv4Addr, sync::Arc, time::Duration};
 
 use des::{
-    net::{AsyncFn, HandlerFn, Sim},
-    prelude::{send, Channel, ChannelDropBehaviour, ChannelMetrics},
+    net::{
+        handlers::{AsyncHandler, HandlerFn},
+        Sim,
+    },
+    prelude::{send, ChannelDropBehaviour, DatarateChannel, DatarateChannelMetrics},
     runtime::{random, Builder},
 };
 use rand::{rng, RngCore};
@@ -27,7 +30,7 @@ fn large_stream() {
     let bytes2 = bytes.clone();
     sim.node(
         "alice",
-        AsyncFn::io(move |_| {
+        AsyncHandler::io(move |_| {
             let bytes = bytes.clone();
             async move {
                 add_interface(
@@ -53,7 +56,7 @@ fn large_stream() {
 
     sim.node(
         "bob",
-        AsyncFn::io(move |_| {
+        AsyncHandler::io(move |_| {
             let bytes = bytes2.clone();
             async move {
                 add_interface(
@@ -88,9 +91,9 @@ fn large_stream() {
 
     let a = sim.gate("alice", "port");
     let b = sim.gate("bob", "port");
-    a.connect(
+    a.connect_with(
         b,
-        Some(Channel::new(ChannelMetrics::new(
+        Some(DatarateChannel::new(DatarateChannelMetrics::new(
             8_000_000, // 1MB
             Duration::from_millis(30),
             Duration::ZERO,
@@ -100,7 +103,7 @@ fn large_stream() {
 
     let _ = Builder::seeded(123)
         .max_time(1000.0.into())
-        .build(sim)
+        .build(sim.freeze())
         .run();
 
     // Event Count
@@ -131,7 +134,7 @@ fn lossful_stream() {
     let bytes2 = bytes.clone();
     sim.node(
         "alice",
-        AsyncFn::io(move |_| {
+        AsyncHandler::io(move |_| {
             let bytes = bytes.clone();
             async move {
                 add_interface(
@@ -157,7 +160,7 @@ fn lossful_stream() {
 
     sim.node(
         "bob",
-        AsyncFn::io(move |_| {
+        AsyncHandler::io(move |_| {
             let bytes = bytes2.clone();
             async move {
                 add_interface(
@@ -210,18 +213,18 @@ fn lossful_stream() {
     let a_con = sim.gate("link", "port-alice");
     let b = sim.gate("bob", "port");
     let b_con = sim.gate("link", "port-bob");
-    a.connect(
+    a.connect_with(
         a_con,
-        Some(Channel::new(ChannelMetrics::new(
+        Some(DatarateChannel::new(DatarateChannelMetrics::new(
             8_000_000, // 1MB
             Duration::from_millis(30),
             Duration::ZERO,
             ChannelDropBehaviour::Queue(None),
         ))),
     );
-    b.connect(
+    b.connect_with(
         b_con,
-        Some(Channel::new(ChannelMetrics::new(
+        Some(DatarateChannel::new(DatarateChannelMetrics::new(
             8_000_000, // 1MB
             Duration::from_millis(30),
             Duration::ZERO,
@@ -229,7 +232,10 @@ fn lossful_stream() {
         ))),
     );
 
-    let _ = Builder::seeded(123).max_time(100.0.into()).build(sim).run();
+    let _ = Builder::seeded(123)
+        .max_time(100.0.into())
+        .build(sim.freeze())
+        .run();
 
     // DROP #1: ArpResponse
     // Drop #2: SYN

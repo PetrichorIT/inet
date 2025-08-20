@@ -1,8 +1,8 @@
 use std::time::Duration;
 
 use des::{
-    net::Sim,
-    prelude::{Channel, ChannelDropBehaviour, ChannelMetrics},
+    net::SimBuilder,
+    prelude::{ChannelDropBehaviour, DatarateChannel, DatarateChannelMetrics},
     runtime::Builder,
 };
 
@@ -10,12 +10,12 @@ mod connect;
 mod shutdown;
 mod transmit;
 
-fn run_default_sim(mut sim: Sim<()>) {
+fn run_default_sim(mut sim: SimBuilder<()>) {
     let a = sim.gate("alice", "port");
     let b = sim.gate("bob", "port");
-    a.connect(
+    a.connect_with(
         b,
-        Some(Channel::new(ChannelMetrics::new(
+        Some(DatarateChannel::new(DatarateChannelMetrics::new(
             80000,
             Duration::from_millis(200),
             Duration::ZERO,
@@ -26,6 +26,6 @@ fn run_default_sim(mut sim: Sim<()>) {
     let _ = Builder::seeded(123)
         .max_time(100.0.into())
         .max_itr(100)
-        .build(sim)
+        .build(sim.freeze())
         .run();
 }

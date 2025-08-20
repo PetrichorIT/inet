@@ -134,7 +134,9 @@ impl TimerCtrl {
         self.wakeups.push(next);
         self.wakeups.sort();
 
-        let msg = Message::default().kind(KIND_IO_TIMEOUT).id(ID_IPV6_TIMEOUT);
+        let msg = Message::default()
+            .with_kind(KIND_IO_TIMEOUT)
+            .with_id(ID_IPV6_TIMEOUT);
         schedule_at(msg, next);
     }
 

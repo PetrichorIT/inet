@@ -185,7 +185,9 @@ fn tcp_partial_mtu_at_default_close() {
         )
         .map_err(|e| println!("{e}"))
         .unwrap();
-    let rt = Builder::seeded(123).max_time(3.0.into()).build(app);
+    let rt = Builder::seeded(123)
+        .max_time(3.0.into())
+        .build(app.freeze());
     let (_, time, profiler) = rt.run().unwrap();
     assert_eq!(time.as_secs(), 1);
     assert!(profiler.event_count < 200);
@@ -207,7 +209,9 @@ fn tcp_partial_mtu_at_simultaneous_close() {
         )
         .map_err(|e| println!("{e}"))
         .unwrap();
-    let rt = Builder::seeded(999999999).max_time(3.0.into()).build(app);
+    let rt = Builder::seeded(999999999)
+        .max_time(3.0.into())
+        .build(app.freeze());
     let (_, time, profiler) = rt.run().unwrap();
     assert_eq!(time.as_secs(), 1);
     assert!(profiler.event_count < 200);

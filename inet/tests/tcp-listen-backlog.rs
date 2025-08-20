@@ -90,7 +90,7 @@ fn tcp_listen_backlog() {
         )
         .map_err(|e| println!("{e}"))
         .unwrap();
-    let rt = Builder::seeded(123).build(app);
+    let rt = Builder::seeded(123).build(app.freeze());
     let (_, t, _) = rt.run().unwrap();
     assert!(t > 3.0.into());
 }

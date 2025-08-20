@@ -107,7 +107,7 @@ bitflags! {
 
 impl IOContext {
     pub fn ipv6_recv(&mut self, msg: Message, ifid: IfId) -> NetworkLayerResult {
-        let Ok((pkt, header)) = msg.try_cast::<Ipv6Packet>() else {
+        let Ok((pkt, header)) = msg.try_into_content::<Ipv6Packet>() else {
             tracing::error!(
                 "received eth-packet with kind=0x86DD (ip) but content was no ipv6-packet"
             );
@@ -204,17 +204,18 @@ impl IOContext {
                 .iter_mut()
                 .find(|(_, iface)| iface.flags.loopback)
             {
-                lo_iface.send_buffered(Message::default().kind(KIND_IPV6).with_content(pkt))?;
+                lo_iface
+                    .send_buffered(Message::default().with_kind(KIND_IPV6).with_content(pkt))?;
                 return Ok(());
             } else {
                 // FIXME: dangerous since this execut4e directly
                 let iface = self.ifaces.get(&ifid).unwrap();
                 schedule_in(
                     Message::default()
-                        .last_gate(iface.device.input().unwrap())
-                        .kind(KIND_IPV6)
-                        .src(iface.device.addr.into())
-                        .dst(iface.device.addr.into())
+                        .with_last_gate(iface.device.input().unwrap())
+                        .with_kind(KIND_IPV6)
+                        .with_src(iface.device.addr.into())
+                        .with_dst(iface.device.addr.into())
                         .with_content(pkt),
                     Duration::ZERO,
                 );
@@ -260,9 +261,9 @@ impl IOContext {
 
         let iface = self.ifaces.get_mut(&ifid).unwrap();
         let msg = Message::default()
-            .src(iface.device.addr.into())
-            .dst(mac.into())
-            .kind(KIND_IPV6)
+            .with_src(iface.device.addr.into())
+            .with_dst(mac.into())
+            .with_kind(KIND_IPV6)
             .with_content(pkt);
 
         iface.send_buffered(msg)
