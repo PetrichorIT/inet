@@ -11,6 +11,7 @@ pub struct Ipv6Prefix {
 }
 
 bitflags! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
     pub struct Ipv6PrefixOptions: u8 {
         const NO_UNICAST    = 0b0000_0001;
         const LOCAL_ADDRESS = 0b0000_0010;

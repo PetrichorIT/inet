@@ -83,6 +83,6 @@ fn ipv6_tentative_addrs() -> Result<(), RuntimeError> {
     let rt = Builder::seeded(123)
         // .max_itr(30)
         .max_time(10.0.into())
-        .build(app);
+        .build(app.freeze());
     rt.run().map(|_| ())
 }

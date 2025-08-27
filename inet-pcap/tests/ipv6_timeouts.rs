@@ -119,7 +119,7 @@ fn ipv6_timeouts_with_ra() -> Result<(), RuntimeError> {
     let rt = Builder::seeded(123)
         // .max_itr(30)
         .max_time(10_000.0.into())
-        .build(app);
+        .build(app.freeze());
     rt.run().map(|_| ())
 }
 
@@ -143,6 +143,6 @@ fn ipv6_timeouts_without_ra() -> Result<(), RuntimeError> {
     let rt = Builder::seeded(123)
         // .max_itr(30)
         .max_time(10_000.0.into())
-        .build(app);
+        .build(app.freeze());
     rt.run().map(|_| ())
 }

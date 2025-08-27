@@ -35,11 +35,11 @@ impl Module for Link {
             return;
         }
 
-        match msg.header().last_gate.as_ref().map(|v| v.name()) {
+        let _ = match msg.header().last_gate.as_ref().map(|v| v.name()) {
             Some("lhs") => send(msg, "rhs"),
             Some("rhs") => send(msg, "lhs"),
             _ => todo!(),
-        }
+        };
     }
 }
 

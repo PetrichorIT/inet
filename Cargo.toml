@@ -10,8 +10,10 @@ members = [
     "inet-dns",
     "inet-uds",
     "util/*",
-    "examples/*", "inet-ospf",
+    "examples/*",
+    "inet-ospf",
 ]
+resolver = "3"
 
 [patch.crates-io]
 # des = { git = "https://github.com/PetrichorIT/des", branch = "master" }

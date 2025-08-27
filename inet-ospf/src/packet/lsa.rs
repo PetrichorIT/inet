@@ -107,6 +107,7 @@ pub struct LsaType {
 }
 
 bitflags! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
     pub struct LasTypeFlags: u16 {
         const U     = 0b1000_0000_0000_0000;
         const S2    = 0b0100_0000_0000_0000;
@@ -264,6 +265,7 @@ impl FromBytes for RouterLsa {
 }
 
 bitflags! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
     pub struct RouterLsaFlags: u32 {
         const VIRTUAL_LINK_ENDPOINT = 1 << 26;
         const EXTERNAL_BOUNDARY_ROUTER = 1 << 25;

@@ -193,9 +193,7 @@ impl NetworkDevice {
                 };
 
                 if chan.is_busy() {
-                    NetworkDeviceReadiness::Busy(
-                        chan.transmission_finish_time().unwrap() + Duration::from_nanos(1),
-                    )
+                    NetworkDeviceReadiness::Busy(chan.transmission_finish_time().unwrap())
                 } else {
                     NetworkDeviceReadiness::Ready
                 }
@@ -215,19 +213,16 @@ impl NetworkDevice {
             } => {
                 if let Some(channel) = channel {
                     assert!(!channel.is_busy(), "busy connector");
-                    // Add the additionall delay to ensure the ChannelUnbusy event
-                    // was at t1 < t2
+                    // NOTE: the 1ns delay could be removed, since channels now ignore
+                    // event order for unbusying events aka send() operations that somehow occur before the
+                    // unbusy notif at the same time t, acknowledge that the channel is not busy,
 
-                    // TODO: Is this delay still nessecary, since channels are now instantly
-                    // busied with the call of send() thus channel updates are inorder before any
-                    // link updates will arrive.
-
-                    send(msg, output);
-                    let tft = channel.transmission_finish_time().unwrap() + Duration::from_nanos(1);
+                    send(msg, output).expect("failed due to unknown channel issue");
+                    let tft = channel.transmission_finish_time().unwrap();
 
                     NetworkDeviceReadiness::Busy(tft)
                 } else {
-                    send(msg, output);
+                    send(msg, output).expect("no channel, cannot fail"); // TODO: how to handle dead peers
                     NetworkDeviceReadiness::Ready
                 }
             }

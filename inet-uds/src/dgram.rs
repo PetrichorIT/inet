@@ -299,7 +299,7 @@ mod tests {
     use super::*;
 
     use des::{
-        net::{AsyncFn, Sim},
+        net::{handlers::AsyncHandler, Sim},
         runtime::{random, Builder, RuntimeError},
         time::sleep,
     };
@@ -312,7 +312,7 @@ mod tests {
 
         sim.node(
             "alice",
-            AsyncFn::io(|_| async move {
+            AsyncHandler::io(|_| async move {
                 let _uds = UnixDatagram::bind("/usr/link")?;
                 let error = UnixDatagram::bind("/usr/link").unwrap_err();
                 assert_eq!(error.kind(), ErrorKind::AddrInUse);
@@ -322,7 +322,10 @@ mod tests {
             }),
         );
 
-        let _ = Builder::seeded(123).max_time(100.0.into()).build(sim).run();
+        let _ = Builder::seeded(123)
+            .max_time(100.0.into())
+            .build(sim.freeze())
+            .run();
     }
 
     #[serial]
@@ -332,7 +335,7 @@ mod tests {
 
         sim.node(
             "alice",
-            AsyncFn::io(|_| async move {
+            AsyncHandler::io(|_| async move {
                 let (lhs, rhs) = UnixDatagram::pair()?;
                 assert_eq!(lhs.peer_addr()?, SocketAddr::unnamed());
                 assert_eq!(rhs.peer_addr()?, SocketAddr::unnamed());
@@ -341,7 +344,10 @@ mod tests {
             }),
         );
 
-        let _ = Builder::seeded(123).max_time(100.0.into()).build(sim).run();
+        let _ = Builder::seeded(123)
+            .max_time(100.0.into())
+            .build(sim.freeze())
+            .run();
     }
 
     #[serial]
@@ -350,7 +356,7 @@ mod tests {
         let mut app = Sim::new(()).with_stack(inet::init);
         app.node(
             "main",
-            AsyncFn::io(|_| async move {
+            AsyncHandler::io(|_| async move {
                 let (a, b) = UnixDatagram::pair().unwrap();
 
                 let h1 = tokio::spawn(async move {
@@ -384,7 +390,7 @@ mod tests {
         );
         Builder::seeded(123)
             .max_time(100.0.into())
-            .build(app)
+            .build(app.freeze())
             .run()
             .map(|_| ())
     }
@@ -396,7 +402,7 @@ mod tests {
 
         sim.node(
             "alice",
-            AsyncFn::io(|_| async move {
+            AsyncHandler::io(|_| async move {
                 let (lhs, rhs) = UnixDatagram::pair()?;
 
                 let h1 = tokio::spawn(async move {
@@ -416,7 +422,7 @@ mod tests {
 
         Builder::seeded(123)
             .max_time(100.0.into())
-            .build(sim)
+            .build(sim.freeze())
             .run()
             .map(|_| ())
     }
@@ -427,7 +433,7 @@ mod tests {
         let mut app = Sim::new(()).with_stack(inet::init);
         app.node(
             "main",
-            AsyncFn::io(|_| async move {
+            AsyncHandler::io(|_| async move {
                 let h1 = tokio::spawn(async move {
                     let sock = UnixDatagram::bind("/tmp/task1").unwrap();
                     sleep(Duration::from_secs(1)).await;
@@ -484,7 +490,9 @@ mod tests {
             })
             .require_join(),
         );
-        let rt = Builder::seeded(123).max_time(100.0.into()).build(app);
+        let rt = Builder::seeded(123)
+            .max_time(100.0.into())
+            .build(app.freeze());
         rt.run().map(|_| ())
     }
 
@@ -494,7 +502,7 @@ mod tests {
         let mut app = Sim::new(()).with_stack(inet::init);
         app.node(
             "main",
-            AsyncFn::io(|_| async move {
+            AsyncHandler::io(|_| async move {
                 let tmp = inet::env::fs::tempdir().unwrap();
 
                 // Bind each socket to a filesystem path
@@ -518,6 +526,9 @@ mod tests {
             })
             .require_join(),
         );
-        let _ = Builder::seeded(123).max_time(100.0.into()).build(app).run();
+        let _ = Builder::seeded(123)
+            .max_time(100.0.into())
+            .build(app.freeze())
+            .run();
     }
 }

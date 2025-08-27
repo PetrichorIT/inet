@@ -150,6 +150,7 @@ impl InterfaceController {
 
     pub(crate) fn schedule_link_update(&self) {
         if let InterfaceBusyState::Busy { until, .. } = &self.state {
+            dbg!(until);
             schedule_at(Message::from(LinkUpdate(self.name.id())), *until);
         }
     }

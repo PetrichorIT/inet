@@ -127,11 +127,16 @@ impl LinkLayerSwitch {
                 }
             } else {
                 // (4) Send the message directly (onto the original gate though)
-                send(msg, self.info.ports[i].output.clone())
+                if let Err(e) = send(msg, self.info.ports[i].output.clone()) {
+                    tracing::error!(
+                        "switch cannot send message onto channel for some unknown reason"
+                    );
+                    drop(e);
+                }
             }
         } else {
             // (5) No channel in the entire gate chain
-            send(msg, self.info.ports[i].output.clone())
+            send(msg, self.info.ports[i].output.clone()).expect("no channel, thus cannot fail");
         }
     }
 
@@ -141,7 +146,12 @@ impl LinkLayerSwitch {
         };
 
         let gate = self.info.ports[i].output.clone();
-        send(msg, &gate);
+        if let Err(e) = send(msg, &gate) {
+            tracing::error!("switch cannot send message onto channel after wakeup: ERRIMPL");
+            drop(e);
+        }
+
+        // reschedule
         if !self.queues[i].is_empty() {
             // we can assume that a channel exists, since wakeup only occure on bufferd ports
             let mut gate = gate;

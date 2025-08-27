@@ -1,7 +1,7 @@
 use std::{net::Ipv4Addr, str::FromStr};
 
 use des::{
-    net::{AsyncFn, Sim},
+    net::{handlers::AsyncHandler, Sim},
     runtime::Builder,
     time::sleep,
 };
@@ -22,7 +22,7 @@ fn referral_anwser_finishes_transaction() {
     let mut sim = Sim::new(()).with_stack(inet::init);
     sim.node(
         "alice",
-        AsyncFn::io(|_| async move {
+        AsyncHandler::io(|_| async move {
             let zone = Zonefile::from_str(ZONEFILE_ORG)?;
             let mut server = RecursiveNameserver::new(zone)?;
 
@@ -100,7 +100,10 @@ fn referral_anwser_finishes_transaction() {
             Ok(())
         }),
     );
-    let _ = Builder::seeded(123).max_time(100.0.into()).build(sim).run();
+    let _ = Builder::seeded(123)
+        .max_time(100.0.into())
+        .build(sim.freeze())
+        .run();
 }
 
 #[test]
@@ -109,7 +112,7 @@ fn referred_error_will_be_propagated() {
     let mut sim = Sim::new(()).with_stack(inet::init);
     sim.node(
         "alice",
-        AsyncFn::io(|_| async move {
+        AsyncHandler::io(|_| async move {
             let zone = Zonefile::from_str(ZONEFILE_ORG)?;
             let mut server = RecursiveNameserver::new(zone)?;
 
@@ -183,7 +186,10 @@ fn referred_error_will_be_propagated() {
             Ok(())
         }),
     );
-    let _ = Builder::seeded(123).max_time(100.0.into()).build(sim).run();
+    let _ = Builder::seeded(123)
+        .max_time(100.0.into())
+        .build(sim.freeze())
+        .run();
 }
 
 #[test]
@@ -192,7 +198,7 @@ fn timeout_will_end_in_error() {
     let mut sim = Sim::new(()).with_stack(inet::init);
     sim.node(
         "alice",
-        AsyncFn::io(|_| async move {
+        AsyncHandler::io(|_| async move {
             let zone = Zonefile::from_str(ZONEFILE_ORG)?;
             let mut server = RecursiveNameserver::new(zone)?;
 
@@ -232,7 +238,10 @@ fn timeout_will_end_in_error() {
             Ok(())
         }),
     );
-    let _ = Builder::seeded(123).max_time(100.0.into()).build(sim).run();
+    let _ = Builder::seeded(123)
+        .max_time(100.0.into())
+        .build(sim.freeze())
+        .run();
 }
 
 const ZONEFILE_EXAMPLE_ORG: &str = include_str!("../../examples/example.org.zone");
@@ -243,7 +252,7 @@ fn timeout_will_retransmit_to_other_ns() {
     let mut sim = Sim::new(()).with_stack(inet::init);
     sim.node(
         "alice",
-        AsyncFn::io(|_| async move {
+        AsyncHandler::io(|_| async move {
             let zone = Zonefile::from_str(ZONEFILE_EXAMPLE_ORG)?;
             let mut server = RecursiveNameserver::new(zone)?;
 
@@ -272,5 +281,8 @@ fn timeout_will_retransmit_to_other_ns() {
             Ok(())
         }),
     );
-    let _ = Builder::seeded(123).max_time(100.0.into()).build(sim).run();
+    let _ = Builder::seeded(123)
+        .max_time(100.0.into())
+        .build(sim.freeze())
+        .run();
 }

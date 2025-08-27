@@ -9,5 +9,5 @@ bytes-io = { path = "../util/bytes-io" }
 pcapng = { path = "../util/pcapng" }
 macros = { path = "../util/macros" }
 inet = { path = "../inet" }
-bitflags = "*"
+bitflags = "2.9.0"
 rand = "*"

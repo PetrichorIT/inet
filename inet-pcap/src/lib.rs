@@ -84,6 +84,7 @@ impl<W: BlockWriter<IfId>> LibPcapDeamon<W> {
     fn pkt_as_buf(&self, msg: &Message) -> Result<Vec<u8>> {
         match msg.header().kind {
             KIND_IPV4 => msg
+                .body
                 .try_content::<Ipv4Packet>()
                 .ok_or(Error::new(
                     ErrorKind::InvalidInput,
@@ -91,6 +92,7 @@ impl<W: BlockWriter<IfId>> LibPcapDeamon<W> {
                 ))?
                 .write_to_vec(),
             KIND_IPV6 => msg
+                .body
                 .try_content::<Ipv6Packet>()
                 .ok_or(Error::new(
                     ErrorKind::InvalidInput,
@@ -98,6 +100,7 @@ impl<W: BlockWriter<IfId>> LibPcapDeamon<W> {
                 ))?
                 .write_to_vec(),
             KIND_ARP => msg
+                .body
                 .try_content::<ArpPacket>()
                 .ok_or(Error::new(
                     ErrorKind::InvalidInput,

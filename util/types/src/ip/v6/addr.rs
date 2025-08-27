@@ -9,7 +9,8 @@ use std::{
     str::FromStr,
 };
 
-use serde::{Deserialize, Deserializer};
+use serde::{Deserialize, Deserializer, Serialize};
+use valuable::{Fields, NamedField, NamedValues, StructDef, Structable, Valuable, Value, Visit};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
@@ -212,6 +213,27 @@ impl Ipv6Prefix {
     }
 }
 
+static IPV6_PREFIX_FIELDS: &[NamedField<'static>] =
+    &[NamedField::new("prefix"), NamedField::new("len")];
+
+impl Structable for Ipv6Prefix {
+    fn definition(&self) -> StructDef<'_> {
+        StructDef::new_static("Duration", Fields::Named(IPV6_PREFIX_FIELDS))
+    }
+}
+
+impl Valuable for Ipv6Prefix {
+    fn as_value(&self) -> Value<'_> {
+        Value::Structable(self)
+    }
+    fn visit(&self, v: &mut dyn Visit) {
+        v.visit_named_fields(&NamedValues::new(
+            IPV6_PREFIX_FIELDS,
+            &[self.addr.as_value(), Value::U8(self.len)],
+        ));
+    }
+}
+
 impl PartialEq<(Ipv6Addr, u8)> for Ipv6Prefix {
     fn eq(&self, other: &(Ipv6Addr, u8)) -> bool {
         self.addr == other.0 && self.len == other.1
@@ -237,6 +259,15 @@ impl<'de> Deserialize<'de> for Ipv6Prefix {
     {
         let s = String::deserialize(deserializer)?;
         s.parse().map_err(serde::de::Error::custom)
+    }
+}
+
+impl Serialize for Ipv6Prefix {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(&self.to_string())
     }
 }
 

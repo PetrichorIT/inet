@@ -13,6 +13,9 @@ bitflags = ">2.6.0"
 bytes-io = { path = "../bytes-io" }
 macros = { path = "../macros" }
 des = { version = "*", features = ["full"] }
+valuable = { git = "https://github.com/PetrichorIT/valuable", branch = "owned", features = [
+    "derive",
+] }
 
 [dev-dependencies]
 rand = "*"

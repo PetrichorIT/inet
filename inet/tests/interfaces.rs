@@ -156,8 +156,8 @@ impl Module for UdpSingleEchoSender {
                 let n = sock.recv(&mut buf).await.unwrap();
                 assert_eq!(n, size);
                 assert_eq!(&buf[..n], &msg[..]);
-                done.store(true, Ordering::SeqCst)
             }
+            done.store(true, Ordering::SeqCst)
         });
     }
 
@@ -193,7 +193,7 @@ fn udp_echo_single_client() {
         panic!("Unexpected runtime result")
     };
 
-    assert_eq!(time.as_secs(), 31)
+    assert_eq!(time.as_secs(), 31);
 }
 
 #[derive(Default)]
@@ -223,6 +223,7 @@ impl Module for UdpSingleClusteredSender {
                     let msg = std::iter::from_fn(|| Some(random::<u8>()))
                         .take(size)
                         .collect::<Vec<_>>();
+                    tracing::info!("sending #{i} {size} bytes");
                     let n = sock.send(&msg).await.unwrap();
                     assert_eq!(n, size);
                     msgs.push_back(msg);
@@ -232,6 +233,7 @@ impl Module for UdpSingleClusteredSender {
                     let expected = msgs.pop_front().unwrap();
 
                     let mut buf = [0u8; 1024];
+                    tracing::info!("try: receiving #{}", i - 3);
                     let n = sock.recv(&mut buf).await.unwrap();
                     assert_eq!(n, expected.len());
                     assert_eq!(&buf[..n], &expected[..]);
@@ -250,8 +252,6 @@ impl Module for UdpSingleClusteredSender {
 #[test]
 #[serial]
 fn udp_echo_clustered_echo() {
-    // Logger::new().set_logger();
-
     let mut app = Sim::new(()).with_stack(inet::init);
     app.node("server", UdpEcho4200::default());
     app.node("client", UdpSingleClusteredSender::default());
@@ -407,7 +407,7 @@ fn interface_does_not_use_busy_channel() -> Result<(), RuntimeError> {
             des::time::sleep(Duration::from_secs(1)).await;
 
             for i in 0..32 {
-                send(Message::default().with_id(i), "port");
+                send(Message::default().with_id(i), "port").unwrap();
             }
 
             let sock = RawIpSocket::new_v6()?;
@@ -423,7 +423,7 @@ fn interface_does_not_use_busy_channel() -> Result<(), RuntimeError> {
             }))?;
 
             for i in 0..32 {
-                send(Message::default().with_id(32 + i), "port");
+                send(Message::default().with_id(32 + i), "port").unwrap();
             }
 
             Ok(())
@@ -511,7 +511,7 @@ fn interface_will_use_idle_channel_fcfs() -> Result<(), RuntimeError> {
             }))?;
 
             for i in 0..32 {
-                send(Message::default().with_id(32 + i), "port");
+                send(Message::default().with_id(32 + i), "port").unwrap();
             }
 
             Ok(())

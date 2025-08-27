@@ -1,8 +1,8 @@
 use std::{io::Error, net::Ipv4Addr, time::Duration};
 
 use des::{
-    net::{channel::Channel, AsyncFn, Sim},
-    prelude::ChannelMetrics,
+    net::{channel::DatarateChannel, handlers::AsyncHandler, Sim},
+    prelude::DatarateChannelMetrics,
     runtime::Builder,
     time::sleep,
 };
@@ -22,7 +22,7 @@ fn semi_passiv_estab() {
     let mut sim = Sim::new(()).with_stack(inet::init);
     sim.node(
         "as-1000",
-        AsyncFn::io(|_| async move {
+        AsyncHandler::io(|_| async move {
             let addr = Ipv4Addr::new(192, 168, 1, 100);
             add_interface(InterfaceDef::new("en0", NetworkDevice::eth()).ip(addr.into()))?;
 
@@ -79,7 +79,7 @@ fn semi_passiv_estab() {
 
     sim.node(
         "as-2000",
-        AsyncFn::io(|_| async move {
+        AsyncHandler::io(|_| async move {
             let addr = Ipv4Addr::new(192, 168, 1, 200);
             add_interface(InterfaceDef::new("en0", NetworkDevice::eth()).ip(addr.into()))?;
 
@@ -138,9 +138,9 @@ fn semi_passiv_estab() {
 
     let tx = sim.gate("as-1000", "port");
     let rx = sim.gate("as-2000", "port");
-    tx.connect(
+    tx.connect_with(
         rx,
-        Some(Channel::new(ChannelMetrics {
+        Some(DatarateChannel::new(DatarateChannelMetrics {
             bitrate: 1000000,
             latency: Duration::from_millis(5),
             jitter: Duration::ZERO,
@@ -151,7 +151,7 @@ fn semi_passiv_estab() {
     let _ = Builder::seeded(123)
         .max_time(500.0.into())
         .max_itr(10_000)
-        .build(sim)
+        .build(sim.freeze())
         .run();
 }
 
@@ -161,7 +161,7 @@ fn semi_passiv_estab_delayed_client() {
     let mut sim = Sim::new(()).with_stack(inet::init);
     sim.node(
         "as-1000",
-        AsyncFn::io(|_| async move {
+        AsyncHandler::io(|_| async move {
             let addr = Ipv4Addr::new(192, 168, 1, 100);
             add_interface(InterfaceDef::new("en0", NetworkDevice::eth()).ip(addr.into()))?;
 
@@ -220,7 +220,7 @@ fn semi_passiv_estab_delayed_client() {
 
     sim.node(
         "as-2000",
-        AsyncFn::io(|_| async move {
+        AsyncHandler::io(|_| async move {
             let addr = Ipv4Addr::new(192, 168, 1, 200);
             add_interface(InterfaceDef::new("en0", NetworkDevice::eth()).ip(addr.into()))?;
 
@@ -279,9 +279,9 @@ fn semi_passiv_estab_delayed_client() {
 
     let tx = sim.gate("as-1000", "port");
     let rx = sim.gate("as-2000", "port");
-    tx.connect(
+    tx.connect_with(
         rx,
-        Some(Channel::new(ChannelMetrics {
+        Some(DatarateChannel::new(DatarateChannelMetrics {
             bitrate: 1000000,
             latency: Duration::from_millis(5),
             jitter: Duration::ZERO,
@@ -292,7 +292,7 @@ fn semi_passiv_estab_delayed_client() {
     let _ = Builder::seeded(123)
         .max_time(500.0.into())
         .max_itr(10_000)
-        .build(sim)
+        .build(sim.freeze())
         .run();
 }
 
@@ -302,7 +302,7 @@ fn semi_passiv_estab_delayed_open() {
     let mut sim = Sim::new(()).with_stack(inet::init);
     sim.node(
         "as-1000",
-        AsyncFn::io(|_| async move {
+        AsyncHandler::io(|_| async move {
             let addr = Ipv4Addr::new(192, 168, 1, 100);
             add_interface(InterfaceDef::new("en0", NetworkDevice::eth()).ip(addr.into()))?;
 
@@ -361,7 +361,7 @@ fn semi_passiv_estab_delayed_open() {
 
     sim.node(
         "as-2000",
-        AsyncFn::io(|_| async move {
+        AsyncHandler::io(|_| async move {
             let addr = Ipv4Addr::new(192, 168, 1, 200);
             add_interface(InterfaceDef::new("en0", NetworkDevice::eth()).ip(addr.into()))?;
 
@@ -421,9 +421,9 @@ fn semi_passiv_estab_delayed_open() {
 
     let tx = sim.gate("as-1000", "port");
     let rx = sim.gate("as-2000", "port");
-    tx.connect(
+    tx.connect_with(
         rx,
-        Some(Channel::new(ChannelMetrics {
+        Some(DatarateChannel::new(DatarateChannelMetrics {
             bitrate: 1000000,
             latency: Duration::from_millis(5),
             jitter: Duration::ZERO,
@@ -434,6 +434,6 @@ fn semi_passiv_estab_delayed_open() {
     let _ = Builder::seeded(123)
         .max_time(500.0.into())
         .max_itr(10_000)
-        .build(sim)
+        .build(sim.freeze())
         .run();
 }

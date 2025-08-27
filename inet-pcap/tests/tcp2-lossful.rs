@@ -1,8 +1,11 @@
 use std::{fs::File, net::Ipv4Addr, sync::Arc, time::Duration};
 
 use des::{
-    net::{AsyncFn, HandlerFn, Sim},
-    prelude::{send, Channel, ChannelDropBehaviour, ChannelMetrics},
+    net::{
+        handlers::{AsyncHandler, HandlerFn},
+        Sim,
+    },
+    prelude::{send, ChannelDropBehaviour, DatarateChannel, DatarateChannelMetrics},
     runtime::{random, Builder},
 };
 use inet::{
@@ -26,7 +29,7 @@ fn lossfull_stream() {
     let mut sim = Sim::new(()).with_stack(inet::init);
     sim.node(
         "client",
-        AsyncFn::io(move |_| {
+        AsyncHandler::io(move |_| {
             let bytes = bytes.clone();
             async move {
                 add_interface(
@@ -47,7 +50,7 @@ fn lossfull_stream() {
 
     sim.node(
         "server",
-        AsyncFn::io(move |_| {
+        AsyncHandler::io(move |_| {
             let bytes = bytes2.clone();
             async move {
                 add_interface(
@@ -85,8 +88,12 @@ fn lossfull_stream() {
         "link",
         HandlerFn::new(
             |msg| match msg.header().last_gate.as_ref().unwrap().name() {
-                "port-client" if random::<u8>() > 32 => send(msg, "port-server"),
-                "port-server" if random::<u8>() > 32 => send(msg, "port-client"),
+                "port-client" if random::<u8>() > 32 => {
+                    let _ = send(msg, "port-server");
+                }
+                "port-server" if random::<u8>() > 32 => {
+                    let _ = send(msg, "port-client");
+                }
                 _ => tracing::error!(
                     kind = msg.header().kind,
                     "dropping packet from {:?}",
@@ -102,9 +109,9 @@ fn lossfull_stream() {
     let b = sim.gate("server", "port");
     let bb = sim.gate("link", "port-server");
 
-    a.connect(
+    a.connect_with(
         aa,
-        Some(Channel::new(ChannelMetrics::new(
+        Some(DatarateChannel::new(DatarateChannelMetrics::new(
             8000000,
             Duration::from_millis(20),
             Duration::ZERO,
@@ -112,9 +119,9 @@ fn lossfull_stream() {
         ))),
     );
 
-    b.connect(
+    b.connect_with(
         bb,
-        Some(Channel::new(ChannelMetrics::new(
+        Some(DatarateChannel::new(DatarateChannelMetrics::new(
             8000000,
             Duration::from_millis(20),
             Duration::ZERO,
@@ -122,6 +129,8 @@ fn lossfull_stream() {
         ))),
     );
 
-    let rt = Builder::seeded(123).max_time(1000.0.into()).build(sim);
+    let rt = Builder::seeded(123)
+        .max_time(1000.0.into())
+        .build(sim.freeze());
     let (_, _, _) = rt.run().unwrap();
 }

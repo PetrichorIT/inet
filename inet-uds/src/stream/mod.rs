@@ -9,7 +9,7 @@ mod tests {
     use super::*;
 
     use des::{
-        net::{AsyncFn, Sim},
+        net::{handlers::AsyncHandler, Sim},
         runtime::{random, Builder},
         time::sleep,
     };
@@ -23,7 +23,7 @@ mod tests {
         let mut sim = Sim::new(()).with_stack(inet::init);
         sim.node(
             "alice",
-            AsyncFn::io(|_| async move {
+            AsyncHandler::io(|_| async move {
                 let h1 = tokio::spawn(async move {
                     let server = UnixListener::bind("/tmp/listener").unwrap();
                     while let Ok((mut stream, from)) = server.accept().await {
@@ -60,7 +60,10 @@ mod tests {
             .require_join(),
         );
 
-        let _ = Builder::seeded(123).max_time(100.0.into()).build(sim).run();
+        let _ = Builder::seeded(123)
+            .max_time(100.0.into())
+            .build(sim.freeze())
+            .run();
     }
 
     #[serial]
@@ -69,7 +72,7 @@ mod tests {
         let mut sim = Sim::new(()).with_stack(inet::init);
         sim.node(
             "alice",
-            AsyncFn::io(|_| async move {
+            AsyncHandler::io(|_| async move {
                 let h1 = tokio::spawn(async move {
                     let server = UnixListener::bind("/tmp/listener").unwrap();
                     while let Ok((mut stream, from)) = server.accept().await {
@@ -107,7 +110,10 @@ mod tests {
             .require_join(),
         );
 
-        let _ = Builder::seeded(123).max_time(100.0.into()).build(sim).run();
+        let _ = Builder::seeded(123)
+            .max_time(100.0.into())
+            .build(sim.freeze())
+            .run();
     }
 
     #[serial]
@@ -116,7 +122,7 @@ mod tests {
         let mut sim = Sim::new(()).with_stack(inet::init);
         sim.node(
             "alice",
-            AsyncFn::io(|_| async move {
+            AsyncHandler::io(|_| async move {
                 let (mut client, mut server) = UnixStream::pair().unwrap();
 
                 let h1 = tokio::spawn(async move {
@@ -148,6 +154,9 @@ mod tests {
             .require_join(),
         );
 
-        let _ = Builder::seeded(123).max_time(100.0.into()).build(sim).run();
+        let _ = Builder::seeded(123)
+            .max_time(100.0.into())
+            .build(sim.freeze())
+            .run();
     }
 }

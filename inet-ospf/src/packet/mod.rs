@@ -197,6 +197,7 @@ pub struct OspfDatabaseDescriptionPacket {
 }
 
 bitflags! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
     pub struct OspfDatabaseDescriptionOptions: u16 {
         const MASTER_SLAVE  = 0b0000_0001;
         const MORE          = 0b0000_0010;
@@ -243,6 +244,7 @@ impl FromBytes for OspfDatabaseDescriptionPacket {
 }
 
 bitflags! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
     pub struct OspfOptions: u32 {
         const EXTERNAL              = 0b0000_0010;
         const MULTICAST             = 0b0000_0100;
