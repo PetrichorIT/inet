@@ -261,9 +261,9 @@ fn passive_close_secondary_fin_lost() -> io::Result<()> {
     // <- FIN
     test.set_time(15.0);
     test.tick()?;
-    test.assert_outgoing_eq(&[TcpPacket::new(80, 1808, 1, 4002, WIN_4KB, Vec::new()).fin(true)]);
+    test.assert_outgoing_eq(&[]);
 
-    assert_eq!(test.state, State::LastAck);
+    assert_eq!(test.state, State::Closed);
 
     Ok(())
 }

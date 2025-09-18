@@ -1,5 +1,5 @@
 use bytes_io::FromBytes;
-use des::registry;
+use des::{registry, time::sleep};
 use std::{
     str::FromStr,
     sync::{
@@ -10,14 +10,14 @@ use std::{
 use types::{ip::Ipv4Packet, tcp::TcpPacket};
 
 use des::prelude::*;
-use inet::{interface::*, socket::AsRawFd, TcpSocket};
+use inet::{interface::*, socket::AsRawFd, tcp2::TcpSocket};
 
 #[derive(Default)]
 struct Link {}
 impl Module for Link {
     fn handle_message(&mut self, msg: Message) {
         // random packet drop 10 %
-        if (random::<u64>() as usize % 10) == 7 {
+        if (random::<u64>() as usize % 10) == 7 && msg.body.is::<Ipv4Packet>() {
             let ippacket = msg.body.content::<Ipv4Packet>();
             let tcp = TcpPacket::peek_from(&ippacket.content[..]).unwrap();
 
@@ -115,6 +115,8 @@ impl Module for TcpServer {
             drop(stream);
             drop(sock);
 
+            sleep(Duration::from_secs(10)).await;
+
             done.store(true, SeqCst);
         });
     }
@@ -180,10 +182,6 @@ impl Module for TcpClient {
         });
     }
 
-    fn handle_message(&mut self, _: Message) {
-        panic!()
-    }
-
     fn at_sim_end(&mut self) -> Result<(), RuntimeError> {
         use inet::socket::bsd_socket_info;
 
@@ -196,21 +194,11 @@ impl Module for TcpClient {
 #[test]
 #[serial_test::serial]
 fn tcp_missing_data_at_close() -> Result<(), RuntimeError> {
-    // Subscriber::default()
-    //     .with_max_level(LevelFilter::TRACE)
-    //     .init()
-    //     .unwrap();
-
-    let app = Sim::new(())
-        .with_stack(inet::init)
-        .with_ndl(
-            "tests/tcp.yml",
-            registry![Link, TcpServer, TcpClient, else _],
-        )
-        .map_err(|e| println!("{e}"))
-        .unwrap();
+    let def = serde_yml::from_str(include_str!("tcp.yml"))?;
+    let mut app = Sim::new(()).with_stack(inet::init);
+    app.nodes_from_ndl(&def, registry![Link, TcpServer, TcpClient, else _])?;
     let rt = Builder::seeded(1263431312323)
-        .max_time(10.0.into())
+        .max_time(20.0.into())
         .build(app.freeze());
     rt.run().map(|_| ())
 }

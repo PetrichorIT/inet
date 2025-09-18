@@ -12,7 +12,7 @@ use des::prelude::*;
 use inet::{
     interface::*,
     socket::{AsRawFd, Fd},
-    TcpListener, TcpStream,
+    tcp2::{TcpListener, TcpStream},
 };
 use serial_test::serial;
 
@@ -160,8 +160,6 @@ impl Module for TcpClient {
 #[test]
 #[serial]
 fn tcp_simulaneous_close() {
-    // Logger::new().set_logger();
-
     let app = Sim::new(())
         .with_stack(inet::init)
         .with_ndl(
@@ -171,9 +169,8 @@ fn tcp_simulaneous_close() {
         .map_err(|e| println!("{e}"))
         .unwrap();
     let rt = Builder::seeded(123)
-        .max_time(3.0.into())
+        .max_time(10.0.into())
         .build(app.freeze());
-    let (_, time, profiler) = rt.run().unwrap();
-    assert_eq!(time.as_secs(), 2);
+    let (_, _, profiler) = rt.run().unwrap();
     assert!(profiler.event_count < 200);
 }

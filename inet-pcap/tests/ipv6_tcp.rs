@@ -9,7 +9,8 @@ use inet::{
     env::RoutingPort,
     interface::{add_interface, InterfaceDef, NetworkDevice},
     ipv6::util::setup_router,
-    utils, TcpListener, TcpStream,
+    tcp2::{TcpListener, TcpStream},
+    utils,
 };
 use inet_pcap::pcap;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};

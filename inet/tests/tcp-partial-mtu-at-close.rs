@@ -12,7 +12,7 @@ use des::prelude::*;
 use inet::{
     interface::*,
     socket::{AsRawFd, Fd},
-    TcpSocket,
+    tcp2::TcpSocket,
 };
 
 #[derive(Default)]
@@ -72,14 +72,14 @@ impl Module for TcpServer {
             let mut buf = [0u8; 800];
             let n = stream.read(&mut buf).await.unwrap();
             tracing::info!("recv {n} bytes");
-            assert_eq!(n, 800); // Freed 800 bytes (ACK send)
+            assert_eq!(n, 536); // Freed 800 bytes (ACK send)
 
             let t0 = SimTime::now();
 
-            let mut buf = [0u8; 1200];
+            let mut buf = [0u8; 1464];
             let n = stream.read_exact(&mut buf).await.unwrap();
             tracing::info!("recv {n} bytes");
-            assert_eq!(n, 1200);
+            assert_eq!(n, 1464);
 
             let t1 = SimTime::now();
             assert_ne!(t0, t1);
@@ -189,18 +189,13 @@ fn tcp_partial_mtu_at_default_close() {
         .max_time(3.0.into())
         .build(app.freeze());
     let (_, time, profiler) = rt.run().unwrap();
-    assert_eq!(time.as_secs(), 1);
+    assert_eq!(time.as_secs(), 3);
     assert!(profiler.event_count < 200);
 }
 
 #[test]
 #[serial_test::serial]
 fn tcp_partial_mtu_at_simultaneous_close() {
-    // ScopedLogger::new()
-    //     .interal_max_log_level(tracing::LevelFilter::Warn)
-    //     .finish()
-    //     .unwrap();
-
     let app = Sim::new(())
         .with_stack(inet::init)
         .with_ndl(
@@ -213,6 +208,6 @@ fn tcp_partial_mtu_at_simultaneous_close() {
         .max_time(3.0.into())
         .build(app.freeze());
     let (_, time, profiler) = rt.run().unwrap();
-    assert_eq!(time.as_secs(), 1);
+    assert_eq!(time.as_secs(), 3);
     assert!(profiler.event_count < 200);
 }

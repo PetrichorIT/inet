@@ -6,7 +6,7 @@ use std::sync::{
 use des::{prelude::*, registry, time::sleep};
 use inet::{
     interface::{add_interface, InterfaceDef, NetworkDevice},
-    *,
+    tcp2::{TcpListener, TcpStream},
 };
 use tokio::spawn;
 

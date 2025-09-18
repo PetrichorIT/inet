@@ -1,6 +1,6 @@
 use bytes_io::ToBytes;
 use des::{prelude::*, time::*};
-use inet::TcpStream;
+use inet::tcp2::TcpStream;
 use std::{
     io::{Error, ErrorKind, Result},
     net::{Ipv4Addr, SocketAddr, SocketAddrV4},

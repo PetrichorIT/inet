@@ -16,7 +16,7 @@ use super::Config;
 /// 4 - future sequence numbers which are not yet allowed
 /// ```
 pub struct SendSequenceSpace {
-    /// send unacknowledged
+    /// **send unacknowledged:** the oldest seq_no already sent, but not yet acked
     pub una: u32,
     /// send next
     pub nxt: u32,

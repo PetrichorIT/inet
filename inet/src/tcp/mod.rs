@@ -42,8 +42,7 @@ pub(crate) use self::util::TcpState;
 use self::util::*;
 
 pub(super) mod api;
-use api::*;
-pub use api::{OwnedReadHalf, OwnedWriteHalf, ReadHalf, ReuniteError, WriteHalf};
+pub use api::*;
 
 mod interest;
 use interest::*;

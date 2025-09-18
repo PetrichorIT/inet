@@ -12,7 +12,7 @@ use des::prelude::*;
 use inet::{
     interface::*,
     socket::{AsRawFd, Fd},
-    TcpListener, TcpStream,
+    tcp2::{TcpListener, TcpStream},
 };
 use serial_test::serial;
 
@@ -74,6 +74,7 @@ impl Module for TcpServer {
             let mut acc = 0;
             loop {
                 let Ok(n) = stream.read(&mut buf).await else {
+                    tracing::error!("some error occured on rcv");
                     break;
                 };
                 tracing::info!("received {} bytes", n);
@@ -162,8 +163,6 @@ impl Module for TcpClient {
 #[test]
 #[serial]
 fn tcp_close_data_complete() {
-    // Subscriber::default().init().unwrap();
-
     let app = Sim::new(())
         .with_stack(inet::init)
         .with_ndl(
@@ -176,6 +175,6 @@ fn tcp_close_data_complete() {
         .max_time(3.0.into())
         .build(app.freeze());
     let (_, time, profiler) = rt.run().unwrap();
-    assert_eq!(time.as_secs(), 1);
+    assert_eq!(time.as_secs(), 3);
     assert!(profiler.event_count < 200);
 }

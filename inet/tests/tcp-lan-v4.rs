@@ -6,7 +6,7 @@ use std::sync::{
 use des::{net::globals, prelude::*, registry, time::sleep};
 use inet::{
     interface::{add_interface, InterfaceDef, NetworkDevice},
-    TcpListener, TcpStream,
+    tcp2::{TcpListener, TcpStream},
 };
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use types::ip::Ipv4Packet;

@@ -11,7 +11,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use crate::{
     interface::{add_interface, InterfaceDef, NetworkDevice},
     socket::{bsd_socket_info, AsRawFd},
-    TcpListener, TcpStream,
+    tcp2::{TcpListener, TcpStream},
 };
 
 #[test]

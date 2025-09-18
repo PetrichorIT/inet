@@ -52,7 +52,8 @@ impl RetranssmissionTimers {
     }
 
     fn next_timeout(&self) -> Option<SimTime> {
-        self.segments.values().map(|v| v.timeout).min()
+        let res = self.segments.values().map(|v| v.timeout).min();
+        res
     }
 
     pub fn register_segment(&mut self, seq: u32, is_retransmission: bool, now: SimTime) {
@@ -77,10 +78,13 @@ impl RetranssmissionTimers {
     pub fn on_recv(&mut self, una: u32, ackn: u32, now: SimTime) {
         let mut meassurements = Vec::new();
 
+        let prev_keys = self.segments.keys().cloned().collect::<Vec<_>>();
+
         self.segments.retain(|&seq, entry| {
             if is_between_wrapped(una, seq, ackn) {
-                let elapsed = (now - entry.sent).as_secs_f64();
+                // TODO: is that right? seq=ackn
                 if !entry.is_retransmission {
+                    let elapsed = (now - entry.sent).as_secs_f64();
                     meassurements.push(elapsed);
                 }
                 false
@@ -88,6 +92,9 @@ impl RetranssmissionTimers {
                 true
             }
         });
+
+        let now_keys = self.segments.keys().collect::<Vec<_>>();
+        tracing::warn!("segment_timeouts({una}, {ackn}) {prev_keys:?} -> {now_keys:?}");
 
         meassurements
             .into_iter()
@@ -196,7 +203,9 @@ impl Timers {
     pub fn next_timeout(&self) -> Option<SimTime> {
         self.rtt
             .next_timeout()
-            .map(|a| self.time_wait_to.map_or(a, |b| a.min(b)))
+            .into_iter()
+            .chain(self.time_wait_to)
+            .min()
     }
 }
 

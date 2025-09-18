@@ -139,6 +139,8 @@ impl IOContext {
     }
 }
 
+pub struct PassThrough;
+
 impl IOContext {
     pub fn recv(&mut self, msg: Message) -> Option<Message> {
         // Packets that are passed to the networking layer, are
@@ -146,7 +148,7 @@ impl IOContext {
         // the local MAC addr
         let l2 = self.recv_linklayer(msg);
         let (msg, ifid) = match l2 {
-            LinkLayerResult::PassThrough(msg) => return Some(msg),
+            LinkLayerResult::PassThrough(msg) => return Some(msg.with_extension(PassThrough)),
             LinkLayerResult::Consumed() => return None,
             LinkLayerResult::NetworkingPacket(msg, ifid) => (msg, ifid),
             LinkLayerResult::Timeout(timeout) => return self.networking_layer_io_timeout(timeout),
@@ -156,7 +158,7 @@ impl IOContext {
 
         let l3 = self.recv_network_layer(msg, ifid);
         let (pkt, header) = match l3 {
-            NetworkLayerResult::PassThrough(msg) => return Some(msg),
+            NetworkLayerResult::PassThrough(msg) => return Some(msg.with_extension(PassThrough)),
             NetworkLayerResult::Consumed() => return None,
             NetworkLayerResult::TransportLayerPacket(msg, header) => (msg, header),
         };

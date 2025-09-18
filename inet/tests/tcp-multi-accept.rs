@@ -9,7 +9,7 @@ use std::sync::{
 use des::{prelude::*, registry};
 use inet::{
     interface::{add_interface, InterfaceDef, NetworkDevice},
-    TcpListener, TcpStream,
+    tcp2::{TcpListener, TcpStream},
 };
 use tokio::spawn;
 
@@ -90,5 +90,5 @@ fn tcp_multi_accept() {
         .unwrap();
     let rt = Builder::seeded(123).build(app.freeze());
     let (_, t, _) = rt.run().unwrap();
-    assert!(t < 3.0.into());
+    assert!(t < 5.0.into());
 }

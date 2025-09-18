@@ -9,7 +9,7 @@ use std::sync::{
 use des::{prelude::*, registry};
 use inet::{
     interface::{add_interface, InterfaceDef, NetworkDevice},
-    TcpSocket, TcpStream,
+    tcp2::{TcpSocket, TcpStream},
 };
 use tokio::spawn;
 

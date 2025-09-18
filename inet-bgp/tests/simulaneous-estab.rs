@@ -14,7 +14,7 @@ use des::{
 };
 use inet::{
     interface::{add_interface, InterfaceDef, InterfaceName, NetworkDevice},
-    TcpListener,
+    tcp2::TcpListener,
 };
 use inet_bgp::{
     peering::{BgpPeeringCfg, NeighborDeamon},

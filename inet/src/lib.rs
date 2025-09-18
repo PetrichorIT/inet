@@ -34,8 +34,6 @@ mod udp;
 pub use udp::*;
 
 pub mod tcp;
-pub use tcp::api::{TcpListener, TcpSocket, TcpStream};
-
 pub mod tcp2;
 
 mod plugin;

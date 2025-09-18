@@ -31,4 +31,5 @@ valuable = { git = "https://github.com/PetrichorIT/valuable", branch = "owned", 
 
 [dev-dependencies]
 serial_test = "2.0.0"
+serde_yml = "*"
 pcapng = { path = "../util/pcapng", features = ["test-util"] }

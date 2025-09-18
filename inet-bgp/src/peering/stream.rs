@@ -1,5 +1,5 @@
 use bytes_io::{BytesMut, FromBytes};
-use inet::TcpStream;
+use inet::tcp2::TcpStream;
 use std::{
     io::{self, Result},
     ops::{Deref, DerefMut},

@@ -65,7 +65,6 @@ impl TcpStream {
                     }
                     Err(e) => {
                         last_err = Some(e);
-                        break;
                     }
                 };
             }

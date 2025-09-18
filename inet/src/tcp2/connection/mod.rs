@@ -369,7 +369,7 @@ impl Connection {
 //
 
 impl Connection {
-    #[instrument(skip(self, limit))]
+    #[instrument(skip(self))]
     fn send_pkt(&mut self, kind: PacketKind, seq: u32, mut limit: usize) -> io::Result<usize> {
         let mut packet = TcpPacket {
             src_port: self.quad.src.port(),
@@ -446,12 +446,16 @@ impl Connection {
             self.snd.nxt = next_seq;
         }
 
+        // NOTE:
+        // Do not register pure ACKs, but do register empty SYN / FIN
         let is_retransmit = self.snd.nxt == seq;
-        self.timers
-            .register_segment(seq, is_retransmit, (self.cfg.clock)());
+        if seq != next_seq {
+            self.timers
+                .register_segment(seq, is_retransmit, (self.cfg.clock)());
+        }
 
         tracing::debug!(
-            "send < {} | {} |{:?}| {} bytes {:?}>",
+            "send < {} | {} |{:?}| {} bytes {:x?}>",
             packet.seq_no,
             packet.ack_no,
             packet.flags,
@@ -525,6 +529,7 @@ impl Connection {
         (self.unacked.len() as u32).checked_sub(self.snd.num_unacked_bytes())
     }
 
+    #[tracing::instrument(skip(self))]
     pub fn on_tick(&mut self) -> io::Result<()> {
         self.publish();
 
@@ -572,7 +577,10 @@ impl Connection {
             }
 
             let bytes_to_be_sent = cmp::min(num_unsend_bytes, remaining_window_space);
-            if bytes_to_be_sent < remaining_window_space
+            // NOTE:
+            // only go to FIN mode if we are sure that all remaining bytes fit into the emitted segment
+            // aka. len(bytes) < min(MSS, window)
+            if bytes_to_be_sent < remaining_window_space.min(self.snd.mss as u32)
                 && self.snd.closed
                 && self.snd.closed_at.is_none()
             {
@@ -597,6 +605,7 @@ impl Connection {
         Ok(())
     }
 
+    #[tracing::instrument(skip(self, expired))]
     fn on_tick_retransmit(&mut self, mut expired: Vec<u32>) -> Result<(), Error> {
         // For any state if the retransmission timeout expires on a segment in the retransmission queue,
         // send the segment at the front of the retransmission queue again,
@@ -612,6 +621,19 @@ impl Connection {
 
         // only send a FIN packet, if the remaining retranmission data fits within one mss
         if num_resend < self.snd.mss as u32 && self.snd.closed {
+            // RFC 9293
+            // Closing a connection: Case 2:
+            // ... If an ACK is not forthcoming, after the user timeout the connection is aborted and the user is told.
+            if matches!(self.state, State::LastAck) && self.snd.una.wrapping_add(1) == self.snd.nxt
+            {
+                self.state.transition_to(State::Closed);
+                self.interface.set_error(Error::new(
+                    ErrorKind::ConnectionAborted,
+                    "connection aborted: last ack never found",
+                ));
+                return Ok(());
+            }
+
             // can we include the FIN?
             self.snd.closed_at = Some(self.snd.una.wrapping_add(self.unacked.len() as u32));
             self.snd.on_timeout();
@@ -943,16 +965,19 @@ impl Connection {
 
             if is_between_wrapped(self.snd.una, ackn, self.snd.nxt.wrapping_add(1)) {
                 tracing::trace!(
-                    "-> ack for {} (last: {}, wnd: {}); prune {} bytes",
+                    "-> ack for {} (last: {}, wnd: {}); prune {} bytes (progress:{})",
                     ackn,
                     self.snd.una,
                     self.snd.wnd,
-                    ackn - self.snd.una
+                    ackn - self.snd.una,
+                    !self.unacked.is_empty()
                 );
 
+                let progress = !self.unacked.is_empty();
                 // If unacked is not empty, ack did something actually,
-                if !self.unacked.is_empty() {
+                if progress {
                     // seq no of lasted unacked byte, corrected for virtual bytes
+                    // TOOD: this una == iss check will make problems on overlflow
                     let data_start = if self.snd.una == self.snd.iss {
                         // send.una hasn't been updated yet with ACK for our SYN, so data starts just beyond it
                         self.snd.una.wrapping_add(1)
@@ -961,23 +986,24 @@ impl Connection {
                     };
 
                     // number of acked bytes, to be drained from the buffer
-                    let acked_data_end =
+                    let n =
                         std::cmp::min(ackn.wrapping_sub(data_start) as usize, self.unacked.len());
-                    self.unacked.drain(..acked_data_end);
+                    self.unacked.drain(..n);
 
                     // We go an ack, reset send timers, we can send once more
-
-                    self.timers.on_recv(self.snd.una, ackn, now);
 
                     // add new send timer, where old timers are evaluated
                     // -> if timer was for now acked bytes -> calculate rrt with it
                     // -> if timer is for yet unacked bytes -> keep it
 
-                    let n = ackn - self.snd.una;
-                    self.snd.on_ack(n);
+                    self.snd.on_ack(n as u32);
 
                     // Now is place to write more data
                     self.interface.wake(Interest::WRITABLE);
+                }
+
+                if progress || self.snd.closed {
+                    self.timers.on_recv(self.snd.una, ackn, now);
                 }
 
                 // set last ack no

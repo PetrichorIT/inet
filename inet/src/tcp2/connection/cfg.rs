@@ -1,4 +1,5 @@
 use std::{
+    fmt::Debug,
     hash::{DefaultHasher, Hash, Hasher},
     net::SocketAddr,
     sync::Arc,
@@ -104,3 +105,26 @@ impl Default for Config {
         }
     }
 }
+
+impl Debug for Config {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Config")
+            .field("enable_congestion_control", &self.enable_congestion_control)
+            .field("enable_reorder_buffer", &self.enable_reorder_buffer)
+            .field("enable_sack", &self.enable_sack)
+            .field("send_buffer_cap", &self.send_buffer_cap)
+            .field("recv_buffer_cap", &self.recv_buffer_cap)
+            .field("syn_resent_count", &self.syn_resent_count)
+            .field("initial_rto", &self.initial_rto)
+            .field("mss", &self.mss)
+            .field("iss", &self.iss)
+            .field("ttl", &self.ttl)
+            .field("linger", &self.linger)
+            .field("reuseport", &self.reuseport)
+            .field("reuseaddr", &self.reuseaddr)
+            .field("rst_for_syn", &self.rst_for_syn)
+            .finish()
+    }
+}
+
+unsafe impl Send for Config {}

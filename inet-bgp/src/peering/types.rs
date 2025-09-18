@@ -1,5 +1,5 @@
 use crate::types::AsNumber;
-use inet::TcpStream;
+use inet::tcp2::TcpStream;
 use std::{fmt::Debug, future::Future, io::Result, pin::Pin};
 
 use super::stream::BgpStream;

@@ -36,12 +36,14 @@ pub const PROTO_TCP2: u8 = PROTO_TCP + 1;
 mod connection;
 mod interest;
 mod listener;
+mod socket;
 mod stream;
 
 use listener::Listener;
 
 pub use connection::{Config, Connection, State};
 pub use listener::TcpListener;
+pub use socket::TcpSocket;
 pub use stream::{OwnedReadHalf, OwnedWriteHalf, ReadHalf, TcpStream, WriteHalf};
 
 #[cfg(test)]
@@ -418,6 +420,7 @@ impl IOContext {
         mut addr: SocketAddr,
         cfg: Option<Config>,
         fd: Option<Fd>,
+        backlog: Option<usize>,
     ) -> Result<TcpListener, Error> {
         let fd = if let Some(fd) = fd {
             fd
@@ -436,8 +439,11 @@ impl IOContext {
             fd
         };
 
-        let (handle, rx, backlog) =
-            Listener::create(addr, cfg.unwrap_or(self.tcp2.config.for_listener(addr)));
+        let (handle, rx, backlog) = Listener::create(
+            addr,
+            cfg.unwrap_or(self.tcp2.config.for_listener(addr)),
+            backlog.unwrap_or(32),
+        );
         self.tcp2.listeners.insert(fd, handle);
 
         Ok(TcpListener::from_raw(fd, rx, backlog))
@@ -464,7 +470,7 @@ impl IOContext {
         };
 
         let cfg = listener.config.clone();
-        if listener.backlog.load(Ordering::SeqCst) >= 32 {
+        if listener.backlog.load(Ordering::SeqCst) >= listener.backlog_limit {
             return true;
         }
         listener.backlog.fetch_add(1, Ordering::SeqCst);
@@ -639,6 +645,7 @@ impl Timers {
             return;
         }
         let next_scheduled = self.scheduled.first().unwrap_or(&SimTime::MAX);
+
         if min < *next_scheduled {
             tracing::debug!("<TCP2> scheduling wakeup: {min}");
             schedule_at(

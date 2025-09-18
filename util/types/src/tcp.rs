@@ -5,7 +5,7 @@ use bytes_io::{
     Bytes, BytesReader, BytesWriter, FromBytes, ReadBytesExt, ToBytes, WriteBytesExt, BE,
 };
 
-pub const PROTO_TCP: u8 = 0x06;
+pub const PROTO_TCP: u8 = 0x05;
 
 /// A TCP packet assosciated with an end-to-end connection.
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -1,4 +1,4 @@
-use des::registry;
+use des::{registry, time::sleep};
 use std::{
     str::FromStr,
     sync::{
@@ -11,7 +11,7 @@ use des::prelude::*;
 use inet::{
     interface::*,
     socket::{AsRawFd, Fd},
-    TcpListener, TcpStream,
+    tcp2::{TcpListener, TcpStream},
 };
 use serial_test::serial;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -135,6 +135,9 @@ impl Module for TcpClient {
             tracing::info!("Client done");
             done.store(true, SeqCst);
             drop(stream);
+
+            // wait for TCP stream to close & remove BSD info
+            sleep(Duration::from_secs(10)).await;
         });
     }
 
@@ -147,7 +150,9 @@ impl Module for TcpClient {
 
         let fd: Fd = self.fd.load(SeqCst);
         assert!(fd != 0);
-        assert!(inet::socket::bsd_socket_info(fd).is_err());
+        let info = inet::socket::bsd_socket_info(fd);
+
+        assert!(info.is_err(), "found unexpected {info:?}");
         Ok(())
     }
 }
@@ -165,6 +170,6 @@ fn tcp_echo_100k() {
         .unwrap();
     let rt = Builder::seeded(123).build(app.freeze());
     let (_, time, profiler) = rt.run().unwrap();
-    assert_eq!(time.as_secs(), 6); // there is something wrong here
+    assert_eq!(time.as_secs(), 6 + 10); // there is something wrong here
     assert!(profiler.event_count < 8000);
 }

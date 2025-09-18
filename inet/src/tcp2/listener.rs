@@ -30,6 +30,7 @@ pub(super) struct Listener {
     pub local_addr: SocketAddr,
     pub tx: mpsc::Sender<Result<Fd, Error>>,
     pub backlog: Arc<AtomicU32>,
+    pub backlog_limit: u32,
     pub config: Config,
 }
 
@@ -40,13 +41,15 @@ impl Listener {
     pub fn create(
         local_addr: SocketAddr,
         config: Config,
+        backlog_limit: usize,
     ) -> (Self, mpsc::Receiver<Result<Fd, Error>>, Arc<AtomicU32>) {
-        let (tx, rx) = mpsc::channel(32);
+        let (tx, rx) = mpsc::channel(backlog_limit);
         let backlog = Arc::new(AtomicU32::new(0));
         let handle = Self {
             local_addr,
             tx,
             backlog: backlog.clone(),
+            backlog_limit: backlog_limit as u32,
             config,
         };
 
@@ -115,7 +118,7 @@ impl TcpListener {
             let mut last_err = None;
 
             for addr in addrs {
-                match ctx.tcp2_bind(addr, None, None) {
+                match ctx.tcp2_bind(addr, None, None, None) {
                     Ok(socket) => return Ok(socket),
                     Err(e) => last_err = Some(e),
                 }
