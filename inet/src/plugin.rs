@@ -23,17 +23,19 @@ impl IOPlugin {
 }
 
 impl ProcessingElement for IOPlugin {
-    fn event_start(&mut self) {
+    fn process_with(
+        &mut self,
+        msg: Option<Message>,
+        inner: &mut dyn FnMut(Option<Message>) -> Option<Message>,
+    ) -> Option<Message> {
         let io = self.ctx.take().expect("Theft");
         self.prev = IOContext::swap_in(Some(io));
-    }
 
-    fn incoming(&mut self, msg: Message) -> Option<Message> {
-        IOContext::with_current(|ctx| ctx.recv(msg))
-    }
+        let res = msg.and_then(|msg| IOContext::with_current(|ctx| ctx.recv(msg)));
+        let res = inner(res);
 
-    fn event_end(&mut self) {
         IOContext::with_current(|ctx| ctx.event_end());
+
         self.ctx = IOContext::swap_in(self.prev.take());
         let Some(ref mut ctx) = self.ctx else {
             panic!("Stole CTX")
@@ -45,5 +47,7 @@ impl ProcessingElement for IOPlugin {
                 prop.set(ctx.get_ip());
             }
         }
+
+        res
     }
 }

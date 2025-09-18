@@ -23,7 +23,10 @@ cfg_dhcp! {
 
 pub mod test_util;
 
-use des::net::{module::ModuleId, processing::ProcessingStack};
+use des::net::{
+    module::ModuleId,
+    processing::{ProcessingStack, TimeDriver, TokioRuntime},
+};
 use dns::DnsResolver;
 pub use types;
 
@@ -47,7 +50,12 @@ use ctx::*;
 /// Call this function as the first step in your simulation (pre runtime creation)
 #[must_use]
 pub fn init() -> ProcessingStack {
-    ProcessingStack::from(IOPlugin::new(IOContext::new(ModuleId::NULL)))
+    (
+        TimeDriver::default(),
+        IOPlugin::new(IOContext::new(ModuleId::NULL)),
+        TokioRuntime::default(),
+    )
+        .into()
 }
 
 pub fn stack(
@@ -58,6 +66,11 @@ pub fn stack(
     Box::new(move || {
         let mut io = IOContext::new(ModuleId::NULL);
         io.dns = dns_hook;
-        ProcessingStack::from(IOPlugin::new(io))
+        (
+            TimeDriver::default(),
+            IOPlugin::new(io),
+            TokioRuntime::default(),
+        )
+            .into()
     })
 }

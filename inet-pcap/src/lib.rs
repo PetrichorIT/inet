@@ -73,16 +73,16 @@ impl<W: BlockWriter<IfId>> LibPcapDeamon<W> {
         self.writer.add_packet(
             &ifid,
             SimTime::now().as_millis() as u64,
-            msg.header().src,
-            msg.header().dst,
-            msg.header().kind,
+            msg.header.src,
+            msg.header.dst,
+            msg.header.kind,
             &self.pkt_as_buf(msg)?,
             None,
         )
     }
 
     fn pkt_as_buf(&self, msg: &Message) -> Result<Vec<u8>> {
-        match msg.header().kind {
+        match msg.header.kind {
             KIND_IPV4 => msg
                 .body
                 .try_content::<Ipv4Packet>()

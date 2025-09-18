@@ -12,7 +12,7 @@ use super::{
 };
 
 /// An interface definition.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct InterfaceDef {
     /// The name of the interface.
     pub name: InterfaceName,

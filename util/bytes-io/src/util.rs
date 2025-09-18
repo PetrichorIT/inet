@@ -1,4 +1,6 @@
-use std::fmt::Debug;
+use std::{any::Any, borrow::Cow, fmt::Debug, ops::Deref};
+
+use bytes::Bytes;
 
 use crate::{FromBytes, ToBytes};
 
@@ -41,3 +43,55 @@ where
         );
     }
 }
+
+// pub enum MaybeBytes {
+//     Bytes(Bytes),
+//     Unencoded(Box<dyn MaybeEncodable>),
+// }
+
+// pub trait MaybeEncodable:
+//     Any + FromBytes<Error = std::io::Error> + ToBytes<Error = std::io::Error>
+// {
+//     fn byte_len(&self) -> usize;
+// }
+
+// pub enum Borrowed<'a, T> {
+//     Owned(T),
+//     Borrowed(&'a T),
+// }
+
+// impl<'a, T> Deref for Borrowed<'a, T> {
+//     type Target = T;
+//     fn deref(&self) -> &Self::Target {
+//         match self {
+//             Self::Owned(t) => t,
+//             Self::Borrowed(t) => *t,
+//         }
+//     }
+// }
+
+// impl MaybeBytes {
+//     pub fn as_bytes(&self) -> Bytes {
+//         match self {
+//             MaybeBytes::Bytes(bytes) => bytes.clone(),
+//             MaybeBytes::Unencoded(encodable) => encodable
+//                 .write_to_bytes()
+//                 .expect("expected encoding not to fail"),
+//         }
+//     }
+
+//     pub fn as_value<T: MaybeEncodable + ToOwned>(&self) -> Cow<'_, T> {
+//         match self {
+//             MaybeBytes::Bytes(bytes) => {
+//                 let mut bytes_for_decoding = &bytes[..];
+//                 Cow::Owned(
+//                     T::read_from(&mut bytes_for_decoding).expect("expected decoding not to fail"),
+//                 )
+//             }
+//             MaybeBytes::Unencoded(encodable) => {
+//                 let as_any: &dyn Any = &*encodable;
+//                 Cow::Borrowed(as_any.downcast_ref::<T>().expect("expected type to match"))
+//             }
+//         }
+//     }
+// }

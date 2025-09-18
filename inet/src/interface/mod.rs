@@ -150,7 +150,6 @@ impl InterfaceController {
 
     pub(crate) fn schedule_link_update(&self) {
         if let InterfaceBusyState::Busy { until, .. } = &self.state {
-            dbg!(until);
             schedule_at(Message::from(LinkUpdate(self.name.id())), *until);
         }
     }
@@ -202,7 +201,7 @@ impl IOContext {
         let dst = MacAddress::from(msg.dst);
 
         // Precheck for link layer updates
-        if msg.header().kind == KIND_LINK_UPDATE {
+        if msg.header.kind == KIND_LINK_UPDATE {
             let Some(update) = msg.body.try_content::<LinkUpdate>() else {
                 tracing::error!(
                     "found message with kind KIND_LINK_UPDATE, did not contain link updates"
@@ -213,9 +212,9 @@ impl IOContext {
             return Consumed();
         }
 
-        if msg.header().kind == KIND_IO_TIMEOUT {
+        if msg.header.kind == KIND_IO_TIMEOUT {
             // TODO: check ARP Timeout
-            if msg.header().id == KIND_ARP {
+            if msg.header.id == KIND_ARP {
                 self.recv_arp_wakeup();
                 return Consumed();
             }
@@ -248,7 +247,7 @@ impl IOContext {
             }
         }
 
-        if msg.header().kind == KIND_ARP {
+        if msg.header.kind == KIND_ARP {
             let Some(arp) = msg.body.try_content::<ArpPacket>() else {
                 tracing::error!(
                     "found message with kind 0x0806 (arp), but did not contain ARP packet"
@@ -277,7 +276,7 @@ impl IOContext {
     fn device_for_message(&self, msg: &Message) -> Option<(&IfId, &InterfaceController)> {
         self.ifaces
             .iter()
-            .find(|(_, iface)| iface.device.last_gate_matches(&msg.header().last_gate))
+            .find(|(_, iface)| iface.device.matches(&msg.header))
     }
 
     pub(super) fn get_iface(&self, ifid: IfId) -> io::Result<&InterfaceController> {

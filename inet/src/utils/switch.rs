@@ -44,7 +44,7 @@ impl Module for LinkLayerSwitch {
     }
 
     fn handle_message(&mut self, msg: Message) {
-        if msg.header().kind == KIND_SWITCH_WAKEUP {
+        if msg.header.kind == KIND_SWITCH_WAKEUP {
             self.wakeup(*msg.body.content::<usize>());
             return;
         }
@@ -82,14 +82,14 @@ impl Module for LinkLayerSwitch {
 
 impl LinkLayerSwitch {
     fn store_sender(&mut self, msg: &Message) -> Option<usize> {
-        let Some(ref last_gate) = msg.header().last_gate else {
+        let Some(ref last_gate) = msg.header.last_gate else {
             return None;
         };
         let Some(i) = self.info.port_index_for(last_gate) else {
             return None;
         };
 
-        let src = MacAddress::from(msg.header().src);
+        let src = MacAddress::from(msg.header.src);
         if src.is_unspecified() || src.is_broadcast() || src.is_multicast() {
             return Some(i);
         }

@@ -196,21 +196,19 @@ fn lossful_stream() {
 
     sim.node(
         "link",
-        HandlerFn::new(
-            |msg| match msg.header().last_gate.as_ref().unwrap().name() {
-                "port-alice" if random::<u8>() > 32 => {
-                    let _ = send(msg, "port-bob");
-                }
-                "port-bob" if random::<u8>() > 32 => {
-                    let _ = send(msg, "port-alice");
-                }
-                _ => tracing::error!(
-                    kind = msg.header().kind,
-                    "dropping packet from {:?}",
-                    msg.header().last_gate
-                ),
-            },
-        ),
+        HandlerFn::new(|msg| match msg.header.last_gate.as_ref().unwrap().name() {
+            "port-alice" if random::<u8>() > 32 => {
+                let _ = send(msg, "port-bob");
+            }
+            "port-bob" if random::<u8>() > 32 => {
+                let _ = send(msg, "port-alice");
+            }
+            _ => tracing::error!(
+                kind = msg.header.kind,
+                "dropping packet from {:?}",
+                msg.header.last_gate
+            ),
+        }),
     );
 
     let a = sim.gate("alice", "port");

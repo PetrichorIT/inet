@@ -4,6 +4,7 @@ use std::{
     mem,
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
     ops::{Deref, DerefMut},
+    usize,
 };
 
 use bytes::{BufMut, Bytes, BytesMut};
@@ -17,7 +18,10 @@ pub trait ToBytes {
     fn to_bytes(&self, writer: &mut BytesWriter) -> Result<(), Self::Error>;
 
     /// A
-    fn write_to<B: BufMut + AsMut<[u8]>>(&self, bytes: &mut B) -> Result<usize, Self::Error> {
+    fn write_to<B: BufMut + AsMut<[u8]>>(&self, bytes: &mut B) -> Result<usize, Self::Error>
+    where
+        Self: Sized,
+    {
         self.write_to_limit(bytes, usize::MAX)
     }
 
@@ -26,7 +30,10 @@ pub trait ToBytes {
         &self,
         bytes: &mut B,
         limit: usize,
-    ) -> Result<usize, Self::Error> {
+    ) -> Result<usize, Self::Error>
+    where
+        Self: Sized,
+    {
         let initial = bytes.as_mut().len();
         let mut writer = BytesWriter {
             limit,
@@ -40,7 +47,10 @@ pub trait ToBytes {
     }
 
     /// A
-    fn write_to_bytes_mut(&self) -> Result<BytesMut, Self::Error> {
+    fn write_to_bytes_mut(&self) -> Result<BytesMut, Self::Error>
+    where
+        Self: Sized,
+    {
         let mut bytes = BytesMut::new();
         self.write_to(&mut bytes)?;
         Ok(bytes)
@@ -49,12 +59,21 @@ pub trait ToBytes {
     /// A
     fn write_to_bytes(&self) -> Result<Bytes, Self::Error> {
         let mut bytes = BytesMut::new();
-        self.write_to(&mut bytes)?;
+        let mut writer = BytesWriter {
+            limit: usize::MAX,
+            markers: 0,
+            bytes: &mut bytes,
+        };
+        self.to_bytes(&mut writer)?;
+        drop(writer);
         Ok(bytes.freeze())
     }
 
     /// A
-    fn write_to_vec(&self) -> Result<Vec<u8>, Self::Error> {
+    fn write_to_vec(&self) -> Result<Vec<u8>, Self::Error>
+    where
+        Self: Sized,
+    {
         let mut bytes = Vec::new();
         self.write_to(&mut bytes)?;
         Ok(bytes)

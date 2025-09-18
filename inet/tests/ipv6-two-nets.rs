@@ -106,12 +106,7 @@ impl Module for Router {
         )
         .unwrap();
 
-        let peer = current()
-            .gate("wan", 0)
-            .unwrap()
-            .path_end()
-            .unwrap()
-            .owner();
+        let peer = current().gate("wan").unwrap().path_end().unwrap().owner();
         let peers_prefix = peer.prop::<Ipv6Prefix>("prefix").unwrap().get().unwrap();
         let peers_addr = peer
             .prop::<Ipv6Addr>("peering_addr")

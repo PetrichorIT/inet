@@ -9,17 +9,22 @@ use byteorder::{ReadBytesExt, BE};
 use bytes::Buf;
 
 /// A
-pub trait FromBytes: Sized {
+pub trait FromBytes {
     /// A
     type Error;
 
     /// A
-    fn from_bytes(stream: &mut BytesReader) -> Result<Self, Self::Error>;
+    fn from_bytes(stream: &mut BytesReader) -> Result<Self, Self::Error>
+    where
+        Self: Sized;
 
     /// A
     ///
     /// Will partially consume the buffer on error
-    fn read_from<B: Buf>(bytes: &mut B) -> Result<Self, Self::Error> {
+    fn read_from<B: Buf>(bytes: &mut B) -> Result<Self, Self::Error>
+    where
+        Self: Sized,
+    {
         let mut cursor = Cursor::new(bytes.chunk());
         let mut reader = BytesReader::new(&mut cursor);
         let result = Self::from_bytes(&mut reader)?;
@@ -28,7 +33,10 @@ pub trait FromBytes: Sized {
     }
 
     /// A
-    fn peek_from<B: Buf>(bytes: B) -> Result<Self, Self::Error> {
+    fn peek_from<B: Buf>(bytes: B) -> Result<Self, Self::Error>
+    where
+        Self: Sized,
+    {
         let mut cursor = Cursor::new(bytes.chunk());
         let mut reader = BytesReader::new(&mut cursor);
         let result = Self::from_bytes(&mut reader)?;

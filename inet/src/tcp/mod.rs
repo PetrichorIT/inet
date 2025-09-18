@@ -529,7 +529,7 @@ impl IOContext {
 
         // TODO: this extra if should not be nessecary
         // if ctrl.state != TcpState::TimeWait {
-        if msg.header().id != ctrl.timer {
+        if msg.header.id != ctrl.timer {
             self.tcp.streams.insert(fd, ctrl);
             return;
         }

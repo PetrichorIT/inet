@@ -107,7 +107,7 @@ bitflags! {
 
 impl IOContext {
     pub fn ipv6_recv(&mut self, msg: Message, ifid: IfId) -> NetworkLayerResult {
-        let Ok((pkt, header)) = msg.try_into_content::<Ipv6Packet>() else {
+        let Ok((pkt, header, _)) = msg.try_into_content::<Ipv6Packet>() else {
             tracing::error!(
                 "received eth-packet with kind=0x86DD (ip) but content was no ipv6-packet"
             );

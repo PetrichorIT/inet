@@ -101,7 +101,9 @@ impl IOContext {
     pub(super) fn with_current<R>(f: impl FnOnce(&mut IOContext) -> R) -> R {
         CURRENT.with(|cell| {
             let mut brw = cell.borrow_mut();
-            f(brw.as_mut().unwrap_or_else(|| panic!("Missing IOContext")))
+            f(brw.as_mut().unwrap_or_else(|| {
+                panic!("Missing IOContext");
+            }))
         })
     }
 
@@ -183,7 +185,7 @@ impl IOContext {
     }
 
     pub fn recv_network_layer(&mut self, msg: Message, ifid: IfId) -> NetworkLayerResult {
-        match msg.header().kind {
+        match msg.header.kind {
             KIND_IPV4 => self.ipv4_recv(msg, ifid),
             KIND_IPV6 => self.ipv6_recv(msg, ifid),
             KIND_LINK_UPDATE => panic!("should not happen"),
@@ -197,7 +199,7 @@ impl IOContext {
     }
 
     fn networking_layer_io_timeout(&mut self, msg: Message) -> Option<Message> {
-        if msg.header().id == ID_IPV6_TIMEOUT {
+        if msg.header.id == ID_IPV6_TIMEOUT {
             if let Err(e) = self.ipv6_handle_timer(msg) {
                 tracing::error!("an error occured in the timer block: {e}");
             }
