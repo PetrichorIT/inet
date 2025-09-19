@@ -6,10 +6,10 @@ use inet::socket::Fd;
 
 mod addr;
 mod dgram;
-mod stream;
+mod dstream;
 
 pub use self::dgram::*;
-pub use self::stream::*;
+pub use self::dstream::*;
 pub use addr::SocketAddr;
 
 pub(crate) struct UdsExtension {

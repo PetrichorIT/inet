@@ -1,8 +1,8 @@
 use des::time::SimTime;
 
 use super::{
-    record::{DnsResourceRecord, ResourceRecordTyp, SoaResourceRecord},
     DnsString, Question, ResourceRecordClass,
+    record::{DnsResourceRecord, ResourceRecordTyp, SoaResourceRecord},
 };
 use crate::core::QuestionTyp;
 use std::{cell::Cell, collections::HashMap, time::Duration};
@@ -50,12 +50,12 @@ impl Entry {
         let mut i = 0;
         let mut removed = Vec::new();
         while i < self.records.len() {
-            if let Some(timeout) = self.timeouts[i] {
-                if timeout <= now {
-                    self.timeouts.remove(i);
-                    removed.push(self.records.remove(i));
-                    continue;
-                }
+            if let Some(timeout) = self.timeouts[i]
+                && timeout <= now
+            {
+                self.timeouts.remove(i);
+                removed.push(self.records.remove(i));
+                continue;
             }
             i += 1;
         }

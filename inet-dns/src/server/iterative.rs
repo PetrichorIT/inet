@@ -2,8 +2,8 @@ use std::{
     mem,
     net::{IpAddr, Ipv4Addr, SocketAddr},
     sync::{
-        atomic::{AtomicU16, Ordering},
         Arc,
+        atomic::{AtomicU16, Ordering},
     },
     time::Duration,
 };
@@ -20,7 +20,7 @@ use crate::{
 };
 
 use super::{
-    transaction::FinishedTransaction, DnsMessage, Nameserver, NameserverQuery, TransportMedium,
+    DnsMessage, Nameserver, NameserverQuery, TransportMedium, transaction::FinishedTransaction,
 };
 
 /// Iterative authoritative nameserver managing multiple zones
@@ -117,7 +117,7 @@ impl IterativeNameserver {
             }
         }
 
-        last_delegate.map(|v| v).ok_or_else(|| {
+        last_delegate.ok_or_else(|| {
             last_err.take().unwrap_or_else(|| {
                 Error::new(ResponseCode::NotZone, "request directed to invalid zone")
             })
@@ -225,35 +225,34 @@ impl Nameserver for IterativeNameserver {
             next_update,
             active,
         } = &mut self.role
+            && *next_update <= SimTime::now()
         {
-            if *next_update <= SimTime::now() {
-                tracing::trace!("requesting updates for all auth zones");
+            tracing::trace!("requesting updates for all auth zones");
 
-                for zone in &self.authoratative {
-                    let query = NameserverQuery {
-                        query: Arc::new(SourceQuery {
-                            medium: TransportMedium::Tcp,
-                            edns: None, // TCP does not require EDNS
+            for zone in &self.authoratative {
+                let query = NameserverQuery {
+                    query: Arc::new(SourceQuery {
+                        medium: TransportMedium::Tcp,
+                        edns: None, // TCP does not require EDNS
 
-                            addr: SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), 0),
-                            transaction: 0,
-                            question: Question {
-                                qname: zone.zone().clone(),
-                                qclass: QuestionClass::IN,
-                                qtyp: QuestionTyp::AXFR,
-                            },
-                        }),
-                        preferred: Some(TransportMedium::Tcp),
-                        nameserver_ip: *primary,
-                        transaction: self.tx_id.fetch_add(1, Ordering::Relaxed),
-                    };
+                        addr: SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), 0),
+                        transaction: 0,
+                        question: Question {
+                            qname: zone.zone().clone(),
+                            qclass: QuestionClass::IN,
+                            qtyp: QuestionTyp::AXFR,
+                        },
+                    }),
+                    preferred: Some(TransportMedium::Tcp),
+                    nameserver_ip: *primary,
+                    transaction: self.tx_id.fetch_add(1, Ordering::Relaxed),
+                };
 
-                    active.push(query.clone());
-                    self.axfr_queries.push(query);
-                }
-
-                *next_update = SimTime::now() + Duration::from_secs(3600);
+                active.push(query.clone());
+                self.axfr_queries.push(query);
             }
+
+            *next_update = SimTime::now() + Duration::from_secs(3600);
         }
     }
 
@@ -292,7 +291,7 @@ mod tests {
 
     use bytes_io::{FromBytes, ToBytes};
     use des::time::sleep;
-    use inet::{dns::ToSocketAddrs, test_util::SimpleSim, UdpSocket};
+    use inet::{UdpSocket, dns::ToSocketAddrs, test_util::SimpleSim};
     use serial_test::serial;
 
     use super::*;

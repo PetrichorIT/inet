@@ -8,11 +8,11 @@ use fxhash::{FxBuildHasher, FxHashMap};
 use inet::ipv4::router::RoutingTableId;
 
 use crate::{
+    BgpNodeInformation,
     adj_in::{AdjIn, Peer, PeerId, Route, RouteId},
     adj_out::{AdjRIBOut, RIBEntry},
     kernel::Kernel,
     pkt::Nlri,
-    BgpNodeInformation,
 };
 
 pub struct LocRibWithKernel {
@@ -70,7 +70,7 @@ impl LocRib {
     }
 
     pub fn status(&self) {
-        let dest = self.dests.iter().map(|v| v.clone()).collect::<Vec<_>>();
+        let dest = self.dests.iter().collect::<Vec<_>>();
         tracing::debug!("[ LOC RIB ]");
         for (d, (i, _)) in dest {
             let (r, p) = self.routes.get(i).unwrap();
@@ -85,9 +85,9 @@ impl LocRib {
     }
 
     pub fn add_dest(&mut self, dest: Nlri, route: &Route, peer: &Peer) {
-        if self.routes.get(&route.id).is_none() {
-            self.routes.insert(route.id, (route.clone(), peer.clone()));
-        }
+        self.routes
+            .entry(route.id)
+            .or_insert_with(|| (route.clone(), peer.clone()));
 
         self.dests.insert(
             dest,
@@ -159,15 +159,13 @@ impl LocRib {
     pub fn lookup(&self, dest: Nlri) -> Option<&(Route, Peer)> {
         self.dests
             .get(&dest)
-            .map(|(id, _)| self.routes.get(id))
-            .flatten()
+            .and_then(|(id, _)| self.routes.get(id))
     }
 
     pub fn lookup_mut(&mut self, dest: Nlri) -> Option<&mut (Route, Peer)> {
         self.dests
             .get(&dest)
-            .map(|(id, _)| self.routes.get_mut(id))
-            .flatten()
+            .and_then(|(id, _)| self.routes.get_mut(id))
     }
 
     pub fn advertise_dest(&self, dest: Nlri, out: &mut AdjRIBOut) {

@@ -19,8 +19,8 @@ use self::{
     types::*,
 };
 use super::{
-    pkt::{BgpNotificationPacket, BgpOpenMessageError, BgpOpenPacket, BgpPacket, BgpPacketKind},
     BgpNodeInformation, NeighborEgressEvent, NeighborIngressEvent,
+    pkt::{BgpNotificationPacket, BgpOpenMessageError, BgpOpenPacket, BgpPacket, BgpPacketKind},
 };
 
 mod stream;
@@ -138,11 +138,9 @@ impl NeighborDeamon {
             match self.tcp_rx.try_recv() {
                 Ok(stream) => {
                     let n = stream.try_read(&mut []);
-                    if let Ok(n) = n {
-                        if n == 0 {
-                            // stream has expired, remove it
-                            continue;
-                        }
+                    if let Ok(0) = n {
+                        // stream has expired, remove it
+                        continue;
                     }
                     return Some(stream);
                 }
@@ -158,6 +156,7 @@ impl NeighborDeamon {
         })
     }
 
+    #[allow(clippy::single_match)]
     async fn _deploy(mut self) -> Result<()> {
         use NeighborDeamonState::*;
         use NeighborEgressEvent::*;
@@ -200,7 +199,7 @@ impl NeighborDeamon {
                             // - ConnectRetryTimerStart #TODO
                             // - listen to incoming connections
                             self.connect_retry_counter = 0;
-                            self.timers.enable_timer(Timer::ConnectionRetryTimer);
+                            self.timers.enable_timer(Timer::ConnectionRetry);
 
                             if self.cfg.passiv_tcp_estab {
                                 // - change to Active
@@ -232,7 +231,7 @@ impl NeighborDeamon {
                         event = self.rx.recv() => match event.unwrap() {
                             Stop => {
                                 self.connect_retry_counter = 0;
-                                self.timers.disable_timer(Timer::ConnectionRetryTimer);
+                                self.timers.disable_timer(Timer::ConnectionRetry);
                                 state = Idle;
                                 continue;
                             },
@@ -241,11 +240,11 @@ impl NeighborDeamon {
                             }
                         },
                         timer = self.timers.next() => {
-                            assert_eq!(timer, Timer::ConnectionRetryTimer);
+                            assert_eq!(timer, Timer::ConnectionRetry);
                             tracing::debug!("[connect] timer expired, establishing new TCP connection");
 
-                            self.timers.disable_timer(Timer::DelayOpenTimer); // redundant, delay open has its own state
-                            self.timers.enable_timer(Timer::ConnectionRetryTimer);
+                            self.timers.disable_timer(Timer::DelayOpen); // redundant, delay open has its own state
+                            self.timers.enable_timer(Timer::ConnectionRetry);
 
                             state = Connect(Box::pin(TcpStream::connect(SocketAddr::V4(
                                 SocketAddrV4::new(self.peer_info.addr, 179),
@@ -303,8 +302,8 @@ impl NeighborDeamon {
                         // - HoldTimer = 4min
                         // - State = OpenSent
 
-                        self.timers.disable_timer(Timer::ConnectionRetryTimer);
-                        self.timers.enable_timer(Timer::HoldTimer);
+                        self.timers.disable_timer(Timer::ConnectionRetry);
+                        self.timers.enable_timer(Timer::Hold);
 
                         tracing::debug!("[connect] sending OPEN message");
                         if let Err(e) = stream.write_all(&self.open_pkt().write_to_vec()?).await {
@@ -322,17 +321,17 @@ impl NeighborDeamon {
                         event = self.rx.recv() => match event.unwrap() {
                             Stop => {
                                 self.connect_retry_counter = 0;
-                                self.timers.disable_timer(Timer::DelayOpenTimer);
-                                self.timers.disable_timer(Timer::ConnectionRetryTimer);
+                                self.timers.disable_timer(Timer::DelayOpen);
+                                self.timers.disable_timer(Timer::ConnectionRetry);
                                 state = Idle;
                             }
                             _ => state = Active
                         },
 
                         timer = self.timers.next() => {
-                            assert_eq!(timer, Timer::ConnectionRetryTimer);
+                            assert_eq!(timer, Timer::ConnectionRetry);
                             tracing::debug!("trying to establish own connection");
-                            self.timers.enable_timer(Timer::ConnectionRetryTimer);
+                            self.timers.enable_timer(Timer::ConnectionRetry);
                             let stream = TcpStream::connect(SocketAddr::V4(SocketAddrV4::new(
                                 self.peer_info.addr,
                                 179,
@@ -345,25 +344,22 @@ impl NeighborDeamon {
                                 todo!()
                             };
 
-                            match stream.try_read(&mut []) {
-                                Ok(0) => {
-                                    state = Active;
-                                    continue
-                                },
-                                _ => {}
+                            if let Ok(0) = stream.try_read(&mut []) {
+                                state = Active;
+                                continue
                             }
 
                             if self.cfg.delay_open {
                                 tracing::debug!("[active] accepted incoming tcp connection, delay open");
                                 self.connect_retry_counter = 0;
-                                self.timers.disable_timer(Timer::ConnectionRetryTimer);
-                                self.timers.enable_timer(Timer::DelayOpenTimer);
+                                self.timers.disable_timer(Timer::ConnectionRetry);
+                                self.timers.enable_timer(Timer::DelayOpen);
                                 state = ActiveDelayOpen(BgpStream::new(stream));
                             } else {
                                 tracing::debug!("[active] accepted incoming tcp connection");
-                                self.timers.disable_timer(Timer::ConnectionRetryTimer);
+                                self.timers.disable_timer(Timer::ConnectionRetry);
                                 stream.write_all(&self.open_pkt().write_to_vec()?).await?;
-                                self.timers.enable_timer(Timer::HoldTimer);
+                                self.timers.enable_timer(Timer::Hold);
                                 state = OpenSent(BgpStream::new(stream))
                             }
                         }
@@ -398,14 +394,14 @@ impl NeighborDeamon {
                                     self.peer_open = open;
 
                                     tracing::debug!("[active] delayed open, recevied OPEN packet");
-                                    self.timers.disable_timer(Timer::ConnectionRetryTimer);
-                                    self.timers.disable_timer(Timer::DelayOpenTimer);
+                                    self.timers.disable_timer(Timer::ConnectionRetry);
+                                    self.timers.disable_timer(Timer::DelayOpen);
 
                                     stream.write_all(&self.open_pkt().write_to_vec()?).await?;
                                     stream.write_all(&self.keepalive().write_to_vec()?).await?;
 
-                                    self.timers.enable_timer(Timer::HoldTimer);
-                                    self.timers.enable_timer(Timer::KeepaliveTimer);
+                                    self.timers.enable_timer(Timer::Hold);
+                                    self.timers.enable_timer(Timer::Keepalive);
 
                                     state = OpenConfirm(stream);
                                 },
@@ -413,8 +409,8 @@ impl NeighborDeamon {
                                 BgpPacketKind::Notification(notif) => {
                                     // delay open IS running, since we are in delay open state
                                     tracing::error!("[active] delayed open, got nofif {notif:?}");
-                                    self.timers.disable_timer(Timer::ConnectionRetryTimer);
-                                    self.timers.disable_timer(Timer::DelayOpenTimer);
+                                    self.timers.disable_timer(Timer::ConnectionRetry);
+                                    self.timers.disable_timer(Timer::DelayOpen);
                                     state = Idle;
                                 }
                                 _ => todo!()
@@ -422,13 +418,13 @@ impl NeighborDeamon {
                         }
 
                         timer = self.timers.next() => match timer {
-                            Timer::DelayOpenTimer =>   {
+                            Timer::DelayOpen =>   {
                                 // DELAY OPEN TIMER EXPIRED
                                 tracing::debug!("[active] delayed open, sending OPEN packet");
                                 self.connect_retry_counter = 0;
-                                self.timers.disable_timer(Timer::DelayOpenTimer);
+                                self.timers.disable_timer(Timer::DelayOpen);
                                 stream.write_all(&self.open_pkt().write_to_vec()?).await?;
-                                self.timers.enable_timer(Timer::HoldTimer);
+                                self.timers.enable_timer(Timer::Hold);
                                 state = OpenSent(stream);
                             },
                             _ => todo!()
@@ -444,7 +440,7 @@ impl NeighborDeamon {
                         event = self.rx.recv() => match event.unwrap() {
                             Stop => {
                                 write_stream!(stream, self.notif(BgpNotificationPacket::Cease()));
-                                self.timers.disable_timer(Timer::ConnectionRetryTimer);
+                                self.timers.disable_timer(Timer::ConnectionRetry);
                                 self.connect_retry_counter = 0;
                                 // TODO: peer osicillation
                                 state = Idle;
@@ -453,10 +449,10 @@ impl NeighborDeamon {
                         },
 
                         timer = self.timers.next() => match timer {
-                            Timer::HoldTimer => {
+                            Timer::Hold => {
                                 tracing::error!("[opensent] peer connected, but unresponsive -> terminating");
                                 write_stream!(stream, self.notif(BgpNotificationPacket::HoldTimerExpires()));
-                                self.timers.disable_timer(Timer::ConnectionRetryTimer);
+                                self.timers.disable_timer(Timer::ConnectionRetry);
                                 self.connect_retry_counter += 1;
                                 // TODO: peer oscialltion
                                 state = Idle;
@@ -501,15 +497,15 @@ impl NeighborDeamon {
                                     // peer decieded the current stream is not valid,
                                     // wait for incoming stream
                                     tracing::warn!("[opensent] connection closed, assuming second connection");
-                                    self.timers.disable_timer(Timer::KeepaliveTimer);
-                                    self.timers.enable_timer(Timer::ConnectionRetryTimer);
+                                    self.timers.disable_timer(Timer::Keepalive);
+                                    self.timers.enable_timer(Timer::ConnectionRetry);
                                     state = Active;
                                     continue
                                 }
                                 Ok(false) => {},
                                 Err(e) => {
                                     tracing::error!("[opensent] connection broke, assuming second connection: {e:?}");
-                                    self.timers.enable_timer(Timer::ConnectionRetryTimer);
+                                    self.timers.enable_timer(Timer::ConnectionRetry);
                                     state = Active;
                                     continue
                                 }
@@ -535,13 +531,13 @@ impl NeighborDeamon {
                                     };
                                     self.peer_open = open;
 
-                                    self.timers.disable_timer(Timer::DelayOpenTimer);
-                                    self.timers.disable_timer(Timer::ConnectionRetryTimer);
+                                    self.timers.disable_timer(Timer::DelayOpen);
+                                    self.timers.disable_timer(Timer::ConnectionRetry);
 
                                     tracing::debug!("[opensent] received OPEN message, waiting for keepalive");
                                     write_stream!(stream, self.keepalive());
 
-                                    self.timers.enable_timer(Timer::KeepaliveTimer);
+                                    self.timers.enable_timer(Timer::Keepalive);
 
                                     let hold_time = self.timers.cfg.hold_time.min(Duration::from_secs(self.peer_open.hold_time as u64));
                                     self.timers.cfg.hold_time = hold_time;
@@ -570,26 +566,26 @@ impl NeighborDeamon {
                             Stop => {
                                 write_stream!(stream, self.notif(BgpNotificationPacket::Cease()));
                                 self.connect_retry_counter += 1; // TODO: diff automatic or manual
-                                self.timers.disable_timer(Timer::ConnectionRetryTimer);
+                                self.timers.disable_timer(Timer::ConnectionRetry);
                                 state = Idle;
                             },
                             _ => state = OpenConfirm(stream),
                         },
 
                         timer = self.timers.next() => match timer {
-                            Timer::HoldTimer => {
+                            Timer::Hold => {
                                 write_stream!(stream, self.notif(BgpNotificationPacket::HoldTimerExpires()));
-                                self.timers.disable_timer(Timer::ConnectionRetryTimer);
+                                self.timers.disable_timer(Timer::ConnectionRetry);
                                 self.connect_retry_counter += 1;
                                 // TODO: peer ociall
                                 state = Idle;
                             }
 
-                            Timer::KeepaliveTimer => {
+                            Timer::Keepalive => {
                                 tracing::debug!("[openconfirm] sending KEEPALIVE");
                                 write_stream!(stream, self.keepalive());
                                 self.last_keepalive_sent = SimTime::now();
-                                self.timers.enable_timer(Timer::KeepaliveTimer);
+                                self.timers.enable_timer(Timer::Keepalive);
                                 state = OpenConfirm(stream);
                             }
                             _ => todo!()
@@ -618,7 +614,7 @@ impl NeighborDeamon {
 
                                 BgpPacketKind::Notification(notif) => {
                                     tracing::error!("[openconfirm] got notif: {notif:?}");
-                                    self.timers.disable_timer(Timer::ConnectionRetryTimer);
+                                    self.timers.disable_timer(Timer::ConnectionRetry);
                                     self.connect_retry_counter += 1;
                                     // TODO: peer oscil
                                     state = Idle;
@@ -627,7 +623,7 @@ impl NeighborDeamon {
                                 BgpPacketKind::Keepalive() => {
                                     tracing::info!("[openconfirm] established BGP {{ {:?} <--> {:?} }}", self.host_info.str(), self.peer_info.str());
                                     self.last_keepalive_received = SimTime::now();
-                                    self.timers.enable_timer(Timer::HoldTimer);
+                                    self.timers.enable_timer(Timer::Hold);
                                     self.tx.send(ConnectionEstablished(self.peer_info.clone())).await.unwrap();
                                     state = Established(stream)
                                 },
@@ -656,7 +652,7 @@ impl NeighborDeamon {
                     Stop => {
                         tracing::info!("terminating connection");
                         write_stream!(stream, self.notif(BgpNotificationPacket::Cease()));
-                        self.timers.disable_timer(Timer::ConnectionRetryTimer);
+                        self.timers.disable_timer(Timer::ConnectionRetry);
                         self.tx.send(ConnectionLost(self.peer_info.clone())).await.expect("failed");
                         // TODO: peer osci
                         self.connect_retry_counter = 0;
@@ -670,16 +666,16 @@ impl NeighborDeamon {
                 },
 
                 timer = self.timers.next() => match timer {
-                    Timer::HoldTimer => {
+                    Timer::Hold => {
                         write_stream!(stream, self.notif(BgpNotificationPacket::HoldTimerExpires()));
-                        self.timers.disable_timer(Timer::ConnectionRetryTimer);
+                        self.timers.disable_timer(Timer::ConnectionRetry);
                         self.connect_retry_counter += 1;
                         // TODO: peer osci
                         return Ok(Idle);
                     }
-                    Timer::KeepaliveTimer => {
+                    Timer::Keepalive => {
                         write_stream!(stream, self.keepalive());
-                        self.timers.enable_timer(Timer::KeepaliveTimer);
+                        self.timers.enable_timer(Timer::Keepalive);
                         continue
                     }
                     _ => todo!()
@@ -701,10 +697,10 @@ impl NeighborDeamon {
                 match bgp.kind {
                     BgpPacketKind::Keepalive() => {
                         self.last_keepalive_received = SimTime::now();
-                        self.timers.enable_timer(Timer::HoldTimer);
+                        self.timers.enable_timer(Timer::Hold);
                     }
                     BgpPacketKind::Update(update) => {
-                        self.timers.enable_timer(Timer::HoldTimer);
+                        self.timers.enable_timer(Timer::Hold);
                         self.tx
                             .send(Update(self.peer_info.addr, update))
                             .await
@@ -712,7 +708,7 @@ impl NeighborDeamon {
                     }
                     BgpPacketKind::Notification(notif) => {
                         self.connect_retry_counter += 1;
-                        self.timers.enable_timer(Timer::ConnectionRetryTimer);
+                        self.timers.enable_timer(Timer::ConnectionRetry);
                         tracing::warn!("connection lost ({notif:?})");
                         self.tx
                             .send(ConnectionLost(self.peer_info.clone()))

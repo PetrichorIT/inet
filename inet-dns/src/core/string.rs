@@ -116,7 +116,7 @@ impl FromStr for DnsString {
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidData,
                     "Non compliant DNS String",
-                ))
+                ));
             }
         };
 
@@ -191,7 +191,7 @@ impl Display for DnsString {
 
 impl PartialOrd for DnsString {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.to_string().cmp(&other.to_string()))
+        Some(self.cmp(other))
     }
 }
 

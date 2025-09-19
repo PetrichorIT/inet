@@ -1,4 +1,4 @@
-use bytes_io::{BytesReader, BytesWriter, FromBytes, ReadBytesExt, ToBytes, WriteBytesExt, BE};
+use bytes_io::{BE, BytesReader, BytesWriter, FromBytes, ReadBytesExt, ToBytes, WriteBytesExt};
 use macros::repr_enum;
 
 use crate::core::{
@@ -7,8 +7,8 @@ use crate::core::{
 };
 
 use super::{
-    transaction::{FinishedTransaction, TransactionResult},
     NameserverQuery,
+    transaction::{FinishedTransaction, TransactionResult},
 };
 
 /// A DNS message.
@@ -171,13 +171,13 @@ impl DnsMessage {
     pub fn truncate(&mut self) {
         self.tc = true;
 
-        if let Some(_) = self.response.additional.pop() {
+        if self.response.additional.pop().is_some() {
             return;
         }
-        if let Some(_) = self.response.auths.pop() {
+        if self.response.auths.pop().is_some() {
             return;
         }
-        if let Some(_) = self.response.anwsers.pop() {
+        if self.response.anwsers.pop().is_some() {
             return;
         }
 
@@ -377,13 +377,15 @@ mod tests {
                         qclass: QuestionClass::IN,
                         qtyp: QuestionTyp::A,
                     }],
-                    anwsers: vec![AResourceRecord {
-                        name: "example.com.".parse()?,
-                        ttl: 3600,
-                        class: ResourceRecordClass::IN,
-                        addr: Ipv4Addr::new(1, 2, 3, 4),
-                    }
-                    .into()],
+                    anwsers: vec![
+                        AResourceRecord {
+                            name: "example.com.".parse()?,
+                            ttl: 3600,
+                            class: ResourceRecordClass::IN,
+                            addr: Ipv4Addr::new(1, 2, 3, 4),
+                        }
+                        .into(),
+                    ],
                     ..Default::default()
                 }),
             })],

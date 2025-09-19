@@ -1,12 +1,12 @@
 use crate::{
-    dns::{default_dns_resolve, DnsResolver},
+    Udp,
+    dns::{DnsResolver, default_dns_resolve},
     env::fs::Fs,
     extensions::Extensions,
-    interface::{IfId, InterfaceController, ID_IPV6_TIMEOUT, KIND_LINK_UPDATE},
+    interface::{ID_IPV6_TIMEOUT, IfId, InterfaceController, KIND_LINK_UPDATE},
     ipv4::Ipv4,
     ipv6::Ipv6,
     tcp2::{self, PROTO_TCP2},
-    Udp,
 };
 use des::{
     net::module::{current, try_current},
@@ -237,10 +237,6 @@ impl IOContext {
         pkt: IpPacket,
         buffered: bool,
     ) -> Result<()> {
-        if let IpPacket::V6(pkt) = pkt {
-            return self.ipv6_send(pkt, ifid.unwrap_ifid());
-        }
-
         match pkt {
             IpPacket::V4(pkt) => self.ipv4_send(ifid, pkt, buffered),
             IpPacket::V6(pkt) => self.ipv6_send(pkt, ifid.unwrap_ifid()),

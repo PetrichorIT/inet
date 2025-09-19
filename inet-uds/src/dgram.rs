@@ -8,13 +8,13 @@ use std::{
     path::Path,
 };
 use tokio::sync::{
-    mpsc::{channel, Receiver, Sender},
     Mutex,
+    mpsc::{Receiver, Sender, channel},
 };
 
 use inet::socket::{Fd, SocketDomain, SocketType};
 
-use crate::{addr::SocketAddr, UdsExtension};
+use crate::{UdsExtension, addr::SocketAddr};
 
 /// An I/O object representing a Unix datagram socket.
 ///
@@ -56,7 +56,7 @@ impl UnixDatagram {
             uds.dgrams
                 .get(&self.fd)
                 .map(|h| h.addr.clone())
-                .ok_or(Error::new(ErrorKind::Other, "socket dropped"))
+                .ok_or(Error::other("socket dropped"))
         })
     }
 
@@ -71,11 +71,11 @@ impl UnixDatagram {
                 .get(&self.fd)
                 .map(|h| {
                     h.peer
-                        .map(|fd| dbg!(uds.dgrams.get(&fd)).map(|f| f.addr.clone()))
-                        .flatten()
-                        .ok_or(Error::new(ErrorKind::Other, "no peer"))
+                        .and_then(|fd| uds.dgrams.get(&fd))
+                        .map(|f| f.addr.clone())
+                        .ok_or(Error::other("no peer"))
                 })
-                .ok_or(Error::new(ErrorKind::Other, "socket dropped"))
+                .ok_or(Error::other("socket dropped"))
         })?
     }
 
@@ -193,22 +193,22 @@ impl UnixDatagram {
         let sender = with_ext::<UdsExtension, _>(|uds| {
             let fd = self.fd;
             let Some(handle) = uds.dgrams.get(&fd) else {
-                return Err(Error::new(ErrorKind::Other, "socket unbound"));
+                return Err(Error::other("socket unbound"));
             };
 
             let Some(peer_fd) = handle.peer else {
-                return Err(Error::new(ErrorKind::Other, "no peer"));
+                return Err(Error::other("no peer"));
             };
 
             let Some(peer) = uds.dgrams.get(&peer_fd) else {
-                return Err(Error::new(ErrorKind::Other, "peer dropped"));
+                return Err(Error::other("peer dropped"));
             };
 
             Ok(peer.tx.clone())
         })?;
         match sender.send((Bytes::from(buf.to_vec()), addr)).await {
             Ok(_) => Ok(buf.len()),
-            Err(e) => Err(Error::new(ErrorKind::Other, e)),
+            Err(e) => Err(Error::other(e)),
         }
     }
 
@@ -235,7 +235,7 @@ impl UnixDatagram {
         })?;
         match sender.send((Bytes::from(buf.to_vec()), addr)).await {
             Ok(_) => Ok(buf.len()),
-            Err(e) => Err(Error::new(ErrorKind::Other, e)),
+            Err(e) => Err(Error::other(e)),
         }
     }
 
@@ -250,7 +250,7 @@ impl UnixDatagram {
             with_ext::<UdsExtension, _>(|uds| uds.dgrams.get(&self.fd).map(|v| v.peer.is_some()))
                 .unwrap_or(false);
         if !peered {
-            return Err(Error::new(ErrorKind::Other, "no peer"));
+            return Err(Error::other("no peer"));
         }
 
         let (n, _from) = self.recv_from(buf).await?;
@@ -262,7 +262,7 @@ impl UnixDatagram {
     pub async fn recv_from(&self, buf: &mut [u8]) -> Result<(usize, SocketAddr), Error> {
         let (bytes, src) = match self.rx.lock().await.recv().await {
             Some(dgram) => dgram,
-            None => return Err(Error::new(ErrorKind::Other, "socket closed somehow")),
+            None => return Err(Error::other("socket closed somehow")),
         };
 
         let n = buf.len().min(bytes.len());
@@ -299,8 +299,8 @@ mod tests {
     use super::*;
 
     use des::{
-        net::{handlers::AsyncHandler, Sim},
-        runtime::{random, Builder, RuntimeError},
+        net::{Sim, handlers::AsyncHandler},
+        runtime::{Builder, RuntimeError, random},
         time::sleep,
     };
     use serial_test::serial;

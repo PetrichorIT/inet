@@ -43,7 +43,7 @@ impl StdError for Error {}
 
 impl From<Error> for io::Error {
     fn from(value: Error) -> Self {
-        io::Error::new(io::ErrorKind::Other, value)
+        io::Error::other(value)
     }
 }
 

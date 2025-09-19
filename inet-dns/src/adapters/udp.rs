@@ -13,7 +13,7 @@ use std::{
     sync::Arc,
 };
 
-use super::{TransportAdapter, DEFAULT_PORT};
+use super::{DEFAULT_PORT, TransportAdapter};
 
 /// A UDP transport adapter for DNS queries.
 ///
@@ -37,10 +37,10 @@ impl UdpAdapter {
     }
 
     fn udp_limit(&self, inc: &Option<OptResourceRecord>) -> usize {
-        if let Some(inc) = inc {
-            if self.edns {
-                return inc.udp_payload_size as usize;
-            }
+        if let Some(inc) = inc
+            && self.edns
+        {
+            return inc.udp_payload_size as usize;
         }
         516
     }

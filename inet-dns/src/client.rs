@@ -16,7 +16,7 @@ use tokio::sync::{
 use crate::{
     adapters::{Base, LocalAdapter, UdpAdapter},
     core::{DnsString, Zonefile},
-    server::{all_root_ns, RecursiveNameserver, TransportMedium},
+    server::{RecursiveNameserver, TransportMedium, all_root_ns},
 };
 
 /// A client resolver, using a locac adapter on a recursive DNS server
@@ -48,7 +48,7 @@ pub fn resolve(
 
         Ok(req_rx
             .await
-            .map_err(|_| io::Error::new(io::ErrorKind::Other, "broke pipe"))??
+            .map_err(|_| io::Error::other("broke pipe"))??
             .into_iter()
             .map(|ip| SocketAddr::new(ip, port))
             .collect())

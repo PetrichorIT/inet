@@ -15,7 +15,7 @@ use peering::{BgpPeeringCfg, NeighborDeamon, NeighborHandle};
 use pkt::{BgpUpdatePacket, Nlri};
 use tokio::{
     spawn,
-    sync::mpsc::{channel, Sender},
+    sync::mpsc::{Sender, channel},
     task::JoinHandle,
 };
 
@@ -198,7 +198,7 @@ impl BgpDeamon {
         let mtx2 = mtx.clone();
 
         let run_loop = spawn(async move {
-            let _ = listener_handle;
+            drop(listener_handle);
 
             let mut adj_in = AdjIn::new();
             let mut loc_rib = LocRibWithKernel::new(

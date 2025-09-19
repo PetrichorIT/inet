@@ -14,10 +14,10 @@ use std::{
 use tokio::{
     io::{AsyncRead, AsyncWrite},
     pin,
-    sync::{oneshot, Mutex},
+    sync::{Mutex, oneshot},
 };
 
-use crate::{addr::SocketAddr, UdsExtension};
+use crate::{UdsExtension, addr::SocketAddr};
 
 use super::{establish_link, listener::IncomingStream};
 use inet::socket::Fd;
@@ -70,8 +70,7 @@ impl UnixStream {
             Ok(rx)
         })?;
 
-        rx.await
-            .map_err(|_| Error::new(ErrorKind::Other, "onshot failure"))
+        rx.await.map_err(|_| Error::other("onshot failure"))
     }
 
     pub fn pair() -> Result<(UnixStream, UnixStream)> {
@@ -123,7 +122,9 @@ impl AsyncRead for UnixStream {
                 Poll::Pending
             }
         } else {
-            self.rx_writable.lock().unwrap().take().map(|w| w.wake());
+            if let Some(w) = self.rx_writable.lock().unwrap().take() {
+                w.wake()
+            }
             Poll::Ready(Ok(()))
         }
     }
@@ -153,7 +154,9 @@ impl AsyncWrite for UnixStream {
                 Poll::Pending
             }
         } else {
-            self.tx_readable.lock().unwrap().take().map(|w| w.wake());
+            if let Some(w) = self.tx_readable.lock().unwrap().take() {
+                w.wake()
+            }
             Poll::Ready(Ok(n))
         }
     }
@@ -175,8 +178,12 @@ impl AsyncWrite for UnixStream {
 
 impl Drop for UnixStream {
     fn drop(&mut self) {
-        self.tx_readable.lock().unwrap().take().map(|w| w.wake());
-        self.rx_writable.lock().unwrap().take().map(|w| w.wake());
+        if let Some(w) = self.tx_readable.lock().unwrap().take() {
+            w.wake()
+        }
+        if let Some(w) = self.rx_writable.lock().unwrap().take() {
+            w.wake()
+        }
 
         let _ = close(self.fd);
     }

@@ -56,7 +56,7 @@ impl ToBytes for OspfPacket {
     type Error = io::Error;
     fn to_bytes(&self, writer: &mut BytesWriter) -> Result<(), Self::Error> {
         writer.write_u8(OSPF_VERSION)?;
-        writer.write_u8(self.content.typ() as u8)?;
+        writer.write_u8(self.content.typ())?;
         let marker = writer.marker::<u16>();
         writer.write_u32::<BE>(self.router_id)?;
         writer.write_u32::<BE>(self.area_id)?;

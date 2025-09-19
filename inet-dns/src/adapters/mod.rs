@@ -4,10 +4,10 @@ use std::{cmp::Reverse, collections::HashMap, io, net::SocketAddr, time::Duratio
 
 use des::time::interval;
 use inet::utils::get_ip;
-use tokio::sync::mpsc::{channel, Sender};
+use tokio::sync::mpsc::{Sender, channel};
 
 use crate::server::{
-    declare_root, DnsMessage, FinishedTransaction, Nameserver, NameserverQuery, TransportMedium,
+    DnsMessage, FinishedTransaction, Nameserver, NameserverQuery, TransportMedium, declare_root,
 };
 
 mod local;
@@ -25,8 +25,7 @@ pub const DEFAULT_PORT: u16 = 53;
 /// Use this type, to connect an arbitrary DNS nameserver with transport layer adapters. The
 /// following adapters are available:
 ///
-/// - [`LocalAdapter`]: A local adapter that anwsers queries supplied by a [`channel`].
-///                     Used by the client resolver.
+/// - [`LocalAdapter`]: A local adapter that anwsers queries supplied by a [`channel`]. Used by the client resolver.
 /// - [`TcpAdapter`]: A TCP adapter that listens on the specified port.
 /// - [`UdpAdapter`]: A UDP adapter that listens on the specified port.
 ///
@@ -100,7 +99,7 @@ impl<T: Nameserver> Base<T> {
         loop {
             tokio::select! {
                 event = rx.recv() => {
-                    let (medium, from, msg) = event.ok_or_else(|| io::Error::new(io::ErrorKind::Other, "broke pipe"))?;
+                    let (medium, from, msg) = event.ok_or_else(|| io::Error::other("broke pipe"))?;
                     self.nameserver.incoming(medium, from, msg);
                 }
                 _ = interval.tick() => {}

@@ -9,8 +9,9 @@ use std::{
     sync::{self, Arc},
 };
 use tokio::sync::{
-    mpsc::{channel, Receiver, Sender},
-    oneshot, Mutex,
+    Mutex,
+    mpsc::{Receiver, Sender, channel},
+    oneshot,
 };
 
 use crate::{SocketAddr, UdsExtension};
@@ -66,7 +67,7 @@ impl UnixListener {
 
     pub async fn accept(&self) -> Result<(UnixStream, SocketAddr)> {
         let Some(incoming) = self.rx.lock().await.recv().await else {
-            return Err(Error::new(ErrorKind::Other, "socket closed"));
+            return Err(Error::other("socket closed"));
         };
 
         let fd = socket(SocketDomain::AF_UNIX, SocketType::SOCK_STREAM, 0)?;
@@ -78,7 +79,7 @@ impl UnixListener {
         incoming
             .establish
             .send(client)
-            .map_err(|_| Error::new(ErrorKind::Other, "failed to establish con"))?;
+            .map_err(|_| Error::other("failed to establish con"))?;
 
         Ok((server, incoming.remote_addr))
     }
