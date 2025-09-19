@@ -5,22 +5,29 @@ use std::{
     ops::{Deref, DerefMut},
 };
 
-use byteorder::{ReadBytesExt, BE};
+use byteorder::{BE, ReadBytesExt};
 use bytes::Buf;
 
-/// A
+/// A type that can be deserialized from a byte stream.
 pub trait FromBytes {
-    /// A
+    /// The kind of error that can occur when deserializing.
     type Error;
 
-    /// A
+    /// Deserializes a instance from a byte stream.
+    ///
+    /// # Errors
+    ///
+    /// This function may fail dependent on the deser impl.
     fn from_bytes(stream: &mut BytesReader) -> Result<Self, Self::Error>
     where
         Self: Sized;
 
-    /// A
-    ///
     /// Will partially consume the buffer on error
+    ///
+    /// # Errors
+    ///
+    /// See [`from_bytes`].
+    #[allow(clippy::cast_possible_truncation)]
     fn read_from<B: Buf>(bytes: &mut B) -> Result<Self, Self::Error>
     where
         Self: Sized,
@@ -32,7 +39,11 @@ pub trait FromBytes {
         Ok(result)
     }
 
-    /// A
+    /// Tries to deserialize an instance of the type without consuming the bufffer.
+    ///
+    /// # Errors
+    ///
+    /// See [`from_bytes`].
     fn peek_from<B: Buf>(bytes: B) -> Result<Self, Self::Error>
     where
         Self: Sized,
@@ -50,17 +61,23 @@ pub struct BytesReader<'a> {
 }
 
 impl<'a> BytesReader<'a> {
-    /// A
+    /// Creates a new instance from a mutable buffer.
     pub fn new(bytes: &'a mut dyn Buf) -> Self {
         Self { bytes }
     }
 
-    /// A
+    /// Peek at the bytes.
+    #[must_use]
     pub fn peek(&self) -> &[u8] {
         self.bytes.chunk()
     }
 
-    /// A
+    /// Extracts a substream of the given size into its own reader.
+    ///
+    /// # Errors
+    ///
+    /// May fail if not enough bytes are available in the buffer or
+    /// the inner callback fails.
     pub fn extract<R>(
         &mut self,
         n: usize,
@@ -71,16 +88,14 @@ impl<'a> BytesReader<'a> {
                 io::ErrorKind::UnexpectedEof,
                 "invalid substream length",
             ));
-        };
+        }
 
         // for Bytes this copy is shallow ref inc
         let mut subslice = self.bytes.copy_to_bytes(n);
         let mut reader = BytesReader::new(&mut subslice);
-        let result = f(&mut reader);
 
         // TODO: should we check for remaining bytes in extracted subslice?
-
-        result
+        f(&mut reader)
     }
 }
 
@@ -128,7 +143,7 @@ impl FromBytes for Ipv6Addr {
 
 #[cfg(test)]
 mod tests {
-    use byteorder::{ReadBytesExt, BE};
+    use byteorder::{BE, ReadBytesExt};
     use bytes::Bytes;
     use std::io::ErrorKind;
 

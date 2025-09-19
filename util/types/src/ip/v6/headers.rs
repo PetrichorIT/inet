@@ -1,5 +1,5 @@
 use bytes_io::{
-    Buf, Bytes, BytesReader, BytesWriter, FromBytes, ReadBytesExt, ToBytes, WriteBytesExt, BE,
+    BE, Buf, Bytes, BytesReader, BytesWriter, FromBytes, ReadBytesExt, ToBytes, WriteBytesExt,
 };
 use macros::repr_enum;
 use std::{
@@ -15,6 +15,7 @@ pub enum Ipv6ExtensionHeader {
 }
 
 impl Ipv6ExtensionHeader {
+    #[must_use]
     pub fn proto(&self) -> u8 {
         match self {
             Ipv6ExtensionHeader::HopByHopOptions(_) => NEXT_HEADER_HOP_TO_HOP_OPTIONS,
@@ -88,11 +89,11 @@ impl ToBytes for Ipv6HopToHopOptions {
             match rem {
                 1 => {
                     Ipv6Option::Pad1.to_bytes(writer)?;
-                    rem -= 1
+                    rem -= 1;
                 }
                 n => {
                     Ipv6Option::PadN(n).to_bytes(writer)?;
-                    rem -= n
+                    rem -= n;
                 }
             }
         }
@@ -177,7 +178,7 @@ pub struct Ipv6FragmentHeader {
 impl ToBytes for Ipv6FragmentHeader {
     type Error = io::Error;
     fn to_bytes(&self, writer: &mut BytesWriter) -> Result<(), Self::Error> {
-        let word = ((self.fragment_offset & 0x1fff) << 3) | (self.more_fragments as u16);
+        let word = ((self.fragment_offset & 0x1fff) << 3) | u16::from(self.more_fragments);
         writer.write_u16::<BE>(word)?;
         writer.write_u32::<BE>(self.identification)?;
         Ok(())
@@ -283,6 +284,11 @@ impl FromBytes for Ipv6Option {
 }
 
 impl Ipv6Option {
+    /// Create an unknown option from a type and data.
+    ///
+    /// # Errors
+    ///
+    /// Fails on missformed packets
     pub fn from_unknown(typ: u8, mut data: Bytes) -> io::Result<Self> {
         match typ {
             OPT_TYPE_PAD_N => Ok(Self::PadN(data.len() + 2)),
@@ -346,7 +352,7 @@ repr_enum! {
 #[cfg(test)]
 mod tests {
     use bytes_io::assert_encoding_e2e;
-    use rand::{rng, seq::IndexedRandom, Rng};
+    use rand::{Rng, rng, seq::IndexedRandom};
 
     use super::*;
 

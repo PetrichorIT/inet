@@ -2,7 +2,7 @@ use std::io::{Error, ErrorKind, Write};
 
 use bitflags::bitflags;
 use bytes_io::{
-    Bytes, BytesReader, BytesWriter, FromBytes, ReadBytesExt, ToBytes, WriteBytesExt, BE,
+    BE, Bytes, BytesReader, BytesWriter, FromBytes, ReadBytesExt, ToBytes, WriteBytesExt,
 };
 
 pub const PROTO_TCP: u8 = 0x05;
@@ -205,10 +205,7 @@ impl ToBytes for TcpPacket {
         let mut options_len = stream.bytes_written_since(&hlen_marker) - 7;
         if options_len > 0 {
             if *self.options.last().unwrap() != TcpOption::EndOfOptionsList {
-                return Err(Error::new(
-                    ErrorKind::Other,
-                    "missing end of options list tag",
-                ));
+                return Err(Error::other("missing end of options list tag"));
             }
             // Add padding
             let rem = 4 - (options_len % 4);
@@ -355,7 +352,7 @@ impl FromBytes for TcpOption {
     fn from_bytes(stream: &mut BytesReader) -> Result<Self, Self::Error> {
         let kind = stream.read_u8()?;
 
-        return match kind {
+        match kind {
             TCP_OPTION_KIND_EEOL => Ok(Self::EndOfOptionsList),
             TCP_OPTION_KIND_NOP => Ok(Self::NoOperation),
 
@@ -385,8 +382,8 @@ impl FromBytes for TcpOption {
                     body.read_u32::<BE>()?,
                 ))
             }),
-            _ => Err(Error::new(ErrorKind::Other, "invalid tcp options kind")),
-        };
+            _ => Err(Error::other("invalid tcp options kind")),
+        }
     }
 }
 
@@ -401,7 +398,7 @@ fn read_option_bytes(
 #[cfg(test)]
 mod tests {
     use bytes_io::assert_encoding_e2e;
-    use rand::{rng, Rng};
+    use rand::{Rng, rng};
 
     use super::*;
 

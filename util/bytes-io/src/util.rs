@@ -3,6 +3,10 @@ use std::fmt::Debug;
 use crate::{FromBytes, ToBytes};
 
 /// Asserts that encoding and decoding a value round-trips.
+///
+/// # Panics
+///
+/// if the test fails.
 pub fn assert_encoding_e2e<T, E>(values: &[T])
 where
     T: FromBytes<Error = E>,
@@ -28,8 +32,7 @@ where
 
         assert!(
             encoded_for_decoding.is_empty(),
-            "decoding left some bytes behind: value = {value:?}, \nbytes = {encoded:?} \nremaining bytes = {:?}",
-            encoded_for_decoding
+            "decoding left some bytes behind: value = {value:?}, \nbytes = {encoded:?} \nremaining bytes = {encoded_for_decoding:?}"
         );
 
         let reencoded = decoded.write_to_bytes_mut().expect(

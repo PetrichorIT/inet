@@ -6,7 +6,7 @@ use types::ip::IpPacket;
 
 use crate::interface::IfId;
 
-use super::{interface::InterfaceName, IOContext};
+use super::{IOContext, interface::InterfaceName};
 use std::{
     cell::Cell,
     fmt::Display,
@@ -245,7 +245,8 @@ impl IOContext {
 
         let valid_ifaces = available_ifaces
             .iter()
-            .filter_map(|(&ifid, iface)| {
+            .filter_map(|(ifid, iface)| {
+                let ifid = **ifid;
                 if !iface.flags.up {
                     return None;
                 }

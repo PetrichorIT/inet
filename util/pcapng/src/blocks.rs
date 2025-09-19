@@ -1,5 +1,5 @@
 use bitflags::bitflags;
-use bytes_io::{BytesReader, BytesWriter, FromBytes, ReadBytesExt, ToBytes, WriteBytesExt, LE};
+use bytes_io::{BytesReader, BytesWriter, FromBytes, LE, ReadBytesExt, ToBytes, WriteBytesExt};
 use std::{
     io::{Cursor, Error, ErrorKind, Read, Write},
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
@@ -416,18 +416,16 @@ impl ToBytes for SectionHeaderOption {
     type Error = Error;
     fn to_bytes(&self, stream: &mut BytesWriter) -> std::result::Result<(), Self::Error> {
         match self {
-            Self::HardwareName(ref string) => write_option(stream, SHB_OPTION_HW_NAME, |stream| {
+            Self::HardwareName(string) => write_option(stream, SHB_OPTION_HW_NAME, |stream| {
                 stream.write_all(string.as_bytes())?;
                 Ok(())
             }),
-            Self::OperatingSystem(ref string) => {
-                write_option(stream, SHB_OPTION_OS_NAME, |stream| {
-                    stream.write_all(string.as_bytes())?;
-                    Ok(())
-                })
-            }
+            Self::OperatingSystem(string) => write_option(stream, SHB_OPTION_OS_NAME, |stream| {
+                stream.write_all(string.as_bytes())?;
+                Ok(())
+            }),
 
-            Self::UserApplication(ref string) => {
+            Self::UserApplication(string) => {
                 write_option(stream, SHB_OPTION_USER_APPLICATION, |stream| {
                     stream.write_all(string.as_bytes())?;
                     Ok(())
@@ -456,12 +454,10 @@ impl ToBytes for InterfaceDescriptionOption {
     type Error = Error;
     fn to_bytes(&self, stream: &mut BytesWriter) -> std::result::Result<(), Self::Error> {
         match self {
-            Self::InterfaceName(ref name) => {
-                write_option(stream, IDB_OPTION_IFACE_NAME, |stream| {
-                    stream.write_all(name.as_bytes())
-                })
-            }
-            Self::InterfaceDescription(ref name) => {
+            Self::InterfaceName(name) => write_option(stream, IDB_OPTION_IFACE_NAME, |stream| {
+                stream.write_all(name.as_bytes())
+            }),
+            Self::InterfaceDescription(name) => {
                 write_option(stream, IDB_OPTION_IFACE_DESC, |stream| {
                     stream.write_all(name.as_bytes())
                 })
@@ -489,13 +485,11 @@ impl ToBytes for InterfaceDescriptionOption {
             Self::TimeZone(time_zone) => write_option(stream, IDB_OPTION_TIME_ZONE, |stream| {
                 stream.write_u32::<LE>(*time_zone)
             }),
-            Self::Filter(ref kind, ref filter) => {
-                write_option(stream, IDB_OPTION_FILTER, |stream| {
-                    stream.write_u8(*kind)?;
-                    stream.write_all(filter.as_bytes())
-                })
-            }
-            Self::OperatingSystem(ref name) => write_option(stream, IDB_OPTION_OS, |stream| {
+            Self::Filter(kind, filter) => write_option(stream, IDB_OPTION_FILTER, |stream| {
+                stream.write_u8(*kind)?;
+                stream.write_all(filter.as_bytes())
+            }),
+            Self::OperatingSystem(name) => write_option(stream, IDB_OPTION_OS, |stream| {
                 stream.write_all(name.as_bytes())
             }),
             Self::FcsLen(len) => {
@@ -1081,7 +1075,7 @@ fn read_block<R>(
 
     let block_len_redundant = stream.read_u32::<LE>()?;
     if block_len != block_len_redundant {
-        return Err(Error::new(ErrorKind::Other, "total block len error"));
+        return Err(Error::other("total block len error"));
     }
 
     Ok(result)

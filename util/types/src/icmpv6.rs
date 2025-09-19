@@ -5,7 +5,7 @@ use std::{
 };
 
 use bytes_io::{
-    Bytes, BytesReader, BytesWriter, FromBytes, ReadBytesExt, ToBytes, WriteBytesExt, BE,
+    BE, Bytes, BytesReader, BytesWriter, FromBytes, ReadBytesExt, ToBytes, WriteBytesExt,
 };
 use macros::repr_enum;
 
@@ -48,7 +48,7 @@ impl ToBytes for IcmpV6Packet {
             ),*) => {
             match self {
                 $(
-                    Self::$i(ref inner) => {{
+                    Self::$i(inner) => {{
                         stream.write_u8($l)?;
                         inner.to_bytes(stream)?;
                     }}
@@ -637,7 +637,7 @@ impl ToBytes for IcmpV6NDPOption {
             ),*) => {
                 match self {
                     $(
-                        Self::$i(ref inner) => {
+                        Self::$i(inner) => {
                             stream.write_u8($l)?;
                             stream.write_u8($len)?;
                             inner.to_bytes(stream)?;

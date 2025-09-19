@@ -34,7 +34,7 @@ impl MacAddress {
     }
 
     #[must_use]
-    pub fn gen() -> MacAddress {
+    pub fn generate() -> MacAddress {
         let mut mac = random::<[u8; 6]>();
         mac[0] &= 0b1111_1100;
         MacAddress(mac)
@@ -149,7 +149,7 @@ impl Display for MacAddress {
 #[cfg(test)]
 mod tests {
     use bytes_io::assert_encoding_e2e;
-    use rand::{rng, Rng};
+    use rand::{Rng, rng};
 
     use super::*;
 

@@ -79,7 +79,7 @@ impl NetworkDevice {
     pub fn gate(name: &str, pos: usize) -> Option<Self> {
         let gate = current().gate((name, pos))?;
         Some(Self {
-            addr: MacAddress::gen(),
+            addr: MacAddress::generate(),
             inner: Box::new(EthernetDeviceDriver::new(gate.clone(), gate)),
         })
     }
@@ -87,7 +87,7 @@ impl NetworkDevice {
     /// Custom device
     pub fn custom(receiving: GateRef, sending: GateRef) -> Self {
         Self {
-            addr: MacAddress::gen(),
+            addr: MacAddress::generate(),
             inner: Box::new(EthernetDeviceDriver::new(receiving, sending)),
         }
     }
@@ -101,7 +101,7 @@ impl NetworkDevice {
             1 => {
                 let port = rinfo.ports.swap_remove(0);
                 Self {
-                    addr: MacAddress::gen(),
+                    addr: MacAddress::generate(),
                     inner: Box::new(EthernetDeviceDriver::new(port.output, port.input)),
                 }
             }
@@ -113,7 +113,7 @@ impl NetworkDevice {
 
                 if let Some(default_port) = default_port {
                     Self {
-                        addr: MacAddress::gen(),
+                        addr: MacAddress::generate(),
                         inner: Box::new(EthernetDeviceDriver::new(
                             default_port.output,
                             default_port.input,
@@ -134,7 +134,7 @@ impl NetworkDevice {
             let valid = f(&r);
             if valid {
                 return Self {
-                    addr: MacAddress::gen(),
+                    addr: MacAddress::generate(),
                     inner: Box::new(EthernetDeviceDriver::new(r.output, r.input)),
                 };
             }
@@ -149,7 +149,7 @@ impl NetworkDevice {
         for r in rinfo.ports {
             if r.name == name {
                 return Self {
-                    addr: MacAddress::gen(),
+                    addr: MacAddress::generate(),
                     inner: Box::new(EthernetDeviceDriver::new(r.output, r.input)),
                 };
             }
@@ -175,7 +175,7 @@ impl NetworkDevice {
 impl From<RoutingPort> for NetworkDevice {
     fn from(port: RoutingPort) -> Self {
         NetworkDevice {
-            addr: MacAddress::gen(),
+            addr: MacAddress::generate(),
             inner: Box::new(EthernetDeviceDriver::new(port.output, port.input)),
         }
     }

@@ -4,20 +4,31 @@ use std::{
     mem,
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
     ops::{Deref, DerefMut},
-    usize,
 };
 
 use bytes::{BufMut, Bytes, BytesMut};
 
-/// A
+/// A type that can be encoded as a bytestream onto a writable output.
 pub trait ToBytes {
-    ///  A
+    /// The kind of error that can occur when encoding this type.
     type Error;
 
-    /// A
+    /// Encodes this type into the provided writer. This function is agnostic over the
+    /// actual output buffer, abstracted in the `BytesWriter`.
+    ///
+    /// # Errors
+    ///
+    /// This function may fail during the implementation of the encoding routine:
+    ///
+    /// - the output might be to small
+    /// - the encoding might fail due to a sematic error
     fn to_bytes(&self, writer: &mut BytesWriter) -> Result<(), Self::Error>;
 
-    /// A
+    /// Writes the encoded bytes to the provided buffer.
+    ///
+    /// # Errors
+    ///
+    /// See [`to_bytes`].
     fn write_to<B: BufMut + AsMut<[u8]>>(&self, bytes: &mut B) -> Result<usize, Self::Error>
     where
         Self: Sized,
@@ -25,7 +36,11 @@ pub trait ToBytes {
         self.write_to_limit(bytes, usize::MAX)
     }
 
-    /// A
+    /// Writes the encoded bytes to the provided buffer, up to the specified limit.
+    ///
+    /// # Errors
+    ///
+    /// See [`to_bytes`].
     fn write_to_limit<B: BufMut + AsMut<[u8]>>(
         &self,
         bytes: &mut B,
@@ -46,7 +61,11 @@ pub trait ToBytes {
         Ok(n)
     }
 
-    /// A
+    /// Writes the encoded bytes into a `BytesMut` that fits the encoded bytes.
+    ///
+    /// # Errors
+    ///
+    /// See [`to_bytes`].
     fn write_to_bytes_mut(&self) -> Result<BytesMut, Self::Error>
     where
         Self: Sized,
@@ -56,7 +75,11 @@ pub trait ToBytes {
         Ok(bytes)
     }
 
-    /// A
+    /// Writes the encoded bytes into a `Bytes` that fits the encoded bytes.
+    ///
+    /// # Errors
+    ///
+    /// See [`to_bytes`].
     fn write_to_bytes(&self) -> Result<Bytes, Self::Error> {
         let mut bytes = BytesMut::new();
         let mut writer = BytesWriter {
@@ -69,7 +92,11 @@ pub trait ToBytes {
         Ok(bytes.freeze())
     }
 
-    /// A
+    /// Writes the encoded bytes into a `Vec<u8>` that fits the encoded bytes.
+    ///
+    /// # Errors
+    ///
+    /// See [`to_bytes`].
     fn write_to_vec(&self) -> Result<Vec<u8>, Self::Error>
     where
         Self: Sized,
@@ -123,11 +150,11 @@ impl<'a> BytesWriter<'a> {
         self.bytes.as_mut().len() - (marker.pos + marker.len)
     }
 
-    /// A
+    /// applies a marker retriving the marked slice
+    #[allow(clippy::needless_pass_by_value)]
     pub fn apply(&mut self, marker: Marker) -> &mut [u8] {
         self.markers -= 1;
-        let slice = &mut self.bytes.as_mut()[marker.pos..marker.pos + marker.len];
-        slice
+        &mut self.bytes.as_mut()[marker.pos..marker.pos + marker.len]
     }
 }
 
@@ -158,7 +185,7 @@ impl io::Write for BytesWriter<'_> {
         if buf.len() > self.limit {
             return Err(io::Error::new(io::ErrorKind::WriteZero, "buffer overflow"));
         }
-        self.bytes.put_slice(&buf);
+        self.bytes.put_slice(buf);
         self.limit -= buf.len();
         Ok(buf.len())
     }
@@ -176,7 +203,7 @@ impl Debug for BytesWriter<'_> {
 
 //# Impls
 
-impl<'a, T: ToBytes> ToBytes for &'a T {
+impl<T: ToBytes> ToBytes for &'_ T {
     type Error = T::Error;
     fn to_bytes(&self, stream: &mut BytesWriter) -> Result<(), Self::Error> {
         (**self).to_bytes(stream)
@@ -225,7 +252,7 @@ impl ToBytes for Ipv6Addr {
 mod tests {
     use std::{io::ErrorKind, usize};
 
-    use byteorder::{WriteBytesExt, BE};
+    use byteorder::{BE, WriteBytesExt};
 
     use super::*;
 

@@ -1,5 +1,5 @@
 use bytes_io::{
-    BufMut, Bytes, BytesReader, BytesWriter, FromBytes, ReadBytesExt, ToBytes, WriteBytesExt, BE,
+    BE, BufMut, Bytes, BytesReader, BytesWriter, FromBytes, ReadBytesExt, ToBytes, WriteBytesExt,
 };
 use des::net::message::MessageBody;
 use std::{
@@ -46,8 +46,7 @@ impl ToBytes for Ipv6Packet {
         stream.write_u8(
             self.extension_headers
                 .first()
-                .map(|v| v.proto())
-                .unwrap_or(self.proto),
+                .map_or(self.proto, Ipv6ExtensionHeader::proto),
         )?;
         stream.write_u8(self.hop_limit)?;
 
@@ -59,7 +58,7 @@ impl ToBytes for Ipv6Packet {
                 .extension_headers
                 .iter()
                 .skip(1)
-                .map(|v| v.proto())
+                .map(Ipv6ExtensionHeader::proto)
                 .chain(once(self.proto));
 
             for (ext, next) in self.extension_headers.iter().zip(next_headers) {
@@ -110,12 +109,12 @@ impl FromBytes for Ipv6Packet {
             let WithNextHeader(hdr, next) = match next_header {
                 NEXT_HEADER_HOP_TO_HOP_OPTIONS => {
                     WithNextHeader::<Ipv6HopToHopOptions>::from_bytes(stream)?
-                        .map(|opt| Ipv6ExtensionHeader::HopByHopOptions(opt))
+                        .map(Ipv6ExtensionHeader::HopByHopOptions)
                 }
                 NEXT_HEADER_ROUTING => WithNextHeader::<Ipv6RoutingHeader>::from_bytes(stream)?
-                    .map(|opt| Ipv6ExtensionHeader::Routing(opt)),
+                    .map(Ipv6ExtensionHeader::Routing),
                 NEXT_HEADER_FRAGMENT => WithNextHeader::<Ipv6FragmentHeader>::from_bytes(stream)?
-                    .map(|opt| Ipv6ExtensionHeader::Fragment(opt)),
+                    .map(Ipv6ExtensionHeader::Fragment),
                 _ => break,
             };
             let n = pre_img - stream.remaining();
@@ -150,7 +149,7 @@ impl MessageBody for Ipv6Packet {
 #[cfg(test)]
 mod tests {
     use bytes_io::assert_encoding_e2e;
-    use rand::{rng, seq::IndexedRandom, Rng};
+    use rand::{Rng, rng, seq::IndexedRandom};
 
     use super::*;
 

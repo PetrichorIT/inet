@@ -1016,7 +1016,7 @@ impl Connection {
                         .map_or(false, |limit| self.snd.dup_ack_resend_counter >= limit)
                     {
                         tracing::trace!("resending due to dup ack");
-                        self.on_tick_retransmit(vec![ackn])?;
+                        self.on_tick_retransmit(vec![self.snd.una])?;
                         self.snd.dup_ack_resend_counter = 0;
                     }
                 } else {

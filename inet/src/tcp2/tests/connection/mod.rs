@@ -15,7 +15,7 @@ use pcapng::{BlockWriter, DefaultBlockWriter, InterfaceDescriptionOption, Linkty
 use tracing::instrument;
 use types::{
     ip::{Ipv4Flags, Ipv4Packet, Ipv6Packet, KIND_IPV4, KIND_IPV6},
-    tcp::{TcpPacket, PROTO_TCP},
+    tcp::{PROTO_TCP, TcpPacket},
 };
 
 mod cong;
@@ -254,7 +254,7 @@ fn record(
     pkt: &TcpPacket,
     quad: Quad,
 ) -> io::Result<()> {
-    if let Some(ref mut recorder) = recorder {
+    if let Some(recorder) = recorder.as_mut() {
         let ts = SimTime::now().as_millis() as u64;
 
         match (quad.src.ip(), quad.dst.ip()) {

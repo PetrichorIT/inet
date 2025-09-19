@@ -43,7 +43,7 @@ impl Iterator for BlockReader {
             Ok(()) => {}
             Err(e) if e.kind() == ErrorKind::UnexpectedEof => return None,
             Err(e) => return Some(Err(e)),
-        };
+        }
 
         let block_len =
             u32::from_be_bytes([bytes[4], bytes[5], bytes[6], bytes[7]]).to_be() as usize;

@@ -182,7 +182,7 @@ impl IpPacket {
         }
     }
 
-    pub fn as_ref<'a>(&'a self) -> IpPacketRef<'a> {
+    pub fn as_ref(&self) -> IpPacketRef<'_> {
         match self {
             IpPacket::V4(packet) => IpPacketRef::V4(packet),
             IpPacket::V6(packet) => IpPacketRef::V6(packet),
