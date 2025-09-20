@@ -1,12 +1,12 @@
 use std::sync::{
-    atomic::{AtomicBool, Ordering},
     Arc,
+    atomic::{AtomicBool, Ordering},
 };
 
 use des::{prelude::*, registry, time::sleep};
 use inet::{
-    interface::{add_interface, InterfaceDef, NetworkDevice},
-    tcp2::{TcpListener, TcpStream},
+    interface::{InterfaceDef, NetworkDevice, add_interface},
+    tcp::{TcpListener, TcpStream},
 };
 use tokio::spawn;
 

@@ -3,8 +3,8 @@ use std::{
     io::ErrorKind,
     str::FromStr,
     sync::{
-        atomic::{AtomicBool, AtomicU32, Ordering::SeqCst},
         Arc,
+        atomic::{AtomicBool, AtomicU32, Ordering::SeqCst},
     },
 };
 
@@ -12,7 +12,7 @@ use des::prelude::*;
 use inet::{
     interface::*,
     socket::{AsRawFd, Fd},
-    tcp2::TcpSocket,
+    tcp::TcpSocket,
 };
 
 #[derive(Default)]

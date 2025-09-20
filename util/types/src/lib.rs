@@ -5,6 +5,8 @@
     clippy::module_name_repetitions
 )]
 
+use bytes_io::FromBytes;
+
 pub mod arp;
 pub mod icmpv4;
 pub mod icmpv6;
@@ -19,4 +21,22 @@ pub fn split_off_front(mut buf: Vec<u8>, pos: usize) -> Vec<u8> {
     buf.copy_within(pos.., 0);
     buf.truncate(buf.len() - pos);
     buf
+}
+
+pub struct PortNumberHeader {
+    pub src: u16,
+    pub dst: u16,
+}
+
+impl FromBytes for PortNumberHeader {
+    type Error = std::io::Error;
+    fn from_bytes(stream: &mut bytes_io::BytesReader) -> Result<Self, Self::Error>
+    where
+        Self: Sized,
+    {
+        Ok(PortNumberHeader {
+            src: stream.get_u16(),
+            dst: stream.get_u16(),
+        })
+    }
 }

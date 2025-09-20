@@ -22,9 +22,15 @@ use types::{
         PROTO_ICMPV4,
     },
     ip::{IpPacket, IpPacketRef, Ipv4Flags, Ipv4Packet},
+    tcp::PROTO_TCP,
+    udp::PROTO_UDP,
 };
 
-use crate::{interface::IfId, socket::SocketIfaceBinding, IOContext};
+use crate::{
+    IOContext,
+    interface::IfId,
+    socket::{SocketDomain, SocketIfaceBinding, SocketType},
+};
 
 mod ping;
 pub use self::ping::*;
@@ -57,6 +63,33 @@ impl IOContext {
             );
             return false;
         };
+
+        let contained = pkt
+            .contained()
+            .expect("failed to unwrap ip packet contained in icmp");
+
+        // Transport layer mplex bypass
+        use SocketDomain::*;
+        use SocketType::*;
+
+        let affected_sockets = self
+            .sockets
+            .iter()
+            .filter(|s| s.1.peer.ip() == IpAddr::V4(contained.dst) && s.1.domain == AF_INET)
+            .map(|(fd, sock)| (*fd, sock.typ))
+            .collect::<Vec<_>>();
+
+        for (fd, socket_typ) in affected_sockets {
+            match (socket_typ, contained.proto) {
+                (SOCK_STREAM, PROTO_TCP) => self.tcp_on_icmpv4(fd, &pkt, &contained),
+                (SOCK_DGRAM, PROTO_UDP) => self.udp_icmp_error(
+                    fd,
+                    Error::new(ErrorKind::ConnectionRefused, format!("{pkt:?}")),
+                    IpPacket::V4(contained.clone()),
+                ),
+                _ => {}
+            }
+        }
 
         match pkt.typ {
             IcmpV4Type::EchoRequest {
@@ -131,31 +164,6 @@ impl IOContext {
                     self.ipv4.icmp.pings.remove(&ident);
                     return true;
                 };
-
-                // (1) Check sockets
-                if let Some((fd, socket)) = self
-                    .sockets
-                    .iter()
-                    .find(|s| s.1.peer.ip() == IpAddr::V4(unreachable))
-                {
-                    use crate::socket::SocketDomain::*;
-                    use crate::socket::SocketType::*;
-
-                    match (socket.domain, socket.typ) {
-                        (AF_INET, SOCK_STREAM) => self.tcp_icmp_destination_unreachable(
-                            *fd,
-                            Error::new(ErrorKind::ConnectionRefused, format!("{code:?}")),
-                        ),
-                        (AF_INET, SOCK_DGRAM) => self.udp_icmp_error(
-                            *fd,
-                            Error::new(ErrorKind::ConnectionRefused, format!("{code:?}")),
-                            IpPacket::V4(ip),
-                        ),
-                        _ => todo!(),
-                    }
-
-                    return true;
-                }
 
                 let _ = next_hop_mtu;
             }

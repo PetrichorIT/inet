@@ -1,8 +1,8 @@
 use std::{io::Result, net::SocketAddr};
 
 use crate::{
-    socket::{SocketDomain, SocketType},
     IOContext,
+    socket::{SocketDomain, SocketType},
 };
 
 /// A mapping of all currently active sockets.
@@ -85,7 +85,7 @@ impl IOContext {
                     })
                 }
                 (AF_INET, SOCK_STREAM) | (AF_INET6, SOCK_STREAM) => {
-                    let Some(mng) = self.tcp2.streams.get(fd) else {
+                    let Some(mng) = self.tcp.streams.get(fd) else {
                         continue;
                     };
                     active_connections.push(NetstatConnection {

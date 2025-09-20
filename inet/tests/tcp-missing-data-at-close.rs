@@ -3,14 +3,14 @@ use des::{registry, time::sleep};
 use std::{
     str::FromStr,
     sync::{
-        atomic::{AtomicBool, AtomicU32, Ordering::SeqCst},
         Arc,
+        atomic::{AtomicBool, AtomicU32, Ordering::SeqCst},
     },
 };
 use types::{ip::Ipv4Packet, tcp::TcpPacket};
 
 use des::prelude::*;
-use inet::{interface::*, socket::AsRawFd, tcp2::TcpSocket};
+use inet::{interface::*, socket::AsRawFd, tcp::TcpSocket};
 
 #[derive(Default)]
 struct Link {}

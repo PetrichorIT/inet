@@ -1,15 +1,15 @@
 use std::{fs::File, time::Duration};
 
 use des::{
-    net::{module::Module, Sim},
+    net::{Sim, module::Module},
     registry,
     runtime::{Builder, RuntimeError},
 };
 use inet::{
     env::RoutingPort,
-    interface::{add_interface, InterfaceDef, NetworkDevice},
+    interface::{InterfaceDef, NetworkDevice, add_interface},
     ipv6::util::setup_router,
-    tcp2::{TcpListener, TcpStream},
+    tcp::{TcpListener, TcpStream},
     utils,
 };
 use inet_pcap::pcap;

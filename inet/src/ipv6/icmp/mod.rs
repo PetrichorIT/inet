@@ -1,23 +1,30 @@
 use crate::{
     ctx::IOContext,
     interface::{IfId, InterfaceAddrV6},
-    ipv6::{addrs::CanidateAddr, timer::TimerToken, Ipv6SendFlags},
+    ipv6::{Ipv6SendFlags, addrs::CanidateAddr, timer::TimerToken},
+    socket::{SocketDomain, SocketType},
 };
 use bytes_io::{FromBytes, ToBytes};
 use des::{runtime::sample, time::SimTime};
 use rand::distr::Uniform;
-use std::{io, net::Ipv6Addr, time::Duration};
+use std::{
+    io::{self, Error, ErrorKind},
+    net::{IpAddr, Ipv6Addr},
+    time::Duration,
+};
 use tracing::Level;
 use types::{
     icmpv6::{
         IcmpV6DestinationUnreachable, IcmpV6DestinationUnreachableCode, IcmpV6Echo,
         IcmpV6MtuOption, IcmpV6NDPOption, IcmpV6NeighborAdvertisment, IcmpV6NeighborSolicitation,
         IcmpV6Packet, IcmpV6PrefixInformation, IcmpV6RouterAdvertisement, IcmpV6RouterSolicitation,
-        IcmpV6TimeExceeded, IcmpV6TimeExceededCode, NDP_MAX_RANDOM_FACTOR, NDP_MAX_RA_DELAY_TIME,
-        NDP_MAX_RTR_SOLICITATIONS, NDP_MAX_RTR_SOLICITATION_DELAY, NDP_MIN_RANDOM_FACTOR,
+        IcmpV6TimeExceeded, IcmpV6TimeExceededCode, NDP_MAX_RA_DELAY_TIME, NDP_MAX_RANDOM_FACTOR,
+        NDP_MAX_RTR_SOLICITATION_DELAY, NDP_MAX_RTR_SOLICITATIONS, NDP_MIN_RANDOM_FACTOR,
         NDP_RETRANS_TIMER, PROTO_ICMPV6,
     },
     ip::{IpPacket, Ipv6AddrExt, Ipv6Packet, Ipv6Prefix},
+    tcp::PROTO_TCP,
+    udp::PROTO_UDP,
 };
 
 use super::{multicast::NodeEvent, ndp::QueryType};
@@ -39,11 +46,41 @@ impl IOContext {
         let span = tracing::span!(Level::INFO, "iface", id=%ifid);
         let _guard = span.entered();
 
+        // The contained original Ipv6 packet only exist on error variants
+        let contained = msg.contained();
+
+        // Dispatch to higher level listeners
+        if let Ok(contained) = &contained {
+            use SocketDomain::*;
+            use SocketType::*;
+
+            let affected_sockets = self
+                .sockets
+                .iter()
+                .filter(|s| s.1.peer.ip() == IpAddr::V6(contained.dst) && s.1.domain == AF_INET6)
+                .map(|(fd, sock)| (*fd, sock.typ))
+                .collect::<Vec<_>>();
+
+            for (fd, socket_typ) in affected_sockets {
+                match (socket_typ, contained.proto) {
+                    (SOCK_STREAM, PROTO_TCP) => self.tcp_on_icmpv6(fd, &msg, contained),
+                    (SOCK_DGRAM, PROTO_UDP) => self.udp_icmp_error(
+                        fd,
+                        Error::new(ErrorKind::ConnectionRefused, format!("{msg:?}")),
+                        IpPacket::V6(contained.clone()),
+                    ),
+                    _ => {}
+                }
+            }
+        }
+
         match msg {
             IcmpV6Packet::DestinationUnreachable(msg) => {
-                return self.ipv6_icmp_recv_destination_unreachable(ip, msg)
+                return self.ipv6_icmp_recv_destination_unreachable(ip, msg, &contained?);
             }
-            IcmpV6Packet::TimeExceeded(msg) => return self.ipv6_icmp_recv_time_exceeded(ip, msg),
+            IcmpV6Packet::TimeExceeded(msg) => {
+                return self.ipv6_icmp_recv_time_exceeded(ip, msg, &contained?);
+            }
 
             IcmpV6Packet::EchoRequest(msg) => {
                 let reply = IcmpV6Echo {
@@ -139,8 +176,8 @@ impl IOContext {
         &mut self,
         _ip: &Ipv6Packet,
         msg: IcmpV6DestinationUnreachable,
+        original: &Ipv6Packet,
     ) -> io::Result<bool> {
-        let original = Ipv6Packet::peek_from(&msg.packet[..])?;
         let dst = original.dst;
 
         // (0) Check active ICMP handlers
@@ -156,37 +193,6 @@ impl IOContext {
             }
         });
 
-        // (1) Check for sockets
-        for (fd, socket) in self
-            .sockets
-            .iter()
-            .filter(|(_, socket)| socket.peer.ip() == dst)
-            .map(|(fd, sock)| (*fd, (sock.domain, sock.typ)))
-            .collect::<Vec<_>>()
-        {
-            use crate::socket::SocketDomain::*;
-            use crate::socket::SocketType::*;
-
-            match socket {
-                (AF_INET6, SOCK_DGRAM) => self.udp_icmp_error(
-                    fd,
-                    io::Error::new(
-                        io::ErrorKind::ConnectionRefused,
-                        format!("destination unreachable: {:?}", msg.code),
-                    ),
-                    IpPacket::V6(original.clone()),
-                ),
-                (AF_INET6, SOCK_STREAM) => self.tcp_icmp_destination_unreachable(
-                    fd,
-                    io::Error::new(
-                        io::ErrorKind::ConnectionRefused,
-                        format!("destination unreachable: {:?}", msg.code),
-                    ),
-                ),
-                _ => todo!(),
-            }
-        }
-
         Ok(true)
     }
 
@@ -194,8 +200,8 @@ impl IOContext {
         &mut self,
         _ip: &Ipv6Packet,
         msg: IcmpV6TimeExceeded,
+        original: &Ipv6Packet,
     ) -> io::Result<bool> {
-        let original = Ipv6Packet::peek_from(&msg.packet[..])?;
         let dst = original.dst;
 
         // (0) Check active ICMP handlers
@@ -210,37 +216,6 @@ impl IOContext {
                 true
             }
         });
-
-        // (1) Check for sockets
-        for (fd, socket) in self
-            .sockets
-            .iter()
-            .filter(|(_, socket)| socket.peer.ip() == dst)
-            .map(|(fd, sock)| (*fd, (sock.domain, sock.typ)))
-            .collect::<Vec<_>>()
-        {
-            use crate::socket::SocketDomain::*;
-            use crate::socket::SocketType::*;
-
-            match socket {
-                (AF_INET6, SOCK_DGRAM) => self.udp_icmp_error(
-                    fd,
-                    io::Error::new(
-                        io::ErrorKind::ConnectionRefused,
-                        format!("time exceeded: {:?}", msg.code),
-                    ),
-                    IpPacket::V6(original.clone()),
-                ),
-                (AF_INET6, SOCK_STREAM) => self.tcp_icmp_destination_unreachable(
-                    fd,
-                    io::Error::new(
-                        io::ErrorKind::ConnectionRefused,
-                        format!("time exceeded: {:?}", msg.code),
-                    ),
-                ),
-                _ => todo!(),
-            }
-        }
 
         Ok(true)
     }

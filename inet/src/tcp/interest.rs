@@ -1,97 +1,57 @@
 use std::{
     future::Future,
-    io::{Error, ErrorKind, Result},
-    task::{Poll, Waker},
+    io::{Error, ErrorKind},
+    task::Poll,
 };
 
-use super::util::TcpState;
-use crate::io::{Interest, Ready};
-use crate::{socket::Fd, IOContext};
+use crate::io::{self, Ready};
+use crate::{IOContext, socket::Fd};
 
-#[derive(Debug, Clone)]
-pub(crate) enum TcpInterest {
-    // TcpAccept(Fd),
-    // TcpConnect(Fd),
-    TcpRead(Fd),
-    TcpWrite(Fd),
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct TcpInterestGuard {
-    pub(crate) interest: TcpInterest,
-    pub(crate) waker: Waker,
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) struct TcpInterest {
+    pub fd: Fd,
+    pub interest: io::Interest,
 }
 
 impl TcpInterest {
-    pub(crate) fn from_tokio(fd: Fd, interest: Interest) -> Self {
-        if interest.is_readable() {
-            return TcpInterest::TcpRead(fd);
+    pub(super) fn write(fd: Fd) -> Self {
+        Self {
+            fd,
+            interest: io::Interest::WRITABLE,
         }
-        if interest.is_writable() {
-            return TcpInterest::TcpWrite(fd);
-        }
-
-        unimplemented!()
     }
-}
 
-impl TcpInterestGuard {
-    pub(super) fn wake(self) {
-        self.waker.wake()
+    pub(crate) fn from_io(fd: Fd, interest: io::Interest) -> Self {
+        Self { fd, interest }
     }
 }
 
 impl Future for TcpInterest {
-    type Output = Result<Ready>;
+    type Output = Result<Ready, Error>;
 
     fn poll(
         self: std::pin::Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
     ) -> std::task::Poll<Self::Output> {
-        match *self {
-            TcpInterest::TcpRead(fd) => IOContext::with_current(|ctx| {
-                let Some(handle) = ctx.tcp.streams.get_mut(&fd) else {
-                    return Poll::Ready(Err(Error::new(
-                        ErrorKind::InvalidInput,
-                        "socket dropped - invalid fd",
-                    )));
-                };
+        IOContext::with_current(|ctx| {
+            let Some(handle) = ctx.tcp.streams.get_mut(&self.fd) else {
+                return Poll::Ready(Err(Error::new(
+                    ErrorKind::InvalidInput,
+                    "socket dropped - invalid fd",
+                )));
+            };
 
-                if handle.rx_buffer.len_continous() > 0 {
-                    Poll::Ready(Ok(Ready::READABLE))
-                } else {
-                    if handle.no_more_data_closed() {
-                        return Poll::Ready(Err(Error::new(ErrorKind::Other, "socket closed")));
-                    }
+            if let Some(err) = handle.interface.error() {
+                return Poll::Ready(Err(err));
+            }
 
-                    handle.rx_read_interests.push(TcpInterestGuard {
-                        interest: self.clone(),
-                        waker: cx.waker().clone(),
-                    });
-                    Poll::Pending
-                }
-            }),
-
-            TcpInterest::TcpWrite(fd) => IOContext::with_current(|ctx| {
-                let Some(handle) = ctx.tcp.streams.get_mut(&fd) else {
-                    return Poll::Ready(Err(Error::new(
-                        ErrorKind::InvalidInput,
-                        "socket dropped - invalid fd",
-                    )));
-                };
-
-                if handle.tx_buffer.rem() > 0 {
-                    Poll::Ready(Ok(Ready::WRITABLE))
-                } else {
-                    handle.tx_write_interests.push(TcpInterestGuard {
-                        interest: self.clone(),
-                        waker: cx.waker().clone(),
-                    });
-                    Poll::Pending
-                }
-            }),
-
-            _ => Poll::Pending,
-        }
+            if handle.can_service(self.interest) {
+                Poll::Ready(Ok(Ready::from_interest(self.interest)))
+            } else {
+                // TODO: Maybe Err no more data
+                handle.interface.register(self.interest, cx);
+                Poll::Pending
+            }
+        })
     }
 }

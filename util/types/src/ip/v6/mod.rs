@@ -14,6 +14,8 @@ mod headers;
 pub use addr::*;
 pub use headers::*;
 
+pub const IPV6_MINIMUM_MTU: usize = 1280;
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Ipv6Packet {
     pub traffic_class: u8,
@@ -153,37 +155,31 @@ mod tests {
 
     use super::*;
 
-    // #[test]
-    // fn len_comp() {
-    //     let hdr = Ipv6Packet {
-    //         traffic_class: rng().random::<u8>(),
-    //         flow_label: rng().random::<u32>() & 0b1111_1111_1111_1111_1111,
-    //         proto: rng().random::<u8>(),
-    //         hop_limit: rng().random::<u8>(),
-    //         extension_headers: Vec::new(),
-    //         src: Ipv6Addr::from(rng().random::<u128>()),
-    //         dst: Ipv6Addr::from(rng().random::<u128>()),
-    //         content: Bytes::from_static(b"Hello wolrd!"),
-    //     };
-
-    //     panic!("{}", (&hdr.write_to_bytes().unwrap()[4..6]).get_u16());
-    // }
+    impl Ipv6Packet {
+        pub(crate) fn random(content: Bytes) -> Self {
+            Ipv6Packet {
+                traffic_class: rng().random::<u8>(),
+                flow_label: rng().random::<u32>() & 0b1111_1111_1111_1111_1111,
+                proto: rng().random_range(50..255),
+                hop_limit: rng().random::<u8>(),
+                extension_headers: std::iter::repeat_with(Ipv6ExtensionHeader::random)
+                    .take(*[0, 0, 0, 0, 1, 2, 3, 4, 5, 6].choose(&mut rng()).unwrap())
+                    .collect(),
+                src: Ipv6Addr::from(rng().random::<u128>()),
+                dst: Ipv6Addr::from(rng().random::<u128>()),
+                content,
+            }
+        }
+    }
 
     #[test]
     fn e2e_encoding_fuzz() {
-        let fuzzed = std::iter::repeat_with(|| Ipv6Packet {
-            traffic_class: rng().random::<u8>(),
-            flow_label: rng().random::<u32>() & 0b1111_1111_1111_1111_1111,
-            proto: rng().random_range(50..255),
-            hop_limit: rng().random::<u8>(),
-            extension_headers: std::iter::repeat_with(Ipv6ExtensionHeader::random)
-                .take(*[0, 0, 0, 0, 1, 2, 3, 4, 5, 6].choose(&mut rng()).unwrap())
-                .collect(),
-            src: Ipv6Addr::from(rng().random::<u128>()),
-            dst: Ipv6Addr::from(rng().random::<u128>()),
-            content: std::iter::repeat_with(|| rng().random())
-                .take((rng().random::<u32>() % 100) as usize)
-                .collect(),
+        let fuzzed = std::iter::repeat_with(|| {
+            Ipv6Packet::random(
+                std::iter::repeat_with(|| rng().random())
+                    .take((rng().random::<u32>() % 100) as usize)
+                    .collect(),
+            )
         })
         .take(100)
         .collect::<Vec<_>>();

@@ -4,16 +4,16 @@ use std::{io, iter::repeat_with};
 
 use bytes_io::BytesMut;
 use des::{
-    net::{globals, AsyncHandler},
+    net::{AsyncHandler, globals},
     prelude::*,
     runtime::rng,
     time::sleep,
 };
 use inet::{
-    interface::{add_interface, InterfaceDef, InterfaceStatus, NetworkDevice},
+    UdpSocket,
+    interface::{InterfaceDef, InterfaceStatus, NetworkDevice, add_interface},
     ipv6::router,
     utils::LinkLayerSwitch,
-    UdpSocket,
 };
 use rand::seq::IndexedRandom;
 use types::ip::{Ipv6AddrExt, Ipv6AddrScope};
@@ -48,7 +48,7 @@ const WAN: ChannelMetrics = ChannelMetrics::new(
 ///
 #[test]
 fn run() -> Result<(), RuntimeError> {
-    des::tracing::init();
+    // des::tracing::init();
 
     let mut sim = Sim::new(()).with_stack(inet::init);
 

@@ -1,14 +1,14 @@
 use std::{io::ErrorKind, net::Ipv4Addr, time::Duration};
 
 use des::{
-    net::{handlers::AsyncHandler, Sim},
+    net::{Sim, handlers::AsyncHandler},
     prelude::{ChannelDropBehaviour, DatarateChannel, DatarateChannelMetrics},
     runtime::Builder,
 };
 use serial_test::serial;
 
-use inet::interface::{add_interface, InterfaceDef, NetworkDevice};
-use inet::tcp2::TcpStream;
+use inet::interface::{InterfaceDef, NetworkDevice, add_interface};
+use inet::tcp::TcpStream;
 
 #[serial]
 #[test]

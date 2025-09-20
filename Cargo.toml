@@ -1,6 +1,15 @@
 [profile.release]
 debug = true
 
+[profile.test]
+incremental = true
+opt-level = 0
+debug = 1
+lto = false
+debug-assertions = true
+overflow-checks = true
+rpath = false
+
 [workspace]
 members = [
     "inet",

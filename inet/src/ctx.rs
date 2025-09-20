@@ -6,7 +6,7 @@ use crate::{
     interface::{ID_IPV6_TIMEOUT, IfId, InterfaceController, KIND_LINK_UPDATE},
     ipv4::Ipv4,
     ipv6::Ipv6,
-    tcp2::{self, PROTO_TCP2},
+    tcp::Tcp,
 };
 use des::{
     net::module::{current, try_current},
@@ -20,7 +20,7 @@ use std::{
 };
 use types::ip::{IpPacket, KIND_IPV4, KIND_IPV6};
 
-use super::{socket::*, tcp::Tcp};
+use super::socket::*;
 use types::{tcp::PROTO_TCP, udp::PROTO_UDP};
 
 thread_local! {
@@ -41,7 +41,6 @@ pub(crate) struct IOContext {
     pub(super) sockets: Sockets,
     pub(super) udp: Udp,
     pub(super) tcp: Tcp,
-    pub(super) tcp2: tcp2::Tcp,
 
     // Application Layer
     pub(super) dns: DnsResolver,
@@ -76,7 +75,6 @@ impl IOContext {
             sockets: Sockets::new(),
             udp: Udp::new(),
             tcp: Tcp::new(),
-            tcp2: tcp2::Tcp::new(),
 
             fs: Fs::new(),
 
@@ -165,8 +163,7 @@ impl IOContext {
 
         let consumed = match pkt.tos() {
             PROTO_UDP => self.capture_udp_packet(pkt.as_ref(), ifid),
-            PROTO_TCP => self.capture_tcp_packet(pkt.as_ref(), ifid),
-            PROTO_TCP2 => self.tcp2_on_packet(pkt.as_ref(), ifid),
+            PROTO_TCP => self.tcp_on_packet(pkt.as_ref(), ifid),
             proto => {
                 let domain = pkt
                     .is_v4()
@@ -197,7 +194,7 @@ impl IOContext {
 
     pub fn event_end(&mut self) {
         self.ipv6.timer.schedule_wakeup();
-        self.tcp2_tick();
+        self.tcp_tick();
     }
 
     fn networking_layer_io_timeout(&mut self, msg: Message) -> Option<Message> {
@@ -215,17 +212,8 @@ impl IOContext {
 
         // TCP2 grouped wakeup
         if fd == u32::MAX {
-            self.tcp2_timeout();
+            self.tcp_timeout();
             return None;
-        }
-
-        let Some(socket) = self.sockets.get(&fd) else {
-            return None;
-        };
-
-        if socket.typ == SocketType::SOCK_STREAM {
-            // TODO: If listeners have timesouts as well we must do something
-            self.tcp_timeout(fd, msg);
         }
 
         None

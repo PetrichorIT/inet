@@ -232,7 +232,6 @@ impl ToBytes for Ipv6Option {
         match self {
             Ipv6Option::Pad1 => writer.write_u8(OPT_TYPE_PAD_1),
             Ipv6Option::PadN(n) => write_option(writer, OPT_TYPE_PAD_N, |body| {
-                dbg!(n);
                 body.write_all(&vec![0; n - 2])
             }),
             Ipv6Option::JumboPayload(len) => write_option(writer, OPT_TYPE_JUMBO_PAYLOAD, |body| {

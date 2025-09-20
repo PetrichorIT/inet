@@ -1,12 +1,12 @@
 use std::sync::{
-    atomic::{AtomicUsize, Ordering},
     Arc,
+    atomic::{AtomicUsize, Ordering},
 };
 
 use des::{net::globals, prelude::*, registry, time::sleep};
 use inet::{
-    interface::{add_interface, InterfaceDef, NetworkDevice},
-    tcp2::{TcpListener, TcpStream},
+    interface::{InterfaceDef, NetworkDevice, add_interface},
+    tcp::{TcpListener, TcpStream},
 };
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use types::ip::Ipv4Packet;

@@ -2,8 +2,8 @@ use des::{registry, time::sleep};
 use std::{
     str::FromStr,
     sync::{
-        atomic::{AtomicBool, AtomicU32, Ordering::SeqCst},
         Arc,
+        atomic::{AtomicBool, AtomicU32, Ordering::SeqCst},
     },
 };
 
@@ -11,7 +11,7 @@ use des::prelude::*;
 use inet::{
     interface::*,
     socket::{AsRawFd, Fd},
-    tcp2::{TcpListener, TcpStream},
+    tcp::{TcpListener, TcpStream},
 };
 use serial_test::serial;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};

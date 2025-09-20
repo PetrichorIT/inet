@@ -1,7 +1,7 @@
 use bytes_io::Bytes;
 use des::{net::globals, prelude::*, registry, time::sleep};
 use inet::{
-    interface::{add_interface, InterfaceDef, NetworkDevice},
+    interface::{InterfaceDef, NetworkDevice, add_interface},
     ipv4::arp::arpa,
     socket::RawIpSocket,
 };

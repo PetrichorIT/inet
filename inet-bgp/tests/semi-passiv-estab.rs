@@ -1,18 +1,18 @@
 use std::{io::Error, net::Ipv4Addr, time::Duration};
 
 use des::{
-    net::{channel::DatarateChannel, handlers::AsyncHandler, Sim},
+    net::{Sim, channel::DatarateChannel, handlers::AsyncHandler},
     prelude::DatarateChannelMetrics,
     runtime::Builder,
     time::sleep,
 };
 use inet::{
-    interface::{add_interface, InterfaceDef, InterfaceName, NetworkDevice},
-    tcp2::TcpListener,
+    interface::{InterfaceDef, InterfaceName, NetworkDevice, add_interface},
+    tcp::TcpListener,
 };
 use inet_bgp::{
-    peering::{BgpPeeringCfg, NeighborDeamon},
     BgpNodeInformation, NeighborEgressEvent, NeighborIngressEvent,
+    peering::{BgpPeeringCfg, NeighborDeamon},
 };
 use tokio::sync::mpsc::channel;
 

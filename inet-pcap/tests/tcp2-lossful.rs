@@ -2,15 +2,15 @@ use std::{fs::File, net::Ipv4Addr, sync::Arc, time::Duration};
 
 use des::{
     net::{
-        handlers::{AsyncHandler, HandlerFn},
         Sim,
+        handlers::{AsyncHandler, HandlerFn},
     },
-    prelude::{send, ChannelDropBehaviour, DatarateChannel, DatarateChannelMetrics},
-    runtime::{random, Builder},
+    prelude::{ChannelDropBehaviour, DatarateChannel, DatarateChannelMetrics, send},
+    runtime::{Builder, random},
 };
 use inet::{
-    interface::{add_interface, InterfaceDef, NetworkDevice},
-    tcp2::{TcpListener, TcpStream},
+    interface::{InterfaceDef, NetworkDevice, add_interface},
+    tcp::{TcpListener, TcpStream},
 };
 use inet_pcap::pcap;
 use rand::RngCore;

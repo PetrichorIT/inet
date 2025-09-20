@@ -34,7 +34,6 @@ mod udp;
 pub use udp::*;
 
 pub mod tcp;
-pub mod tcp2;
 
 mod plugin;
 pub use plugin::*;

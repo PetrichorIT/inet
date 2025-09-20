@@ -7,18 +7,18 @@ use std::{
 };
 
 use des::{
-    net::{handlers::AsyncHandler, Sim},
+    net::{Sim, handlers::AsyncHandler},
     prelude::{DatarateChannel, DatarateChannelMetrics},
-    runtime::{random, Builder},
+    runtime::{Builder, random},
     time::sleep,
 };
 use inet::{
-    interface::{add_interface, InterfaceDef, InterfaceName, NetworkDevice},
-    tcp2::TcpListener,
+    interface::{InterfaceDef, InterfaceName, NetworkDevice, add_interface},
+    tcp::TcpListener,
 };
 use inet_bgp::{
-    peering::{BgpPeeringCfg, NeighborDeamon},
     BgpNodeInformation, NeighborEgressEvent, NeighborIngressEvent,
+    peering::{BgpPeeringCfg, NeighborDeamon},
 };
 use tokio::sync::mpsc::channel;
 

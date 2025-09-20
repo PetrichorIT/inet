@@ -2,8 +2,8 @@ use std::{error::Error, net::Ipv4Addr, time::Duration};
 
 use des::{net::Sim, prelude::Module, registry, runtime::Builder, time::sleep};
 use inet::{
-    interface::{add_interface, InterfaceDef, NetworkDevice},
-    tcp2::{TcpListener, TcpStream},
+    interface::{InterfaceDef, NetworkDevice, add_interface},
+    tcp::{TcpListener, TcpStream},
 };
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},

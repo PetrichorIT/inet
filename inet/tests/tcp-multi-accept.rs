@@ -2,14 +2,14 @@
 //! any progress on any other handshakes
 
 use std::sync::{
-    atomic::{AtomicBool, Ordering},
     Arc,
+    atomic::{AtomicBool, Ordering},
 };
 
 use des::{prelude::*, registry};
 use inet::{
-    interface::{add_interface, InterfaceDef, NetworkDevice},
-    tcp2::{TcpListener, TcpStream},
+    interface::{InterfaceDef, NetworkDevice, add_interface},
+    tcp::{TcpListener, TcpStream},
 };
 use tokio::spawn;
 

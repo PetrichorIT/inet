@@ -3,7 +3,7 @@ use crate::server::{
 };
 use bytes::BytesMut;
 use bytes_io::{FromBytes, ToBytes};
-use inet::tcp2::{OwnedWriteHalf, TcpListener, TcpStream};
+use inet::tcp::{OwnedWriteHalf, TcpListener, TcpStream};
 use std::{
     collections::HashMap,
     future::Future,
@@ -14,11 +14,11 @@ use std::{
 };
 use tokio::{
     io::{AsyncRead, AsyncReadExt, AsyncWriteExt},
-    sync::{mpsc::Sender, Mutex},
+    sync::{Mutex, mpsc::Sender},
     task::JoinHandle,
 };
 
-use super::{TransportAdapter, DEFAULT_PORT};
+use super::{DEFAULT_PORT, TransportAdapter};
 
 /// A TCP transport adapter for DNS queries.
 ///

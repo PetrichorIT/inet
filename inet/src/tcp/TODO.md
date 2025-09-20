@@ -1,38 +1,34 @@
-# Proposal '1: Optimize TCP Window updates
+# MSS computation
 
-As of ed09216f576b255c43923a0cdc6c56f86c57e19e
-window updates were only send if a full buffer was cleared,
-or passivly if data was acked. This was inefficenit because
-allready free memory was not advertised. Thus now all
-non-zero read operations result in a window updates.
+"""
+If an MSS Option is not received at connection setup, TCP implementations MUST assume a
+default send MSS of 536 (576 - 40) for IPv4 or 1220 (1280 - 60) for IPv6 (MUST-15).
+"""
 
-Problem:
-Should multiple read operations occurr within one event
-such as reading 1500 byte in 3 slice of 500 byte three
-window updates will be send although the last one
-hold all nesecarry information.
+We do set default MSS as config default values and always end MSS, but maybe another peer does not. What if
+we do NOT recv a MSS but have a non-default one.
+-> we send MSS -> peer will recognize and take min
+-> peer may not send updated MSS (is not required) so we will never now about the peers default
+-> we may have a higher MSS than the peer (lower would be synced since peer takes MIN)
 
-Proposed soloution:
-Instead of sending the updates as part of the read call
-call a defered function (using Plugin::defer) to determine
-at the end of an event if a window updates is nessecary.
-If yes send it then.
+# Path MTU discovery
 
-Pros:
+# OPTIONS: SO_LINGER
 
--   Only requrired window updates
--   Easy implemention
--   Window update logic isolated
+# Nagles algorithm
 
-Cons:
+# SACK IMPL
 
--   Needs new IOContext api
--   window updates are allways scheduled last, behind send data packets
+# Off by 1 erros with is_between_wrapped()
 
-Notes:
-The fact that window updates are last is not as bad since
-A) the calls were (WR) so that would happen either way
-B) the calls were (RW) so the data packets allready advertise the window
+The original impl uses wrapping_sub to handle the x = start case.
+I do it manually. Check if wrapping_sub(1) is still needed
 
-Improvments:
-Detect case B to safe on the window update, since it is allready carried by the data packet.
+# ICMP demultiplexing on IP layer
+
+ICMP messages V4 are assigned to sockets, based on the src addr. This is not
+a good idea, since e.g. multiple connections may be established to the same peer,
+differnt ports and one of these connections might rcv a port-unreachable while
+others do not.
+
+# ICMP V6 DEMUX

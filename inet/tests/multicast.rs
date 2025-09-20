@@ -8,7 +8,7 @@ use std::{net::Ipv6Addr, time::Duration};
 
 #[test]
 fn run() -> Result<(), RuntimeError> {
-    des::tracing::init();
+    // des::tracing::init();
     let mut sim = SimpleSim::new(inet::init);
 
     let group: Ipv6Addr = "ff15::1".parse().unwrap();

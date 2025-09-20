@@ -9,7 +9,7 @@ use hyper::{
 };
 use inet::{
     interface::{add_interface, InterfaceDef, NetworkDevice},
-    tcp2::TcpListener,
+    tcp::TcpListener,
 };
 use inet_pcap::pcap;
 use std::{convert::Infallible, fs::File};
@@ -96,14 +96,13 @@ mod connector {
     {
         tower::service_fn(|uri: Uri| {
             Box::pin(async move {
-                let conn =
-                    inet::tcp2::TcpStream::connect(uri.authority().unwrap().as_str()).await?;
+                let conn = inet::tcp::TcpStream::connect(uri.authority().unwrap().as_str()).await?;
                 Ok::<_, std::io::Error>(InetTcpStream(conn))
             }) as Fut
         })
     }
 
-    pub struct InetTcpStream(pub inet::tcp2::TcpStream);
+    pub struct InetTcpStream(pub inet::tcp::TcpStream);
     impl AsyncRead for InetTcpStream {
         fn poll_read(
             mut self: std::pin::Pin<&mut Self>,

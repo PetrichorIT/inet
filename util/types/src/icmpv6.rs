@@ -1,15 +1,18 @@
 use std::{
-    io::{self, Write},
+    io::{self, Error, ErrorKind, Write},
     net::Ipv6Addr,
     time::Duration,
 };
 
 use bytes_io::{
-    BE, Bytes, BytesReader, BytesWriter, FromBytes, ReadBytesExt, ToBytes, WriteBytesExt,
+    BE, Bytes, BytesMut, BytesReader, BytesWriter, FromBytes, ReadBytesExt, ToBytes, WriteBytesExt,
 };
 use macros::repr_enum;
 
-use crate::{iface::MacAddress, ip::Ipv6Prefix};
+use crate::{
+    iface::MacAddress,
+    ip::{IPV6_MINIMUM_MTU, Ipv6Packet, Ipv6Prefix},
+};
 
 pub const PROTO_ICMPV6: u8 = 58;
 
@@ -115,6 +118,51 @@ impl FromBytes for IcmpV6Packet {
             NeighborAdvertisment(IcmpV6NeighborAdvertisment) = 136
         )
     }
+}
+
+const PAYLOAD_LIMIT: usize = IPV6_MINIMUM_MTU - 8;
+
+impl IcmpV6Packet {
+    pub fn is_error(&self) -> bool {
+        match self {
+            Self::DestinationUnreachable(_) => true,
+            Self::PacketToBig(_) => true,
+            Self::TimeExceeded(_) => true,
+            Self::ParameterProblem(_) => true,
+            _ => false,
+        }
+    }
+
+    pub fn contained_bytes(&self) -> Option<Bytes> {
+        match self {
+            Self::DestinationUnreachable(inner) => Some(inner.packet.clone()),
+            Self::PacketToBig(inner) => Some(inner.packet.clone()),
+            Self::TimeExceeded(inner) => Some(inner.packet.clone()),
+            Self::ParameterProblem(inner) => Some(inner.packet.clone()),
+
+            _ => None,
+        }
+    }
+
+    pub fn contained(&self) -> Result<Ipv6Packet, Error> {
+        self.contained_bytes()
+            .ok_or(Error::new(ErrorKind::InvalidInput, "is no icmp error"))
+            .and_then(|bytes| {
+                let mut buffer = BytesMut::from(bytes);
+                let len = (buffer.len() - 40).min(PAYLOAD_LIMIT);
+                (&mut &mut buffer[4..6])
+                    .write_u16::<BE>(len as u16)
+                    .expect("illegal");
+                Ipv6Packet::read_from(&mut buffer)
+            })
+    }
+}
+
+pub fn encode_contained_packet(pkt: &Ipv6Packet) -> Result<Bytes, Error> {
+    pkt.write_to_bytes().map(|mut bytes| {
+        bytes.truncate(PAYLOAD_LIMIT);
+        bytes
+    })
 }
 
 /// An error message indicating that a destintation cannot be reached.
@@ -851,8 +899,73 @@ pub const NDP_MAX_RANDOM_FACTOR: f64 = 1.5;
 #[cfg(test)]
 mod tests {
     use bytes_io::assert_encoding_e2e;
+    use rand::{Rng, rng};
 
     use super::*;
+
+    #[test]
+    fn reconstruct_fully_contained_ipv6() {
+        let contained = std::iter::repeat_with(|| {
+            Ipv6Packet::random(
+                std::iter::repeat_with(|| rng().random())
+                    .take(rng().random::<u64>() as usize % PAYLOAD_LIMIT)
+                    .collect(),
+            )
+        })
+        .filter(|c| c.write_to_bytes().unwrap().len() <= PAYLOAD_LIMIT)
+        .take(100)
+        .collect::<Vec<_>>();
+
+        let icmp = contained
+            .iter()
+            .map(|ip| {
+                IcmpV6Packet::DestinationUnreachable(IcmpV6DestinationUnreachable {
+                    code: IcmpV6DestinationUnreachableCode::AddressUnreachable,
+                    packet: encode_contained_packet(ip).unwrap(),
+                })
+            })
+            .collect::<Vec<_>>();
+
+        assert_encoding_e2e(&icmp);
+
+        for (original, icmp) in contained.iter().zip(icmp.iter()) {
+            assert_eq!(*original, icmp.contained().unwrap());
+        }
+    }
+
+    #[test]
+    fn reconstruct_truncated_ipv6() {
+        let contained = std::iter::repeat_with(|| {
+            Ipv6Packet::random(
+                std::iter::repeat_with(|| rng().random())
+                    .take(PAYLOAD_LIMIT - 80 + rng().random::<u64>() as usize % 500)
+                    .collect(),
+            )
+        })
+        .filter(|c| c.write_to_bytes().unwrap().len() > PAYLOAD_LIMIT)
+        .take(100)
+        .collect::<Vec<_>>();
+
+        let icmp = contained
+            .iter()
+            .map(|ip| {
+                IcmpV6Packet::DestinationUnreachable(IcmpV6DestinationUnreachable {
+                    code: IcmpV6DestinationUnreachableCode::AddressUnreachable,
+                    packet: encode_contained_packet(ip).unwrap(),
+                })
+            })
+            .collect::<Vec<_>>();
+
+        assert_encoding_e2e(&icmp);
+
+        for (mut original, icmp) in contained.into_iter().zip(icmp.iter()) {
+            let reconstructed = icmp.contained().expect("packet must be reconstructable");
+            assert_ne!(original.content.len(), reconstructed.content.len());
+
+            original.content.truncate(reconstructed.content.len());
+            assert_eq!(original, reconstructed);
+        }
+    }
 
     #[test]
     fn e2e_encoding_destination_unreachable() {

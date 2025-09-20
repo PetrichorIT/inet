@@ -7,7 +7,7 @@ use std::{
 
 use des::{prelude::*, time::sleep};
 use inet::{
-    tcp2::{TcpListener, TcpStream},
+    tcp::{TcpListener, TcpStream},
     test_util::SimpleSim,
 };
 use inet_dns::{
