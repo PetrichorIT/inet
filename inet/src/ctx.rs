@@ -16,6 +16,7 @@ use fxhash::{FxBuildHasher, FxHashMap};
 use std::{
     cell::RefCell,
     io::{Error, ErrorKind, Result},
+    net::IpAddr,
     panic::UnwindSafe,
 };
 use types::ip::{IpPacket, KIND_IPV4, KIND_IPV6};
@@ -217,6 +218,14 @@ impl IOContext {
         }
 
         None
+    }
+
+    pub fn get_path_mtu(&self, src: IpAddr, dst: IpAddr) -> usize {
+        match (src, dst) {
+            (IpAddr::V4(_), IpAddr::V4(dst)) => self.ipv4_get_local_mtu(dst),
+            (IpAddr::V6(src), IpAddr::V6(dst)) => self.ipv6_get_path_mtu(src, dst),
+            _ => panic!("unsupported address family"),
+        }
     }
 
     pub fn send_ip_packet(

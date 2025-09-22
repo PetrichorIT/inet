@@ -68,6 +68,7 @@ impl Module for TcpServer {
 
         tokio::spawn(async move {
             let sock = TcpSocket::new_v4().unwrap();
+            sock.set_maximum_segement_size(536).unwrap();
             sock.bind(SocketAddr::from_str("0.0.0.0:2000").unwrap())
                 .unwrap();
 
@@ -160,6 +161,7 @@ impl Module for TcpClient {
         tokio::spawn(async move {
             use tokio::io::AsyncWriteExt;
             let sock = TcpSocket::new_v4().unwrap();
+            sock.set_maximum_segement_size(536).unwrap();
             sock.set_send_buffer_size(1024).unwrap();
             sock.set_recv_buffer_size(1024).unwrap();
 
@@ -194,6 +196,8 @@ impl Module for TcpClient {
 #[test]
 #[serial_test::serial]
 fn tcp_missing_data_at_close() -> Result<(), RuntimeError> {
+    // des::tracing::init();
+
     let def = serde_yml::from_str(include_str!("tcp.yml"))?;
     let mut app = Sim::new(()).with_stack(inet::init);
     app.nodes_from_ndl(&def, registry![Link, TcpServer, TcpClient, else _])?;

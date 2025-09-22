@@ -120,7 +120,8 @@ impl FromBytes for IcmpV6Packet {
     }
 }
 
-const PAYLOAD_LIMIT: usize = IPV6_MINIMUM_MTU - 8;
+/// Subtract ICMP header length + IPv6 header length
+const PAYLOAD_LIMIT: usize = IPV6_MINIMUM_MTU - 8 - Ipv6Packet::MIN_HEADER_SIZE;
 
 impl IcmpV6Packet {
     pub fn is_error(&self) -> bool {

@@ -1,7 +1,11 @@
-use std::{io, net::Ipv6Addr, time::Duration};
+use std::{
+    io::{self, Error, ErrorKind},
+    net::Ipv6Addr,
+    time::Duration,
+};
 
 use bitflags::bitflags;
-use des::net::message::{schedule_in, Message};
+use des::net::message::{Message, schedule_in};
 use fxhash::{FxBuildHasher, FxHashMap};
 use multicast::{GroupEvent, MulticastListenerDiscoveryCtrl, NodeEvent, RouterEvent};
 use tracing::Level;
@@ -12,8 +16,7 @@ use types::{
 
 use crate::{
     ctx::{IOContext, NetworkLayerResult},
-    interface::IfId,
-    socket::SocketIfaceBinding,
+    interface::{IfId, InterfaceError},
 };
 
 use self::{
@@ -23,6 +26,7 @@ use self::{
     ndp::{
         DefaultRouterList, DestinationCache, NeighborCache, PrefixList, QueryType, Solicitations,
     },
+    path::PathMtuStore,
     router::{Router, RouterState},
     state::InterfaceState,
     timer::TimerCtrl,
@@ -34,6 +38,7 @@ pub mod cfg;
 pub mod icmp;
 pub mod multicast;
 pub mod ndp;
+pub mod path;
 pub mod router;
 pub mod state;
 pub mod timer;
@@ -48,6 +53,8 @@ pub struct Ipv6 {
     pub destinations: DestinationCache,
     pub prefixes: PrefixList,
     pub default_routers: DefaultRouterList,
+
+    pub path_mtu: PathMtuStore,
 
     // Multicast management
     pub iface_state: FxHashMap<IfId, InterfaceState>,
@@ -78,6 +85,8 @@ impl Ipv6 {
             prefixes: PrefixList::new(),
             default_routers: DefaultRouterList::new(),
 
+            path_mtu: PathMtuStore::default(),
+
             iface_state: FxHashMap::with_hasher(FxBuildHasher::default()),
             mld: FxHashMap::with_hasher(FxBuildHasher::default()),
 
@@ -102,6 +111,7 @@ bitflags! {
         const DEFAULT = 0b0000_0000;
         const ALLOW_SRC_UNSPECIFIED = 0b0000_0001;
         const REQUIRED_SRC_UNSPECIFIED = 0b0000_0010;
+        const FOREIGN_PACKET = 0b0000_0100;
     }
 }
 
@@ -131,10 +141,10 @@ impl IOContext {
             }
             pkt.hop_limit = pkt.hop_limit.saturating_sub(1);
 
-            if let Err(error) = self.send_ip_packet(
-                SocketIfaceBinding::Any(self.ifaces.keys().cloned().collect()),
-                IpPacket::V6(pkt.clone()), // TODO: to not copy, use a result Err(Packet)
-                true,
+            if let Err(error) = self.ipv6_send_with_flags(
+                pkt, // TODO: to not copy, use a result Err(Packet)
+                IfId::NULL,
+                Ipv6SendFlags::FOREIGN_PACKET,
             ) {
                 tracing::error!("failed to forward ip-packet {error}");
                 panic!("TODO: cannot send ipv6 packet")
@@ -225,7 +235,7 @@ impl IOContext {
 
         // Interface specification:
         // This should be borderline immpossible s
-        if ifid == IfId::NULL {
+        if ifid == IfId::NULL && !flags.contains(Ipv6SendFlags::FOREIGN_PACKET) {
             ifid = self.ipv6_ifid_for_src_addr(pkt.src);
         }
 
@@ -242,6 +252,21 @@ impl IOContext {
 
         // (3) Begin LL address resoloution
         let Some((mac, new_ifid)) = self.ipv6.neighbors.lookup(next_hop) else {
+            // FIXME: this is a diry trick
+            if ifid.is_null() {
+                // We still dont know where to look -> router?
+                for (cifid, ccfg) in &self.ipv6.router_cfg {
+                    if ccfg
+                        .adv_prefix_list
+                        .iter()
+                        .any(|pr| pr.prefix.contains(next_hop))
+                    {
+                        ifid = *cifid;
+                        break;
+                    }
+                }
+            }
+
             // Link-Layer resolution is not directly available
             // -> start solicitation procedure and queue packet
             self.ipv6_icmp_send_neighbor_solicitation(
@@ -266,7 +291,28 @@ impl IOContext {
             .with_kind(KIND_IPV6)
             .with_content(pkt);
 
-        iface.send_buffered(msg)
+        if let Err(err) = iface.send_buffered(msg) {
+            match err {
+                InterfaceError::PacketToBig(pkt, allowed_mtu) => {
+                    // If packet is non-local send a ICMP packet to big message
+                    if flags.contains(Ipv6SendFlags::FOREIGN_PACKET) {
+                        self.ipv6_icmp_send_packet_to_big(
+                            pkt.body.content::<Ipv6Packet>(),
+                            allowed_mtu,
+                        )?;
+                    } else {
+                        tracing::error!("locally send packet exceeds local max MTU");
+                        return Err(Error::new(
+                            ErrorKind::InvalidInput,
+                            "packet exceeds local max MTU",
+                        ));
+                    }
+                }
+                InterfaceError::InterfaceBusy(_) => {}
+            }
+        }
+
+        Ok(())
     }
 
     fn ipv6_ifid_for_src_addr(&self, src: Ipv6Addr) -> IfId {

@@ -9,7 +9,6 @@ use inet::{
     tcp::{TcpListener, TcpStream},
 };
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use types::ip::Ipv6Packet;
 
 #[derive(Default)]
 struct Node {
@@ -84,15 +83,7 @@ impl Module for Node {
         Ok(())
     }
 
-    fn handle_message(&mut self, msg: Message) {
-        panic!(
-            "msg :: {} :: {} // {:?} -> {:?}",
-            msg,
-            current().name(),
-            msg.body.content::<Ipv6Packet>().src,
-            msg.body.content::<Ipv6Packet>().dst
-        )
-    }
+    fn handle_message(&mut self, _: Message) {}
 }
 
 type Switch = inet::utils::LinkLayerSwitch;
@@ -128,7 +119,7 @@ impl Module for Main {
 
 #[test]
 fn tcp_lan_v6() -> Result<(), RuntimeError> {
-    // des::tracing::Subscriber::default().init().unwrap();
+    // des::tracing::init();
 
     let app = Sim::new(())
         .with_stack(inet::init)

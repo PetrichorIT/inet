@@ -133,11 +133,17 @@ impl SendSequenceSpace {
     }
 
     pub fn remaining_window_space(&self) -> u32 {
+        let rem_window_space = (self.wnd as u32).saturating_sub(self.num_unacked_bytes());
+        tracing::info!(
+            wnd = self.wnd,
+            rem_window_space,
+            unacked = self.num_unacked_bytes(),
+            cwind = self.c.cwnd.saturating_sub(self.num_unacked_bytes())
+        );
         if self.c.enabled {
-            (self.wnd as u32 - self.num_unacked_bytes())
-                .min(self.c.cwnd.saturating_sub(self.num_unacked_bytes()))
+            rem_window_space.min(self.c.cwnd.saturating_sub(self.num_unacked_bytes()))
         } else {
-            self.wnd as u32 - self.num_unacked_bytes()
+            rem_window_space
         }
     }
 }

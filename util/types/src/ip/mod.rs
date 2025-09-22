@@ -8,7 +8,7 @@ mod mask;
 pub use mask::*;
 
 mod v4;
-pub use v4::{Ipv4Flags, Ipv4Packet};
+pub use v4::*;
 
 mod v6;
 pub use v6::*;

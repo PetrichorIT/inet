@@ -1,10 +1,11 @@
 use std::{any::Any, fmt::Debug, time::Duration};
 
-use des::prelude::{schedule_in, send, ChannelRef, GateRef, Header, Message};
+use des::prelude::{ChannelRef, GateRef, Header, Message, schedule_in, send};
 
 use crate::interface::NetworkDeviceReadiness;
 
 pub trait MediumDeviceDriver: Any + Debug {
+    fn mtu(&self) -> usize;
     fn ready(&self) -> NetworkDeviceReadiness;
     fn send(&mut self, msg: Message) -> NetworkDeviceReadiness;
     fn matches(&self, header: &Header) -> bool;
@@ -28,7 +29,13 @@ impl EthernetDeviceDriver {
     }
 }
 
+const ETHERNET_MTU: usize = 1500;
+
 impl MediumDeviceDriver for EthernetDeviceDriver {
+    fn mtu(&self) -> usize {
+        ETHERNET_MTU
+    }
+
     fn ready(&self) -> NetworkDeviceReadiness {
         let Some(chan) = &self.channel else {
             return NetworkDeviceReadiness::Ready;
@@ -66,7 +73,13 @@ impl MediumDeviceDriver for EthernetDeviceDriver {
 #[derive(Debug)]
 pub struct LoopbackDeviceDriver {}
 
+const LOOPBACK_MTU: usize = 16384;
+
 impl MediumDeviceDriver for LoopbackDeviceDriver {
+    fn mtu(&self) -> usize {
+        LOOPBACK_MTU
+    }
+
     fn ready(&self) -> NetworkDeviceReadiness {
         NetworkDeviceReadiness::Ready
     }

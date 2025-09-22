@@ -1,5 +1,5 @@
 use bytes_io::{
-    Bytes, BytesReader, BytesWriter, FromBytes, ReadBytesExt, ToBytes, WriteBytesExt, BE,
+    BE, Bytes, BytesReader, BytesWriter, FromBytes, ReadBytesExt, ToBytes, WriteBytesExt,
 };
 use des::net::message::MessageBody;
 use std::{
@@ -24,7 +24,11 @@ pub struct Ipv4Packet {
     pub content: Bytes,
 }
 
+pub const IPV4_MINIMUM_MTU: usize = 576;
+
 impl Ipv4Packet {
+    pub const MIN_HEADER_SIZE: usize = 20;
+
     pub const EMPTY: Ipv4Packet = Ipv4Packet {
         dscp: 0,
         enc: 0,
@@ -175,7 +179,7 @@ impl MessageBody for Ipv4Packet {
 #[cfg(test)]
 mod tests {
     use bytes_io::assert_encoding_e2e;
-    use rand::{rng, Rng};
+    use rand::{Rng, rng};
 
     use super::*;
 

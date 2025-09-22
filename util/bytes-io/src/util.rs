@@ -7,6 +7,7 @@ use crate::{FromBytes, ToBytes};
 /// # Panics
 ///
 /// if the test fails.
+#[track_caller]
 pub fn assert_encoding_e2e<T, E>(values: &[T])
 where
     T: FromBytes<Error = E>,

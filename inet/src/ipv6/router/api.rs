@@ -1,11 +1,14 @@
 use std::{io, net::Ipv6Addr, time::Duration};
 
 use des::time::SimTime;
-use types::ip::{Ipv6AddrExt, Ipv6Prefix};
+use types::{
+    iface::MacAddress,
+    ip::{Ipv6AddrExt, Ipv6Prefix},
+};
 
 use crate::{
     ctx::IOContext,
-    interface::{InterfaceDef, NetworkDevice, DEFAULT_V6_MASK},
+    interface::{DEFAULT_V6_MASK, IfId, InterfaceDef, NetworkDevice},
     ipv6::cfg::{RouterInterfaceConfiguration, RouterPrefix},
 };
 
@@ -22,12 +25,27 @@ pub fn add_routing_interface(
     IOContext::failable_api(|ctx| ctx.ipv6_router_add_routing_interface(name, device, addrs, adv))
 }
 
+pub fn routing_interface_ingore_prefix(
+    name: impl AsRef<str>,
+    prefix: Ipv6Prefix,
+) -> io::Result<()> {
+    IOContext::failable_api(|ctx| ctx.routing_interface_ingore_prefix(name, prefix))
+}
+
 pub fn add_routing_entry(prefix: Ipv6Prefix, next_hop: Ipv6Addr, via: Ipv6Addr) -> io::Result<()> {
     IOContext::failable_api(|ctx| ctx.ipv6_router_add_routing_entry(prefix, next_hop, via))
 }
 
 pub fn add_routing_prefix(prefix: Ipv6Prefix) -> io::Result<()> {
     IOContext::failable_api(|ctx| ctx.ipv6_router_add_routing_prefix(prefix))
+}
+
+pub fn add_solicitation_entry(addr: Ipv6Addr, mac: MacAddress, ifid: IfId) -> io::Result<()> {
+    IOContext::failable_api(|ctx| {
+        ctx.ipv6.neighbors.update(addr, mac, ifid, false);
+        ctx.ipv6.neighbors.set_reachable(addr);
+        Ok(())
+    })
 }
 
 impl IOContext {
@@ -84,6 +102,24 @@ impl IOContext {
         cfg.adv_send_advertisments = adv;
         self.add_interface(interface)?;
         self.ipv6.router_cfg.insert(ifid, cfg);
+        Ok(())
+    }
+
+    fn routing_interface_ingore_prefix(
+        &mut self,
+        name: impl AsRef<str>,
+        prefix: Ipv6Prefix,
+    ) -> io::Result<()> {
+        let ifid = IfId::new(name.as_ref());
+
+        let entry = self
+            .ipv6
+            .router_cfg
+            .get_mut(&ifid)
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "Unknown interface"))?;
+
+        entry.adv_prefix_list.retain(|v| v.prefix != prefix);
+
         Ok(())
     }
 

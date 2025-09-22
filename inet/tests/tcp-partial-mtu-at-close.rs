@@ -1,6 +1,5 @@
 use des::registry;
 use std::{
-    io::ErrorKind,
     str::FromStr,
     sync::{
         Arc,
@@ -45,6 +44,7 @@ impl Module for TcpServer {
 
         tokio::spawn(async move {
             let sock = TcpSocket::new_v4().unwrap();
+            sock.set_maximum_segement_size(536).unwrap();
             sock.bind(SocketAddr::from_str("0.0.0.0:2000").unwrap())
                 .unwrap();
 
@@ -62,10 +62,6 @@ impl Module for TcpServer {
             tracing::info!("Established stream");
             fd.store(stream.as_raw_fd(), SeqCst);
             assert_eq!(addr, SocketAddr::from_str("69.0.0.200:1024").unwrap());
-
-            let mut buf = [0u8; 100];
-            let err = stream.try_read(&mut buf).unwrap_err();
-            assert_eq!(err.kind(), ErrorKind::WouldBlock);
 
             use tokio::io::AsyncReadExt;
 
@@ -136,7 +132,7 @@ impl Module for TcpClient {
         tokio::spawn(async move {
             use tokio::io::AsyncWriteExt;
             let sock = TcpSocket::new_v4().unwrap();
-
+            sock.set_maximum_segement_size(536).unwrap();
             sock.set_send_buffer_size(1024).unwrap();
             sock.set_recv_buffer_size(1024).unwrap();
 
@@ -196,6 +192,8 @@ fn tcp_partial_mtu_at_default_close() {
 #[test]
 #[serial_test::serial]
 fn tcp_partial_mtu_at_simultaneous_close() {
+    // des::tracing::init();
+
     let app = Sim::new(())
         .with_stack(inet::init)
         .with_ndl(

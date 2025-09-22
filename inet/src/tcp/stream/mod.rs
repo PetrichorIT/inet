@@ -108,7 +108,7 @@ impl TcpStream {
     /// Because try_read() is non-blocking, the buffer does not have to be stored by the async task
     /// and can exist entirely on the stack.
     pub fn try_read(&self, buf: &mut [u8]) -> Result<usize, Error> {
-        IOContext::with_current(|ctx| ctx.tcp_connection(self.inner.fd, |con| con.read(buf)))?
+        IOContext::with_current(|ctx| ctx.tcp_read(self.inner.fd, buf))
     }
 
     /// Receives data on the socket from the remote address to which it is connected,
@@ -121,9 +121,7 @@ impl TcpStream {
         loop {
             self.readable().await?;
 
-            match IOContext::with_current(|ctx| {
-                ctx.tcp_connection(self.inner.fd, |con| con.peek(buf))
-            })? {
+            match IOContext::with_current(|ctx| ctx.tcp_peek(self.inner.fd, buf)) {
                 Ok(n) => return Ok(n),
                 Err(e) if e.kind() == ErrorKind::WouldBlock => continue,
                 Err(e) => return Err(e),
@@ -145,7 +143,7 @@ impl TcpStream {
     /// The function will attempt to write the entire contents of `buf`,
     /// but only part of the buffer may be written.
     pub fn try_write(&self, buf: &[u8]) -> Result<usize, Error> {
-        IOContext::with_current(|ctx| ctx.tcp_connection(self.inner.fd, |con| con.write(buf)))?
+        IOContext::with_current(|ctx| ctx.tcp_write(self.inner.fd, buf))
     }
 
     /// Reads the linger duration for this socket by getting the `SO_LINGER`

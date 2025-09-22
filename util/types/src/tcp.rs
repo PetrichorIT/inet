@@ -51,6 +51,8 @@ pub enum TcpOption {
 }
 
 impl TcpPacket {
+    pub const MIN_HEADER_SIZE: usize = 20;
+
     #[must_use]
     pub fn new(
         src_port: u16,

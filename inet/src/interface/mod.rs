@@ -2,11 +2,8 @@
 //!
 //!
 
-use std::{
-    collections::VecDeque,
-    io::{self, Error, ErrorKind, Result},
-    result,
-};
+use std::io;
+use std::{collections::VecDeque, result};
 
 use crate::IOContext;
 use crate::{ctx::LinkLayerResult, socket::Fd};
@@ -47,6 +44,12 @@ pub struct InterfaceController {
     pub send_q: usize,
 }
 
+#[derive(Debug)]
+pub enum InterfaceError {
+    PacketToBig(Message, usize),
+    InterfaceBusy(Message),
+}
+
 impl InterfaceController {
     pub fn status(&self) -> InterfaceStatus {
         InterfaceStatus {
@@ -85,7 +88,11 @@ impl InterfaceController {
         self.bindings.v6.unicast.first().map(|b| (b.addr, b.mask))
     }
 
-    pub(crate) fn send_buffered(&mut self, msg: Message) -> Result<()> {
+    pub(crate) fn send_buffered(&mut self, msg: Message) -> Result<(), InterfaceError> {
+        if msg.body.length() > self.device.mtu() {
+            return Err(InterfaceError::PacketToBig(msg, self.device.mtu()));
+        }
+
         if self.is_busy() {
             // if self.buffer.len() >= 16 {
             //     return Err(Error::new(ErrorKind::Other, "interface busy, buffer fullö"));
@@ -103,24 +110,27 @@ impl InterfaceController {
         }
     }
 
-    pub(crate) fn send(&mut self, msg: Message) -> Result<()> {
+    pub(crate) fn send(&mut self, msg: Message) -> Result<(), InterfaceError> {
         if self.state != InterfaceBusyState::Idle {
-            return Err(Error::new(
-                ErrorKind::WouldBlock,
-                "interface is busy - would block",
-            ));
+            return Err(InterfaceError::InterfaceBusy(msg));
+        }
+
+        if msg.body.length() > self.device.mtu() {
+            return Err(InterfaceError::PacketToBig(msg, self.device.mtu()));
         }
 
         match self.send_raw(msg) {
             Ok(()) => Ok(()),
-            Err(_) => Err(Error::new(
-                ErrorKind::WouldBlock,
-                "interface is busy - would block",
-            )),
+            Err(_) => unreachable!("this was checked in this function"),
         }
     }
 
     fn send_raw(&mut self, msg: Message) -> result::Result<(), Message> {
+        assert!(
+            msg.body.length() <= self.device.mtu(),
+            "should have been checked before in send() / send_buffered()"
+        );
+
         match self.device.ready() {
             NetworkDeviceReadiness::Ready => {
                 #[cfg(feature = "libpcap")]
@@ -191,6 +201,20 @@ impl InterfaceController {
             return true;
         }
         false
+    }
+}
+
+impl From<InterfaceError> for io::Error {
+    fn from(value: InterfaceError) -> Self {
+        match value {
+            InterfaceError::PacketToBig(pkt, allowed) => io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!("packet to big {} > {}", pkt.body.length(), allowed),
+            ),
+            InterfaceError::InterfaceBusy(_) => {
+                io::Error::new(io::ErrorKind::WouldBlock, "interface busy")
+            }
+        }
     }
 }
 

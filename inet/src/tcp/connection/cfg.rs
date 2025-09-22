@@ -15,6 +15,7 @@ pub struct Config {
     pub enable_congestion_control: bool,
     pub enable_reorder_buffer: bool,
     pub enable_sack: bool,
+    pub enable_queue_optimizations: bool,
 
     pub dup_ack_resend_cnt: Option<usize>,
 
@@ -38,6 +39,7 @@ impl Config {
             enable_congestion_control: false,
             enable_reorder_buffer: true,
             enable_sack: false,
+            enable_queue_optimizations: false,
 
             // TODO: change to Some(3) breaking no tests
             dup_ack_resend_cnt: Some(3),
@@ -87,6 +89,7 @@ impl Default for Config {
             enable_congestion_control: false,
             enable_reorder_buffer: true,
             enable_sack: false,
+            enable_queue_optimizations: true,
 
             dup_ack_resend_cnt: Some(3),
 

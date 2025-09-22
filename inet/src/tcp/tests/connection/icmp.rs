@@ -65,6 +65,42 @@ impl TcpTestUnit {
 }
 
 #[test]
+fn reduce_mss_caused_by_icmp_v6_packet_too_big() -> io::Result<()> {
+    let mut test = TcpTestUnit::new(
+        SocketAddr::new(Ipv4Addr::new(10, 0, 1, 104).into(), 80), // local
+        SocketAddr::new(Ipv4Addr::new(20, 0, 2, 204).into(), 1808), // peer
+    );
+    test.cfg.mss = Some(1000);
+    test.cfg.send_buffer_cap = 1000000;
+    test.handshake(4000, WIN_4KB)?;
+
+    assert_eq!(test.snd.mss, 1000);
+
+    test.write(&[1; 4096])?;
+    test.tick()?;
+    test.assert_outgoing(|pkts| {
+        pkts.iter()
+            .rev()
+            .skip(1)
+            .for_each(|pkt| assert_eq!(pkt.content.len(), 1000))
+    });
+
+    test.change_mtu(800); // MSS + 20 + 20
+    assert_eq!(test.snd.mss, 740);
+
+    test.write(&[1; 4096])?;
+    test.tick()?;
+    test.assert_outgoing(|pkts| {
+        pkts.iter()
+            .rev()
+            .skip(1)
+            .for_each(|pkt| assert_eq!(pkt.content.len(), 740))
+    });
+
+    Ok(())
+}
+
+#[test]
 fn demux_no_proto_tcp() -> io::Result<()> {
     let mut test = TcpTestUnit::new(
         SocketAddr::new(Ipv4Addr::new(10, 0, 1, 104).into(), 80), // local

@@ -17,10 +17,11 @@ use types::{
     icmpv6::{
         IcmpV6DestinationUnreachable, IcmpV6DestinationUnreachableCode, IcmpV6Echo,
         IcmpV6MtuOption, IcmpV6NDPOption, IcmpV6NeighborAdvertisment, IcmpV6NeighborSolicitation,
-        IcmpV6Packet, IcmpV6PrefixInformation, IcmpV6RouterAdvertisement, IcmpV6RouterSolicitation,
-        IcmpV6TimeExceeded, IcmpV6TimeExceededCode, NDP_MAX_RA_DELAY_TIME, NDP_MAX_RANDOM_FACTOR,
-        NDP_MAX_RTR_SOLICITATION_DELAY, NDP_MAX_RTR_SOLICITATIONS, NDP_MIN_RANDOM_FACTOR,
-        NDP_RETRANS_TIMER, PROTO_ICMPV6,
+        IcmpV6Packet, IcmpV6PacketToBig, IcmpV6PrefixInformation, IcmpV6RouterAdvertisement,
+        IcmpV6RouterSolicitation, IcmpV6TimeExceeded, IcmpV6TimeExceededCode,
+        NDP_MAX_RA_DELAY_TIME, NDP_MAX_RANDOM_FACTOR, NDP_MAX_RTR_SOLICITATION_DELAY,
+        NDP_MAX_RTR_SOLICITATIONS, NDP_MIN_RANDOM_FACTOR, NDP_RETRANS_TIMER, PROTO_ICMPV6,
+        encode_contained_packet,
     },
     ip::{IpPacket, Ipv6AddrExt, Ipv6Packet, Ipv6Prefix},
     tcp::PROTO_TCP,
@@ -80,6 +81,9 @@ impl IOContext {
             }
             IcmpV6Packet::TimeExceeded(msg) => {
                 return self.ipv6_icmp_recv_time_exceeded(ip, msg, &contained?);
+            }
+            IcmpV6Packet::PacketToBig(msg) => {
+                return self.ipv6_icmp_recv_packet_to_big(ip, msg, &contained?);
             }
 
             IcmpV6Packet::EchoRequest(msg) => {
@@ -225,7 +229,7 @@ impl IOContext {
 
         let err = IcmpV6TimeExceeded {
             code: IcmpV6TimeExceededCode::HopLimitExceeded,
-            packet: pkt.write_to_bytes_mut()?.freeze(),
+            packet: encode_contained_packet(pkt)?,
         };
         let msg = IcmpV6Packet::TimeExceeded(err);
         let pkt = Ipv6Packet {
@@ -239,6 +243,37 @@ impl IOContext {
             content: msg.write_to_bytes()?,
         };
         self.ipv6_send(pkt, ifid)?;
+        Ok(())
+    }
+
+    pub fn ipv6_icmp_send_packet_to_big(
+        &mut self,
+        incoming: &Ipv6Packet,
+        allowed_mtu: usize,
+    ) -> Result<(), io::Error> {
+        tracing::warn!(
+            "incoming packet {}->{} to big exceeds {}; sending ICMPV6 packet to big",
+            incoming.src,
+            incoming.dst,
+            allowed_mtu
+        );
+
+        let icmp = IcmpV6Packet::PacketToBig(IcmpV6PacketToBig {
+            mtu: allowed_mtu as u32,
+            packet: encode_contained_packet(incoming)?,
+        });
+        let wrapped = Ipv6Packet {
+            src: Ipv6Addr::UNSPECIFIED,
+            dst: incoming.src,
+            traffic_class: 0,
+            flow_label: 0,
+            proto: PROTO_ICMPV6,
+            hop_limit: 64,
+            extension_headers: Vec::new(),
+            content: icmp.write_to_bytes()?,
+        };
+
+        self.ipv6_send(wrapped, self.current.ifid)?;
         Ok(())
     }
 
@@ -754,7 +789,7 @@ impl IOContext {
             content: msg.write_to_bytes()?,
         };
 
-        tracing::trace!("send (sol) from {} for {target}", pkt.src);
+        tracing::trace!("send (sol) from {} for {target} on <{ifid}>", pkt.src);
 
         // tracing::trace!(IFACE=%ifid, "send (sol) for {target} from {}->{}", pkt.src, pkt.dst);
 

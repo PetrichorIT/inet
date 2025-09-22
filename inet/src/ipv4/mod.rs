@@ -10,10 +10,10 @@ use router::{FwdV4, Ipv4Gateway};
 use types::{
     icmpv4::PROTO_ICMPV4,
     iface::MacAddress,
-    ip::{IpPacket, Ipv4Packet, KIND_IPV4},
+    ip::{IPV4_MINIMUM_MTU, IpPacket, Ipv4Packet, KIND_IPV4},
 };
 
-use crate::{ctx::NetworkLayerResult, interface::IfId, socket::SocketIfaceBinding, IOContext};
+use crate::{IOContext, ctx::NetworkLayerResult, interface::IfId, socket::SocketIfaceBinding};
 
 pub mod arp;
 pub mod icmp;
@@ -87,6 +87,23 @@ impl IOContext {
 }
 
 impl IOContext {
+    pub fn ipv4_get_local_mtu(&self, dst: Ipv4Addr) -> usize {
+        const DEFAULT_UNKNOWN_MTU: usize = IPV4_MINIMUM_MTU - Ipv4Packet::MIN_HEADER_SIZE;
+
+        if dst.is_unspecified() {
+            return DEFAULT_UNKNOWN_MTU;
+        }
+
+        let Some((_, ifid)) = self.ipv4.fwd.lookup(dst) else {
+            return DEFAULT_UNKNOWN_MTU;
+        };
+
+        let ifid = ifid.id();
+        self.ifaces.get(&ifid).map_or(DEFAULT_UNKNOWN_MTU, |iface| {
+            iface.device.mtu() - Ipv4Packet::MIN_HEADER_SIZE
+        })
+    }
+
     pub fn ipv4_send(
         &mut self,
         ifid: SocketIfaceBinding,
@@ -193,6 +210,8 @@ impl IOContext {
             iface.send_buffered(msg)
         } else {
             iface.send(msg)
-        }
+        }?;
+
+        Ok(())
     }
 }

@@ -249,7 +249,64 @@ fn accept_final_ack_lost() -> io::Result<()> {
 }
 
 #[test]
+fn non_empty_ack_of_syn_with_queue_optimizations() -> io::Result<()> {
+    let mut test = TcpTestUnit::new(
+        SocketAddr::new(Ipv4Addr::new(10, 0, 1, 104).into(), 80), // local
+        SocketAddr::new(Ipv4Addr::new(20, 0, 2, 204).into(), 1808), // peer
+    );
+    test.cfg.enable_queue_optimizations = true;
+
+    let syn = TcpPacket::syn(80, 1808, 0, WIN_4KB);
+
+    test.connect()?;
+    test.assert_outgoing_eq(&[syn.clone()]);
+
+    test.incoming(TcpPacket::syn_ack(&syn, 4000, WIN_4KB))?;
+    assert_eq!(test.state, State::Estab);
+
+    test.write(&[5; 536])?;
+    test.tick()?;
+    test.assert_outgoing_eq(&[TcpPacket::new(80, 1808, 1, 4001, WIN_4KB, vec![5; 536])]);
+
+    Ok(())
+}
+
+#[test]
+fn packet_too_big_on_ack_of_syn() -> io::Result<()> {
+    let mut test = TcpTestUnit::new(
+        SocketAddr::new(Ipv4Addr::new(10, 0, 1, 104).into(), 80), // local
+        SocketAddr::new(Ipv4Addr::new(20, 0, 2, 204).into(), 1808), // peer
+    );
+    test.cfg.send_buffer_cap = 1000000;
+    test.cfg.enable_queue_optimizations = true;
+
+    let syn = TcpPacket::syn(80, 1808, 0, WIN_4KB);
+    test.connect()?;
+    test.assert_outgoing_eq(&[syn.clone()]);
+
+    test.incoming(TcpPacket::syn_ack(&syn, 4000, WIN_4KB))?;
+    assert_eq!(test.state, State::Estab);
+    test.snd.mss = 1480;
+
+    test.write(&[5; 1480])?;
+    test.tick()?;
+    test.assert_outgoing_eq(&[TcpPacket::new(80, 1808, 1, 4001, WIN_4KB, vec![5; 1480])]);
+
+    // < Packet to big
+    test.change_mtu(1280);
+    test.tick()?;
+    test.assert_outgoing_eq(&[
+        TcpPacket::new(80, 1808, 1, 4001, WIN_4KB, vec![5; 1220]),
+        TcpPacket::new(80, 1808, 1221, 4001, WIN_4KB, vec![5; 260]),
+    ]);
+
+    Ok(())
+}
+
+#[test]
 fn e2e_simultaneous_open() -> io::Result<()> {
+    // des::tracing::init();
+
     let mut client = TcpTestUnit::new(
         SocketAddr::new(Ipv4Addr::new(10, 0, 1, 104).into(), 80), // local
         SocketAddr::new(Ipv4Addr::new(20, 0, 2, 204).into(), 1808), // peer

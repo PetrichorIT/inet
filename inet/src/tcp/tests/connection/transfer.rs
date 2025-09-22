@@ -463,3 +463,67 @@ fn receiver_can_use_reorder_buffer_at_retransmit() -> io::Result<()> {
 
     Ok(())
 }
+
+#[test]
+fn pure_ack_elision_with_queue_optimizations() -> io::Result<()> {
+    let mut test = TcpTestUnit::new(
+        SocketAddr::new(Ipv4Addr::new(10, 0, 1, 104).into(), 80),
+        SocketAddr::new(Ipv4Addr::new(20, 0, 2, 204).into(), 1808),
+    );
+    test.cfg.enable_queue_optimizations = true;
+    test.handshake(4000, 1024)?;
+
+    test.incoming(TcpPacket::new(1808, 80, 4001, 1, WIN_4KB, vec![200; 200]))?;
+    assert_eq!(test.read(&mut [1; 1000])?, 200);
+    test.write(&[1; 1000])?;
+    test.tick()?;
+
+    test.assert_outgoing_eq(&[
+        TcpPacket::new(80, 1808, 1, 4201, WIN_4KB, vec![1; 536]),
+        TcpPacket::new(80, 1808, 537, 4201, WIN_4KB, vec![1; 1000 - 536]),
+    ]);
+
+    Ok(())
+}
+
+#[test]
+fn window_update_elision_with_queue_optimizations() -> io::Result<()> {
+    // des::tracing::init();
+
+    let mut test = TcpTestUnit::new(
+        SocketAddr::new(Ipv4Addr::new(10, 0, 1, 104).into(), 80),
+        SocketAddr::new(Ipv4Addr::new(20, 0, 2, 204).into(), 1808),
+    );
+    test.cfg.enable_queue_optimizations = true;
+    test.handshake(4000, 1024)?;
+
+    assert_eq!(test.write(&[4; WIN_4KB as usize])?, WIN_4KB as usize);
+    test.tick()?;
+    test.assert_outgoing_eq(&[
+        TcpPacket::new(80, 1808, 1, 4001, WIN_4KB, vec![4; 536]),
+        TcpPacket::new(80, 1808, 537, 4001, WIN_4KB, vec![4; 1024 - 536]),
+    ]);
+
+    test.incoming(TcpPacket::new(
+        1808,
+        80,
+        4001,
+        537,
+        1024,
+        vec![1, 2, 3, 4, 5],
+    ))?;
+    test.tick()?;
+    // -> produces <SEQ=1025, WIN=4k-536><ACK><536 bytes>
+    assert_eq!(
+        test.outgoing[1],
+        TcpPacket::new(80, 1808, 1025, 4006, WIN_4KB - 5, vec![4; 536])
+    );
+
+    test.read(&mut [0; 1000])?;
+    test.tick()?;
+    assert_eq!(test.outgoing.len(), 3);
+
+    test.assert_outgoing_eq(&[TcpPacket::new(80, 1808, 1025, 4006, WIN_4KB, vec![4; 536])]);
+
+    Ok(())
+}

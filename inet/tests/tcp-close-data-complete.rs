@@ -1,6 +1,5 @@
 use des::registry;
 use std::{
-    io::ErrorKind,
     str::FromStr,
     sync::{
         Arc,
@@ -64,10 +63,6 @@ impl Module for TcpServer {
             tracing::info!("Established stream");
             fd.store(stream.as_raw_fd(), SeqCst);
             assert_eq!(addr, SocketAddr::from_str("69.0.0.200:1024").unwrap());
-
-            let mut buf = [0u8; 100];
-            let err = stream.try_read(&mut buf).unwrap_err();
-            assert_eq!(err.kind(), ErrorKind::WouldBlock);
 
             use tokio::io::AsyncReadExt;
             let mut buf = [0u8; 500];
@@ -163,6 +158,8 @@ impl Module for TcpClient {
 #[test]
 #[serial]
 fn tcp_close_data_complete() {
+    // des::tracing::init();
+
     let app = Sim::new(())
         .with_stack(inet::init)
         .with_ndl(

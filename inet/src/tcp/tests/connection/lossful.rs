@@ -1,5 +1,5 @@
-use super::{tx, TcpTestUnit, WIN_4KB};
-use rand::{rng, RngCore};
+use super::{TcpTestUnit, WIN_4KB, tx};
+use rand::{RngCore, rng};
 use std::{
     io,
     net::{Ipv4Addr, SocketAddr},
@@ -31,16 +31,18 @@ fn loss_of_data_packets() -> io::Result<()> {
         SocketAddr::new(Ipv4Addr::new(10, 0, 1, 104).into(), 80),   // peer
     );
     client.cfg.send_buffer_cap = (WIN_4KB * 4) as usize;
+    server.cfg.recv_buffer_cap = (WIN_4KB * 4) as usize;
     client.cfg.enable_congestion_control = true;
     server.cfg.enable_congestion_control = true;
 
     client.handshake_pipe(&mut server)?;
 
-    let mut bytes = vec![0; WIN_4KB as usize * 4];
+    const TOTAL: usize = WIN_4KB as usize * 4;
+    let mut bytes = vec![0; TOTAL];
     rng().fill_bytes(&mut bytes);
 
     let n = client.write(&bytes)?;
-    assert_eq!(n, WIN_4KB as usize * 4);
+    assert_eq!(n, TOTAL);
 
     for t in [0.5, 1.0, 1.5, 2.0, 2.5, 3.0] {
         tracing::error!(t, "T");
@@ -58,10 +60,13 @@ fn loss_of_data_packets() -> io::Result<()> {
         assert_eq!(client.snd.num_unacked_bytes(), 0);
     }
 
-    tracing::debug!("real test case begins");
+    tracing::debug!("=== real test case begins ===");
 
-    assert_eq!(client.num_unsend_bytes(), Some(8344));
-    assert_eq!(client.snd.c.cwnd, 1608);
+    let num_packets = 1 + 2 + 4 + 5 + 6 + 7;
+    let num_send = num_packets * 536;
+
+    assert_eq!(client.num_unsend_bytes(), Some((TOTAL - num_send) as u32));
+    assert_eq!(client.snd.c.cwnd, 8 * 536);
 
     client.tick()?;
     client.pipe_lossful(&mut server, 100, &[1])?;

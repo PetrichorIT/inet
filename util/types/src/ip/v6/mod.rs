@@ -32,6 +32,10 @@ pub struct Ipv6Packet {
     pub content: Bytes,
 }
 
+impl Ipv6Packet {
+    pub const MIN_HEADER_SIZE: usize = 40;
+}
+
 impl ToBytes for Ipv6Packet {
     type Error = std::io::Error;
     fn to_bytes(&self, stream: &mut BytesWriter) -> Result<(), Self::Error> {

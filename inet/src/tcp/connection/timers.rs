@@ -1,4 +1,4 @@
-use super::{is_between_wrapped, Config};
+use super::{Config, is_between_wrapped};
 use des::time::SimTime;
 use std::{
     collections::BTreeMap,

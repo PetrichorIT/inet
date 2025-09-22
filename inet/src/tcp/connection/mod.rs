@@ -131,6 +131,10 @@ impl Connection {
     }
 
     pub fn outgoing_next(&mut self) -> Option<(IpPacket, u32)> {
+        if self.cfg.enable_queue_optimizations {
+            self.optimize_queue_elements();
+        }
+
         self.outgoing.pop_front().map(|tcp| {
             use std::net::IpAddr::*;
             let ip = match (self.quad.src.ip(), self.quad.dst.ip()) {
@@ -165,6 +169,46 @@ impl Connection {
             (ip, tcp.seq_no)
         })
     }
+
+    pub(crate) fn optimize_queue_elements(&mut self) {
+        while self.outgoing.len() >= 2 {
+            let first = &self.outgoing[0];
+            let second = &self.outgoing[1];
+
+            // (1) First is pure ack
+            // FIXME: a lot of these checks are redundant for well formed packets
+            if first.flags == TcpFlags::ACK
+                && first.content.is_empty()
+                && first.seq_no == second.seq_no
+                && (wrapping_lt(first.ack_no, second.ack_no) || first.ack_no == second.ack_no)
+            {
+                // tracing::warn!("removing pure ack from stream, replaced by another");
+                drop(self.outgoing.pop_front());
+                continue;
+            }
+
+            // (2) Combine with window update
+            // FIXME: a lot of these checks are redundant for well formed packets
+            if first.flags == TcpFlags::ACK
+                && second.flags == TcpFlags::ACK
+                && second.content.is_empty()
+                && first.seq_no.wrapping_add(first.content.len() as u32) == second.seq_no
+                && (wrapping_lt(first.ack_no, second.ack_no) || first.ack_no == second.ack_no)
+                && first.window <= second.window
+                && first.options == second.options
+            {
+                // tracing::warn!("mergining window update from stream, replaced by another");
+                self.outgoing[0].ack_no = self.outgoing[1].ack_no;
+                self.outgoing[0].window = self.outgoing[1].window;
+
+                self.outgoing.swap(0, 1);
+                drop(self.outgoing.pop_front());
+                continue;
+            }
+
+            break;
+        }
+    }
 }
 
 //
@@ -178,15 +222,19 @@ impl Connection {
 
     pub fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         let n = self.peek(buf)?;
-        self.consume(n);
+        self.consume(n)?;
         tracing::trace!("Connection::read({}) = {n}", buf.len());
         return Ok(n);
     }
 
-    pub fn consume(&mut self, n: usize) {
+    pub fn consume(&mut self, n: usize) -> io::Result<()> {
         drop(self.received.drain(..n));
         // TODO: this is not wrapping safe
         self.rcv.wnd = (self.rcv.wnd.wrapping_add(n as u16)).min(self.rcv.wnd_max);
+
+        // Window update
+        self.send_pkt(Ack, self.snd.nxt, 0)?;
+        Ok(())
     }
 
     pub fn peek(&mut self, buf: &mut [u8]) -> io::Result<usize> {
@@ -550,7 +598,7 @@ impl Connection {
 
         if let State::TimeWait = self.state {
             if self.timers.timewait_to_expired(now) {
-                self.state = State::Closed;
+                self.state.transition_to(State::Closed);
             }
             return Ok(());
         }
@@ -577,14 +625,13 @@ impl Connection {
                 return Ok(());
             }
 
-            tracing::trace!(num_unsend_bytes, una = self.snd.una, "tick-send");
-
             let remaining_window_space = self.snd.remaining_window_space();
             if remaining_window_space == 0 {
                 return Ok(());
             }
 
             let bytes_to_be_sent = cmp::min(num_unsend_bytes, remaining_window_space);
+
             // NOTE:
             // only go to FIN mode if we are sure that all remaining bytes fit into the emitted segment
             // aka. len(bytes) < min(MSS, window)
@@ -614,7 +661,7 @@ impl Connection {
     }
 
     #[tracing::instrument(skip(self, expired))]
-    fn on_tick_retransmit(&mut self, mut expired: Vec<u32>) -> Result<(), Error> {
+    fn on_tick_retransmit(&mut self, expired: Vec<u32>) -> Result<(), Error> {
         // For any state if the retransmission timeout expires on a segment in the retransmission queue,
         // send the segment at the front of the retransmission queue again,
         // reinitialize the retransmission timer, and return.
@@ -672,9 +719,9 @@ impl Connection {
         } else {
             self.snd.on_timeout();
 
-            if !expired.contains(&self.snd.una) {
-                expired.insert(0, self.snd.una);
-            }
+            // if !expired.contains(&self.snd.una) {
+            //     expired.insert(0, self.snd.una);
+            // }
 
             for &seq in &expired {
                 self.send_pkt(Ack, seq, num_resend as usize)?;
@@ -706,11 +753,10 @@ impl Connection {
         }
 
         match Self::icmpv4_classify(icmp) {
-            IcmpAction::Ingore => Ok(()),
+            IcmpAction::Ingore => (),
             IcmpAction::SoftError => {
                 self.interface
                     .set_so_error(Self::icmpv4_into_soft_error(icmp));
-                Ok(())
             }
             IcmpAction::HardError => {
                 self.snd.closed = true;
@@ -719,9 +765,10 @@ impl Connection {
                 self.interface
                     .set_error(Error::new(ErrorKind::ConnectionReset, "ICMP hard error"));
                 self.interface.wake(Interest::BOTH);
-                Ok(())
             }
         }
+
+        Ok(())
     }
 
     fn icmpv4_classify(pkt: &IcmpV4Packet) -> IcmpAction {
@@ -773,11 +820,10 @@ impl Connection {
         }
 
         match Self::icmpv6_classify(icmp) {
-            IcmpAction::Ingore => Ok(()),
+            IcmpAction::Ingore => (),
             IcmpAction::SoftError => {
                 self.interface
                     .set_so_error(Self::icmpv6_into_soft_error(icmp));
-                Ok(())
             }
             IcmpAction::HardError => {
                 self.snd.closed = true;
@@ -786,9 +832,10 @@ impl Connection {
                 self.interface
                     .set_error(Error::new(ErrorKind::ConnectionAborted, "ICMP hard error"));
                 self.interface.wake(Interest::BOTH);
-                Ok(())
             }
-        }
+        };
+
+        Ok(())
     }
 
     fn icmpv6_classify(pkt: &IcmpV6Packet) -> IcmpAction {
@@ -819,6 +866,20 @@ impl Connection {
     fn icmpv6_into_soft_error(pkt: &IcmpV6Packet) -> Error {
         // TODO: better impl
         Error::other(format!("{pkt:?}"))
+    }
+
+    pub fn change_mtu(&mut self, mtu: usize) {
+        let eff_mss = mtu as usize - Ipv6Packet::MIN_HEADER_SIZE - TcpPacket::MIN_HEADER_SIZE;
+        self.snd.mss = self.snd.mss.min(eff_mss as u16);
+
+        tracing::debug!("changing mtu to {}", mtu);
+
+        // we have to reset the entire send buffer just in case
+        self.timers.segments.clear();
+        self.snd.nxt = self.snd.una;
+        self.outgoing.clear();
+
+        // TODO: reassemble packets in transmission queue
     }
 
     #[deprecated]
@@ -898,7 +959,12 @@ impl Connection {
         let wend = self.rcv.nxt.wrapping_add(self.rcv.wnd as u32);
 
         tracing::trace!(
-            "recv <{seqn}, len: {slen} (real {}), wend: {wend}>",
+            wend,
+            "recv < {} | {} | {:?} | {}::{} >",
+            seg.seq_no,
+            seg.ack_no,
+            seg.flags,
+            slen,
             seg.content.len(),
         );
 
@@ -955,7 +1021,12 @@ impl Connection {
             // described in 3.10.7.4, since all SYN flags will be unexpected in states from SYN_RCVD.
             // However, on simultaneous open, SYN-ACKs act as the final ACK nessecary for the handshake, so they are not unexpected
             let is_sim_open = seg.flags.contains(TcpFlags::ACK)
-                && is_between_wrapped(self.snd.una.wrapping_add(1), seg.ack_no, self.snd.nxt);
+                && self.rcv.irs == seg.seq_no
+                && is_between_wrapped(
+                    self.snd.una.wrapping_div(1),
+                    seg.ack_no,
+                    self.snd.nxt.wrapping_add(1),
+                );
 
             if is_sim_open {
                 tracing::trace!("Sim open bypass")
@@ -1100,7 +1171,9 @@ impl Connection {
                     // -> if timer was for now acked bytes -> calculate rrt with it
                     // -> if timer is for yet unacked bytes -> keep it
 
-                    self.snd.on_ack(n as u32);
+                    if n > 0 {
+                        self.snd.on_ack(n as u32);
+                    }
 
                     // Now is place to write more data
                     self.interface.wake(Interest::WRITABLE);
@@ -1111,7 +1184,11 @@ impl Connection {
                 }
 
                 // set last ack no
-                if wrapping_lt(ackn, self.snd.una) || ackn == self.snd.una {
+                // Only consider DUP ACK when theres actually unacked bytes, else
+                // we interpret data packets incorrectly
+                if (wrapping_lt(ackn, self.snd.una) || ackn == self.snd.una)
+                    && self.snd.num_unacked_bytes() > 0
+                {
                     self.snd.on_dup_ack();
 
                     if self
@@ -1120,6 +1197,8 @@ impl Connection {
                         .map_or(false, |limit| self.snd.dup_ack_resend_counter >= limit)
                     {
                         tracing::trace!("resending due to dup ack");
+                        // FIXME:
+                        // this can cause the transmission of a 0 bytes packet that did not previously exist
                         self.on_tick_retransmit(vec![self.snd.una])?;
                         self.snd.dup_ack_resend_counter = 0;
                     }
@@ -1265,7 +1344,7 @@ impl Connection {
                 // Thus consume all data in the buffer to receive all possible data, instead of blocking the rcv
                 // forever.
                 if !self.state.is_writable() {
-                    self.consume(self.received.len());
+                    self.consume(self.received.len())?;
                 }
 
                 // Send an acknowledgment of the form: <SEQ=SND.NXT><ACK=RCV.NXT><CTL=ACK>
@@ -1345,7 +1424,7 @@ impl Connection {
                 return Ok(());
             }
 
-            self.state = State::Closed;
+            self.state.transition_to(State::Closed);
             self.snd.closed = true;
             self.interface.wake(Interest::BOTH);
 
@@ -1417,7 +1496,7 @@ impl Connection {
                 // If this connection was initiated with a passive OPEN (i.e., came from the LISTEN state),
                 // then return this connection to LISTEN state and return. The user need not be informed.
                 // -> Listen is no valid state for the Connection, set to Closed, listening socket remains
-                self.state = State::Closed;
+                self.state.transition_to(State::Closed);
                 self.snd.closed = true;
                 self.interface.wake(Interest::BOTH);
 
@@ -1440,7 +1519,7 @@ impl Connection {
                 // All segment queues should be flushed. Users should also receive an unsolicited
                 // general "connection reset" signal. Enter the CLOSED state, delete the TCB, and return.
 
-                self.state = State::Closed;
+                self.state.transition_to(State::Closed);
                 self.snd.closed = true;
                 self.interface.set_error(Error::new(
                     ErrorKind::ConnectionReset,
@@ -1452,7 +1531,7 @@ impl Connection {
 
             State::Closing | State::LastAck | State::TimeWait => {
                 // If the RST bit is set, then enter the CLOSED state, delete the TCB, and return.
-                self.state = State::Closed;
+                self.state.transition_to(State::Closed);
                 self.snd.closed = true;
                 self.interface.wake(Interest::BOTH);
                 Ok(())
@@ -1669,5 +1748,5 @@ fn wrapping_lt(lhs: u32, rhs: u32) -> bool {
 
 /// `start` <= `x` < end
 fn is_between_wrapped(start: u32, x: u32, end: u32) -> bool {
-    wrapping_lt(start, x) && wrapping_lt(x, end) || start == x
+    wrapping_lt(start, x) && wrapping_lt(x, end) || (start == x && x != end)
 }

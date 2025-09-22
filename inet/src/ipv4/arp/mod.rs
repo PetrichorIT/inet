@@ -17,8 +17,8 @@ use std::net::Ipv4Addr;
 
 use crate::ctx::LinkLayerResult;
 use crate::socket::SocketIfaceBinding;
-use crate::{interface::*, IOContext};
-use des::prelude::{schedule_in, Message};
+use crate::{IOContext, interface::*};
+use des::prelude::{Message, schedule_in};
 use des::time::SimTime;
 use types::arp::{ARPOperation, ArpPacket, KIND_ARP};
 use types::iface::MacAddress;
@@ -311,7 +311,7 @@ impl IOContext {
                 iface
             }
             SocketIfaceBinding::NotBound => {
-                return Err(Error::new(ErrorKind::Other, "socket bound to no interface"))
+                return Err(Error::new(ErrorKind::Other, "socket bound to no interface"));
             }
         };
 
@@ -349,6 +349,7 @@ impl IOContext {
             );
         }
 
-        iface.send_buffered(msg)
+        iface.send_buffered(msg).expect("failed to send ARP packet");
+        Ok(())
     }
 }

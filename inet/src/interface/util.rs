@@ -54,6 +54,10 @@ impl IfId {
         Self { bytes }
     }
 
+    pub fn is_null(&self) -> bool {
+        self.bytes == Self::NULL.bytes
+    }
+
     pub fn matches(&self, name: &str) -> bool {
         Self::new(name) == *self
     }

@@ -20,8 +20,6 @@ use crate::{
 #[serial]
 #[test]
 fn large_stream() {
-    // des::tracing::init();
-
     let mut sim = Sim::new(()).with_stack(crate::init);
     let mut bytes = vec![0; 8_000_000]; // 8MB;
     rng().fill_bytes(&mut bytes);

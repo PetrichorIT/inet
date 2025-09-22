@@ -1,5 +1,6 @@
 use std::{fs::File, net::Ipv4Addr, sync::Arc, time::Duration};
 
+use bytes_io::FromBytes;
 use des::{
     net::{
         Sim,
@@ -15,6 +16,7 @@ use inet::{
 use inet_pcap::pcap;
 use rand::RngCore;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use types::{ip::Ipv4Packet, tcp::TcpPacket};
 
 #[test]
 fn lossfull_stream() {
@@ -59,7 +61,7 @@ fn lossfull_stream() {
                 )
                 .unwrap();
 
-                // pcap(File::create("out/tcp2-lossful-server.pcap").unwrap()).unwrap();
+                pcap(File::create("out/tcp2-lossful-server.pcap").unwrap()).unwrap();
 
                 let lis = TcpListener::bind(("0.0.0.0", 80)).await?;
                 let (mut stream, _) = lis.accept().await?;
@@ -93,11 +95,19 @@ fn lossfull_stream() {
             "port-server" if random::<u8>() > 32 => {
                 let _ = send(msg, "port-client");
             }
-            _ => tracing::error!(
-                kind = msg.header.kind,
-                "dropping packet from {:?}",
-                msg.header.last_gate
-            ),
+            _ => {
+                let pkt = msg.body.content::<Ipv4Packet>();
+                let tcp = TcpPacket::peek_from(&pkt.content[..]).unwrap();
+
+                tracing::error!(
+                    seq_no = tcp.seq_no,
+                    ack_no = tcp.ack_no,
+                    flags = ?tcp.flags,
+                    len = tcp.content.len(),
+                    "dropping packet from {:?}",
+                    msg.last_gate.as_ref().unwrap()
+                );
+            }
         }),
     );
 

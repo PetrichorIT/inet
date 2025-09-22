@@ -74,7 +74,7 @@ impl Tcp {
         }
     }
 
-    pub fn set_error(&mut self, fd: Fd, error: Error) {
+    fn set_error(&mut self, fd: Fd, error: Error) {
         if let Some(stream) = self.streams.get_mut(&fd) {
             tracing::error!(%fd, ?error, "connection failed with error");
             stream.interface.set_error(error);
@@ -82,7 +82,7 @@ impl Tcp {
         }
     }
 
-    pub fn set_active(&mut self, fd: Fd) {
+    fn set_active(&mut self, fd: Fd) {
         if !self.active.contains(&fd) {
             self.active.push(fd);
         }
@@ -95,6 +95,10 @@ impl IOContext {
     }
     pub fn tcp_on_icmpv6(&mut self, fd: Fd, icmp: &IcmpV6Packet, contained: &Ipv6Packet) {
         let _ = self.tcp_connection(fd, |con| con.on_icmp_v6(icmp, contained));
+    }
+
+    pub fn tcp_on_mtu_change(&mut self, fd: Fd, mtu: usize) {
+        let _ = self.tcp_connection(fd, |con| con.change_mtu(mtu));
     }
 
     pub fn tcp_socket_link_update(&mut self, fd: Fd) {
@@ -498,14 +502,21 @@ impl IOContext {
         fd: u32,
         src: SocketAddr,
         pkt: TcpPacket,
-        cfg: Config,
+        mut cfg: Config,
     ) -> Result<Fd, Error> {
         let stream_socket = self.socket_duplicate(fd)?;
         self.socket_set_peer(stream_socket, src)?;
+
         let quad = Quad {
             src: self.socket_get_addr(stream_socket)?,
             dst: src,
         };
+
+        // Set MSS based on path MTU guess
+        let ip_payload_mtu = self.get_path_mtu(quad.src.ip(), quad.dst.ip());
+        let mss = (ip_payload_mtu - TcpPacket::MIN_HEADER_SIZE) as u16;
+        cfg.mss = Some(cfg.mss.map_or(mss, |cfg_mss| cfg_mss.min(mss)));
+
         let con = Connection::accept(quad, pkt, cfg)?;
         if let Some(con) = con {
             self.tcp.streams.insert(stream_socket, con);
@@ -525,7 +536,7 @@ impl IOContext {
         cfg: Option<Config>,
         fd: Option<Fd>,
     ) -> Result<Fd, Error> {
-        let (fd, cfg) = if let Some(fd) = fd {
+        let (fd, mut cfg) = if let Some(fd) = fd {
             // check whether socket was bound.
             let Some(socket) = self.sockets.get(&fd) else {
                 return Err(Error::new(
@@ -577,6 +588,11 @@ impl IOContext {
             dst: peer,
         };
 
+        // Set MSS based on path MTU guess
+        let ip_payload_mtu = self.get_path_mtu(local_addr.ip(), peer.ip());
+        let mss = (ip_payload_mtu - TcpPacket::MIN_HEADER_SIZE) as u16;
+        cfg.mss = Some(cfg.mss.map_or(mss, |cfg_mss| cfg_mss.min(mss)));
+
         // Sends a SYN
         let conn = Connection::connect(quad, cfg)?;
         self.tcp.streams.insert(fd, conn);
@@ -603,15 +619,9 @@ impl IOContext {
         Ok(())
     }
 
+    #[tracing::instrument(skip(self))]
     fn tcp_close(&mut self, fd: Fd) -> Result<(), Error> {
-        let con = self
-            .tcp
-            .streams
-            .get_mut(&fd)
-            .ok_or(Error::new(ErrorKind::BrokenPipe, "no such fd"))?;
-
-        con.close()?;
-        Ok(())
+        self.tcp_connection(fd, |con| con.close()).flatten()
     }
 }
 

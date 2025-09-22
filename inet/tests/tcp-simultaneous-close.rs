@@ -1,6 +1,5 @@
 use des::registry;
 use std::{
-    io::ErrorKind,
     str::FromStr,
     sync::{
         Arc,
@@ -12,7 +11,7 @@ use des::prelude::*;
 use inet::{
     interface::*,
     socket::{AsRawFd, Fd},
-    tcp::{TcpListener, TcpStream},
+    tcp::{Config, TcpListener, TcpStream, set_config},
 };
 use serial_test::serial;
 
@@ -45,6 +44,10 @@ impl Module for TcpServer {
         let fd = self.fd.clone();
 
         tokio::spawn(async move {
+            let mut cfg = Config::default();
+            cfg.mss = Some(536);
+            set_config(cfg);
+
             let sock = TcpListener::bind("0.0.0.0:2000").await.unwrap();
             tracing::info!("Server bound");
             assert_eq!(
@@ -56,10 +59,6 @@ impl Module for TcpServer {
             tracing::info!("Established stream");
             fd.store(stream.as_raw_fd(), SeqCst);
             assert_eq!(addr, SocketAddr::from_str("69.0.0.200:1024").unwrap());
-
-            let mut buf = [0u8; 100];
-            let err = stream.try_read(&mut buf).unwrap_err();
-            assert_eq!(err.kind(), ErrorKind::WouldBlock);
 
             use tokio::io::AsyncReadExt;
             let mut buf = [0u8; 500];

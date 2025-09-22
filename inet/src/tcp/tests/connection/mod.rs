@@ -133,11 +133,21 @@ impl TcpTestUnit {
         );
     }
 
+    #[track_caller]
     pub fn assert_outgoing(&mut self, f: impl FnOnce(Vec<TcpPacket>)) {
         assert!(
             self.con.is_some(),
             "no connection exists: expected on assert outing"
         );
+
+        if self
+            .con
+            .as_ref()
+            .map_or(false, |con| con.cfg.enable_queue_optimizations)
+        {
+            self.optimize_queue_elements();
+        }
+
         f(tx(&mut self.con)
             .drain(..)
             .map(|pkt| {
@@ -147,9 +157,20 @@ impl TcpTestUnit {
             .collect())
     }
 
+    #[track_caller]
     pub fn assert_outgoing_eq(&mut self, pkts: &[TcpPacket]) {
         self.assert_outgoing(|outgoing| {
-            assert_eq!(outgoing, pkts);
+            assert_eq!(outgoing.len(), pkts.len(), "unequal number of packets");
+            for (i, (outgoing, pkt)) in outgoing.iter().zip(pkts).enumerate() {
+                assert_eq!(
+                    outgoing,
+                    pkt,
+                    "packet at index {} does not match:\n body len {} :: {}",
+                    i,
+                    outgoing.content.len(),
+                    pkt.content.len(),
+                );
+            }
         });
     }
 
