@@ -1,3 +1,5 @@
+#![allow(clippy::unit_arg)]
+
 #[macro_use]
 mod macros;
 

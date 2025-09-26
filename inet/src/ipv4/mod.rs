@@ -144,7 +144,7 @@ impl IOContext {
         match ifid {
             SocketIfaceBinding::Bound(_) => self.ipv4_send_lan_local(ifid, pkt.dst, pkt, buffered),
             _ => {
-                for (_ifid, iface) in &mut self.ifaces {
+                for iface in self.ifaces.values_mut() {
                     let mut pkt = pkt.clone();
                     if pkt.src.is_unspecified() {
                         pkt.src = iface.ipv4_subnet().unwrap().0;
@@ -183,10 +183,7 @@ impl IOContext {
         }
 
         let Some(iface) = self.ifaces.get_mut(&ifid) else {
-            return Err(Error::new(
-                ErrorKind::Other,
-                "interface does not exist anymore",
-            ));
+            return Err(Error::other("interface does not exist anymore"));
         };
 
         if mac == MacAddress::BROADCAST && !iface.flags.broadcast {

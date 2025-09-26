@@ -36,7 +36,7 @@ pub type AddrInfo = Vec<IpAddr>;
 impl IOContext {
     /// Returns ethernet mac address for a given IOContext
     pub(crate) fn get_mac_address(&self) -> Result<Option<MacAddress>> {
-        for (_, interface) in &self.ifaces {
+        for interface in self.ifaces.values() {
             if interface.device.addr == MacAddress::NULL {
                 continue;
             }
@@ -47,11 +47,11 @@ impl IOContext {
     }
 
     pub(crate) fn get_ip(&self) -> Option<IpAddr> {
-        for (_, interface) in &self.ifaces {
-            for binding in &interface.bindings.v4.unicast {
+        for interface in self.ifaces.values() {
+            if let Some(binding) = interface.bindings.v4.unicast.first() {
                 return Some(IpAddr::V4(binding.addr));
             }
-            for binding in &interface.bindings.v6.unicast {
+            if let Some(binding) = interface.bindings.v6.unicast.first() {
                 return Some(IpAddr::V6(binding.addr));
             }
         }
@@ -60,7 +60,7 @@ impl IOContext {
 
     pub(crate) fn getaddrinfo(&self) -> AddrInfo {
         let mut info = AddrInfo::new();
-        for (_, iface) in &self.ifaces {
+        for iface in self.ifaces.values() {
             for binding in &iface.bindings.v4.unicast {
                 info.push(binding.addr.into())
             }

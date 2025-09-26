@@ -1,10 +1,10 @@
 use crate::{
-    socket::{AsRawFd, Fd},
     IOContext, UdpSocket,
+    socket::{AsRawFd, Fd},
 };
 use des::{
     runtime::random,
-    time::{sleep, SimTime},
+    time::{SimTime, sleep},
 };
 use std::{
     io::{Error, ErrorKind, Result},
@@ -102,7 +102,7 @@ pub async fn traceroute(addr: Ipv4Addr) -> Result<Traceroute> {
 
         return Err(socket
             .take_error()?
-            .unwrap_or(Error::new(ErrorKind::Other, "traceroute failed")));
+            .unwrap_or(Error::other("traceroute failed")));
         // return Err()
     }
 }
@@ -128,9 +128,7 @@ impl IOContext {
     }
 
     fn traceroute_get_error(&mut self, target: Ipv4Addr) -> Option<(Ipv4Addr, Duration)> {
-        let Some(trace) = self.ipv4.icmp.traceroutes.get_mut(&target) else {
-            return None;
-        };
+        let trace = self.ipv4.icmp.traceroutes.get_mut(&target)?;
         trace.recent_err.take()
     }
 }

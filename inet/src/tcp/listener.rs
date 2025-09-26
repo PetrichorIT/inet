@@ -163,7 +163,7 @@ impl TcpListener {
             if let Some(handle) = ctx.tcp.listeners.get(&self.fd) {
                 Ok(handle.config.ttl as u32)
             } else {
-                Err(Error::new(ErrorKind::Other, "Lost Tcp"))
+                Err(Error::other("Lost Tcp"))
             }
         })
     }
@@ -177,7 +177,7 @@ impl TcpListener {
                 handle.config.ttl = u8::try_from(ttl).expect("u8");
                 Ok(())
             } else {
-                Err(Error::new(ErrorKind::Other, "Lost Tcp"))
+                Err(Error::other("Lost Tcp"))
             }
         })
     }

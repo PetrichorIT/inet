@@ -27,7 +27,7 @@ use types::{
 use crate::{
     ctx::IOContext,
     interface::IfId,
-    ipv6::{timer::TimerToken, Ipv6SendFlags},
+    ipv6::{Ipv6SendFlags, timer::TimerToken},
 };
 
 use super::{GroupEvent, RouterEvent};
@@ -197,7 +197,7 @@ impl IOContext {
             multicast_addr,
         };
 
-        if let Some(_) = self.ipv6.mld.entry(ifid).or_default().querier {
+        if self.ipv6.mld.entry(ifid).or_default().querier.is_some() {
             self.mld_querier_on_event(
                 ifid,
                 RouterEvent::GroupEvent(multicast_addr, GroupEvent::ReportRecevied),
@@ -236,7 +236,7 @@ impl IOContext {
             multicast_addr,
         };
 
-        if let Some(_) = self.ipv6.mld.entry(ifid).or_default().querier {
+        if self.ipv6.mld.entry(ifid).or_default().querier.is_some() {
             self.mld_querier_on_event(
                 ifid,
                 RouterEvent::GroupEvent(multicast_addr, GroupEvent::DoneReceived),

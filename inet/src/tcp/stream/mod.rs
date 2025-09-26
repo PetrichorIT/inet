@@ -53,9 +53,8 @@ impl TcpStream {
 
             if IOContext::with_current(|ctx| ctx.tcp_connection(fd, |c| c.state != State::Estab))? {
                 let interest = TcpInterest::write(fd);
-                match interest.await.map_err(|e| {
+                match interest.await.inspect_err(|_| {
                     let _ = IOContext::with_current(|ctx| ctx.tcp_drop(fd));
-                    e
                 }) {
                     Ok(_) => {
                         return Ok(TcpStream {
@@ -69,7 +68,7 @@ impl TcpStream {
             }
         }
 
-        Err(last_err.unwrap_or(Error::new(ErrorKind::Other, "No address worked")))
+        Err(last_err.unwrap_or(Error::other("No address worked")))
     }
 
     /// Returns the local address that this stream is bound to.

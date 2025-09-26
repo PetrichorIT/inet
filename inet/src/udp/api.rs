@@ -3,10 +3,10 @@ use bytes_io::BufMut;
 use crate::interface::IfId;
 use crate::io::{Interest, Ready};
 use crate::{
-    dns::{lookup_host, ToSocketAddrs},
+    IOContext,
+    dns::{ToSocketAddrs, lookup_host},
     interface::InterfaceName,
     socket::{AsRawFd, Fd},
-    IOContext,
 };
 use std::net::Ipv6Addr;
 use std::{
@@ -304,14 +304,12 @@ impl UdpSocket {
         }
 
         loop {
-            loop {
-                self.readable().await?;
-                match IOContext::with_current(|ctx| ctx.udp_recv_buf(self.fd, None, buf)) {
-                    Ok((n, src)) => return Ok((n, src)),
-                    Err(e) if e.kind() == ErrorKind::WouldBlock => {}
-                    Err(e) if e.kind() == ErrorKind::ConnectionRefused => {}
-                    Err(e) => return Err(e),
-                }
+            self.readable().await?;
+            match IOContext::with_current(|ctx| ctx.udp_recv_buf(self.fd, None, buf)) {
+                Ok((n, src)) => return Ok((n, src)),
+                Err(e) if e.kind() == ErrorKind::WouldBlock => {}
+                Err(e) if e.kind() == ErrorKind::ConnectionRefused => {}
+                Err(e) => return Err(e),
             }
         }
     }
@@ -415,11 +413,8 @@ impl UdpSocket {
     /// For more information about this option, see [set_broadcast](UdpSocket::set_broadcast)
     pub fn broadcast(&self) -> Result<bool> {
         IOContext::with_current(|ctx| match ctx.udp.binds.get(&self.fd) {
-            Some(ref sock) => Ok(sock.broadcast),
-            None => Err(Error::new(
-                ErrorKind::Other,
-                "SimContext lost socket handle",
-            )),
+            Some(sock) => Ok(sock.broadcast),
+            None => Err(Error::other("SimContext lost socket handle")),
         })
     }
 
@@ -432,10 +427,7 @@ impl UdpSocket {
                 sock.broadcast = on;
                 Ok(())
             }
-            None => Err(Error::new(
-                ErrorKind::Other,
-                "SimContext lost socket handle",
-            )),
+            None => Err(Error::other("SimContext lost socket handle")),
         })
     }
 
@@ -453,11 +445,8 @@ impl UdpSocket {
     ///
     pub fn ttl(&self) -> Result<u8> {
         IOContext::with_current(|ctx| match ctx.udp.binds.get(&self.fd) {
-            Some(ref sock) => Ok(sock.ttl),
-            None => Err(Error::new(
-                ErrorKind::Other,
-                "SimContext lost socket handle",
-            )),
+            Some(sock) => Ok(sock.ttl),
+            None => Err(Error::other("SimContext lost socket handle")),
         })
     }
 
@@ -470,10 +459,7 @@ impl UdpSocket {
                 sock.ttl = ttl;
                 Ok(())
             }
-            None => Err(Error::new(
-                ErrorKind::Other,
-                "SimContext lost socket handle",
-            )),
+            None => Err(Error::other("SimContext lost socket handle")),
         })
     }
 

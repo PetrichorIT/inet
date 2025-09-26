@@ -1,5 +1,5 @@
 use std::{
-    io::{self, Error, ErrorKind},
+    io::{self, Error},
     net::Ipv4Addr,
 };
 
@@ -36,7 +36,6 @@ pub fn add_routing_entry_to(
     IOContext::failable_api(|ctx| ctx.add_routing_entry(addr, mask, gw, interface, table))
 }
 
-#[must_use]
 pub fn add_routing_table() -> io::Result<RoutingTableId> {
     IOContext::failable_api(|ctx| ctx.add_routing_table())
 }
@@ -52,10 +51,7 @@ impl IOContext {
             .values()
             .find(|iface| iface.bindings.v4.matches(ip))
         else {
-            return Err(Error::new(
-                ErrorKind::Other,
-                "gateway not found on any local subnet",
-            ));
+            return Err(Error::other("gateway not found on any local subnet"));
         };
 
         self.ipv4
@@ -82,7 +78,7 @@ impl IOContext {
         else {
             // dbg!(interface);
             // dbg!(self.ifaces.values());
-            return Err(Error::new(ErrorKind::Other, "interface not found"));
+            return Err(Error::other("interface not found"));
         };
 
         self.ipv4.fwd.add_entry(

@@ -6,14 +6,14 @@ use std::{
 };
 
 use des::{
-    net::{handlers::AsyncHandler, processing::ProcessingStack, Sim, SimBuilder},
+    net::{Sim, SimBuilder, handlers::AsyncHandler, processing::ProcessingStack},
     prelude::{ChannelDropBehaviour, DatarateChannel, DatarateChannelMetrics, Message},
     runtime::{Builder, RuntimeError},
 };
 use tokio::sync::mpsc::Receiver;
 
 use crate::{
-    interface::{add_interface, InterfaceDef, NetworkDevice},
+    interface::{InterfaceDef, NetworkDevice, add_interface},
     utils::LinkLayerSwitch,
 };
 
@@ -81,14 +81,7 @@ impl SimpleSim {
         Fut: Future<Output = io::Result<()>> + Send,
         Fut: 'static,
     {
-        self.sim.node(
-            name,
-            AsyncHandler::io(move |rx| {
-                let f = f(rx);
-                async move { f.await }
-            })
-            .require_join(),
-        );
+        self.sim.node(name, AsyncHandler::io(f).require_join());
         self.sim.gate(name, "port").connect_with(
             self.sim.gate("switch", &format!("port-${name}")),
             Some(DatarateChannel::new(self.metrics)),
@@ -146,8 +139,7 @@ impl SimpleSim {
                 let f = f();
                 async move {
                     add_interface(InterfaceDef::new("en0", NetworkDevice::eth()).ip(addr))?;
-                    let r = f.await;
-                    r
+                    f.await
                 }
             })
             .require_join(),

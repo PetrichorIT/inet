@@ -46,7 +46,7 @@ pub struct SendSequenceSpace {
 
 impl SendSequenceSpace {
     pub fn new(quad: &Quad, cfg: &Config) -> Self {
-        let iss = cfg.iss_for(&quad, &[]);
+        let iss = cfg.iss_for(quad, &[]);
         let mss = cfg.mss.unwrap_or(if quad.is_ipv4() { 536 } else { 1220 });
         Self {
             iss,
@@ -119,7 +119,7 @@ impl SendSequenceSpace {
 
     pub fn on_dup_ack(&mut self) {
         self.dup_ack_resend_counter = self.dup_ack_resend_counter.saturating_add(1);
-        self.c.cwnd = self.c.cwnd / 2;
+        self.c.cwnd /= 2;
     }
 
     pub fn on_timeout(&mut self) {

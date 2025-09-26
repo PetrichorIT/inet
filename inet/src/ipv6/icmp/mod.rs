@@ -508,7 +508,7 @@ impl IOContext {
                         continue;
                     }
 
-                    let autocfg = self.ipv6.prefixes.update(&info);
+                    let autocfg = self.ipv6.prefixes.update(info);
                     if autocfg {
                         let iface = self.ifaces.get(&ifid).unwrap();
                         let addr = iface.device.addr.embed_into(info.prefix);
@@ -522,7 +522,7 @@ impl IOContext {
                         new_bindings.push((ifid, binding, info));
                     } else {
                         // TODO: reset prefix timeout
-                        if let Some(timeout) = self.ipv6.prefixes.timeout_for(&info) {
+                        if let Some(timeout) = self.ipv6.prefixes.timeout_for(info) {
                             self.ipv6.timer.reschedule(
                                 &TimerToken::PrefixTimeout {
                                     ifid,
@@ -543,7 +543,7 @@ impl IOContext {
             let addr = binding.addr;
             self.interface_add_addr_v6(ifid, binding, false)?;
             self.ipv6.prefixes.assign(info, addr); // TODO: not sure if before or after address assigning
-            if let Some(timeout) = self.ipv6.prefixes.timeout_for(&info) {
+            if let Some(timeout) = self.ipv6.prefixes.timeout_for(info) {
                 self.ipv6.timer.schedule(
                     TimerToken::PrefixTimeout {
                         ifid,
@@ -588,15 +588,15 @@ impl IOContext {
 
         // Message validation on unspecific IP
         let iface = self.ifaces.get(&ifid).unwrap();
-        if ip.src.is_unspecified() {
-            if let Some(unicast_addr) = iface.bindings.v6.addrs().next() {
-                if unicast_addr != ip.dst {
-                    return Ok(true);
-                }
+        if ip.src.is_unspecified()
+            && let Some(unicast_addr) = iface.bindings.v6.addrs().next()
+        {
+            if unicast_addr != ip.dst {
+                return Ok(true);
+            }
 
-                if src_mac_entry.is_some() {
-                    return Ok(true);
-                }
+            if src_mac_entry.is_some() {
+                return Ok(true);
             }
         }
 
@@ -628,20 +628,20 @@ impl IOContext {
 
         let iface_mac = iface.device.addr;
 
-        if !ip.src.is_unspecified() {
-            if let Some(mac) = src_mac_entry {
-                self.ipv6.neighbors.update(ip.src, *mac, ifid, false);
+        if !ip.src.is_unspecified()
+            && let Some(mac) = src_mac_entry
+        {
+            self.ipv6.neighbors.update(ip.src, *mac, ifid, false);
 
-                // TODO:
-                // This Implementation is not correct:
-                // - state should be STALE and no packets should be send until reachabel
-                // - for now this is fine
+            // TODO:
+            // This Implementation is not correct:
+            // - state should be STALE and no packets should be send until reachabel
+            // - for now this is fine
 
-                self.ipv6.neighbors.set_reachable(ip.src);
-                let pkts = self.ipv6.neighbors.dequeue(ip.src);
-                for pkt in pkts {
-                    self.ipv6_send(pkt, ifid)?;
-                }
+            self.ipv6.neighbors.set_reachable(ip.src);
+            let pkts = self.ipv6.neighbors.dequeue(ip.src);
+            for pkt in pkts {
+                self.ipv6_send(pkt, ifid)?;
             }
         }
 
@@ -918,11 +918,7 @@ impl IOContext {
             router: self.ipv6.is_router,
             solicited: false,
             overide: true,
-            options: {
-                let mut options = Vec::new();
-                options.push(IcmpV6NDPOption::TargetLinkLayerAddress(iface.device.addr));
-                options
-            },
+            options: vec![IcmpV6NDPOption::TargetLinkLayerAddress(iface.device.addr)],
         };
 
         let msg = IcmpV6Packet::NeighborAdvertisment(adv);
@@ -951,10 +947,8 @@ impl IOContext {
             return Ok(true);
         }
 
-        if ip.dst.is_multicast() {
-            if adv.solicited {
-                return Ok(true);
-            }
+        if ip.dst.is_multicast() && adv.solicited {
+            return Ok(true);
         }
 
         let Some(query) = self.ipv6.solicitations.lookup(adv.target) else {

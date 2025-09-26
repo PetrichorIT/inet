@@ -15,7 +15,7 @@ use des::{
 use fxhash::{FxBuildHasher, FxHashMap};
 use std::{
     cell::RefCell,
-    io::{Error, ErrorKind, Result},
+    io::{Error, Result},
     net::IpAddr,
     panic::UnwindSafe,
 };
@@ -110,10 +110,10 @@ impl IOContext {
         CURRENT.with(|cell| {
             let mut ctx = cell.borrow_mut();
             let Some(ctx) = ctx.as_mut() else {
-                return Err(Error::new(ErrorKind::Other, "Missing IOContext"));
+                return Err(Error::other("Missing IOContext"));
             };
-            if try_current().map_or(false, |m| m.id() != ctx.id) {
-                return Err(Error::new(ErrorKind::Other, "Drop chain"));
+            if try_current().is_some_and(|m| m.id() != ctx.id) {
+                return Err(Error::other("Drop chain"));
             }
             f(ctx)
         })
@@ -123,15 +123,13 @@ impl IOContext {
         CURRENT
             .try_with(|cell| {
                 let mut brw = cell.try_borrow_mut().expect("BorrowMut at IOContext");
-                brw.as_mut()
-                    .map(|brw| {
-                        if try_current().map_or(false, |m| m.id() == brw.id) {
-                            Some(f(brw))
-                        } else {
-                            None
-                        }
-                    })
-                    .flatten()
+                brw.as_mut().and_then(|brw| {
+                    if try_current().is_some_and(|m| m.id() == brw.id) {
+                        Some(f(brw))
+                    } else {
+                        None
+                    }
+                })
             })
             .ok()
             .flatten()
@@ -153,7 +151,7 @@ impl IOContext {
             LinkLayerResult::Timeout(timeout) => return self.networking_layer_io_timeout(timeout),
         };
 
-        self.current.ifid = ifid.clone();
+        self.current.ifid = ifid;
 
         let l3 = self.recv_network_layer(msg, ifid);
         let (pkt, header) = match l3 {
@@ -166,10 +164,11 @@ impl IOContext {
             PROTO_UDP => self.capture_udp_packet(pkt.as_ref(), ifid),
             PROTO_TCP => self.tcp_on_packet(pkt.as_ref(), ifid),
             proto => {
-                let domain = pkt
-                    .is_v4()
-                    .then_some(SocketDomain::AF_INET)
-                    .unwrap_or(SocketDomain::AF_INET6);
+                let domain = if pkt.is_v4() {
+                    SocketDomain::AF_INET
+                } else {
+                    SocketDomain::AF_INET6
+                };
                 if let Some(handle) = self.sockets.handlers.get(&(proto, domain)) {
                     let _ = handle.1.try_send((ifid, pkt));
                     return None;
@@ -206,10 +205,7 @@ impl IOContext {
             return None;
         }
 
-        let Some(fd) = msg.body.try_content::<Fd>() else {
-            return None;
-        };
-        let fd = *fd;
+        let fd = *msg.body.try_content::<Fd>()?;
 
         // TCP2 grouped wakeup
         if fd == u32::MAX {

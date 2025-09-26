@@ -38,7 +38,7 @@ impl Default for LinkLayerSwitch {
 impl Module for LinkLayerSwitch {
     fn at_sim_start(&mut self, _: usize) {
         self.info = RoutingInformation::collect();
-        self.queues = repeat_with(|| VecDeque::new())
+        self.queues = repeat_with(VecDeque::new)
             .take(self.info.ports.len())
             .collect();
     }
@@ -82,12 +82,8 @@ impl Module for LinkLayerSwitch {
 
 impl LinkLayerSwitch {
     fn store_sender(&mut self, msg: &Message) -> Option<usize> {
-        let Some(ref last_gate) = msg.header.last_gate else {
-            return None;
-        };
-        let Some(i) = self.info.port_index_for(last_gate) else {
-            return None;
-        };
+        let last_gate = msg.header.last_gate.as_ref()?;
+        let i = self.info.port_index_for(last_gate)?;
 
         let src = MacAddress::from(msg.header.src);
         if src.is_unspecified() || src.is_broadcast() || src.is_multicast() {

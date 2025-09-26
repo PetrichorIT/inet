@@ -86,6 +86,7 @@ impl RoutingPort {
     }
 
     /// Reads all possible routing ports from the env.
+    #[allow(clippy::single_match)]
     pub fn collect() -> Vec<RoutingPort> {
         let gates = current().gates();
         let mut ports = Vec::new();
@@ -98,17 +99,13 @@ impl RoutingPort {
                     name: gate.name().to_string(),
                     input: gate.clone(),
                     output: gate.clone(),
-                    peer: gate
-                        .path_end()
-                        .map(|end| {
-                            end.owner()
-                                .prop::<Option<IpAddr>>("inet.meta")
-                                .ok()
-                                .map(|io| io.get())
-                                .flatten()
-                                .and_then(|addr| addr.map(|addr| RoutingPeer { addr }))
-                        })
-                        .flatten(),
+                    peer: gate.path_end().and_then(|end| {
+                        end.owner()
+                            .prop::<Option<IpAddr>>("inet.meta")
+                            .ok()
+                            .and_then(|io| io.get())
+                            .and_then(|addr| addr.map(|addr| RoutingPeer { addr }))
+                    }),
                 }),
                 _ => {}
             }

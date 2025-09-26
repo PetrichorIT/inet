@@ -125,13 +125,13 @@ const PAYLOAD_LIMIT: usize = IPV6_MINIMUM_MTU - 8 - Ipv6Packet::MIN_HEADER_SIZE;
 
 impl IcmpV6Packet {
     pub fn is_error(&self) -> bool {
-        match self {
-            Self::DestinationUnreachable(_) => true,
-            Self::PacketToBig(_) => true,
-            Self::TimeExceeded(_) => true,
-            Self::ParameterProblem(_) => true,
-            _ => false,
-        }
+        matches!(
+            self,
+            Self::DestinationUnreachable(_)
+                | Self::PacketToBig(_)
+                | Self::TimeExceeded(_)
+                | Self::ParameterProblem(_)
+        )
     }
 
     pub fn contained_bytes(&self) -> Option<Bytes> {
@@ -145,6 +145,14 @@ impl IcmpV6Packet {
         }
     }
 
+    /// Returns the contained IPv6 packet if there is any.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error
+    /// - if there is no contained packet
+    /// - if the contained packet is invalid (truncation is allowed)
+    #[allow(clippy::missing_panics_doc)]
     pub fn contained(&self) -> Result<Ipv6Packet, Error> {
         self.contained_bytes()
             .ok_or(Error::new(ErrorKind::InvalidInput, "is no icmp error"))
@@ -159,6 +167,11 @@ impl IcmpV6Packet {
     }
 }
 
+/// Encodes a ipv6 packet into a icmp packet truncating as required
+///
+/// # Errors
+///
+/// Returns an error if the packet based encoding (without truncation) fails.
 pub fn encode_contained_packet(pkt: &Ipv6Packet) -> Result<Bytes, Error> {
     pkt.write_to_bytes().map(|mut bytes| {
         bytes.truncate(PAYLOAD_LIMIT);

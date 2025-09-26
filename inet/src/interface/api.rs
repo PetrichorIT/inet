@@ -1,15 +1,15 @@
 use super::{
-    def::InterfaceDef, IfId, InterfaceAddrBindings, InterfaceAddrsV6, InterfaceFlags,
-    InterfaceName, MacAddress,
+    IfId, InterfaceAddrBindings, InterfaceAddrsV6, InterfaceFlags, InterfaceName, MacAddress,
+    def::InterfaceDef,
 };
 use crate::{
+    IOContext,
     interface::{InterfaceAddrV4, InterfaceAddrV6},
     ipv4::{
         arp::ArpEntryInternal,
         router::{FwdEntryV4, Ipv4Gateway, RoutingTableId},
     },
     ipv6::{multicast::NodeEvent, ndp::QueryType},
-    IOContext,
 };
 use des::{
     net::module::{current, try_current},
@@ -68,11 +68,11 @@ impl IOContext {
         let iface = def.into_legacy();
         let ifid = iface.name.id();
 
-        if self.ifaces.get(&iface.name.id()).is_some() {
-            return Err(Error::new(
-                ErrorKind::Other,
-                format!("cannot duplicate interface with name {}", iface.name),
-            ));
+        if self.ifaces.contains_key(&iface.name.id()) {
+            return Err(Error::other(format!(
+                "cannot duplicate interface with name {}",
+                iface.name
+            )));
         }
 
         // TODO: check nondup
@@ -82,22 +82,20 @@ impl IOContext {
         let v6 = iface.ipv6_subnet().is_some() || iface.flags.v6;
 
         // (0) Check if the iface can be used as a valid broadcast target.
-        if !iface.flags.loopback && iface.flags.broadcast {
-            if v4 {
-                let _ = self.ipv4.arp.update(ArpEntryInternal {
-                    negated: false,
-                    hostname: None,
-                    ip: Ipv4Addr::BROADCAST,
-                    mac: MacAddress::BROADCAST,
-                    iface: iface.name.id(),
-                    expires: SimTime::MAX,
-                });
+        if !iface.flags.loopback && iface.flags.broadcast && v4 {
+            let _ = self.ipv4.arp.update(ArpEntryInternal {
+                negated: false,
+                hostname: None,
+                ip: Ipv4Addr::BROADCAST,
+                mac: MacAddress::BROADCAST,
+                iface: iface.name.id(),
+                expires: SimTime::MAX,
+            });
 
-                self.ipv4.fwd.add_entry(
-                    FwdEntryV4::broadcast(iface.name.clone()),
-                    RoutingTableId::DEFAULT,
-                );
-            }
+            self.ipv4.fwd.add_entry(
+                FwdEntryV4::broadcast(iface.name.clone()),
+                RoutingTableId::DEFAULT,
+            );
         }
 
         // (1) Add all interface addrs to ARP
@@ -156,18 +154,18 @@ impl IOContext {
                 // - enabled after disabled (assuming that addr is not allready bound)
 
                 let binding = InterfaceAddrV6::new_link_local(mac);
-                self.interface_add_addr_v6(ifid.clone(), binding, false)?;
+                self.interface_add_addr_v6(ifid, binding, false)?;
             } else {
                 // TODO: legacy impl improve
                 for binding in addrs.unicast {
-                    self.interface_add_addr_v6(ifid.clone(), binding, true)?;
+                    self.interface_add_addr_v6(ifid, binding, true)?;
                 }
             }
 
-            self.ipv6_register_host_interface(ifid.clone())?;
+            self.ipv6_register_host_interface(ifid)?;
         } else {
             for binding in addrs.unicast {
-                self.interface_add_addr_v6(ifid.clone(), binding, true)?;
+                self.interface_add_addr_v6(ifid, binding, true)?;
             }
         }
 

@@ -113,7 +113,7 @@ impl WriteHalf<'_> {
     /// Destroys the write half, but don’t close the write half of the stream until the read half is dropped.
     /// If the read half has already been dropped, this closes the stream.
     pub fn forget(self) {
-        drop(self);
+        let _ = self;
     }
 
     /// Returns the local address that this stream is bound to.

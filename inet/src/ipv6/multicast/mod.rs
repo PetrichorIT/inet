@@ -3,7 +3,7 @@
 //! - Joined multicast listening groups (hosts)
 //! - Required multicast groups for subnet (router)
 
-use crate::{interface::IfId, IOContext};
+use crate::{IOContext, interface::IfId};
 use fxhash::{FxBuildHasher, FxHashMap};
 use std::{io, net::Ipv6Addr, time::Duration};
 use types::{
@@ -25,8 +25,8 @@ const QUERY_INTERVAL: Duration = Duration::from_secs(125); // 125s
 const QUERY_RESPONSE_INTERVAL: Duration = Duration::from_secs(10); // 10s
 const MULTICAST_LISTENER_INTERVAL: Duration = Duration::from_secs(260); // ROBUSTNESS * QUERY_INTERVAL + QUERY_RESPONSE_INTERVAL
 const OTHER_QUERIES_PRESENT_INTERVAL: Duration = Duration::from_secs(255); //ROBUSTNESS * QUERY_INTERVAL + QUERY_RESPONSE_INTERVAL/2
-                                                                           // const STARTUP_QUERY_INTERVAL
-                                                                           // const STARTUP_QUERY_COUNT
+// const STARTUP_QUERY_INTERVAL
+// const STARTUP_QUERY_COUNT
 const LAST_LISTENER_QUERY_INTERVAL: Duration = Duration::from_secs(1);
 const LAST_LISTENER_QUERY_COUNT: u32 = ROBUSTNESS;
 
@@ -112,7 +112,7 @@ impl IOContext {
         query: IcmpV6MulticastListenerMessage,
     ) -> io::Result<bool> {
         let ctrl = self.ipv6.mld.entry(ifid).or_default();
-        if let Some(_) = ctrl.querier {
+        if ctrl.querier.is_some() {
             let src = self.ipv6_icmp_mld_src_addr(ifid)?;
             if pkt_src < src {
                 self.mld_querier_on_event(ifid, RouterEvent::QueryFromLowerIpReceived(pkt_src))?;
@@ -133,7 +133,7 @@ impl IOContext {
                 .expect("unknow interface")
                 .bindings
                 .multicast_scopes()
-                .into_iter()
+                .iter()
                 .filter(|addr| addr.scope() > Ipv6AddrScope::InterfaceLocal) // only with great scopes
                 .filter(|addr| **addr != Ipv6Addr::MULTICAST_ALL_NODES)
                 .copied()

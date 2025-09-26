@@ -52,8 +52,7 @@ impl RetranssmissionTimers {
     }
 
     fn next_timeout(&self) -> Option<SimTime> {
-        let res = self.segments.values().map(|v| v.timeout).min();
-        res
+        self.segments.values().map(|v| v.timeout).min()
     }
 
     pub fn register_segment(&mut self, seq: u32, is_retransmission: bool, now: SimTime) {
@@ -154,7 +153,7 @@ impl RetranssmissionTimers {
         // (5.5) The host MUST set RTO <- RTO * 2 ("back off the timer").  The
         // maximum value discussed in (2.5) above may be used to provide
         // an upper bound to this doubling operation.
-        self.rto = 2.0 * self.rto;
+        self.rto *= 2.0;
         self.rto = self.rto.min(60.0);
 
         // Note that a TCP implementation MAY clear SRTT and RTTVAR after
@@ -197,7 +196,7 @@ impl Timers {
     }
 
     pub fn timewait_to_expired(&self, now: SimTime) -> bool {
-        self.time_wait_to.map_or(false, |to| now >= to)
+        self.time_wait_to.is_some_and(|to| now >= to)
     }
 
     pub fn next_timeout(&self) -> Option<SimTime> {

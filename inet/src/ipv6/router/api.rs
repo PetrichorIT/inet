@@ -77,7 +77,7 @@ impl IOContext {
         adv: bool,
     ) -> io::Result<()> {
         let mut interface = InterfaceDef::new(name.as_ref(), device);
-        let addrs = addrs.into_iter().map(|&addr| {
+        let addrs = addrs.iter().map(|&addr| {
             if addr == Ipv6Addr::LINK_LOCAL {
                 interface.device.addr.embed_into(Ipv6Addr::LINK_LOCAL)
             } else {
@@ -152,7 +152,7 @@ impl IOContext {
             });
         }
 
-        for (_, cfg) in &mut self.ipv6.router_cfg {
+        for cfg in self.ipv6.router_cfg.values_mut() {
             cfg.adv_prefix_list.push(RouterPrefix {
                 on_link: true,
                 prefix,

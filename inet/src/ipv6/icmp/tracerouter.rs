@@ -1,13 +1,13 @@
 use des::{
     runtime::random,
-    time::{sleep, SimTime},
+    time::{SimTime, sleep},
 };
 use std::{io, net::Ipv6Addr, time::Duration};
 
 use crate::{
+    UdpSocket,
     ctx::IOContext,
     socket::{AsRawFd, Fd},
-    UdpSocket,
 };
 
 #[allow(dead_code)]
@@ -94,7 +94,7 @@ pub async fn traceroute(addr: Ipv6Addr) -> io::Result<Traceroute> {
 
         return Err(socket
             .take_error()?
-            .unwrap_or(io::Error::new(io::ErrorKind::Other, "traceroute failed")));
+            .unwrap_or(io::Error::other("traceroute failed")));
         // return Err()
     }
 }
@@ -104,7 +104,7 @@ impl IOContext {
         self.ipv6.traceroute_ctrl.insert(
             addr,
             TracerouteCB {
-                fd: fd,
+                fd,
                 target: addr,
                 last_send: SimTime::MIN,
                 recent_err: None,

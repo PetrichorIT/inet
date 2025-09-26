@@ -7,7 +7,7 @@ use super::{
 use std::{
     fs::File,
     io::{Error, Read, Result, Seek, Write},
-    panic::{catch_unwind, resume_unwind, AssertUnwindSafe},
+    panic::{AssertUnwindSafe, catch_unwind, resume_unwind},
 };
 
 /// A writer for tests, that compares the generated output to
@@ -60,9 +60,10 @@ impl<I: PartialEq + Clone> TestBlockWriter<I> {
                 let Ok(expected) = expected else {
                     panic!("block parsing error: reader");
                 };
-                if block != expected {
-                    panic!("values not equal 'lhs != rhs'\nlhs: {block:#?}\nrhs: {expected:#?}");
-                }
+                assert!(
+                    !(block != expected),
+                    "values not equal 'lhs != rhs'\nlhs: {block:#?}\nrhs: {expected:#?}"
+                );
             }
         }));
 

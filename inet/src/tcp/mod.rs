@@ -17,7 +17,6 @@ use std::{
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
     sync::atomic::Ordering,
     task::{Context, Poll},
-    u32,
 };
 use tokio::io::ReadBuf;
 use types::{
@@ -43,6 +42,7 @@ pub use stream::{OwnedReadHalf, OwnedWriteHalf, ReadHalf, TcpStream, WriteHalf};
 #[cfg(test)]
 mod tests;
 
+#[derive(Default)]
 pub struct Tcp {
     pub config: Config,
     timers: Timers,
@@ -134,10 +134,8 @@ impl IOContext {
             if !is_empty {
                 interface.add_write_interest(fd);
             }
-        } else {
-            if !con.outgoing.is_empty() {
-                interface.add_write_interest(fd);
-            }
+        } else if !con.outgoing.is_empty() {
+            interface.add_write_interest(fd);
         }
     }
 
@@ -185,7 +183,7 @@ impl IOContext {
                 .tcp
                 .streams
                 .get(fd)
-                .map_or(false, |con| con.state == State::Closed)
+                .is_some_and(|con| con.state == State::Closed)
             {
                 self.tcp_drop(*fd).expect("failed");
             }
@@ -308,22 +306,21 @@ impl IOContext {
         true
     }
 
-    ///
-    /// TCP ready()
-    ///
+    //
+    // TCP ready()
+    //
 
-    ///
-    /// TCP read()
-    ///
+    //
+    // TCP read()
+    //
 
     pub fn tcp_read(&mut self, fd: Fd, buf: &mut [u8]) -> Result<usize, Error> {
         let Some(con) = self.tcp.streams.get_mut(&fd) else {
             todo!()
         };
 
-        con.read(buf).map(|n| {
+        con.read(buf).inspect(|_| {
             self.tcp.set_active(fd);
-            n
         })
     }
 
@@ -332,9 +329,8 @@ impl IOContext {
             todo!()
         };
 
-        con.peek(buf).map(|n| {
+        con.peek(buf).inspect(|_| {
             self.tcp.set_active(fd);
-            n
         })
     }
 
@@ -363,18 +359,17 @@ impl IOContext {
         }
     }
 
-    ///
-    /// TCP write()
-    ///
+    //
+    // TCP write()
+    //
 
     pub fn tcp_write(&mut self, fd: Fd, buf: &[u8]) -> Result<usize, Error> {
         let Some(con) = self.tcp.streams.get_mut(&fd) else {
             todo!()
         };
 
-        con.write(buf).map(|n| {
+        con.write(buf).inspect(|_| {
             self.tcp.set_active(fd);
-            n
         })
     }
 
@@ -416,9 +411,9 @@ impl IOContext {
         }
     }
 
-    ///
-    /// TCP bind()
-    ///
+    //
+    // TCP bind()
+    //
 
     fn tcp_bind(
         &mut self,
@@ -437,9 +432,8 @@ impl IOContext {
             };
             let fd = self.socket(domain, SocketType::SOCK_STREAM, 0)?;
 
-            addr = self.socket_bind(fd, addr).map_err(|e| {
+            addr = self.socket_bind(fd, addr).inspect_err(|_| {
                 self.socket_close(fd).expect("cannot handle error");
-                e
             })?;
             fd
         };
@@ -458,12 +452,12 @@ impl IOContext {
         self.tcp
             .listeners
             .remove(&fd)
-            .expect(&format!("failed to unbind tcp listener"));
+            .expect("failed to unbind tcp listener");
     }
 
-    ///
-    /// TCP accept()
-    ///
+    //
+    // TCP accept()
+    //
 
     fn tcp_listener_on_packet(&mut self, ip_packet: IpPacketRef, fd: Fd, pkt: TcpPacket) -> bool {
         let src = SocketAddr::new(ip_packet.src(), pkt.src_port);
@@ -526,9 +520,9 @@ impl IOContext {
         Ok(stream_socket)
     }
 
-    ///
-    /// # TCP connect()
-    ///
+    //
+    // # TCP connect()
+    //
 
     fn tcp_connect(
         &mut self,
@@ -629,7 +623,7 @@ impl Timers {
     fn on_wakeup(&mut self) -> Vec<Fd> {
         let now = SimTime::now();
 
-        while self.scheduled.first().map_or(false, |v| *v <= now) {
+        while self.scheduled.first().is_some_and(|v| *v <= now) {
             self.scheduled.remove(0);
         }
 

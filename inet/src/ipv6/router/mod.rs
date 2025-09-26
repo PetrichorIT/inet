@@ -27,8 +27,14 @@ impl RouterState {
     }
 }
 
+impl Default for RouterState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// A prefix matching routing table
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Router {
     pub entries: Ipv6LongestPrefixTable<Entry>,
 }
@@ -67,9 +73,8 @@ impl Router {
             .iter()
             .find(|e| e.prefix.contains(dst))
             .map(|e| (e.next_hop, e.ifid))
-            .map(|e| {
+            .inspect(|e| {
                 tracing::trace!("choose route towards {dst} -> {} over {}", e.0, e.1);
-                e
             })
     }
 

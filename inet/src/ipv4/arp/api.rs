@@ -4,7 +4,7 @@ use des::time::SimTime;
 use types::iface::MacAddress;
 
 use super::ArpConfig;
-use crate::{interface::InterfaceName, socket::SocketIfaceBinding, IOContext};
+use crate::{IOContext, interface::InterfaceName, socket::SocketIfaceBinding};
 
 /// An entry in the address resoloution table
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -26,7 +26,7 @@ impl Display for ArpEntry {
         write!(
             f,
             "{} ({}) at {} on {} ifscope {}[ethernet]",
-            self.hostname.as_ref().map(|s| s.as_str()).unwrap_or("?"),
+            self.hostname.as_deref().unwrap_or("?"),
             self.ip,
             self.mac,
             self.iface,

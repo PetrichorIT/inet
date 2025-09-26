@@ -23,18 +23,19 @@ pub fn split_off_front(mut buf: Vec<u8>, pos: usize) -> Vec<u8> {
     buf
 }
 
-pub struct PortNumberHeader {
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct TransportLayerHeader {
     pub src: u16,
     pub dst: u16,
 }
 
-impl FromBytes for PortNumberHeader {
+impl FromBytes for TransportLayerHeader {
     type Error = std::io::Error;
     fn from_bytes(stream: &mut bytes_io::BytesReader) -> Result<Self, Self::Error>
     where
         Self: Sized,
     {
-        Ok(PortNumberHeader {
+        Ok(TransportLayerHeader {
             src: stream.get_u16(),
             dst: stream.get_u16(),
         })

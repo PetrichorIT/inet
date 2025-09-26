@@ -74,9 +74,7 @@ impl ArpTable {
     }
 
     pub fn lookup(&self, ip: &Ipv4Addr) -> Option<&ArpEntryInternal> {
-        let Some(value) = self.map.get(ip) else {
-            return None;
-        };
+        let value = self.map.get(ip)?;
         if value.expires <= SimTime::now() {
             None
         } else {

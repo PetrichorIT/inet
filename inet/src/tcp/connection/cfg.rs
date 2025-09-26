@@ -4,7 +4,6 @@ use std::{
     net::SocketAddr,
     sync::Arc,
     time::Duration,
-    u32,
 };
 
 use crate::tcp::Quad;

@@ -137,7 +137,7 @@ impl InterfaceController {
                 crate::libpcap::capture(crate::libpcap::PcapEnvelope {
                     capture: crate::libpcap::PcapCapturePoint::Egress,
                     message: &msg,
-                    iface: &self,
+                    iface: self,
                 });
             }
             NetworkDeviceReadiness::Busy(until) => {
@@ -251,7 +251,7 @@ impl IOContext {
         };
 
         // Capture all packets that can be addressed to a interface, event not targeted
-        let ifid = ifid.clone();
+        let ifid = *ifid;
 
         #[cfg(feature = "libpcap")]
         crate::libpcap::capture(crate::libpcap::PcapEnvelope {
@@ -293,7 +293,7 @@ impl IOContext {
         let ifid = iface.name.id();
         let fds = iface.recv_link_update();
         for fd in fds {
-            self.socket_link_update(fd, ifid.clone());
+            self.socket_link_update(fd, ifid);
         }
     }
 

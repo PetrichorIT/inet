@@ -15,6 +15,7 @@ pub fn try_with_ext<E: Default + Any, R>(f: impl FnOnce(&mut E) -> R) -> Option<
     IOContext::try_with_current(|ctx| ctx.extensions.with_ext(f))
 }
 
+#[derive(Default)]
 pub struct Extensions {
     mapping: FxHashMap<TypeId, Box<dyn Any>>,
 }

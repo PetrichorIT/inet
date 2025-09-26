@@ -22,8 +22,7 @@ pub async fn ping(addr: impl Into<Ipv6Addr>) -> io::Result<Ping> {
 pub async fn ping_with(addr: impl Into<Ipv6Addr>, c: usize) -> io::Result<Ping> {
     let addr = addr.into();
     let rx = IOContext::failable_api(|ctx| ctx.ipv6_icmp_initate_ping(addr, c))?;
-    rx.await
-        .map_err(|_| io::Error::new(io::ErrorKind::Other, "broke pipe"))?
+    rx.await.map_err(|_| io::Error::other("broke pipe"))?
 }
 
 #[allow(dead_code)]

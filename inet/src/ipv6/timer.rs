@@ -1,12 +1,12 @@
 use std::net::Ipv6Addr;
 
 use des::{
-    net::message::{schedule_at, Message},
+    net::message::{Message, schedule_at},
     time::SimTime,
 };
 use types::ip::Ipv6Prefix;
 
-use crate::interface::{IfId, ID_IPV6_TIMEOUT, KIND_IO_TIMEOUT};
+use crate::interface::{ID_IPV6_TIMEOUT, IfId, KIND_IO_TIMEOUT};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TimerToken {
@@ -106,7 +106,7 @@ impl TimerCtrl {
     }
 
     pub fn next(&self) -> Option<SimTime> {
-        self.timers.iter().next().map(|v| v.1)
+        self.timers.first().map(|v| v.1)
     }
 
     pub fn schedule_wakeup(&mut self) {
@@ -125,10 +125,10 @@ impl TimerCtrl {
             return;
         };
 
-        if let Some(wakeup) = self.wakeups.first() {
-            if *wakeup <= next {
-                return;
-            }
+        if let Some(wakeup) = self.wakeups.first()
+            && *wakeup <= next
+        {
+            return;
         }
 
         self.wakeups.push(next);
@@ -159,5 +159,11 @@ impl TimerCtrl {
             }
         }
         tokens
+    }
+}
+
+impl Default for TimerCtrl {
+    fn default() -> Self {
+        Self::new()
     }
 }

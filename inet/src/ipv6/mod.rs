@@ -105,6 +105,12 @@ impl Ipv6 {
     }
 }
 
+impl Default for Ipv6 {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 bitflags! {
     #[derive(Debug)]
     pub struct Ipv6SendFlags: u8 {
@@ -348,7 +354,7 @@ impl IOContext {
                 .default_routers
                 .next_router(&self.ipv6.neighbors)
                 .map(|addr| (addr, IfId::NULL))
-                .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "no router available"))
+                .ok_or_else(|| io::Error::other("no router available"))
         }
     }
 

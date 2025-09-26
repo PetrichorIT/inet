@@ -1,14 +1,14 @@
 use bytes_io::{Bytes, ToBytes};
 use des::prelude::*;
-use std::io::{Error, ErrorKind, Result};
+use std::io::{Error, Result};
 use std::net::Ipv4Addr;
 use std::time::Duration;
 use tokio::sync::oneshot;
 use types::icmpv4::{IcmpV4Packet, IcmpV4Type, PROTO_ICMPV4};
 use types::ip::{IpPacket, Ipv4Flags, Ipv4Packet};
 
-use crate::socket::SocketIfaceBinding;
 use crate::IOContext;
+use crate::socket::SocketIfaceBinding;
 
 #[derive(Debug)]
 pub struct PingCB {
@@ -50,8 +50,7 @@ pub async fn ping(addr: impl Into<Ipv4Addr>) -> Result<Ping> {
 pub async fn ping_with(addr: impl Into<Ipv4Addr>, c: usize) -> Result<Ping> {
     let addr = addr.into();
     let rx = IOContext::failable_api(|ctx| ctx.icmp_initiate_ping(addr, c))?;
-    rx.await
-        .map_err(|_| Error::new(ErrorKind::Other, "broke pipe"))?
+    rx.await.map_err(|_| Error::other("broke pipe"))?
 }
 
 impl IOContext {

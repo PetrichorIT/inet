@@ -1,7 +1,7 @@
 //! The User Datagram Protocol (UDP)
-use super::{socket::*, IOContext};
+use super::{IOContext, socket::*};
 use crate::interface::IfId;
-use bytes_io::{BufMut, Bytes, FromBytes, ToBytes};
+use bytes_io::{BufMut, FromBytes, ToBytes};
 use des::net::module::try_current;
 use fxhash::{FxBuildHasher, FxHashMap, FxHashSet};
 use serde::{Deserialize, Serialize};
@@ -13,7 +13,7 @@ use std::{
 };
 use types::{
     ip::{IpPacket, IpPacketRef, Ipv4Flags, Ipv4Packet, Ipv6Packet},
-    udp::{UdpPacket, PROTO_UDP},
+    udp::{PROTO_UDP, UdpPacket},
 };
 use valuable::Valuable;
 
@@ -239,9 +239,8 @@ impl IOContext {
 
         let socket: Fd = self.socket(domain, SocketType::SOCK_DGRAM, 0)?;
 
-        let baddr = self.socket_bind(socket, addr).map_err(|e| {
+        let baddr = self.socket_bind(socket, addr).inspect_err(|_| {
             let _ = self.socket_close(socket);
-            e
         })?;
 
         let manager = UdpControlBlock {
@@ -308,12 +307,7 @@ impl IOContext {
             panic!()
         }
 
-        let udp_packet = UdpPacket {
-            src_port: mng.local_addr.port(),
-            dst_port: target.port(),
-            checksum: 0,
-            content: Bytes::from(buf.to_vec()),
-        };
+        let udp_packet = UdpPacket::new(mng.local_addr.port(), target.port(), buf.to_vec());
         let content = udp_packet.write_to_bytes()?;
 
         match (mng.local_addr.ip(), target.ip()) {
@@ -394,7 +388,7 @@ impl IOContext {
             return Err(Error::new(ErrorKind::WouldBlock, "no data available"));
         };
 
-        if peer.map_or(false, |peer| peer != src) {
+        if peer.is_some_and(|peer| peer != src) {
             return Err(Error::new(ErrorKind::ConnectionRefused, "not connecteds"));
         }
 
@@ -421,7 +415,7 @@ impl IOContext {
             return Err(Error::new(ErrorKind::WouldBlock, "no data available"));
         };
 
-        if peer.map_or(false, |peer| peer != src) {
+        if peer.is_some_and(|peer| peer != src) {
             return Err(Error::new(ErrorKind::ConnectionRefused, "not connecteds"));
         }
 
@@ -457,7 +451,7 @@ impl IOContext {
             return Err(Error::new(ErrorKind::WouldBlock, "no data available"));
         };
 
-        if peer.map_or(false, |peer| peer != *src) {
+        if peer.is_some_and(|peer| peer != *src) {
             return Err(Error::new(ErrorKind::ConnectionRefused, "not connecteds"));
         }
 

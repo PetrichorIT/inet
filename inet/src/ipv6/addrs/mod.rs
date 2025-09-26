@@ -543,14 +543,10 @@ impl<T> VecExt<T> for Vec<T> {
         } else {
             let mut idx = 0;
             let mut max = &self[0];
-            for i in 1..self.len() {
-                let cur = &self[i];
-                match f(max, cur) {
-                    Ordering::Less => {
-                        max = cur;
-                        idx = i;
-                    }
-                    _ => {}
+            for (i, cur) in self.iter().enumerate().skip(1) {
+                if f(max, cur) == Ordering::Less {
+                    max = cur;
+                    idx = i;
                 }
             }
             Some(self.remove(idx))

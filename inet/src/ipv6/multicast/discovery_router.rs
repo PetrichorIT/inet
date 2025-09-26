@@ -8,7 +8,7 @@ use types::{
     ip::{Ipv6AddrExt, Ipv6AddrScope, Ipv6Packet},
 };
 
-use crate::{interface::IfId, ipv6::timer::TimerToken, IOContext};
+use crate::{IOContext, interface::IfId, ipv6::timer::TimerToken};
 
 use super::{
     LAST_LISTENER_QUERY_COUNT, LAST_LISTENER_QUERY_INTERVAL, MULTICAST_LISTENER_INTERVAL,
@@ -359,7 +359,7 @@ impl IOContext {
             multicast_addr: multicast_addr.unwrap_or(Ipv6Addr::UNSPECIFIED),
         };
 
-        if let Some(_) = self.ipv6.mld.entry(ifid).or_default().querier {
+        if self.ipv6.mld.entry(ifid).or_default().querier.is_some() {
             self.ipv6_icmp_recv_multicast_listener_query(src, ifid, query.clone())?;
         }
 

@@ -5,7 +5,7 @@ use crate::tcp::interest::TcpInterest;
 use crate::tcp::stream::Inner;
 use crate::tcp::{Config, State};
 use std::cell::{Cell, RefCell};
-use std::io::{Error, ErrorKind, Result};
+use std::io::{Error, Result};
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
 use std::sync::Arc;
 use std::time::Duration;
@@ -167,7 +167,7 @@ impl TcpSocket {
     /// Behavior is platform specific. Refer to the target platform’s documentation for more details.
     pub fn bind(&self, addr: SocketAddr) -> Result<()> {
         if self.addr.get().is_ipv4() != addr.ip().is_ipv4() {
-            return Err(Error::new(ErrorKind::Other, "Expected other ip typ"));
+            return Err(Error::other("Expected other ip typ"));
         }
 
         let addr = IOContext::with_current(|ctx| ctx.socket_bind(self.fd, addr))?;
@@ -195,16 +195,15 @@ impl TcpSocket {
             let interest = TcpInterest::write(fd);
             return interest
                 .await
-                .map_err(|e| {
+                .inspect_err(|_| {
                     let _ = IOContext::with_current(|ctx| ctx.tcp_drop(fd));
-                    e
                 })
                 .map(|_| TcpStream {
                     inner: Arc::new(Inner { fd }),
                 });
         }
 
-        Err(Error::new(ErrorKind::Other, "No address worked"))
+        Err(Error::other("No address worked"))
     }
 
     /// Converts the socket into a TcpListener.

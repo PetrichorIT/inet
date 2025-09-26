@@ -76,6 +76,7 @@ impl IOContext {
         })
     }
 
+    #[allow(clippy::single_match)]
     pub(super) fn ipv6_icmp_recv_packet_to_big(
         &mut self,
         ip: &Ipv6Packet,

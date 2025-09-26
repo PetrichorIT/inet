@@ -37,8 +37,10 @@ pub(super) struct Sockets {
     pub next_fd: Fd,
     pub next_port: Cell<u16>,
     pub sockets: FxHashMap<Fd, Socket>,
-    pub handlers: FxHashMap<(u8, SocketDomain), (Fd, Sender<(IfId, IpPacket)>)>,
+    pub handlers: FxHashMap<(u8, SocketDomain), SocketHandler>,
 }
+
+pub type SocketHandler = (Fd, Sender<(IfId, IpPacket)>);
 
 impl Sockets {
     pub(super) fn new() -> Sockets {
@@ -252,10 +254,10 @@ impl IOContext {
                 }
 
                 if addr.is_ipv4() {
-                    iface.bindings.has_v4_capability().then(|| ifid)
+                    iface.bindings.has_v4_capability().then_some(ifid)
                 } else {
                     (iface.bindings.has_v4_capability() || iface.bindings.has_v6_capability())
-                        .then(|| ifid)
+                        .then_some(ifid)
                 }
             })
             .collect::<Vec<_>>();
@@ -278,14 +280,12 @@ impl IOContext {
                 port = port.wrapping_add(1);
             }
             self.sockets.next_port.set(port.wrapping_add(1));
-        } else {
-            if self
-                .sockets
-                .values()
-                .any(|other| other.addr.port() == port && other.typ == socket.typ)
-            {
-                return Err(Error::new(ErrorKind::AddrInUse, "port already in use"));
-            }
+        } else if self
+            .sockets
+            .values()
+            .any(|other| other.addr.port() == port && other.typ == socket.typ)
+        {
+            return Err(Error::new(ErrorKind::AddrInUse, "port already in use"));
         }
 
         let socket = self.sockets.get_mut(&fd).expect("unreachable");
@@ -456,8 +456,8 @@ impl IOContext {
         match &socket.interface {
             SocketIfaceBinding::NotBound => Ok(None),
             SocketIfaceBinding::Bound(ifid) => {
-                let Some(interface) = self.ifaces.get(&ifid) else {
-                    return Err(Error::new(ErrorKind::Other, "interface down"));
+                let Some(interface) = self.ifaces.get(ifid) else {
+                    return Err(Error::other("interface down"));
                 };
 
                 Ok(Some(interface.name.clone()))
@@ -466,7 +466,7 @@ impl IOContext {
                 // SAFTEY: list is never empty
                 let ifid = ifids[0];
                 let Some(interface) = self.ifaces.get(&ifid) else {
-                    return Err(Error::new(ErrorKind::Other, "interface down"));
+                    return Err(Error::other("interface down"));
                 };
 
                 Ok(Some(interface.name.clone()))

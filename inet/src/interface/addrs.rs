@@ -109,7 +109,7 @@ impl InterfaceAddrsV6 {
             multicast.is_multicast(),
             "cannot join multicast group '{multicast}': address is not multicast"
         );
-        if !self.multicast.iter().any(|addr| *addr == multicast) {
+        if !self.multicast.contains(&multicast) {
             self.multicast.push(multicast);
             true
         } else {
@@ -140,7 +140,7 @@ impl InterfaceAddrsV6 {
     /// for a packet addressed to `dst`
     pub fn matches(&self, dst: Ipv6Addr) -> bool {
         if dst.is_multicast() {
-            self.recv_all_multicast || self.multicast.iter().any(|multicast| *multicast == dst)
+            self.recv_all_multicast || self.multicast.contains(&dst)
         } else {
             self.unicast.iter().any(|binding| binding.matches(dst))
         }

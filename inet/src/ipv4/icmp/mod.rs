@@ -191,7 +191,7 @@ impl IOContext {
                         (AF_INET, SOCK_DGRAM) => {
                             self.udp_icmp_error(
                                 *fd,
-                                Error::new(ErrorKind::Other, format!("{code:?}")),
+                                Error::other(format!("{code:?}")),
                                 IpPacket::V4(ip),
                             );
                         }

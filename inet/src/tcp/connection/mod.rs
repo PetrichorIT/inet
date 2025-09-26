@@ -11,7 +11,7 @@ use std::{
 };
 use tracing::instrument;
 use types::{
-    PortNumberHeader,
+    TransportLayerHeader,
     icmpv4::{IcmpV4DestinationUnreachableCode, IcmpV4Packet, IcmpV4Type},
     icmpv6::{IcmpV6DestinationUnreachableCode, IcmpV6Packet},
     ip::{IpPacket, Ipv4Flags, Ipv4Packet, Ipv6Packet},
@@ -60,17 +60,11 @@ impl State {
     }
 
     pub fn is_synchronized(&self) -> bool {
-        match *self {
-            State::SynSent | State::SynRcvd | State::Closed => false,
-            _ => true,
-        }
+        !matches!(*self, State::SynSent | State::SynRcvd | State::Closed)
     }
 
     pub fn is_writable(&self) -> bool {
-        match *self {
-            State::Estab | State::CloseWait => true,
-            _ => false,
-        }
+        matches!(self, State::Estab | State::CloseWait)
     }
 }
 
@@ -224,7 +218,7 @@ impl Connection {
         let n = self.peek(buf)?;
         self.consume(n)?;
         tracing::trace!("Connection::read({}) = {n}", buf.len());
-        return Ok(n);
+        Ok(n)
     }
 
     pub fn consume(&mut self, n: usize) -> io::Result<()> {
@@ -246,8 +240,7 @@ impl Connection {
         if let State::SynSent | State::SynRcvd = self.state {
             // This is illegal, since no TcpStream should exist before ESTABLISHED is reached
             // -> do never allow requuest queuing
-            return Err(Error::new(
-                ErrorKind::Other,
+            return Err(Error::other(
                 "insufficient resources - unexpected read before Estab",
             ));
         }
@@ -447,12 +440,12 @@ impl Connection {
 
         let mut offset = seq.wrapping_sub(self.snd.una) as usize;
         // we need to special-case the two "virtual" bytes SYN and FIN
-        if let Some(closed_at) = self.snd.closed_at {
-            if seq == closed_at.wrapping_add(1) {
-                // trying to write following FIN
-                offset = 0;
-                limit = 0;
-            }
+        if let Some(closed_at) = self.snd.closed_at
+            && seq == closed_at.wrapping_add(1)
+        {
+            // trying to write following FIN
+            offset = 0;
+            limit = 0;
         }
 
         // Max TCP packet size
@@ -743,7 +736,7 @@ impl Connection {
             return Ok(());
         }
 
-        let tcp = PortNumberHeader::peek_from(&contained.content[..])?;
+        let tcp = TransportLayerHeader::peek_from(&contained.content[..])?;
         let inferred_quad = Quad {
             src: SocketAddrV4::new(contained.src, tcp.src).into(),
             dst: SocketAddrV4::new(contained.dst, tcp.dst).into(),
@@ -777,19 +770,14 @@ impl Connection {
 
         // TODO: DestinationUnreachable(AddressUnreachable) is classfified as both a hard and a soft error
         match pkt.typ {
-            DestinationUnreachable { code, .. }
-                if matches!(
-                    code,
-                    NetworkUnreachable | HostUnreachable | SourceRouteFailed
-                ) =>
-            {
-                IcmpAction::SoftError
-            }
-            DestinationUnreachable { code, .. }
-                if matches!(code, ProtocolUnreachable | PortUnreachable | DatagramToBig) =>
-            {
-                IcmpAction::HardError
-            }
+            DestinationUnreachable {
+                code: NetworkUnreachable | HostUnreachable | SourceRouteFailed,
+                ..
+            } => IcmpAction::SoftError,
+            DestinationUnreachable {
+                code: ProtocolUnreachable | PortUnreachable | DatagramToBig,
+                ..
+            } => IcmpAction::HardError,
             TimeExceeded { .. } => IcmpAction::SoftError,
             _ => IcmpAction::Ingore,
         }
@@ -806,7 +794,7 @@ impl Connection {
             return Ok(());
         }
 
-        let Ok(header_part) = PortNumberHeader::peek_from(&contained.content[..]) else {
+        let Ok(header_part) = TransportLayerHeader::peek_from(&contained.content[..]) else {
             // ICMP packet does not contain any valid TCP header
             return Ok(());
         };
@@ -869,7 +857,7 @@ impl Connection {
     }
 
     pub fn change_mtu(&mut self, mtu: usize) {
-        let eff_mss = mtu as usize - Ipv6Packet::MIN_HEADER_SIZE - TcpPacket::MIN_HEADER_SIZE;
+        let eff_mss = mtu - Ipv6Packet::MIN_HEADER_SIZE - TcpPacket::MIN_HEADER_SIZE;
         self.snd.mss = self.snd.mss.min(eff_mss as u16);
 
         tracing::debug!("changing mtu to {}", mtu);
@@ -932,12 +920,12 @@ impl Connection {
             }
         }
 
-        let mut last = self.on_inorder_packet(seg)?;
+        self.on_inorder_packet(seg)?;
         while let Some(next_pkt) = self.incoming.next(self.rcv.nxt) {
             tracing::trace!("processing packet from reorder buffer: {}", next_pkt.seq_no);
-            last = self.on_inorder_packet(next_pkt)?;
+            self.on_inorder_packet(next_pkt)?;
         }
-        Ok(last)
+        Ok(())
     }
 
     fn on_inorder_packet(&mut self, seg: TcpPacket) -> Result<(), Error> {
@@ -1128,14 +1116,13 @@ impl Connection {
             // If SND.UNA =< SEG.ACK =< SND.NXT, the send window should be updated.
             // If (SND.WL1 < SEG.SEQ or (SND.WL1 = SEG.SEQ and SND.WL2 =< SEG.ACK)),
             // set SND.WND <- SEG.WND, set SND.WL1 <- SEG.SEQ, and set SND.WL2 <- SEG.ACK.
-            if is_between_wrapped(self.snd.una, ackn, self.snd.nxt.wrapping_add(1)) {
-                if self.snd.wl1 < seg.seq_no
-                    || (self.snd.wl1 == seg.seq_no && self.snd.wl2 <= seg.ack_no)
-                {
-                    self.snd.wnd = seg.window;
-                    self.snd.wl1 = seg.seq_no;
-                    self.snd.wl2 = seg.ack_no;
-                }
+            if is_between_wrapped(self.snd.una, ackn, self.snd.nxt.wrapping_add(1))
+                && (self.snd.wl1 < seg.seq_no
+                    || (self.snd.wl1 == seg.seq_no && self.snd.wl2 <= seg.ack_no))
+            {
+                self.snd.wnd = seg.window;
+                self.snd.wl1 = seg.seq_no;
+                self.snd.wl2 = seg.ack_no;
             }
 
             if is_between_wrapped(self.snd.una, ackn, self.snd.nxt.wrapping_add(1)) {
@@ -1194,7 +1181,7 @@ impl Connection {
                     if self
                         .cfg
                         .dup_ack_resend_cnt
-                        .map_or(false, |limit| self.snd.dup_ack_resend_counter >= limit)
+                        .is_some_and(|limit| self.snd.dup_ack_resend_counter >= limit)
                     {
                         tracing::trace!("resending due to dup ack");
                         // FIXME:
@@ -1215,10 +1202,10 @@ impl Connection {
         // FIN-WAIT-2 STATE
         // In addition to the processing for the ESTABLISHED state, if the retransmission queue is empty,
         // the user's CLOSE can be acknowledged ("ok") but do not delete the TCB.
-        if let State::FinWait2 = self.state {
-            if self.snd.num_unacked_bytes() == 0 {
-                // TODO: Acknowledge close()
-            }
+        if let State::FinWait2 = self.state
+            && self.snd.num_unacked_bytes() == 0
+        {
+            // TODO: Acknowledge close()
         }
 
         // TIME-WAIT STATE
@@ -1688,7 +1675,7 @@ impl Connection {
             seg_len += 1;
         };
 
-        let okay = if seg_len == 0 {
+        if seg_len == 0 {
             // zero-length segment has separate rules for acceptance
             if self.rcv.wnd == 0 {
                 if seg.seq_no != self.rcv.nxt {
@@ -1730,8 +1717,7 @@ impl Connection {
             } else {
                 true
             }
-        };
-        okay
+        }
     }
 }
 

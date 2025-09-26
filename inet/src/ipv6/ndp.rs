@@ -12,7 +12,7 @@ use valuable::Valuable;
 
 use crate::interface::{IfId, InterfaceAddrV6};
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Solicitations {
     queries: FxHashMap<Ipv6Addr, QueryType>,
 }
@@ -389,20 +389,18 @@ impl PrefixList {
             entry.expires = SimTime::now() + Duration::from_millis(info.preferred_lifetime as u64);
             self.timeout();
             false
+        } else if info.valid_lifetime != 0 {
+            self.list.push(PrefixListEntry {
+                prefix: Ipv6Prefix::new(info.prefix, info.prefix_len),
+                assigned_addr: None,
+                expires: SimTime::now() + Duration::from_millis(info.preferred_lifetime as u64),
+                addr_auto_cfg: info.autonomous_address_configuration,
+            });
+            self.sort();
+            info.autonomous_address_configuration
         } else {
-            if info.valid_lifetime != 0 {
-                self.list.push(PrefixListEntry {
-                    prefix: Ipv6Prefix::new(info.prefix, info.prefix_len),
-                    assigned_addr: None,
-                    expires: SimTime::now() + Duration::from_millis(info.preferred_lifetime as u64),
-                    addr_auto_cfg: info.autonomous_address_configuration,
-                });
-                self.sort();
-                info.autonomous_address_configuration
-            } else {
-                /* silent ignore */
-                false
-            }
+            /* silent ignore */
+            false
         }
     }
 
@@ -440,6 +438,12 @@ impl PrefixList {
 impl PrefixListEntry {
     pub fn matches_dst(&self, addr: Ipv6Addr) -> bool {
         self.prefix.contains(addr)
+    }
+}
+
+impl Default for PrefixList {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -512,5 +516,11 @@ impl DefaultRouterList {
 
     pub fn timeout(&mut self) {
         self.list.retain(|entry| entry.expires > SimTime::now())
+    }
+}
+
+impl Default for DefaultRouterList {
+    fn default() -> Self {
+        Self::new()
     }
 }

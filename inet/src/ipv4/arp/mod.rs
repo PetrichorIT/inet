@@ -220,9 +220,7 @@ impl IOContext {
             .map(|e| (e.negated, e.mac, e.iface))
             .or_else(|| match preferred_iface {
                 SocketIfaceBinding::Bound(ifid) => {
-                    let Some(iface) = self.ifaces.get(&ifid) else {
-                        return None;
-                    };
+                    let iface = self.ifaces.get(ifid)?;
                     let looback = iface.flags.loopback && dst.is_loopback();
                     let self_addr = iface.bindings.v4.matches(dst);
                     if looback || self_addr {
@@ -233,7 +231,7 @@ impl IOContext {
                 }
                 SocketIfaceBinding::Any(ifids) => {
                     for ifid in ifids {
-                        let Some(iface) = self.ifaces.get(&ifid) else {
+                        let Some(iface) = self.ifaces.get(ifid) else {
                             continue;
                         };
                         let looback = iface.flags.loopback && dst.is_loopback();
@@ -311,7 +309,7 @@ impl IOContext {
                 iface
             }
             SocketIfaceBinding::NotBound => {
-                return Err(Error::new(ErrorKind::Other, "socket bound to no interface"));
+                return Err(Error::other("socket bound to no interface"));
             }
         };
 
@@ -328,8 +326,7 @@ impl IOContext {
             iface
                 .ipv4_subnet()
                 .map(|v| v.0)
-                .unwrap_or(Ipv4Addr::UNSPECIFIED)
-                .into(),
+                .unwrap_or(Ipv4Addr::UNSPECIFIED),
             dst,
         );
 
