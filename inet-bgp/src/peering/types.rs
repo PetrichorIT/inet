@@ -47,6 +47,7 @@ impl Debug for NeighborDeamonState {
 }
 
 #[derive(Debug, Clone, Default)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct BgpPeeringCfg {
     pub colliosion_detect: bool,
     pub damp_peer_oscillation: bool,

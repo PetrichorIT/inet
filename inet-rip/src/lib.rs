@@ -1,14 +1,15 @@
+#![warn(clippy::pedantic)]
 //! The Routing Information Protocol (RIP)
 
 use bytes_io::{FromBytes, ToBytes};
-use des::time::{sleep, Duration, SimTime};
+use des::time::{Duration, SimTime, sleep};
 use fxhash::{FxBuildHasher, FxHashMap};
 use std::net::{IpAddr, Ipv4Addr};
 
 use inet::{
-    interface::{add_interface, interface_status_by_ifid, InterfaceDef},
-    ipv4::router::add_routing_entry,
     Current, UdpSocket,
+    interface::{InterfaceDef, add_interface, interface_status_by_ifid},
+    ipv4::router::add_routing_entry,
 };
 
 use inet::env::RoutingInformation;
@@ -70,11 +71,16 @@ struct DistanceVectorEntry {
 
 impl RipRoutingDeamon {
     /// Creates a new routing deamin, that acts as the border router
-    /// to a LAn in the given routing port.
+    /// to a LAN in the given routing port.
+    ///
+    /// # Panics
+    ///
+    /// May panic if the interface cannot be added.
+    #[must_use]
     pub fn lan_attached(
         raddr: Ipv4Addr,
         mask: Ipv4Addr,
-        port: RoutingPort,
+        port: &RoutingPort,
         cfg: RipConfig,
     ) -> Self {
         add_interface(InterfaceDef::new("lan", port.clone().into()).ipv4(raddr, mask)).unwrap();
@@ -82,7 +88,7 @@ impl RipRoutingDeamon {
         let ports = RoutingInformation::collect();
         let mut c = 0;
         for new_port in ports.ports {
-            if port != new_port {
+            if *port != new_port {
                 // test if gate chain has channel else invalid
                 let mut chan = new_port.output.channel().is_some();
 
@@ -179,6 +185,11 @@ impl RipRoutingDeamon {
     /// Activates the deamon.
     ///
     /// This function will block forever, or until a critical error has occured.
+    ///
+    /// # Panics
+    ///
+    /// May panic.
+    #[allow(clippy::too_many_lines)]
     pub async fn deploy(mut self) {
         // (0) Initalize the DVs with just self as a target
         let local_subnet = Ipv4Addr::from(u32::from(self.addr) & u32::from(self.mask));
@@ -230,9 +241,9 @@ impl RipRoutingDeamon {
                         continue;
                     }
                 },
-                _ = sleep(sleep_dur) => {
+                () = sleep(sleep_dur) => {
                     let mut updates = FxHashMap::with_hasher(FxBuildHasher::default());
-                    for addr in self.vectors.keys().cloned().collect::<Vec<_>>() {
+                    for addr in self.vectors.keys().copied().collect::<Vec<_>>() {
                         let entry = self.vectors.get_mut(&addr).unwrap();
 
                         if SimTime::now() >= entry.deadline {
@@ -270,14 +281,13 @@ impl RipRoutingDeamon {
             };
 
             let (raddr, rport, new_neighbor) = if let IpAddr::V4(v4) = from.ip() {
-                let (incoming, new_neighbor) = match self.neighbors.get(&v4) {
-                    Some(v) => (v.iface.clone(), false),
-                    None => {
-                        // current
-                        let c = Current::fetch();
-                        let info = interface_status_by_ifid(c.ifid).unwrap();
-                        (info.name.to_string(), true)
-                    }
+                let (incoming, new_neighbor) = if let Some(v) = self.neighbors.get(&v4) {
+                    (v.iface.clone(), false)
+                } else {
+                    // current
+                    let c = Current::fetch();
+                    let info = interface_status_by_ifid(c.ifid).unwrap();
+                    (info.name.to_string(), true)
                 };
                 (v4, incoming, new_neighbor)
             } else {
@@ -293,7 +303,7 @@ impl RipRoutingDeamon {
                     rip.command = RipCommand::Response;
 
                     if new_neighbor {
-                        self.add_neighbor(raddr, rip.entries[0].mask, rport, &mut changes)
+                        self.add_neighbor(raddr, rip.entries[0].mask, rport, &mut changes);
                     }
 
                     if rip.entries.len() == 1
@@ -387,12 +397,9 @@ impl RipRoutingDeamon {
                 }
             }
 
-            if !changes.is_empty() {
-                // tracing::trace!(
-                //     "{} changes to be published to {} neighbors",
-                //     changes.len(),
-                //     self.neighbors.len()
-                // );
+            if changes.is_empty() {
+                // log something
+            } else {
                 let publ = RipPacket::packets(RipCommand::Response, &changes);
                 for pkt in publ {
                     for n in self.neighbors.keys() {
@@ -415,8 +422,6 @@ impl RipRoutingDeamon {
                     .min()
                     .unwrap_or(SimTime::MAX);
                 self.next_timeout = min.max(SimTime::now());
-            } else {
-                // tracing::trace!("no changes");
             }
         }
     }

@@ -22,9 +22,9 @@ use crate::{
 };
 
 use super::{
+    DnsMessage, Nameserver, NameserverQuery, TransportMedium,
     iterative::IterativeNameserver,
     transaction::{ActiveTransaction, FinishedTransaction, SourceQuery},
-    DnsMessage, Nameserver, NameserverQuery, TransportMedium,
 };
 
 mod cfg;
@@ -54,6 +54,10 @@ pub struct RecursiveNameserver {
 
 impl RecursiveNameserver {
     /// Creates a new recursive nameserver.
+    ///
+    /// # Errors
+    ///
+    /// Fails if the zoneresolver fails.
     pub fn new(zone: Zonefile) -> io::Result<Self> {
         Ok(Self {
             inner: IterativeNameserver::primary(vec![ZoneResolver::new(zone)?]),
@@ -69,6 +73,7 @@ impl RecursiveNameserver {
     }
 
     /// Adds a list of root nameservers to the recursive nameserver.
+    #[must_use]
     pub fn with_roots(mut self, roots: Vec<(IpAddr, String)>) -> Self {
         self.cfg.roots = roots;
         self
@@ -244,7 +249,7 @@ impl RecursiveNameserver {
             }
 
             Err(e) => {
-                tracing::error!("internal: {e}")
+                tracing::error!("internal: {e}");
             }
         }
     }
@@ -364,7 +369,7 @@ impl Nameserver for RecursiveNameserver {
                                     ra: false,
                                     aa: authoratative,
                                     result: TransactionResult::Success(result),
-                                })
+                                });
                             }
                             Err(error) => {
                                 tracing::error!("query error: {error}");
@@ -375,7 +380,7 @@ impl Nameserver for RecursiveNameserver {
                                     result: TransactionResult::Failure(error),
                                 });
                             }
-                        };
+                        }
                     });
                 }
             }

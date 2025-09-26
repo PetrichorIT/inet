@@ -1,4 +1,4 @@
-//! A client resolver, to bind to [`inet::dns::set_resolver`]
+//! A client resolver, to bind to [`inet::dns::set_dns_resolver`]
 
 use std::{
     future::Future,
@@ -20,6 +20,11 @@ use crate::{
 };
 
 /// A client resolver, using a locac adapter on a recursive DNS server
+///
+/// # Panics
+///
+/// Panics if the local resolver could not be initialized.
+#[must_use]
 pub fn resolve(
     host: &str,
     port: u16,

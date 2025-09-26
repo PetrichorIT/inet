@@ -40,21 +40,24 @@ impl Reader {
 }
 
 impl Zonefile {
+    #[must_use]
     pub fn local() -> Zonefile {
         Zonefile {
-            records: vec![SoaResourceRecord {
-                name: DnsString::empty(),
-                class: ResourceRecordClass::IN,
-                ttl: 0,
-                mname: DnsString::empty(),
-                rname: DnsString::empty(),
-                serial: 0,
-                retry: 7000,
-                refresh: 7000,
-                expire: 7000,
-                minimum: 000,
-            }
-            .into()],
+            records: vec![
+                SoaResourceRecord {
+                    name: DnsString::empty(),
+                    class: ResourceRecordClass::IN,
+                    ttl: 0,
+                    mname: DnsString::empty(),
+                    rname: DnsString::empty(),
+                    serial: 0,
+                    retry: 7000,
+                    refresh: 7000,
+                    expire: 7000,
+                    minimum: 000,
+                }
+                .into(),
+            ],
         }
     }
 }
@@ -64,7 +67,7 @@ impl FromStr for Zonefile {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let mut lines = s
             .lines()
-            .map(|l| l.split_once(';').map(|(lhs, _)| lhs).unwrap_or(l));
+            .map(|l| l.split_once(';').map_or(l, |(lhs, _)| lhs));
 
         let mut reader = Reader {
             origin: Rc::new(DnsString::empty()),
@@ -90,7 +93,7 @@ impl FromStr for Zonefile {
 
             let mut parts = line
                 .split_whitespace()
-                .map(|s| s.to_string())
+                .map(str::to_string)
                 .collect::<Vec<_>>();
 
             // There are two allowed layouts
@@ -165,8 +168,7 @@ fn read_directive(line: String, reader: &mut Reader) -> io::Result<()> {
     let parts = line
         .trim_start_matches('$')
         .split_once(';')
-        .map(|(lhs, _)| lhs)
-        .unwrap_or(line.as_str())
+        .map_or(line.as_str(), |(lhs, _)| lhs)
         .split_whitespace()
         .collect::<Vec<_>>();
 

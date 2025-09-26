@@ -97,6 +97,10 @@ impl RecordMap {
     }
 
     /// Queries all records matching a question directly.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the question type is not supported.
     pub fn query(&self, question: &Question) -> &[DnsResourceRecord] {
         assert!(question.qclass.includes(self.class));
 
@@ -127,7 +131,7 @@ impl RecordMap {
                         start = Some(k);
                     }
                 } else if start.is_some() && end.is_none() {
-                    end = Some(k)
+                    end = Some(k);
                 }
             }
             if let Some(start) = start {
@@ -147,7 +151,7 @@ impl RecordMap {
     /// Addss a new record to the map.
     pub fn add(&mut self, record: DnsResourceRecord, now: SimTime) {
         // FIXME: use default parameters
-        let timeout = now + Duration::from_secs(record.ttl().unwrap_or(4242) as u64);
+        let timeout = now + Duration::from_secs(u64::from(record.ttl().unwrap_or(4242)));
         match self
             .entries
             .binary_search_by_key(&record.name(), |r| &r.name)

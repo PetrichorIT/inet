@@ -42,6 +42,11 @@ pub(crate) struct IncomingStream {
 }
 
 impl UnixListener {
+    /// Creates a new listener bound to the specified path.
+    ///
+    /// # Errors
+    ///
+    /// Fails if the socket is cannot be created at the given path.
     pub fn bind<P>(path: P) -> Result<UnixListener>
     where
         P: AsRef<Path>,
@@ -65,6 +70,11 @@ impl UnixListener {
         })
     }
 
+    /// Accepts an incoming connection.
+    ///
+    /// # Errors
+    ///
+    /// Fails if the socket is closed.
     pub async fn accept(&self) -> Result<(UnixStream, SocketAddr)> {
         let Some(incoming) = self.rx.lock().await.recv().await else {
             return Err(Error::other("socket closed"));

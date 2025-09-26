@@ -1,3 +1,6 @@
+#![warn(clippy::pedantic)]
+#![allow(clippy::cast_possible_truncation)]
+
 pub mod packet;
 
 #[cfg(test)]

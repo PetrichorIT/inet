@@ -14,6 +14,7 @@ pub struct DnsString {
 }
 
 impl DnsString {
+    #[must_use]
     pub const fn empty() -> Self {
         Self {
             labels: Vec::new(),
@@ -21,6 +22,9 @@ impl DnsString {
         }
     }
 
+    /// # Errors
+    ///
+    /// Fails if `raw` is no valid DNS string.
     pub fn from_zonefile(raw: &str, origin: &DnsString) -> io::Result<Self> {
         if raw == "@" {
             Ok(origin.clone())
@@ -34,24 +38,35 @@ impl DnsString {
         }
     }
 
+    #[must_use]
     pub fn is_relative(&self) -> bool {
         self.relative
     }
 
+    #[must_use]
     pub fn labels(&self) -> &[String] {
         &self.labels
     }
 
+    #[must_use]
     pub fn as_string(&self) -> String {
-        format!("{self}")
+        self.to_string()
     }
 
+    /// # Panics
+    ///
+    /// Panics if the parent is more idented that self.
+    #[must_use]
     pub fn has_parent(&self, parent: &DnsString) -> bool {
         assert!(self.labels().len() >= parent.labels().len());
         let len = parent.labels().len();
         self.labels[(self.labels().len() - len)..] == parent.labels
     }
 
+    /// # Panics
+    ///
+    /// Panics if the new len is greater than the current len.
+    #[must_use]
     pub fn truncated(&self, new_len: usize) -> DnsString {
         assert!(new_len <= self.labels().len());
         let start_index = self.labels().len() - new_len;
@@ -61,6 +76,7 @@ impl DnsString {
         }
     }
 
+    #[must_use]
     pub fn suffix_match_len(&self, other: &DnsString) -> usize {
         let zipped = self.labels.iter().rev().zip(other.labels.iter().rev());
         for (i, (lhs, rhs)) in zipped.enumerate() {
@@ -71,6 +87,10 @@ impl DnsString {
         self.labels().len().min(other.labels().len())
     }
 
+    /// # Panics
+    ///
+    /// Panics if the Self is relative
+    #[must_use]
     pub fn with_root(&self, root: &DnsString) -> DnsString {
         assert!(
             self.is_relative(),
@@ -137,7 +157,7 @@ impl FromStr for DnsString {
         }
 
         let relative = !string.ends_with('.');
-        let trunc_len = if relative { 0 } else { 1 };
+        let trunc_len = usize::from(!relative);
         let string_without_last_dot = &string[..(string.len() - trunc_len)];
 
         let labels = string_without_last_dot
@@ -174,7 +194,7 @@ impl FromStr for DnsString {
 
 impl Debug for DnsString {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "\"{}\"", self)
+        write!(f, "\"{self}\"")
     }
 }
 

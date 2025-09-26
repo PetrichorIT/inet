@@ -3,7 +3,7 @@ use std::{
     net::Ipv4Addr,
 };
 
-use bytes_io::{BytesReader, BytesWriter, FromBytes, ReadBytesExt, ToBytes, WriteBytesExt, BE};
+use bytes_io::{BE, BytesReader, BytesWriter, FromBytes, ReadBytesExt, ToBytes, WriteBytesExt};
 use macros::repr_enum;
 
 use crate::types::AsNumber;
@@ -65,6 +65,7 @@ impl FromBytes for BgpPathAttribute {
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct BgpPathAttributeFlags {
     pub optional: bool, // MSB
     pub transitiv: bool,
@@ -178,7 +179,7 @@ impl ToBytes for BgpPathAttributeAsPath {
             bytestream.write_u8(self.typ.to_raw_repr())?;
             bytestream.write_u8(self.path.len() as u8)?;
             for seg in &self.path {
-                bytestream.write_u32::<BE>(*seg as u32)?;
+                bytestream.write_u32::<BE>(u32::from(*seg))?;
             }
         }
         Ok(())
@@ -199,7 +200,7 @@ impl FromBytes for BgpPathAttributeAsPath {
         for _i in 0..len {
             // dbg!(as_num);02 02 00 00 fe 4c 00 00 fe b0
             let as_num = bytestream.read_u32::<BE>()?;
-            path.push(as_num as u16)
+            path.push(as_num as u16);
         }
         Ok(Self { typ, path })
     }

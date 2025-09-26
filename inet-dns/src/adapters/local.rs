@@ -7,8 +7,9 @@ use std::{
 
 use des::runtime::random;
 use tokio::sync::{
+    Mutex,
     mpsc::{Receiver, Sender},
-    oneshot, Mutex,
+    oneshot,
 };
 
 use crate::{
@@ -35,6 +36,7 @@ type Request = (DnsString, oneshot::Sender<Response>);
 type Response = io::Result<Vec<IpAddr>>;
 
 impl LocalAdapter {
+    #[must_use]
     pub fn new(rx: Receiver<Request>) -> Self {
         Self {
             rx: Some(rx),

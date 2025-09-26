@@ -36,6 +36,7 @@ pub struct DnsMessage {
 }
 
 impl DnsMessage {
+    #[must_use]
     pub fn question_a(transaction: u16, qname: DnsString) -> Self {
         Self::query(
             transaction,
@@ -47,6 +48,7 @@ impl DnsMessage {
         )
     }
 
+    #[must_use]
     pub fn question_aaaa(transaction: u16, qname: DnsString) -> Self {
         Self::query(
             transaction,
@@ -58,6 +60,7 @@ impl DnsMessage {
         )
     }
 
+    #[must_use]
     pub fn query(transaction: u16, question: Question) -> Self {
         Self {
             transaction,
@@ -75,6 +78,7 @@ impl DnsMessage {
         }
     }
 
+    #[must_use]
     pub fn response_from_transaction(tx: FinishedTransaction) -> Self {
         match tx.result {
             TransactionResult::Success(response) => Self {
@@ -105,6 +109,7 @@ impl DnsMessage {
         }
     }
 
+    #[must_use]
     pub fn request_from_ns_query(ns_query: NameserverQuery) -> Self {
         Self {
             transaction: ns_query.transaction,
@@ -122,6 +127,7 @@ impl DnsMessage {
         }
     }
 
+    #[must_use]
     pub fn with_edns(mut self, edns: bool) -> Self {
         if edns {
             self.response.additional.push(
@@ -138,6 +144,7 @@ impl DnsMessage {
         self
     }
 
+    #[must_use]
     pub fn edns(&self) -> Option<&OptResourceRecord> {
         self.response.additional.iter().find_map(|v| {
             (v.typ() == ResourceRecordTyp::OPT)

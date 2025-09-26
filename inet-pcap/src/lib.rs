@@ -1,8 +1,9 @@
+#![warn(clippy::pedantic)]
 use bytes_io::ToBytes;
 use des::prelude::*;
 use inet::{
     interface::{IfId, InterfaceController},
-    libpcap::{set_pcap_deamon, PcapCapturePoint, PcapEnvelope, PcapSubscriber},
+    libpcap::{PcapCapturePoint, PcapEnvelope, PcapSubscriber, set_pcap_deamon},
 };
 use pcapng::{
     BlockWriter, DefaultBlockWriter, InterfaceDescriptionOption, Linktype, TestBlockWriter,
@@ -15,6 +16,10 @@ use types::{
 
 /// Applies a new configuration to PCAP, starting a new
 /// capturing epoch.
+///
+/// # Errors
+///
+/// Fails if the blocker writer cannot be created.
 pub fn pcap<W>(out: W) -> Result<()>
 where
     W: Write + 'static,
@@ -27,6 +32,10 @@ where
 
 /// Applies a new configuration to PCAP, starting a new
 /// capturing epoch.
+///
+/// # Errors
+///
+/// Fails if the blocker writer cannot be created.
 pub fn pcap_for_test<R>(expected: R, diff: &str) -> Result<()>
 where
     R: Read + Seek + 'static,
@@ -72,16 +81,16 @@ impl<W: BlockWriter<IfId>> LibPcapDeamon<W> {
     fn write_packet(&mut self, ifid: IfId, msg: &Message) -> Result<()> {
         self.writer.add_packet(
             &ifid,
-            SimTime::now().as_millis() as u64,
+            u64::try_from(SimTime::now().as_millis()).expect("can no longer repr timestamü"),
             msg.header.src,
             msg.header.dst,
             msg.header.kind,
-            &self.pkt_as_buf(msg)?,
+            &Self::pkt_as_buf(msg)?,
             None,
         )
     }
 
-    fn pkt_as_buf(&self, msg: &Message) -> Result<Vec<u8>> {
+    fn pkt_as_buf(msg: &Message) -> Result<Vec<u8>> {
         match msg.header.kind {
             KIND_IPV4 => msg
                 .body

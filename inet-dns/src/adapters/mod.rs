@@ -57,6 +57,7 @@ impl<T: Nameserver> Base<T> {
     }
 
     /// Sets the root flag, indicating that this DNS server can be used as a root server.
+    #[must_use]
     pub fn set_root(mut self, root: bool) -> Self {
         self.root = root;
         self
@@ -65,6 +66,7 @@ impl<T: Nameserver> Base<T> {
     /// Adds an adapter for the given transport medium.
     ///
     /// There can only be one adapter per transport medium.
+    #[must_use]
     pub fn with_adapter(mut self, medium: TransportMedium, adapter: impl TransportAdapter) -> Self {
         self.adapters.insert(medium, Box::new(adapter));
         self
@@ -75,6 +77,10 @@ impl<T: Nameserver> Base<T> {
     /// This method should be called after all adapters have been added.
     /// Note that this function will block forever, waiting for incoming requests. Use
     /// `tokio::spawn` to run it in a separate task if necessary.
+    ///
+    /// # Errors
+    ///
+    /// Returns errors from the adapter or the nameserver.
     pub async fn deploy(mut self) -> io::Result<()> {
         if self.root {
             declare_root(
@@ -133,7 +139,7 @@ impl<T: Nameserver> Base<T> {
                             tracing::error!("{e}");
                             break;
                         }
-                    };
+                    }
                 }
             }
         }

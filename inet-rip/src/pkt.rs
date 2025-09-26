@@ -1,4 +1,4 @@
-use bytes_io::{BytesReader, BytesWriter, FromBytes, ReadBytesExt, ToBytes, WriteBytesExt, BE};
+use bytes_io::{BE, BytesReader, BytesWriter, FromBytes, ReadBytesExt, ToBytes, WriteBytesExt};
 use macros::repr_enum;
 use std::{io::Error, net::Ipv4Addr};
 
@@ -38,6 +38,7 @@ pub struct RipEntry {
 
 impl RipPacket {
     /// Writes a set of RIP entries to a RIP packet.
+    #[must_use]
     pub fn packets(command: RipCommand, mut entries: &[RipEntry]) -> Vec<RipPacket> {
         let mut r = Vec::with_capacity(entries.len() / 25 + 1);
         while !entries.is_empty() {

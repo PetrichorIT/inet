@@ -26,7 +26,7 @@ impl PathMtuStore {
         self.mapping.get(&dst).map(|v| v.mtu)
     }
 
-    /// returns <changed>
+    /// returns changed
     pub fn update(&mut self, dst: Ipv6Addr, mtu: usize) -> bool {
         if let Some(existing) = self.mapping.get_mut(&dst) {
             let is_different = existing.mtu != mtu;

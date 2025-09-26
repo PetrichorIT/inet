@@ -62,7 +62,7 @@ impl ToBytes for Lsa {
 impl FromBytes for Lsa {
     type Error = io::Error;
     fn from_bytes(stream: &mut BytesReader) -> Result<Self, Self::Error> {
-        let ls_age = Duration::from_secs(stream.read_u16::<BE>()? as u64);
+        let ls_age = Duration::from_secs(u64::from(stream.read_u16::<BE>()?));
         let typ = LsaType::from_bytes(stream)?;
 
         let link_state_id = stream.read_u32::<BE>()?;
@@ -179,7 +179,7 @@ impl ToBytes for LsaOnlyHeader {
 impl FromBytes for LsaOnlyHeader {
     type Error = io::Error;
     fn from_bytes(stream: &mut BytesReader) -> Result<Self, Self::Error> {
-        let ls_age = Duration::from_secs(stream.read_u16::<BE>()? as u64);
+        let ls_age = Duration::from_secs(u64::from(stream.read_u16::<BE>()?));
         let typ = LsaType::from_bytes(stream)?;
 
         let link_state_id = stream.read_u32::<BE>()?;
@@ -191,10 +191,10 @@ impl FromBytes for LsaOnlyHeader {
 
         Ok(LsaOnlyHeader {
             ls_age,
+            typ,
             link_state_id,
             advertising_router,
             ls_seq_no,
-            typ,
             length,
         })
     }
@@ -509,7 +509,7 @@ pub struct LinkLsa {
 impl ToBytes for LinkLsa {
     type Error = io::Error;
     fn to_bytes(&self, writer: &mut BytesWriter) -> Result<(), Self::Error> {
-        writer.write_u32::<BE>(((self.routing_prio as u32) << 24) | self.options.bits())?;
+        writer.write_u32::<BE>((u32::from(self.routing_prio) << 24) | self.options.bits())?;
         self.link_local_addr.to_bytes(writer)?;
         writer.write_u32::<BE>(self.prefixes.len() as u32)?;
         for prefix in &self.prefixes {

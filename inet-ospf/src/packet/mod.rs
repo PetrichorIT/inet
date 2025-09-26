@@ -70,7 +70,7 @@ impl ToBytes for OspfPacket {
             OspfPacketType::LinkStateRequest(ref packet) => packet.to_bytes(writer)?,
             OspfPacketType::LinkStateUpdate(ref packet) => packet.to_bytes(writer)?,
             OspfPacketType::LinkStateAck(ref packet) => packet.to_bytes(writer)?,
-        };
+        }
 
         let len = writer.bytes_written_since(&marker) + 4;
         writer.apply(marker).write_u16::<BE>(len as u16)?;
@@ -141,7 +141,7 @@ impl ToBytes for OspfHelloPacket {
     fn to_bytes(&self, writer: &mut BytesWriter) -> Result<(), Self::Error> {
         writer.write_u32::<BE>(self.interface_id)?;
 
-        let dword = ((self.router_priority as u32) << 24) | (self.options.bits() & 0x00_ff_ff_ff);
+        let dword = (u32::from(self.router_priority) << 24) | (self.options.bits() & 0x00_ff_ff_ff);
         writer.write_u32::<BE>(dword)?;
 
         writer.write_u16::<BE>(self.hello_interval.as_secs() as u16)?;
@@ -163,7 +163,7 @@ impl FromBytes for OspfHelloPacket {
         let interface_id = stream.read_u32::<BE>()?;
         let dword = stream.read_u32::<BE>()?;
         let hello_interval = stream.read_u16::<BE>()?;
-        let router_dead_interval = Duration::from_secs(stream.read_u16::<BE>()? as u64);
+        let router_dead_interval = Duration::from_secs(u64::from(stream.read_u16::<BE>()?));
         let designated_router_id = stream.read_u32::<BE>()?;
         let backup_router_id = stream.read_u32::<BE>()?;
         let mut neighbor_ids = Vec::new();
@@ -176,7 +176,7 @@ impl FromBytes for OspfHelloPacket {
 
         Ok(Self {
             interface_id,
-            hello_interval: Duration::from_secs(hello_interval as u64),
+            hello_interval: Duration::from_secs(u64::from(hello_interval)),
             options,
             router_priority,
             router_dead_interval,
@@ -265,7 +265,7 @@ pub struct OspfLinkStateRequestPacket {
 impl ToBytes for OspfLinkStateRequestPacket {
     type Error = io::Error;
     fn to_bytes(&self, writer: &mut BytesWriter) -> Result<(), Self::Error> {
-        writer.write_u32::<BE>(self.ls_typ as u32)?;
+        writer.write_u32::<BE>(u32::from(self.ls_typ))?;
         writer.write_u32::<BE>(self.link_state_id)?;
         writer.write_u32::<BE>(self.advertising_router)?;
         Ok(())

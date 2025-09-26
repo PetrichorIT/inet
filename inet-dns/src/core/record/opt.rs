@@ -1,7 +1,7 @@
 use std::io::{self, Read, Write};
 
 use bytes::Buf;
-use bytes_io::{BytesReader, BytesWriter, FromBytes, ReadBytesExt, ToBytes, WriteBytesExt, BE};
+use bytes_io::{BE, BytesReader, BytesWriter, FromBytes, ReadBytesExt, ToBytes, WriteBytesExt};
 
 use crate::core::DnsString;
 
@@ -68,8 +68,8 @@ impl ResourceRecord for OptResourceRecord {
     }
     fn ttl(&self) -> Option<u32> {
         let mut ttl = 0u32;
-        ttl |= (self.rcode as u32) << 24;
-        ttl |= (self.version as u32) << 16;
+        ttl |= u32::from(self.rcode) << 24;
+        ttl |= u32::from(self.version) << 16;
         Some(ttl)
     }
     fn rdata(&self) -> Vec<u8> {

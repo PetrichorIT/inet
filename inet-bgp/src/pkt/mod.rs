@@ -1,5 +1,5 @@
 use crate::types::{AsNumber, BgpIdentifier};
-use bytes_io::{BytesReader, BytesWriter, FromBytes, ReadBytesExt, ToBytes, WriteBytesExt, BE};
+use bytes_io::{BE, BytesReader, BytesWriter, FromBytes, ReadBytesExt, ToBytes, WriteBytesExt};
 use des::{prelude::current, time::SimTime};
 use std::{
     fmt::Debug,
@@ -183,7 +183,7 @@ impl FromBytes for BgpUpdatePacket {
         let withdrawn_routes = bytestream.extract(wlen, |body| {
             let mut withdrawn_routes = Vec::new();
             while body.has_remaining() {
-                withdrawn_routes.push(BgpWithdrawnRoute::from_bytes(body)?)
+                withdrawn_routes.push(BgpWithdrawnRoute::from_bytes(body)?);
             }
             Ok(withdrawn_routes)
         })?;
@@ -193,7 +193,7 @@ impl FromBytes for BgpUpdatePacket {
         let path_attributes = bytestream.extract(alen, |body| {
             let mut path_attributes = Vec::new();
             while body.has_remaining() {
-                path_attributes.push(BgpPathAttribute::from_bytes(body)?)
+                path_attributes.push(BgpPathAttribute::from_bytes(body)?);
             }
             Ok(path_attributes)
         })?;
@@ -201,7 +201,7 @@ impl FromBytes for BgpUpdatePacket {
         // NRLI
         let mut nlris = Vec::new();
         while bytestream.has_remaining() {
-            nlris.push(Nlri::from_bytes(bytestream)?)
+            nlris.push(Nlri::from_bytes(bytestream)?);
         }
         Ok(BgpUpdatePacket {
             withdrawn_routes,
@@ -220,20 +220,27 @@ pub struct Nlri {
 }
 
 impl Nlri {
+    #[must_use]
     pub fn prefix(&self) -> Ipv4Addr {
         let dword = u32::from_be_bytes([self.bytes[1], self.bytes[2], self.bytes[3], 0]);
         let mask = !(u32::MAX >> self.bytes[0]);
         Ipv4Addr::from(mask & dword)
     }
 
+    #[must_use]
     pub fn prefix_len(&self) -> usize {
         self.bytes[0] as usize
     }
 
+    #[must_use]
     pub fn netmask(&self) -> Ipv4Addr {
         Ipv4Addr::from(!(u32::MAX >> self.prefix_len()))
     }
 
+    /// # Panics
+    ///
+    /// Panics if len <= 24
+    #[must_use]
     pub fn new(prefix: Ipv4Addr, len: u8) -> Self {
         assert!(
             len <= 24,
@@ -249,7 +256,7 @@ impl Nlri {
 
     fn normalize(&mut self) {
         let relevant_bytes = 8 + self.bytes[0];
-        let mask = !(u32::MAX.checked_shr(relevant_bytes as u32).unwrap_or(0));
+        let mask = !(u32::MAX.checked_shr(u32::from(relevant_bytes)).unwrap_or(0));
         let bytes = u32::from_be_bytes(self.bytes);
         self.bytes = (bytes & mask).to_be_bytes();
     }

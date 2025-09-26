@@ -11,6 +11,7 @@ pub(super) struct Timers {
 }
 
 #[derive(Debug)]
+#[allow(clippy::struct_field_names)]
 pub(super) struct TimersCfg {
     pub(super) hold_time: Duration,
     pub(super) keepalive_time: Duration,
@@ -38,19 +39,19 @@ impl Timers {
     }
 
     pub fn enable_timer(&mut self, timer: Timer) {
-        use Timer::*;
+        use Timer::{ConnectionRetry, DelayOpen, Hold, Keepalive};
         match timer {
             Hold => self.hold_timer = SimTime::now() + self.cfg.hold_time,
             Keepalive => self.keepalive_timer = SimTime::now() + self.cfg.keepalive_time,
             DelayOpen => self.delay_open_timer = SimTime::now() + self.cfg.delay_open_time,
             ConnectionRetry => {
-                self.connection_retry_timer = SimTime::now() + self.cfg.connection_retry_time
+                self.connection_retry_timer = SimTime::now() + self.cfg.connection_retry_time;
             }
         }
     }
 
     pub fn disable_timer(&mut self, timer: Timer) {
-        use Timer::*;
+        use Timer::{ConnectionRetry, DelayOpen, Hold, Keepalive};
         match timer {
             Hold => self.hold_timer = SimTime::MAX,
             Keepalive => self.keepalive_timer = SimTime::MAX,
@@ -78,11 +79,11 @@ impl Timers {
             }
         }
 
-        if min.0 != SimTime::MAX {
+        if min.0 == SimTime::MAX {
+            panic!("No timer set, but next() called, expected timer to be set")
+        } else {
             sleep_until(min.0).await;
             min.1
-        } else {
-            panic!("No timer set, but next() called, expected timer to be set")
         }
     }
 }
@@ -99,7 +100,10 @@ impl Debug for Timers {
         .filter(|(deadline, _)| *deadline != SimTime::MAX)
         .collect::<Vec<_>>();
 
-        f.debug_struct("Timers").field("active", &active).finish()
+        f.debug_struct("Timers")
+            .field("active", &active)
+            .field("cfg", &self.cfg)
+            .finish()
     }
 }
 

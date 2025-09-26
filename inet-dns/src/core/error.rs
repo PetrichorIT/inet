@@ -10,6 +10,7 @@ pub struct Error {
 }
 
 impl Error {
+    #[must_use]
     pub fn response_code(&self) -> ResponseCode {
         self.response_code
     }

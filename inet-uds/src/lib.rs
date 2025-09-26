@@ -1,3 +1,4 @@
+#![warn(clippy::pedantic)]
 //! Unix Domain Sockets (UDS)
 
 use fxhash::FxBuildHasher;

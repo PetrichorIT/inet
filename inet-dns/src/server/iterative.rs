@@ -49,6 +49,7 @@ pub enum Role {
 
 impl IterativeNameserver {
     /// Creates a new iterative nameserver with the given zones.
+    #[must_use]
     pub fn primary(mut zones: Vec<ZoneResolver>) -> Self {
         zones.sort_by_key(|resolver| resolver.zone().labels().len());
         Self {
@@ -85,6 +86,10 @@ impl IterativeNameserver {
     ///
     /// Returns a tuple containing a boolean indicating whether the response is authoritative,
     /// and the response itself.
+    ///
+    /// # Errors
+    ///
+    /// Fails if the query cannot be anwsered
     pub fn query(&self, question: &Question) -> Result<QueryResponse, Error> {
         if let QuestionTyp::AXFR = question.qtyp {
             if let Role::Secondary { .. } = self.role {
@@ -161,7 +166,7 @@ impl IterativeNameserver {
                             ra: false,
                             aa: true,
                             result: TransactionResult::Success(result),
-                        })
+                        });
                     }
                     Err(error) => {
                         tracing::error!("query error: {error}");
@@ -172,7 +177,7 @@ impl IterativeNameserver {
                             result: TransactionResult::Failure(error),
                         });
                     }
-                };
+                }
             });
         }
     }

@@ -118,6 +118,10 @@ impl UnixDatagram {
     }
 
     /// Creates a new unnamed socket.
+    ///
+    /// # Errors
+    ///
+    /// May fail if the socket cannot be created.
     pub fn unbound() -> Result<UnixDatagram, Error> {
         let fd: Fd = socket(SocketDomain::AF_UNIX, SocketType::SOCK_DGRAM, 0)?;
         with_ext::<UdsExtension, _>(|uds| {
@@ -157,7 +161,7 @@ impl UnixDatagram {
 
     /// Connects a socket to a peer.
     ///
-    /// This allow for the usage of `send` / `recv``.
+    /// This allow for the usage of `send` / `recv`.
     /// Note that connecting a socket to a peer socket does not mean the peer
     /// socket connects exclusivly to the inital one.
     ///
@@ -207,7 +211,7 @@ impl UnixDatagram {
             Ok(peer.tx.clone())
         })?;
         match sender.send((Bytes::from(buf.to_vec()), addr)).await {
-            Ok(_) => Ok(buf.len()),
+            Ok(()) => Ok(buf.len()),
             Err(e) => Err(Error::other(e)),
         }
     }
@@ -234,7 +238,7 @@ impl UnixDatagram {
             }
         })?;
         match sender.send((Bytes::from(buf.to_vec()), addr)).await {
-            Ok(_) => Ok(buf.len()),
+            Ok(()) => Ok(buf.len()),
             Err(e) => Err(Error::other(e)),
         }
     }
@@ -259,10 +263,13 @@ impl UnixDatagram {
     }
 
     /// Sends a datagram from any other socket.
+    ///
+    /// # Errors
+    ///
+    /// This operation may fail if the socket was closed.
     pub async fn recv_from(&self, buf: &mut [u8]) -> Result<(usize, SocketAddr), Error> {
-        let (bytes, src) = match self.rx.lock().await.recv().await {
-            Some(dgram) => dgram,
-            None => return Err(Error::other("socket closed somehow")),
+        let Some((bytes, src)) = self.rx.lock().await.recv().await else {
+            return Err(Error::other("socket closed somehow"));
         };
 
         let n = buf.len().min(bytes.len());

@@ -26,17 +26,19 @@ pub struct UdpAdapter {
 }
 
 impl UdpAdapter {
+    #[must_use]
     pub fn with_port(mut self, port: u16) -> Self {
         self.port = port;
         self
     }
 
+    #[must_use]
     pub fn with_edns(mut self, edns: bool) -> Self {
         self.edns = edns;
         self
     }
 
-    fn udp_limit(&self, inc: &Option<OptResourceRecord>) -> usize {
+    fn udp_limit(&self, inc: Option<&OptResourceRecord>) -> usize {
         if let Some(inc) = inc
             && self.edns
         {
@@ -93,7 +95,7 @@ impl TransportAdapter for UdpAdapter {
 
         let target = anwser.query.addr;
 
-        let limit = self.udp_limit(&anwser.query.edns);
+        let limit = self.udp_limit(anwser.query.edns.as_ref());
         let mut buf = BytesMut::with_capacity(limit);
         let mut msg = DnsMessage::response_from_transaction(anwser).with_edns(self.edns);
         let n = loop {
@@ -121,7 +123,7 @@ impl TransportAdapter for UdpAdapter {
 
         let target = SocketAddr::new(ns_query.nameserver_ip, DEFAULT_PORT);
 
-        let limit = self.udp_limit(&ns_query.query.edns);
+        let limit = self.udp_limit(ns_query.query.edns.as_ref());
         let mut buf = BytesMut::with_capacity(limit);
         let mut msg = DnsMessage::request_from_ns_query(ns_query).with_edns(self.edns);
         let n = loop {

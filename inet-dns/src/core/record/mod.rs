@@ -1,5 +1,5 @@
-use super::{string::DnsString, QuestionClass, QuestionTyp, ZonefileLineRecord};
-use bytes_io::{BytesReader, BytesWriter, FromBytes, ReadBytesExt, ToBytes, WriteBytesExt, BE};
+use super::{QuestionClass, QuestionTyp, ZonefileLineRecord, string::DnsString};
+use bytes_io::{BE, BytesReader, BytesWriter, FromBytes, ReadBytesExt, ToBytes, WriteBytesExt};
 use macros::repr_enum;
 
 use std::{
@@ -36,6 +36,9 @@ pub trait ResourceRecord: Debug + Send {
     fn typ(&self) -> ResourceRecordTyp;
 
     fn rdata(&self) -> Vec<u8>;
+    /// # Errors
+    ///
+    /// See `std::fmt::Display`
     fn rdata_fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result;
 
     fn as_any(&self) -> &dyn Any;
@@ -61,7 +64,7 @@ impl DnsResourceRecord {
     }
 
     pub(crate) fn from_raw(raw: RawResourceRecord) -> io::Result<Self> {
-        use ResourceRecordTyp::*;
+        use ResourceRecordTyp::{A, AAAA, CNAME, NS, OPT, PTR, SOA, TXT};
         match raw.typ {
             A => AResourceRecord::try_from(raw).map(DnsResourceRecord::from),
             AAAA => AAAAResourceRecord::try_from(raw).map(DnsResourceRecord::from),
@@ -124,7 +127,7 @@ where
 impl TryFrom<ZonefileLineRecord> for DnsResourceRecord {
     type Error = io::Error;
     fn try_from(value: ZonefileLineRecord) -> Result<Self, Self::Error> {
-        use ResourceRecordTyp::*;
+        use ResourceRecordTyp::{A, AAAA, CNAME, NS, PTR, SOA, TXT};
         match value.typ {
             A => AResourceRecord::try_from(value).map(DnsResourceRecord::from),
             AAAA => AAAAResourceRecord::try_from(value).map(DnsResourceRecord::from),

@@ -24,10 +24,12 @@ pub enum QueryResponseKind {
 }
 
 impl QueryResponse {
+    #[must_use]
     pub fn is_reponse_empty(&self) -> bool {
         self.anwsers.is_empty() && self.auths.is_empty()
     }
 
+    #[must_use]
     pub fn merged(mut self, mut other: Self) -> Self {
         self.questions.append(&mut other.questions);
         self.anwsers.append(&mut other.anwsers);
@@ -45,6 +47,7 @@ impl QueryResponse {
         }
     }
 
+    #[must_use]
     pub fn anwser(anwsers: Vec<DnsResourceRecord>) -> Self {
         Self {
             anwsers,
@@ -52,6 +55,7 @@ impl QueryResponse {
         }
     }
 
+    #[must_use]
     pub fn referral(ns: Vec<DnsResourceRecord>, additional: Vec<DnsResourceRecord>) -> Self {
         Self {
             auths: ns,
@@ -65,15 +69,15 @@ impl Display for QueryResponse {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         for answer in &self.anwsers {
             writeln!(f)?;
-            write!(f, "> {}", answer)?;
+            write!(f, "> {answer}")?;
         }
         for auth in &self.auths {
             writeln!(f)?;
-            write!(f, "> {}", auth)?;
+            write!(f, "> {auth}")?;
         }
         for additional in &self.additional {
             writeln!(f)?;
-            write!(f, "+ {}", additional)?;
+            write!(f, "+ {additional}")?;
         }
         Ok(())
     }

@@ -40,6 +40,15 @@ pub struct UnixStream {
 }
 
 impl UnixStream {
+    /// Connects to a Unix domain socket at the specified path.
+    ///
+    /// # Errors
+    ///
+    /// This operation may fail:
+    /// - if the socket cannot be created.
+    /// - if the socket cannot be connected to the specified path.
+    /// - the peer refused the connection.
+    #[allow(clippy::missing_panics_doc)]
     pub async fn connect<P>(path: P) -> Result<UnixStream>
     where
         P: AsRef<Path>,
@@ -73,6 +82,11 @@ impl UnixStream {
         rx.await.map_err(|_| Error::other("onshot failure"))
     }
 
+    /// Creates a pair of connected Unix streams.
+    ///
+    /// # Errors
+    ///
+    /// This operation can fail if the socket creation fails.
     pub fn pair() -> Result<(UnixStream, UnixStream)> {
         let lhs = socket(SocketDomain::AF_UNIX, SocketType::SOCK_STREAM, 0)?;
         let rhs = socket(SocketDomain::AF_UNIX, SocketType::SOCK_STREAM, 0)?;
@@ -83,10 +97,20 @@ impl UnixStream {
         ))
     }
 
+    /// Returns the local address of this stream.
+    ///
+    /// # Errors
+    ///
+    /// `Infallible`
     pub fn local_addr(&self) -> Result<SocketAddr> {
         Ok(self.addr.clone())
     }
 
+    /// Returns the remote address of this stream.
+    ///
+    /// # Errors
+    ///
+    /// `Infallible`
     pub fn peer_addr(&self) -> Result<SocketAddr> {
         Ok(self.peer.clone())
     }
@@ -123,7 +147,7 @@ impl AsyncRead for UnixStream {
             }
         } else {
             if let Some(w) = self.rx_writable.lock().unwrap().take() {
-                w.wake()
+                w.wake();
             }
             Poll::Ready(Ok(()))
         }
@@ -155,7 +179,7 @@ impl AsyncWrite for UnixStream {
             }
         } else {
             if let Some(w) = self.tx_readable.lock().unwrap().take() {
-                w.wake()
+                w.wake();
             }
             Poll::Ready(Ok(n))
         }
@@ -179,10 +203,10 @@ impl AsyncWrite for UnixStream {
 impl Drop for UnixStream {
     fn drop(&mut self) {
         if let Some(w) = self.tx_readable.lock().unwrap().take() {
-            w.wake()
+            w.wake();
         }
         if let Some(w) = self.rx_writable.lock().unwrap().take() {
-            w.wake()
+            w.wake();
         }
 
         let _ = close(self.fd);

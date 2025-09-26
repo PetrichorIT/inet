@@ -21,6 +21,7 @@ pub struct LocRibWithKernel {
 }
 
 impl LocRibWithKernel {
+    #[must_use]
     pub fn new(table_id: RoutingTableId, kernel: Box<dyn Kernel>) -> Self {
         Self {
             loc_rib: LocRib::new(table_id),
@@ -60,6 +61,7 @@ pub struct Meta {
 }
 
 impl LocRib {
+    #[must_use]
     pub fn new(table_id: RoutingTableId) -> LocRib {
         Self {
             dests: FxHashMap::with_hasher(FxBuildHasher::default()),
@@ -69,6 +71,7 @@ impl LocRib {
         }
     }
 
+    #[allow(clippy::missing_panics_doc)]
     pub fn status(&self) {
         let dest = self.dests.iter().collect::<Vec<_>>();
         tracing::debug!("[ LOC RIB ]");
@@ -84,6 +87,7 @@ impl LocRib {
         swp
     }
 
+    #[allow(clippy::missing_panics_doc)]
     pub fn add_dest(&mut self, dest: Nlri, route: &Route, peer: &Peer) {
         self.routes
             .entry(route.id)
@@ -121,7 +125,7 @@ impl LocRib {
     }
 
     /// Call this function if
-    /// - a dest from the adj_in is no longer rechable via a given peer,
+    /// - a dest from the `adj_in` is no longer rechable via a given peer,
     pub fn withdraw_canidate(&mut self, dest: &Nlri, dead_peer: &PeerId) {
         // (0) Check whether LOC even uses this route.
         let Some((_, peer)) = self.lookup(*dest) else {
@@ -156,6 +160,7 @@ impl LocRib {
         }
     }
 
+    #[must_use]
     pub fn lookup(&self, dest: Nlri) -> Option<&(Route, Peer)> {
         self.dests
             .get(&dest)
@@ -178,7 +183,7 @@ impl LocRib {
             path: route.path.clone(),
             flag: false,
             ts: SimTime::now(),
-        })
+        });
     }
 
     pub fn withdraw_and_advertise_new(&self, dest: Nlri, out: &mut AdjRIBOut) {

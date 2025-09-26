@@ -1,9 +1,9 @@
 use std::io;
 
 use bytes::BufMut;
-use bytes_io::{FromBytes, ReadBytesExt, ToBytes, BE};
+use bytes_io::{BE, FromBytes, ReadBytesExt, ToBytes};
 
-use crate::core::{string::DnsString, ZonefileLineRecord};
+use crate::core::{ZonefileLineRecord, string::DnsString};
 
 use super::{RawResourceRecord, ResourceRecord, ResourceRecordClass};
 
@@ -25,14 +25,14 @@ pub struct SoaResourceRecord {
 impl TryFrom<ZonefileLineRecord> for SoaResourceRecord {
     type Error = io::Error;
     fn try_from(raw: ZonefileLineRecord) -> Result<Self, Self::Error> {
-        let splits = raw.rdata.splitn(3, " ").collect::<Vec<_>>();
+        let splits = raw.rdata.splitn(3, ' ').collect::<Vec<_>>();
         assert_eq!(splits.len(), 3);
 
         let numbers: Vec<u32> = splits[2]
             .trim_matches('(')
             .trim_matches(')')
             .split_whitespace()
-            .map(|s| s.parse::<u32>())
+            .map(str::parse::<u32>)
             .collect::<Result<_, _>>()
             .map_err(io::Error::other)?;
         assert_eq!(numbers.len(), 5);

@@ -28,7 +28,7 @@ pub trait ToBytes {
     ///
     /// # Errors
     ///
-    /// See [`to_bytes`].
+    /// See [`ToBytes::to_bytes`].
     fn write_to<B: BufMut + AsMut<[u8]>>(&self, bytes: &mut B) -> Result<usize, Self::Error>
     where
         Self: Sized,
@@ -40,7 +40,7 @@ pub trait ToBytes {
     ///
     /// # Errors
     ///
-    /// See [`to_bytes`].
+    /// See [`ToBytes::to_bytes`].
     fn write_to_limit<B: BufMut + AsMut<[u8]>>(
         &self,
         bytes: &mut B,
@@ -65,7 +65,7 @@ pub trait ToBytes {
     ///
     /// # Errors
     ///
-    /// See [`to_bytes`].
+    /// See [`ToBytes::to_bytes`].
     fn write_to_bytes_mut(&self) -> Result<BytesMut, Self::Error>
     where
         Self: Sized,
@@ -79,7 +79,7 @@ pub trait ToBytes {
     ///
     /// # Errors
     ///
-    /// See [`to_bytes`].
+    /// See [`ToBytes::to_bytes`].
     fn write_to_bytes(&self) -> Result<Bytes, Self::Error> {
         let mut bytes = BytesMut::new();
         let mut writer = BytesWriter {
@@ -96,7 +96,7 @@ pub trait ToBytes {
     ///
     /// # Errors
     ///
-    /// See [`to_bytes`].
+    /// See [`ToBytes::to_bytes`].
     fn write_to_vec(&self) -> Result<Vec<u8>, Self::Error>
     where
         Self: Sized,

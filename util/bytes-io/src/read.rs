@@ -26,7 +26,7 @@ pub trait FromBytes {
     ///
     /// # Errors
     ///
-    /// See [`from_bytes`].
+    /// See [`FromBytes::from_bytes`].
     #[allow(clippy::cast_possible_truncation)]
     fn read_from<B: Buf>(bytes: &mut B) -> Result<Self, Self::Error>
     where
@@ -43,7 +43,7 @@ pub trait FromBytes {
     ///
     /// # Errors
     ///
-    /// See [`from_bytes`].
+    /// See [`FromBytes::from_bytes`].
     fn peek_from<B: Buf>(bytes: B) -> Result<Self, Self::Error>
     where
         Self: Sized,

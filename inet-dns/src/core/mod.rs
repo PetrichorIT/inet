@@ -34,6 +34,7 @@ impl ZoneResolver {
     }
 
     /// Create a new resolver that caches records.
+    #[must_use]
     pub fn cache() -> Self {
         Self {
             zone: DnsString::empty(),
@@ -42,16 +43,23 @@ impl ZoneResolver {
     }
 
     /// Create a new resolver that loads records from a zonefile.
+    ///
+    /// # Errors
+    ///
+    /// Fails if no SOA entry is found.
     pub fn new(zf: Zonefile) -> io::Result<Self> {
         let db = zf.records.into_iter().collect::<RecordMap>();
 
-        let soa = db.soa().expect("expected soa");
+        let soa = db
+            .soa()
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "no SOA entry"))?;
         Ok(Self {
             zone: soa.name().clone(),
             db,
         })
     }
 
+    #[must_use]
     pub fn secondary(zone: DnsString) -> Self {
         Self {
             zone,
@@ -66,9 +74,14 @@ impl ZoneResolver {
 
     /// Add a record to the cache.
     pub fn add_cached(&mut self, record: DnsResourceRecord) {
-        self.db.add(record, SimTime::now())
+        self.db.add(record, SimTime::now());
     }
 
+    /// Returns all records in the cache.
+    ///
+    /// # Errors
+    ///
+    /// `Infallible`
     pub fn all(&self) -> Result<QueryResponse, Error> {
         let response = QueryResponse {
             questions: vec![Question {
@@ -86,6 +99,10 @@ impl ZoneResolver {
     /// Query the resolver for a given question. This will retrieve
     /// all RRs that match the query, including dependent queries
     /// that can be derived from the original query.
+    ///
+    /// # Errors
+    ///
+    /// Fails if the query cannot be anwsered.
     pub fn query(&self, question: &Question) -> Result<QueryResponse, Error> {
         if !question.qname.has_parent(&self.zone) {
             return Err(Error::new(

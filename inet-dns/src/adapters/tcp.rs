@@ -77,21 +77,20 @@ impl TransportAdapter for TcpAdapter {
 
     async fn send_ns_query(&mut self, ns_query: NameserverQuery) -> io::Result<()> {
         let nsaddr = SocketAddr::new(ns_query.nameserver_ip, DEFAULT_PORT);
-        let write = match self.senders.get_mut(&nsaddr) {
-            Some(write) => write,
-            None => {
-                let stream = TcpStream::connect(nsaddr).await?;
-                let (read, write) = stream.into_split();
+        let write = if let Some(write) = self.senders.get_mut(&nsaddr) {
+            write
+        } else {
+            let stream = TcpStream::connect(nsaddr).await?;
+            let (read, write) = stream.into_split();
 
-                tokio::spawn(dispatch_incoming_events_from(
-                    self.tx.as_ref().unwrap().clone(),
-                    nsaddr,
-                    read,
-                ));
+            tokio::spawn(dispatch_incoming_events_from(
+                self.tx.as_ref().unwrap().clone(),
+                nsaddr,
+                read,
+            ));
 
-                self.senders.insert(nsaddr, write);
-                self.senders.get_mut(&nsaddr).expect("unreachable")
-            }
+            self.senders.insert(nsaddr, write);
+            self.senders.get_mut(&nsaddr).expect("unreachable")
         };
 
         let msg = DnsMessage::request_from_ns_query(ns_query);

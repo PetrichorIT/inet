@@ -6,6 +6,7 @@ thread_local! {
 }
 
 /// Returns all root nameservers.
+#[must_use]
 pub fn all_root_ns() -> Vec<(IpAddr, String)> {
     ROOT_NS.with(|root_ns| root_ns.borrow().clone())
 }

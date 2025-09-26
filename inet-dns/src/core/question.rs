@@ -5,7 +5,7 @@ use super::{
     ZoneResolver,
 };
 use crate::core::{CNameResourceRecord, NsResourceRecord};
-use bytes_io::{BytesReader, BytesWriter, FromBytes, ReadBytesExt, ToBytes, WriteBytesExt, BE};
+use bytes_io::{BE, BytesReader, BytesWriter, FromBytes, ReadBytesExt, ToBytes, WriteBytesExt};
 use macros::repr_enum;
 
 /// A DNS query.
@@ -21,8 +21,10 @@ pub struct Question {
 
 impl Question {
     /// Derives other queries using the CNAME records in thhe zone resolver
+    #[must_use]
+    #[allow(clippy::missing_panics_doc)]
     pub fn mutate_query(&self, ctx: &ZoneResolver) -> Question {
-        use QuestionTyp::*;
+        use QuestionTyp::{A, AAAA};
         let mut this = self.clone();
         if this.qname.is_relative() {
             this.qname = this.qname.with_root(&DnsString::empty());
@@ -53,8 +55,9 @@ impl Question {
     }
 
     /// Derives queries if no matching entries to this one were found.
+    #[must_use]
     pub fn on_unanwsered(&self, ctx: &ZoneResolver) -> Vec<(Question, QueryResponseKind)> {
-        use QuestionTyp::*;
+        use QuestionTyp::{A, AAAA};
         match self.qtyp {
             A | AAAA => {
                 let mut buf = Vec::new();
@@ -76,8 +79,10 @@ impl Question {
     }
 
     /// Derives queries if matching entries to this one were found, either anwsers or auths.
+    #[must_use]
+    #[allow(clippy::missing_panics_doc)]
     pub fn on_anwsered(&self, anwsers: &[DnsResourceRecord]) -> Vec<(Question, QueryResponseKind)> {
-        use QuestionTyp::*;
+        use QuestionTyp::{A, AAAA, NS};
         match self.qtyp {
             A => vec![(
                 Question {
@@ -146,8 +151,8 @@ impl FromBytes for Question {
 
         Ok(Question {
             qname,
-            qtyp,
             qclass,
+            qtyp,
         })
     }
 }
@@ -173,6 +178,7 @@ repr_enum! {
 }
 
 impl QuestionClass {
+    #[must_use]
     pub fn includes(&self, class: ResourceRecordClass) -> bool {
         match self {
             QuestionClass::ANY => true,
