@@ -2,10 +2,16 @@ use bytes_io::{
     BE, Bytes, BytesReader, BytesWriter, FromBytes, ReadBytesExt, ToBytes, WriteBytesExt,
 };
 use des::net::message::MessageBody;
+use serde::{Deserialize, Deserializer, Serialize};
 use std::{
+    cmp::Ordering,
+    fmt,
     io::{Error, ErrorKind, Write},
     net::Ipv4Addr,
+    str::FromStr,
 };
+
+use crate::ip::IpPrefixParsingError;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Ipv4Packet {
@@ -206,5 +212,150 @@ mod tests {
         .collect::<Vec<_>>();
 
         assert_encoding_e2e(&fuzzed);
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Ipv4Prefix {
+    addr: Ipv4Addr,
+    len: u8,
+}
+
+impl Ipv4Prefix {
+    /// Creates a new `Ipv6Perfix`
+    ///
+    /// # Panics
+    ///
+    /// This function panics if the len is greater than 128
+    #[must_use]
+    pub fn new(prefix: Ipv4Addr, len: u8) -> Self {
+        assert!(len <= 32);
+        let prefix = if len == 0 {
+            Ipv4Addr::UNSPECIFIED
+        } else {
+            let mask = Ipv4Addr::from(u32::MAX << (32 - len));
+            prefix & mask
+        };
+        Self::new_unchcecked(prefix, len)
+    }
+
+    #[must_use]
+    pub fn fit(addr: Ipv4Addr) -> Self {
+        let len = 32 - u32::from(addr).trailing_zeros();
+        Self::new(addr, len as u8)
+    }
+
+    #[inline]
+    const fn new_unchcecked(prefix: Ipv4Addr, len: u8) -> Self {
+        Self { addr: prefix, len }
+    }
+
+    #[must_use]
+    pub const fn addr(&self) -> Ipv4Addr {
+        self.addr
+    }
+
+    #[must_use]
+    pub const fn len(&self) -> u8 {
+        self.len
+    }
+
+    #[must_use]
+    pub const fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    #[inline]
+    pub const fn mask(&self) -> u32 {
+        if self.len == 0 {
+            0
+        } else {
+            u32::MAX << (32 - self.len)
+        }
+    }
+
+    #[must_use]
+    pub fn contains(&self, addr: Ipv4Addr) -> bool {
+        let addr = u32::from(addr);
+        let prefix = u32::from(self.addr);
+        let mask = self.mask();
+        addr & mask == prefix
+    }
+
+    #[must_use]
+    pub fn common_prefix_len(&self, other: Ipv4Addr) -> usize {
+        let s = u32::from(self.addr);
+        let d = u32::from(other);
+        let xored = s ^ d;
+        (xored.leading_zeros() as usize).min(self.len as usize)
+    }
+}
+
+impl PartialEq<(Ipv4Addr, u8)> for Ipv4Prefix {
+    fn eq(&self, other: &(Ipv4Addr, u8)) -> bool {
+        self.addr == other.0 && self.len == other.1
+    }
+}
+
+impl fmt::Debug for Ipv4Prefix {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}/{}", self.addr, self.len)
+    }
+}
+
+impl fmt::Display for Ipv4Prefix {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}/{}", self.addr, self.len)
+    }
+}
+
+impl<'de> Deserialize<'de> for Ipv4Prefix {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        s.parse().map_err(serde::de::Error::custom)
+    }
+}
+
+impl Serialize for Ipv4Prefix {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(&self.to_string())
+    }
+}
+
+impl FromStr for Ipv4Prefix {
+    type Err = IpPrefixParsingError;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let split = s.split('/').collect::<Vec<_>>();
+        if split.len() != 2 {
+            return Err(IpPrefixParsingError::MissingPrefixLen);
+        }
+        let prefix = split[0]
+            .parse()
+            .map_err(IpPrefixParsingError::AddrParseError)?;
+        let len = split[1]
+            .parse()
+            .map_err(IpPrefixParsingError::ParseIntError)?;
+        Ok(Self::new(prefix, len))
+    }
+}
+
+impl PartialOrd for Ipv4Prefix {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Ipv4Prefix {
+    fn cmp(&self, other: &Self) -> Ordering {
+        match self.len().cmp(&other.len()) {
+            Ordering::Equal => self.addr.cmp(&other.addr),
+            other => other,
+        }
     }
 }

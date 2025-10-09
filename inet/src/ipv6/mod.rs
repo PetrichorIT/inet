@@ -11,6 +11,7 @@ use multicast::{GroupEvent, MulticastListenerDiscoveryCtrl, NodeEvent, RouterEve
 use tracing::Level;
 use types::{
     icmpv6::PROTO_ICMPV6,
+    iface::MacAddress,
     ip::{IpPacket, Ipv6AddrExt, Ipv6Packet, Ipv6Prefix, KIND_IPV6},
 };
 
@@ -135,7 +136,7 @@ impl IOContext {
             .get(&ifid)
             .expect("interface was already resolved");
 
-        let is_local_dest = iface.bindings.v6.matches(pkt.dst) || pkt.dst.is_multicast();
+        let is_local_dest = iface.bindings.v6.matches_recv(pkt.dst) || pkt.dst.is_multicast();
         if !is_local_dest {
             let mut pkt = pkt;
 
@@ -181,6 +182,8 @@ impl IOContext {
         mut ifid: IfId,
         flags: Ipv6SendFlags,
     ) -> io::Result<()> {
+        // tracing::trace!(src = ?pkt.src, dst = ?pkt.dst, ?ifid, "ipv6_send({flags:?})");
+
         // Check that dst is not unspecified, this should have been handled allready
         if pkt.dst.is_unspecified() {
             return Err(io::Error::new(
@@ -190,10 +193,16 @@ impl IOContext {
         }
 
         // Assign src addr if nessecary
-        if pkt.src.is_unspecified() && !flags.contains(Ipv6SendFlags::REQUIRED_SRC_UNSPECIFIED) {
+        let multicast_bypass = pkt.dst.is_multicast() && pkt.src.is_unspecified() && ifid.is_null();
+        if pkt.src.is_unspecified()
+            && !flags.contains(Ipv6SendFlags::REQUIRED_SRC_UNSPECIFIED)
+            && !multicast_bypass
+        {
+            tracing::info!("src addr assign");
             // (0) Check link local
             let canidates = self.ipv6_src_addr_canidate_set(pkt.dst, ifid);
             if let Some(src) = canidates.select(&self.ipv6.policies) {
+                tracing::info!("src addr assign = {src:?}");
                 pkt.src = src.addr;
             } else if flags.contains(Ipv6SendFlags::ALLOW_SRC_UNSPECIFIED) {
                 /* Do nothing the flag allows this */
@@ -239,6 +248,10 @@ impl IOContext {
             }
         }
 
+        if ifid.is_null() && pkt.dst.is_multicast() {
+            return self.ipv6_send_multicast(&pkt);
+        }
+
         // Interface specification:
         // This should be borderline immpossible s
         if ifid == IfId::NULL && !flags.contains(Ipv6SendFlags::FOREIGN_PACKET) {
@@ -255,6 +268,8 @@ impl IOContext {
             }
             next_hop
         };
+
+        // tracing::info!("> next_hop = {:?}", next_hop);
 
         // (3) Begin LL address resoloution
         let Some((mac, new_ifid)) = self.ipv6.neighbors.lookup(next_hop) else {
@@ -321,9 +336,54 @@ impl IOContext {
         Ok(())
     }
 
+    fn ipv6_send_multicast(&mut self, pkt: &Ipv6Packet) -> Result<(), Error> {
+        let ifids = self
+            .ifaces
+            .iter()
+            .filter_map(|(id, iface)| iface.bindings.has_v6_capability().then_some(*id))
+            .collect::<Vec<_>>();
+
+        for ifid in ifids {
+            let mut pkt = pkt.clone();
+            if pkt.src.is_unspecified() {
+                let canidates = self.ipv6_src_addr_canidate_set(pkt.dst, ifid);
+                if let Some(src) = canidates.select(&self.ipv6.policies) {
+                    pkt.src = src.addr;
+                } else {
+                    continue;
+                }
+            }
+
+            let mac = MacAddress::ipv6_multicast(pkt.dst);
+            let iface = self.ifaces.get_mut(&ifid).unwrap();
+            let msg = Message::default()
+                .with_src(iface.device.addr.into())
+                .with_dst(mac.into())
+                .with_kind(KIND_IPV6)
+                .with_content(pkt);
+
+            if let Err(err) = iface.send_buffered(msg) {
+                match err {
+                    InterfaceError::PacketToBig(_, _) => {
+                        // If packet is non-local send a ICMP packet to big message
+
+                        tracing::error!("locally send multicast packet exceeds local max MTU");
+                        return Err(Error::new(
+                            ErrorKind::InvalidInput,
+                            "packet exceeds local max MTU",
+                        ));
+                    }
+                    InterfaceError::InterfaceBusy(_) => tracing::error!("unbusy send"),
+                }
+            }
+        }
+
+        Ok(())
+    }
+
     fn ipv6_ifid_for_src_addr(&self, src: Ipv6Addr) -> IfId {
         for (id, iface) in &self.ifaces {
-            if iface.bindings.v6.matches(src) {
+            if iface.bindings.v6.matches_recv(src) {
                 return *id;
             }
         }
@@ -350,6 +410,8 @@ impl IOContext {
                     tracing::debug!("{:#?}", self.ipv6.router)
                 };
             }
+            tracing::debug!("> default routers {:?}", self.ipv6.default_routers);
+
             self.ipv6
                 .default_routers
                 .next_router(&self.ipv6.neighbors)

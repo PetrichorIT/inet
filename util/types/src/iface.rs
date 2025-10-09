@@ -2,13 +2,13 @@ use bytes_io::{BytesReader, BytesWriter, FromBytes, ToBytes};
 use des::runtime::random;
 
 use std::{
-    fmt::Display,
+    fmt::{Debug, Display},
     io::{Read, Write},
     net::Ipv6Addr,
     ops::{BitAnd, BitOr, BitXor, Not},
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct MacAddress([u8; 6]);
 
 impl MacAddress {
@@ -136,13 +136,19 @@ impl FromBytes for MacAddress {
     }
 }
 
-impl Display for MacAddress {
+impl Debug for MacAddress {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
             "{:x}:{:x}:{:x}:{:x}:{:x}:{:x}",
             self.0[0], self.0[1], self.0[2], self.0[3], self.0[4], self.0[5]
         )
+    }
+}
+
+impl Display for MacAddress {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        <Self as Debug>::fmt(self, f)
     }
 }
 

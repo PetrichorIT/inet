@@ -15,7 +15,7 @@ use types::ip::{IPV6_MINIMUM_MTU, Ipv6AddrExt};
 #[test]
 #[serial]
 fn test() -> Result<(), RuntimeError> {
-    des::tracing::init();
+    // des::tracing::init();
 
     let mut sim = Sim::new(()).with_stack(inet::init);
     sim.node(
@@ -71,8 +71,6 @@ fn test() -> Result<(), RuntimeError> {
         "transit",
         AsyncHandler::io(|_| async move {
             router::declare_router()?;
-            router::add_routing_prefix("2003:a:1::/64".parse()?)?;
-            router::add_routing_prefix("2003:b:1::/64".parse()?)?;
 
             router::add_routing_interface(
                 "port-a",
@@ -80,7 +78,7 @@ fn test() -> Result<(), RuntimeError> {
                 &["2003:a:1::1".parse().unwrap(), Ipv6Addr::LINK_LOCAL],
                 true,
             )?;
-            router::routing_interface_ingore_prefix("port-a", "2003:b:1::/64".parse()?)?;
+            router::add_routing_prefix("port-a", "2003:a:1::/64".parse()?)?;
 
             router::add_routing_interface(
                 "port-b",
@@ -90,7 +88,7 @@ fn test() -> Result<(), RuntimeError> {
                 &["2003:b:1::1".parse().unwrap(), Ipv6Addr::LINK_LOCAL],
                 true,
             )?;
-            router::routing_interface_ingore_prefix("port-b", "2003:a:1::/64".parse()?)?;
+            router::add_routing_prefix("port-b", "2003:b:1::/64".parse()?)?;
 
             // router::add_routing_entry(
             //     "2003:b:1::/64".parse()?,

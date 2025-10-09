@@ -5,8 +5,11 @@ use crate::{
     socket::{SocketDomain, SocketType},
 };
 use bytes_io::{FromBytes, ToBytes};
-use des::{runtime::sample, time::SimTime};
-use rand::distr::Uniform;
+use des::{
+    runtime::{rng, sample},
+    time::SimTime,
+};
+use rand::{Rng, distr::Uniform};
 use std::{
     io::{self, Error, ErrorKind},
     net::{IpAddr, Ipv6Addr},
@@ -402,6 +405,8 @@ impl IOContext {
             content: msg.write_to_bytes()?,
         };
 
+        tracing::info!("send router adv {dst:?}");
+
         self.ipv6_send(pkt, ifid)?;
         Ok(())
     }
@@ -601,7 +606,7 @@ impl IOContext {
         }
 
         let query_is_dedup = ip.src.is_unspecified();
-        let tentative = !iface.bindings.v6.matches(req.target);
+        let tentative = !iface.bindings.v6.matches_recv(req.target);
 
         tracing::trace!(IFACE=%ifid, tentative, "recv (sol) for {} from {}->{}", req.target, ip.src, ip.dst);
 
@@ -704,7 +709,7 @@ impl IOContext {
         // may require different procedures.
         let is_dedup = matches!(query, QueryType::TentativeAddressCheck(_));
         if is_dedup {
-            let first_pkt_after_reinit = iface.send_q == 0;
+            let first_pkt_after_reinit = iface.state.send_q == 0;
             if first_pkt_after_reinit {
                 // If this interface is new, delay the multicast join for the sol multicast
                 // to prevent loops.
@@ -1011,6 +1016,19 @@ impl IOContext {
             .bindings
             .v6
             .leave(Ipv6Addr::solicied_node_multicast(binding.addr));
+
+        // We failed at link-local addr checks
+        if binding.addr.is_link_local() {
+            let mut binding = binding;
+            let lower = rng().random::<u128>() & !u128::from(binding.mask);
+            let upper = binding.addr & binding.mask;
+            binding.addr = upper | Ipv6Addr::from(lower);
+            tracing::trace!(
+                "restarting autocfg with randomly generated interface identifier: {}",
+                binding.addr
+            );
+            self.interface_add_addr_v6(ifid, binding, false)?;
+        }
 
         Ok(())
     }

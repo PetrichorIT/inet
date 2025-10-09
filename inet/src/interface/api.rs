@@ -146,7 +146,7 @@ impl IOContext {
 
         if v6 && !router && !loopback {
             // Autocfg a link local address;
-            if addrs.unicast.is_empty() {
+            if !addrs.unicast.iter().any(|addr| addr.addr.is_link_local()) {
                 // Link-local address generation
                 // RFC 4862 says that this addr should be generated, when
                 // - interface starts up
@@ -155,11 +155,12 @@ impl IOContext {
 
                 let binding = InterfaceAddrV6::new_link_local(mac);
                 self.interface_add_addr_v6(ifid, binding, false)?;
-            } else {
-                // TODO: legacy impl improve
-                for binding in addrs.unicast {
-                    self.interface_add_addr_v6(ifid, binding, true)?;
-                }
+            }
+
+            // TODO: legacy impl improve
+            for binding in addrs.unicast {
+                // Force no dedup
+                self.interface_add_addr_v6(ifid, binding, true)?;
             }
 
             self.ipv6_register_host_interface(ifid)?;

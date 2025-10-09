@@ -4,12 +4,14 @@ use types::ip::Ipv6Prefix;
 
 #[derive(Debug, Clone)]
 pub struct HostConfiguration {
+    pub dup_addr_detect_for_link_local: bool,
     pub dup_addr_detect_transmits: usize, // The number of solicitations neeed, to confirm the uniqueness of an address
 }
 
 impl Default for HostConfiguration {
     fn default() -> Self {
         Self {
+            dup_addr_detect_for_link_local: false,
             dup_addr_detect_transmits: 1,
         }
     }

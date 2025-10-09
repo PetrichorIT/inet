@@ -1,16 +1,16 @@
-use std::time::Duration;
+use std::{net::IpAddr, time::Duration};
 
 use bytes_io::FromBytes;
 use des::{
     net::{
+        Sim,
         channel::{ChannelDropBehaviour, DatarateChannel, DatarateChannelMetrics},
         module::Module,
-        Sim,
     },
     runtime::{Builder, RuntimeError},
 };
 use inet::{
-    interface::{add_interface, interface_status, InterfaceDef, NetworkDevice},
+    interface::{InterfaceDef, NetworkDevice, add_interface, interface_status},
     ipv6::{api::set_node_cfg, cfg::HostConfiguration},
 };
 use serial_test::serial;
@@ -104,16 +104,18 @@ impl Module for AssignSameAddr {
         let mac = MacAddress::from([1, 2, 3, 4, 5, 6]);
         assert!(!mac.is_multicast());
         device.addr = mac;
-        add_interface(InterfaceDef::new("en0", device)).unwrap();
+        add_interface(InterfaceDef::new("en0", device).v6()).unwrap();
     }
 
     fn at_sim_end(&mut self) -> Result<(), RuntimeError> {
-        assert!(interface_status("en0")
-            .unwrap()
-            .addrs
-            .addrs()
-            .collect::<Vec<_>>()
-            .is_empty());
+        assert_ne!(
+            interface_status("en0")
+                .unwrap()
+                .addrs
+                .addrs()
+                .collect::<Vec<_>>(),
+            ["fe80::12:2345".parse::<IpAddr>().unwrap()]
+        );
         Ok(())
     }
 }

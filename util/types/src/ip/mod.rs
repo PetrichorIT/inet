@@ -2,7 +2,10 @@
 
 use bytes_io::Bytes;
 use des::net::message::MessageKind;
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+use std::{
+    hash::Hash,
+    net::{IpAddr, Ipv4Addr, Ipv6Addr},
+};
 
 mod mask;
 pub use mask::*;
@@ -223,4 +226,22 @@ pub fn ipv6_matches_subnet_len(ip: Ipv6Addr, subnet: Ipv6Addr, prefix_len: u8) -
     let subnet_u128 = u128::from(subnet);
     let mask_u128 = u128::MAX << (128 - prefix_len);
     ip_u128 & mask_u128 == subnet_u128 & mask_u128
+}
+
+pub trait IpAddrLike: Copy + PartialEq + Eq + Hash {
+    type Prefix: Copy + PartialEq + Eq + Hash;
+
+    const NULL: Self;
+}
+
+impl IpAddrLike for Ipv4Addr {
+    type Prefix = Ipv4Prefix;
+
+    const NULL: Self = Ipv4Addr::UNSPECIFIED;
+}
+
+impl IpAddrLike for Ipv6Addr {
+    type Prefix = Ipv6Prefix;
+
+    const NULL: Self = Ipv6Addr::UNSPECIFIED;
 }

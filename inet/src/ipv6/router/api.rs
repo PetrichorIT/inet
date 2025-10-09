@@ -20,24 +20,20 @@ pub fn add_routing_interface(
     name: impl AsRef<str>,
     device: NetworkDevice,
     addrs: &[Ipv6Addr],
+
     adv: bool,
 ) -> io::Result<()> {
     IOContext::failable_api(|ctx| ctx.ipv6_router_add_routing_interface(name, device, addrs, adv))
-}
-
-pub fn routing_interface_ingore_prefix(
-    name: impl AsRef<str>,
-    prefix: Ipv6Prefix,
-) -> io::Result<()> {
-    IOContext::failable_api(|ctx| ctx.routing_interface_ingore_prefix(name, prefix))
 }
 
 pub fn add_routing_entry(prefix: Ipv6Prefix, next_hop: Ipv6Addr, via: Ipv6Addr) -> io::Result<()> {
     IOContext::failable_api(|ctx| ctx.ipv6_router_add_routing_entry(prefix, next_hop, via))
 }
 
-pub fn add_routing_prefix(prefix: Ipv6Prefix) -> io::Result<()> {
-    IOContext::failable_api(|ctx| ctx.ipv6_router_add_routing_prefix(prefix))
+pub fn add_routing_prefix(name: impl AsRef<str>, prefix: Ipv6Prefix) -> io::Result<()> {
+    IOContext::failable_api(|ctx| {
+        ctx.ipv6_router_add_routing_prefix(IfId::new(name.as_ref()), prefix)
+    })
 }
 
 pub fn add_solicitation_entry(addr: Ipv6Addr, mac: MacAddress, ifid: IfId) -> io::Result<()> {
@@ -74,6 +70,7 @@ impl IOContext {
         name: impl AsRef<str>,
         device: NetworkDevice,
         addrs: &[Ipv6Addr],
+
         adv: bool,
     ) -> io::Result<()> {
         let mut interface = InterfaceDef::new(name.as_ref(), device);
@@ -100,26 +97,9 @@ impl IOContext {
         };
 
         cfg.adv_send_advertisments = adv;
+
         self.add_interface(interface)?;
         self.ipv6.router_cfg.insert(ifid, cfg);
-        Ok(())
-    }
-
-    fn routing_interface_ingore_prefix(
-        &mut self,
-        name: impl AsRef<str>,
-        prefix: Ipv6Prefix,
-    ) -> io::Result<()> {
-        let ifid = IfId::new(name.as_ref());
-
-        let entry = self
-            .ipv6
-            .router_cfg
-            .get_mut(&ifid)
-            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "Unknown interface"))?;
-
-        entry.adv_prefix_list.retain(|v| v.prefix != prefix);
-
         Ok(())
     }
 
@@ -140,27 +120,21 @@ impl IOContext {
         Ok(())
     }
 
-    fn ipv6_router_add_routing_prefix(&mut self, prefix: Ipv6Prefix) -> io::Result<()> {
+    fn ipv6_router_add_routing_prefix(&mut self, ifid: IfId, prefix: Ipv6Prefix) -> io::Result<()> {
         self.ipv6.prefixes.set_static(prefix);
-        if let Some(ref mut cfg) = self.ipv6.router_cfg_default {
-            cfg.adv_prefix_list.push(RouterPrefix {
-                on_link: true,
-                prefix,
-                preferred_lifetime: Duration::from_secs(1000),
-                valid_lifetime: Duration::from_secs(1000),
-                autonomous: true,
-            });
-        }
 
-        for cfg in self.ipv6.router_cfg.values_mut() {
-            cfg.adv_prefix_list.push(RouterPrefix {
-                on_link: true,
-                prefix,
-                preferred_lifetime: Duration::from_secs(1000),
-                valid_lifetime: Duration::from_secs(1000),
-                autonomous: true,
-            });
-        }
+        let cfg = self
+            .ipv6
+            .router_cfg
+            .get_mut(&ifid)
+            .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "no such iface"))?;
+        cfg.adv_prefix_list.push(RouterPrefix {
+            on_link: true,
+            prefix,
+            preferred_lifetime: Duration::from_secs(1000),
+            valid_lifetime: Duration::from_secs(1000),
+            autonomous: true,
+        });
 
         Ok(())
     }

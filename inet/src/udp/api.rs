@@ -431,11 +431,11 @@ impl UdpSocket {
         })
     }
 
-    pub fn join_multicast_v6(&mut self, addr: Ipv6Addr, interface: Option<IfId>) -> Result<()> {
+    pub fn join_multicast_v6(&self, addr: Ipv6Addr, interface: Option<IfId>) -> Result<()> {
         IOContext::failable_api(|ctx| ctx.udp_join_multicast_v6(self.fd, addr, interface))
     }
 
-    pub fn leave_multicast_v6(&mut self, addr: Ipv6Addr, _: Option<IfId>) -> Result<()> {
+    pub fn leave_multicast_v6(&self, addr: Ipv6Addr, _: Option<IfId>) -> Result<()> {
         IOContext::failable_api(|ctx| ctx.udp_leave_multicast_v6(self.fd, addr))
     }
 

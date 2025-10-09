@@ -6,17 +6,17 @@ use std::{
 
 use des::{
     net::{
-        globals,
-        module::{current, Module},
-        Sim,
+        Sim, globals,
+        module::{Module, current},
     },
     registry,
     runtime::{Builder, RuntimeError},
 };
 use inet::{
-    interface::{add_interface, interface_status, InterfaceDef, NetworkDevice},
+    UdpSocket,
+    interface::{InterfaceDef, NetworkDevice, add_interface, interface_status},
     ipv6::router,
-    utils, UdpSocket,
+    utils,
 };
 use types::ip::{Ipv6AddrExt, Ipv6Prefix};
 
@@ -86,7 +86,6 @@ impl Module for Router {
             .get()
             .unwrap();
         router::declare_router().unwrap();
-        router::add_routing_prefix(prefix).unwrap();
 
         let lan = NetworkDevice::gate("lan", 0).unwrap();
         router::add_routing_interface(
@@ -96,6 +95,7 @@ impl Module for Router {
             true,
         )
         .unwrap();
+        router::add_routing_prefix("eth-lan-0", prefix).unwrap();
 
         let wan = NetworkDevice::gate("wan", 0).unwrap();
         router::add_routing_interface(
@@ -115,7 +115,7 @@ impl Module for Router {
             .unwrap();
 
         router::add_routing_entry(peers_prefix, peers_addr, peering_addr).unwrap();
-        router::add_routing_prefix(prefix).unwrap();
+        // router::add_routing_prefix(prefix).unwrap();
     }
 }
 

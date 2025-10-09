@@ -13,3 +13,9 @@ fxhash = "*"
 des = "*"
 tracing = "*"
 tokio = "*"
+
+[dev-dependencies]
+serial_test = "*"
+serde_yml = "*"
+pcapng = { path = "../util/pcapng" }
+rand = "*"

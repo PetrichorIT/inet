@@ -3,7 +3,7 @@ use std::{net::Ipv6Addr, time::Duration};
 use des::{runtime::RuntimeError, time::sleep};
 use serial_test::serial;
 
-use crate::{ipv6::multicast::tests::assert_memberships_are, test_util::SimpleSim, UdpSocket};
+use crate::{UdpSocket, ipv6::multicast::tests::assert_memberships_are, test_util::SimpleSim};
 
 #[test]
 #[serial]
@@ -13,7 +13,7 @@ fn udp_can_receive_site_local_multicast() -> Result<(), RuntimeError> {
     let group = "ff15::1234".parse().unwrap();
 
     sim.node_require_join("alice", move || async move {
-        let mut sock = UdpSocket::bind(":::4000").await?;
+        let sock = UdpSocket::bind(":::4000").await?;
         sock.join_multicast_v6(group, None)?;
 
         let mut buf = [0; 100];
@@ -42,7 +42,7 @@ fn udp_leaves_group_at_drop() -> Result<(), RuntimeError> {
     let group = "ff15::1234".parse().unwrap();
 
     sim.node_require_join("alice", move || async move {
-        let mut sock = UdpSocket::bind(":::4000").await?;
+        let sock = UdpSocket::bind(":::4000").await?;
         sock.join_multicast_v6(group, None)?;
 
         let mut buf = [0; 100];

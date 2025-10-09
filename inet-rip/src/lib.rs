@@ -1,21 +1,31 @@
 #![warn(clippy::pedantic)]
+#![allow(async_fn_in_trait)]
 //! The Routing Information Protocol (RIP)
 
 use bytes_io::{FromBytes, ToBytes};
 use des::time::{Duration, SimTime, sleep};
 use fxhash::{FxBuildHasher, FxHashMap};
-use std::net::{IpAddr, Ipv4Addr};
+use std::{
+    fmt::Debug,
+    io,
+    net::{IpAddr, Ipv4Addr, Ipv6Addr},
+    vec,
+};
 
 use inet::{
     Current, UdpSocket,
-    interface::{InterfaceDef, add_interface, interface_status_by_ifid},
-    ipv4::router::add_routing_entry,
+    interface::{IfId, InterfaceDef, add_interface, interface_status_by_ifid},
+    ipv4::{self, router::add_routing_entry},
+    types::ip::{IpAddrLike, Ipv4Prefix, Ipv6AddrExt, Ipv6Prefix},
 };
 
 use inet::env::RoutingInformation;
 use inet::env::RoutingPort;
 
+mod ng;
 mod pkt;
+
+pub use self::ng::*;
 pub use self::pkt::*;
 
 /// Configuration of a single RIP router.
@@ -424,5 +434,500 @@ impl RipRoutingDeamon {
                 self.next_timeout = min.max(SimTime::now());
             }
         }
+    }
+}
+
+pub struct RipRouter<Addr: DistanceVectorAddrFamily> {
+    cfg: RipConfig,
+    addr: Addr,
+    subnet: Addr::Prefix,
+
+    neighbors: FxHashMap<Addr, DVNeighborEntry<Addr>>,
+    vectors: FxHashMap<Addr::Prefix, DistanceVector<Addr>>,
+    next_timeout: SimTime,
+}
+
+#[allow(unused)]
+pub struct DVNeighborEntry<Addr: DistanceVectorAddrFamily> {
+    iface: IfId,
+    router: Addr,
+    subnet: Addr::Prefix,
+}
+
+#[derive(Debug, Clone)]
+pub struct DistanceVector<Addr: DistanceVectorAddrFamily> {
+    prefix: Addr::Prefix,
+    next_hop: Addr,
+    metric: u32,
+    deadline: SimTime,
+    update_time: SimTime,
+}
+
+impl<AddrFam: DistanceVectorAddrFamily> RipRouter<AddrFam> {
+    pub fn new(subnet: AddrFam::Prefix, addr: AddrFam, cfg: RipConfig) -> Self {
+        Self {
+            cfg,
+            addr,
+            subnet,
+            neighbors: FxHashMap::default(),
+            vectors: FxHashMap::default(),
+            next_timeout: SimTime::MAX,
+        }
+    }
+
+    fn add_neighbor(
+        &mut self,
+        router: AddrFam,
+        subnet: AddrFam::Prefix,
+        iface: IfId,
+        changes: &mut Vec<DistanceVector<AddrFam>>,
+    ) {
+        self.neighbors.insert(
+            router,
+            DVNeighborEntry {
+                iface,
+                router,
+                subnet,
+            },
+        );
+
+        let dv = DistanceVector {
+            prefix: subnet,
+            next_hop: router,
+            metric: 1,
+            deadline: SimTime::now() + self.cfg.entry_lifetime,
+            update_time: SimTime::now() + self.cfg.entry_update_interval,
+        };
+
+        self.vectors.insert(subnet, dv.clone());
+        changes.push(dv);
+    }
+
+    pub async fn run(self) -> io::Result<()> {
+        self.run_inner().await.inspect_err(|e| {
+            tracing::error!("Error running RIP: {}", e);
+        })
+    }
+
+    async fn run_inner(mut self) -> io::Result<()> {
+        // (0) Initalize the DV table
+        let self_dv = DistanceVector::<AddrFam> {
+            prefix: self.subnet,
+            next_hop: AddrFam::NULL,
+            metric: 0,
+            deadline: SimTime::MAX,
+            update_time: SimTime::MAX,
+        };
+        self.vectors.insert(self.subnet, self_dv.clone());
+
+        let sock = AddrFam::make_socket().await?;
+
+        tracing::info!("Initializing RIP routing deamon");
+        // FIXME
+        let inital_req = AddrFam::make_full_dvs_req(self.addr, self.subnet);
+        AddrFam::broadcast(&sock, inital_req).await?;
+
+        loop {
+            let mut buf = [0; 1500];
+            let timeout_dur = (self
+                .next_timeout
+                .checked_duration_since(SimTime::now())
+                .unwrap_or(Duration::ZERO))
+            .min(self.cfg.entry_update_interval);
+
+            let (n, from) = tokio::select! {
+                result = sock.recv_from(&mut buf) => match result {
+                    Ok(vv) => vv,
+                    Err(e) => {
+                        tracing::error!("socket recv error: {e}");
+                        continue;
+                    }
+                },
+
+                () = sleep(timeout_dur) => {
+                    self.on_timeout(&sock).await?;
+                    continue;
+                }
+            };
+
+            let neighbor_addr = AddrFam::from_ip(from.ip());
+            let (incoming_iface, is_new) = self
+                .neighbors
+                .get(&neighbor_addr)
+                .map(|neighbor| (neighbor.iface, false))
+                .unwrap_or_else(|| {
+                    let cur = Current::fetch();
+                    (cur.ifid, true)
+                });
+
+            let packet = AddrFam::Packet::peek_from(&buf[..n])?;
+            // tracing::info!("recv {packet:?} from {from}");
+
+            let changes = self
+                .on_incoming(
+                    &sock,
+                    packet,
+                    (neighbor_addr, from.port()),
+                    incoming_iface,
+                    is_new,
+                )
+                .await?;
+
+            if !changes.is_empty() {
+                let pkts = AddrFam::dvs_to_packet(&changes, RipCommand::Response);
+
+                for neighbor in self.neighbors.keys() {
+                    if is_new && *neighbor == neighbor_addr {
+                        // SEND FULL: FIXME
+                        // FIXME: port shenans
+                        AddrFam::send_to(&sock, &pkts, (*neighbor, from.port())).await?;
+                    } else {
+                        AddrFam::send_to(&sock, &pkts, (*neighbor, from.port())).await?;
+                    }
+                }
+
+                let min = self
+                    .vectors
+                    .values()
+                    .map(|dv| dv.update_time)
+                    .min()
+                    .unwrap_or(SimTime::MAX);
+                self.next_timeout = min.max(SimTime::now());
+            }
+        }
+    }
+
+    async fn on_timeout(&mut self, sock: &UdpSocket) -> io::Result<()> {
+        let mut updates = FxHashMap::with_hasher(FxBuildHasher::default());
+        for addr in self.vectors.keys().copied().collect::<Vec<_>>() {
+            let entry = self.vectors.get_mut(&addr).unwrap();
+
+            if SimTime::now() >= entry.deadline {
+                // Timeout
+                tracing::info!("Timeout for DV");
+            } else if SimTime::now() >= entry.update_time {
+                // request update
+                updates
+                    .entry(entry.next_hop)
+                    .or_insert(Vec::new())
+                    .push(entry.clone());
+                entry.update_time = SimTime::now() + self.cfg.entry_update_interval;
+            }
+        }
+
+        for (target, requests) in updates {
+            let pkts = AddrFam::dvs_to_packet(&requests, RipCommand::Request);
+            // FIXME: 0 port
+            AddrFam::send_to(&sock, &pkts, (target, 0)).await?;
+        }
+
+        let min = self
+            .vectors
+            .values()
+            .map(|dv| dv.update_time)
+            .min()
+            .unwrap_or(SimTime::MAX);
+        self.next_timeout = min.max(SimTime::now());
+
+        Ok(())
+    }
+
+    async fn on_incoming(
+        &mut self,
+        sock: &UdpSocket,
+        packet: AddrFam::Packet,
+        from: (AddrFam, u16),
+        incoming: IfId,
+        is_new: bool,
+    ) -> io::Result<Vec<DistanceVector<AddrFam>>> {
+        let mut changes = Vec::new();
+
+        match AddrFam::packet_into_command(&packet) {
+            RipCommand::Request => {
+                let dvs = AddrFam::packet_into_dvs(&packet, from.0);
+
+                if is_new {
+                    self.add_neighbor(from.0, dvs[0].prefix, incoming, &mut changes);
+                }
+
+                // FIXME: this needs a few more checks
+                if dvs.len() == 1 && dvs[0].metric == 16 {
+                    // (1a) Request complete table
+                    let all = self
+                        .vectors
+                        .values()
+                        .filter(|dv| dv.next_hop != from.0)
+                        .cloned() // FIXME: this is expensive
+                        .collect::<Vec<_>>();
+                    let pkts = AddrFam::dvs_to_packet(&all, RipCommand::Response);
+                    AddrFam::send_to(sock, &pkts, from).await?;
+                } else {
+                    // (1b) Specifc partial query
+                    let mut dvs = dvs;
+
+                    for dv in &mut dvs {
+                        let Some(entry) = self.vectors.get(&dv.prefix) else {
+                            dv.metric = 16;
+                            dv.next_hop = AddrFam::NULL;
+                            continue;
+                        };
+
+                        *dv = entry.clone();
+                    }
+
+                    let pkts = AddrFam::dvs_to_packet(&dvs, RipCommand::Response);
+                    AddrFam::send_to(sock, &pkts, from).await?;
+                }
+            }
+            RipCommand::Response => {
+                for dv in AddrFam::packet_into_dvs(&packet, from.0) {
+                    if is_new && dv.next_hop == AddrFam::NULL {
+                        self.add_neighbor(from.0, dv.prefix, incoming, &mut changes);
+                    }
+
+                    if let Some(entry) = self.vectors.get_mut(&dv.prefix) {
+                        // (2) Existing Entry
+                        if entry.metric > dv.metric + 1 {
+                            // (2a) Update entry with shorter route
+                            *entry = dv;
+                            entry.metric += 1;
+                            entry.deadline = SimTime::now() + self.cfg.entry_lifetime;
+                            entry.update_time = SimTime::now() + self.cfg.entry_update_interval;
+                            AddrFam::add_routing_entry(&entry, &incoming.to_string())?;
+                            changes.push(entry.clone());
+                        } else if entry.metric == dv.metric && entry.next_hop == dv.next_hop {
+                            // (2b) Update entry with same route
+                            entry.deadline = SimTime::now() + self.cfg.entry_lifetime;
+                            entry.update_time = SimTime::now() + self.cfg.entry_update_interval;
+                        }
+                    } else {
+                        // (3) New Entry
+                        let mut entry = dv;
+                        entry.metric += 1;
+                        entry.deadline = SimTime::now() + self.cfg.entry_lifetime;
+                        entry.update_time = SimTime::now() + self.cfg.entry_update_interval;
+
+                        AddrFam::add_routing_entry(&entry, &incoming.to_string())?;
+                        self.vectors.insert(entry.prefix, entry.clone());
+                        changes.push(entry);
+                    }
+                }
+            }
+        }
+
+        Ok(changes)
+    }
+}
+
+pub trait DistanceVectorAddrFamily: IpAddrLike {
+    type Packet: ToBytes<Error = std::io::Error> + FromBytes<Error = std::io::Error> + Debug;
+
+    fn from_ip(ip: IpAddr) -> Self;
+
+    async fn make_socket() -> io::Result<UdpSocket>;
+
+    async fn broadcast(sock: &UdpSocket, pkt: Self::Packet) -> io::Result<()>;
+
+    async fn send_to(sock: &UdpSocket, pkts: &[Self::Packet], to: (Self, u16)) -> io::Result<()>;
+
+    fn add_routing_entry(dv: &DistanceVector<Self>, ifid: &str) -> io::Result<()>;
+
+    fn packet_into_command(packet: &Self::Packet) -> RipCommand;
+
+    fn packet_into_dvs(packet: &Self::Packet, src: Self) -> Vec<DistanceVector<Self>>;
+
+    fn make_full_dvs_req(router: Self, subnet: Self::Prefix) -> Self::Packet;
+
+    fn dvs_to_packet<'a>(dvs: &[DistanceVector<Self>], command: RipCommand) -> Vec<Self::Packet>;
+}
+
+impl DistanceVectorAddrFamily for Ipv4Addr {
+    type Packet = RipPacket;
+
+    fn from_ip(ip: IpAddr) -> Self {
+        match ip {
+            IpAddr::V4(v4) => v4,
+            _ => unreachable!(),
+        }
+    }
+
+    async fn make_socket() -> io::Result<UdpSocket> {
+        let sock = UdpSocket::bind((Ipv4Addr::UNSPECIFIED, 520)).await?;
+        sock.set_broadcast(true)?;
+        Ok(sock)
+    }
+
+    async fn broadcast(sock: &UdpSocket, pkt: Self::Packet) -> io::Result<()> {
+        sock.send_to(&pkt.write_to_bytes()?, (Ipv4Addr::BROADCAST, 520))
+            .await?;
+        Ok(())
+    }
+
+    async fn send_to(sock: &UdpSocket, pkts: &[Self::Packet], to: (Self, u16)) -> io::Result<()> {
+        for pkt in pkts {
+            sock.send_to(&pkt.write_to_bytes()?, to).await?;
+        }
+        Ok(())
+    }
+
+    fn add_routing_entry(dv: &DistanceVector<Self>, ifid: &str) -> io::Result<()> {
+        ipv4::router::add_routing_entry(
+            dv.prefix.addr(),
+            dv.prefix.mask().into(),
+            dv.next_hop,
+            ifid,
+        )
+    }
+
+    fn packet_into_command(packet: &Self::Packet) -> RipCommand {
+        packet.command
+    }
+
+    fn packet_into_dvs(packet: &Self::Packet, _src: Self) -> Vec<DistanceVector<Self>> {
+        packet
+            .entries
+            .iter()
+            .map(|entry| DistanceVector {
+                prefix: Ipv4Prefix::new(entry.target, u32::from(entry.mask).leading_ones() as u8),
+                next_hop: entry.next_hop,
+                metric: entry.metric,
+                deadline: SimTime::ZERO,
+                update_time: SimTime::ZERO,
+            })
+            .collect()
+    }
+
+    fn make_full_dvs_req(router: Self, subnet: Self::Prefix) -> Self::Packet {
+        RipPacket {
+            command: RipCommand::Request,
+            entries: vec![RipEntry {
+                addr_fam: 0,
+                target: subnet.addr(),
+                mask: subnet.mask().into(),
+                next_hop: router,
+                metric: 16,
+            }],
+        }
+    }
+
+    fn dvs_to_packet(mut dvs: &[DistanceVector<Self>], command: RipCommand) -> Vec<Self::Packet> {
+        let mut r = Vec::with_capacity(dvs.len() / 25 + 1);
+        while !dvs.is_empty() {
+            let mut pkt = RipPacket {
+                command,
+                entries: Vec::with_capacity(dvs.len().min(25)),
+            };
+
+            for entry in &dvs[..25.min(dvs.len())] {
+                pkt.entries.push(RipEntry {
+                    addr_fam: AF_INET,
+                    target: entry.prefix.addr(),
+                    mask: entry.prefix.mask().into(),
+                    next_hop: entry.next_hop,
+                    metric: entry.metric,
+                });
+            }
+
+            dvs = &dvs[pkt.entries.len()..];
+            r.push(pkt);
+        }
+        r
+    }
+}
+
+impl DistanceVectorAddrFamily for Ipv6Addr {
+    type Packet = RipNgPacket;
+
+    fn from_ip(ip: IpAddr) -> Self {
+        match ip {
+            IpAddr::V6(v6) => v6,
+            _ => unreachable!(),
+        }
+    }
+
+    async fn make_socket() -> io::Result<UdpSocket> {
+        let sock = UdpSocket::bind((Ipv6Addr::UNSPECIFIED, 512)).await?;
+        sock.set_broadcast(true)?;
+        sock.join_multicast_v6(Ipv6Addr::MULTICAST_ALL_NODES, None)?;
+        Ok(sock)
+    }
+
+    #[tracing::instrument(skip(sock, pkt))]
+    async fn broadcast(sock: &UdpSocket, pkt: Self::Packet) -> io::Result<()> {
+        // FIXME
+        sock.send_to(&pkt.write_to_bytes()?, (Ipv6Addr::MULTICAST_ALL_NODES, 512))
+            .await?;
+        Ok(())
+    }
+
+    #[tracing::instrument(skip(sock, pkts, to))]
+    async fn send_to(sock: &UdpSocket, pkts: &[Self::Packet], to: (Self, u16)) -> io::Result<()> {
+        for pkt in pkts {
+            sock.send_to(&pkt.write_to_bytes()?, to).await?;
+        }
+        Ok(())
+    }
+
+    fn add_routing_entry(dv: &DistanceVector<Self>, _ifid: &str) -> io::Result<()> {
+        tracing::error!("add({} via {})", dv.prefix, dv.next_hop);
+        Ok(())
+        // ipv6::router::add_routing_entry(dv.prefix, dv.next_hop, Ipv6Addr::UNSPECIFIED)
+    }
+
+    fn packet_into_command(packet: &Self::Packet) -> RipCommand {
+        packet.command
+    }
+
+    fn packet_into_dvs(packet: &Self::Packet, src: Self) -> Vec<DistanceVector<Self>> {
+        packet
+            .entries
+            .iter()
+            .map(|entry| DistanceVector {
+                prefix: entry.prefix,
+                next_hop: if entry.next_hop.is_unspecified() {
+                    src
+                } else {
+                    entry.next_hop
+                },
+                metric: entry.metrics as u32,
+                deadline: SimTime::ZERO,
+                update_time: SimTime::ZERO,
+            })
+            .collect()
+    }
+
+    fn make_full_dvs_req(router: Self, _subnet: Self::Prefix) -> Self::Packet {
+        RipNgPacket {
+            command: RipCommand::Request,
+            entries: vec![RipNgEntry {
+                prefix: Ipv6Prefix::new(Ipv6Addr::UNSPECIFIED, 0),
+                next_hop: router,
+                tag: 0,
+                metrics: 16,
+            }],
+        }
+    }
+
+    fn dvs_to_packet(mut dvs: &[DistanceVector<Self>], command: RipCommand) -> Vec<Self::Packet> {
+        let mut r = Vec::with_capacity(dvs.len() / 25 + 1);
+        while !dvs.is_empty() {
+            let mut pkt = RipNgPacket {
+                command,
+                entries: Vec::with_capacity(dvs.len().min(25)),
+            };
+
+            for entry in &dvs[..25.min(dvs.len())] {
+                pkt.entries.push(RipNgEntry {
+                    prefix: entry.prefix,
+                    next_hop: entry.next_hop,
+                    tag: 0,
+                    metrics: entry.metric as u8,
+                });
+            }
+
+            dvs = &dvs[pkt.entries.len()..];
+            r.push(pkt);
+        }
+        r
     }
 }

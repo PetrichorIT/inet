@@ -364,7 +364,16 @@ impl IOContext {
                 let ifid = socket_info.interface.clone();
 
                 // TODO: this should not work for '::
-                self.ipv6_send(ip, ifid.unwrap_ifid())?;
+                self.ipv6_send(
+                    ip,
+                    if local.is_unspecified() {
+                        IfId::NULL
+                    } else if target.is_multicast() {
+                        IfId::NULL
+                    } else {
+                        ifid.unwrap_ifid()
+                    },
+                )?;
                 Ok(buf.len())
             }
             _ => unreachable!(),

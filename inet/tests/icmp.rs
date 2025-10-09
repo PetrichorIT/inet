@@ -37,7 +37,6 @@ fn icmp_drop_packet_too_big() -> Result<(), RuntimeError> {
             }))?;
 
             sleep(Duration::from_secs(2)).await;
-
             raw.try_send(IpPacket::V6(Ipv6Packet {
                 src: Ipv6Addr::UNSPECIFIED,
                 dst: "2003:b:1::abcd:1234".parse().unwrap(),
@@ -71,7 +70,6 @@ fn icmp_drop_packet_too_big() -> Result<(), RuntimeError> {
         "transit",
         AsyncHandler::io(|_| async move {
             router::declare_router()?;
-            router::add_routing_prefix("2003:a:1::/64".parse()?)?;
 
             router::add_routing_interface(
                 "port-a",
@@ -79,24 +77,26 @@ fn icmp_drop_packet_too_big() -> Result<(), RuntimeError> {
                 &["2003:a:1::1".parse().unwrap(), Ipv6Addr::LINK_LOCAL],
                 true,
             )?;
+            router::add_routing_prefix("port-a", "2003:a:1::/64".parse()?)?;
 
             router::add_routing_interface(
                 "port-b",
                 NetworkDevice::gate("port-b", 0)
                     .unwrap()
                     .with_mtu(IPV6_MINIMUM_MTU),
-                &["2003:a::1".parse().unwrap(), Ipv6Addr::LINK_LOCAL],
+                &["2003:b:1::1".parse().unwrap(), Ipv6Addr::LINK_LOCAL],
                 true,
             )?;
+            router::add_routing_prefix("port-b", "2003:b:1::/64".parse()?)?;
 
             router::add_routing_entry(
                 "2003:b:1::/64".parse()?,
-                "2003:b::1".parse().unwrap(),
-                "2003:a::1".parse().unwrap(),
+                "2003:b:1::1".parse().unwrap(),
+                "2003:a:1::1".parse().unwrap(),
             )?;
 
             router::add_solicitation_entry(
-                "2003:b::1".parse().unwrap(),
+                "2003:b:1::1".parse().unwrap(),
                 MacAddress::generate(),
                 IfId::new("port-b"),
             )?;

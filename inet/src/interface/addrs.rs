@@ -51,7 +51,7 @@ impl InterfaceAddrBindings {
     pub fn matches(&self, dst: IpAddr) -> bool {
         match dst {
             IpAddr::V4(addr) => self.v4.matches(addr),
-            IpAddr::V6(addr) => self.v6.matches(addr),
+            IpAddr::V6(addr) => self.v6.matches_recv(addr),
         }
     }
 
@@ -138,7 +138,7 @@ impl InterfaceAddrsV6 {
 
     /// Whether the bindings of this interface can be used as a receiver
     /// for a packet addressed to `dst`
-    pub fn matches(&self, dst: Ipv6Addr) -> bool {
+    pub fn matches_recv(&self, dst: Ipv6Addr) -> bool {
         if dst.is_multicast() {
             self.recv_all_multicast || self.multicast.contains(&dst)
         } else {

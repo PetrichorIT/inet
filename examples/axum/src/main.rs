@@ -143,16 +143,16 @@ mod connector {
     }
 }
 
-fn main() {
+const NDL: &str = include_str!("../main.yml");
+
+fn main() -> Result<(), RuntimeError> {
     des::tracing::init();
 
-    let app = Sim::new(())
-        .with_stack(inet::init)
-        .with_ndl("main.yml", registry![Client, Server, else _])
-        .map_err(|e| println!("{e}"))
-        .unwrap();
+    let mut app = Sim::new(()).with_stack(inet::init);
+    let ndl = serde_yml::from_str(NDL)?;
+    app.nodes_from_ndl(&ndl, registry![Client, Server, else _])?;
     let rt = Builder::seeded(123)
         .max_time(50.0.into())
         .build(app.freeze());
-    let _ = rt.run().unwrap();
+    rt.run().map(|_| ())
 }

@@ -38,10 +38,26 @@ pub struct InterfaceController {
     pub device: NetworkDevice,
     pub flags: InterfaceFlags,
     pub bindings: InterfaceAddrBindings,
-    pub state: InterfaceBusyState,
+    pub state: InterfaceState,
+}
+
+#[derive(Debug)]
+pub struct InterfaceState {
+    pub busy: InterfaceBusyState,
     pub prio: usize,
-    pub buffer: VecDeque<Message>,
     pub send_q: usize,
+    pub buffer: VecDeque<Message>,
+}
+
+impl Default for InterfaceState {
+    fn default() -> Self {
+        Self {
+            busy: InterfaceBusyState::Idle,
+            prio: 200,
+            send_q: 0,
+            buffer: VecDeque::new(),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -56,8 +72,8 @@ impl InterfaceController {
             name: self.name.clone(),
             flags: self.flags,
             addrs: self.bindings.clone(),
-            send_q: self.send_q,
-            queuelen: self.buffer.len(),
+            send_q: self.state.send_q,
+            queuelen: self.state.buffer.len(),
         }
     }
 
@@ -67,15 +83,12 @@ impl InterfaceController {
             device,
             flags: InterfaceFlags::en0(true),
             bindings: InterfaceAddrBindings::default(),
-            state: InterfaceBusyState::Idle,
-            prio: 200,
-            buffer: VecDeque::new(),
-            send_q: 0,
+            state: InterfaceState::default(),
         }
     }
 
     pub(super) fn add_write_interest(&mut self, fd: Fd) {
-        if let InterfaceBusyState::Busy { interests, .. } = &mut self.state {
+        if let InterfaceBusyState::Busy { interests, .. } = &mut self.state.busy {
             interests.push(fd);
         }
     }
@@ -94,16 +107,13 @@ impl InterfaceController {
         }
 
         if self.is_busy() {
-            // if self.buffer.len() >= 16 {
-            //     return Err(Error::new(ErrorKind::Other, "interface busy, buffer fullö"));
-            // }
-            self.buffer.push_back(msg);
+            self.state.buffer.push_back(msg);
             Ok(())
         } else {
             match self.send_raw(msg) {
                 Ok(()) => Ok(()),
                 Err(msg) => {
-                    self.buffer.push_back(msg);
+                    self.state.buffer.push_back(msg);
                     Ok(())
                 }
             }
@@ -111,7 +121,7 @@ impl InterfaceController {
     }
 
     pub(crate) fn send(&mut self, msg: Message) -> Result<(), InterfaceError> {
-        if self.state != InterfaceBusyState::Idle {
+        if self.state.busy != InterfaceBusyState::Idle {
             return Err(InterfaceError::InterfaceBusy(msg));
         }
 
@@ -141,7 +151,7 @@ impl InterfaceController {
                 });
             }
             NetworkDeviceReadiness::Busy(until) => {
-                self.state.merge_new(InterfaceBusyState::Busy {
+                self.state.busy.merge_new(InterfaceBusyState::Busy {
                     until,
                     interests: Vec::new(),
                 });
@@ -150,8 +160,8 @@ impl InterfaceController {
             }
         }
 
-        self.state.merge_new(self.device.send(msg).into());
-        self.send_q += 1;
+        self.state.busy.merge_new(self.device.send(msg).into());
+        self.state.send_q += 1;
         self.schedule_link_update();
         self.status().publish();
 
@@ -159,24 +169,24 @@ impl InterfaceController {
     }
 
     pub(crate) fn schedule_link_update(&self) {
-        if let InterfaceBusyState::Busy { until, .. } = &self.state {
+        if let InterfaceBusyState::Busy { until, .. } = &self.state.busy {
             schedule_at(Message::from(LinkUpdate(self.name.id())), *until);
         }
     }
 
     pub(crate) fn recv_link_update(&mut self) -> Vec<Fd> {
-        if let Some(msg) = self.buffer.pop_front() {
+        if let Some(msg) = self.state.buffer.pop_front() {
             match self.send_raw(msg) {
                 Ok(()) => Vec::new(),
                 Err(msg) => {
-                    self.buffer.push_front(msg);
+                    self.state.buffer.push_front(msg);
                     Vec::new()
                 }
             }
         } else {
             // finally unbusy, so networking layer can continue to work.
             let mut swap = InterfaceBusyState::Idle;
-            std::mem::swap(&mut swap, &mut self.state);
+            std::mem::swap(&mut swap, &mut self.state.busy);
 
             let InterfaceBusyState::Busy { interests, .. } = swap else {
                 panic!("Huh failure")
@@ -186,7 +196,7 @@ impl InterfaceController {
     }
 
     pub fn is_busy(&self) -> bool {
-        matches!(self.state, InterfaceBusyState::Busy { .. })
+        matches!(self.state.busy, InterfaceBusyState::Busy { .. })
     }
 
     pub fn is_valid_recv_addr(&self, addr: MacAddress) -> bool {

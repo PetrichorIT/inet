@@ -2,8 +2,8 @@ use std::{
     collections::VecDeque,
     str::FromStr,
     sync::{
-        atomic::{AtomicBool, Ordering},
         Arc,
+        atomic::{AtomicBool, Ordering},
     },
 };
 
@@ -399,6 +399,7 @@ fn interface_does_not_use_busy_channel() -> Result<(), RuntimeError> {
         "sender",
         AsyncHandler::failable::<_, _, std::io::Error>(|_| async move {
             set_node_cfg(HostConfiguration {
+                dup_addr_detect_for_link_local: false,
                 dup_addr_detect_transmits: 0,
             })?;
             add_interface(InterfaceDef::new("en0", NetworkDevice::eth()).v6())?;
@@ -434,6 +435,7 @@ fn interface_does_not_use_busy_channel() -> Result<(), RuntimeError> {
         "receiver",
         AsyncHandler::failable::<_, _, std::io::Error>(|mut rx| async move {
             set_node_cfg(HostConfiguration {
+                dup_addr_detect_for_link_local: false,
                 dup_addr_detect_transmits: 0,
             })?;
             add_interface(InterfaceDef::new("en0", NetworkDevice::eth()).v6())?;
@@ -491,6 +493,7 @@ fn interface_will_use_idle_channel_fcfs() -> Result<(), RuntimeError> {
         "sender",
         AsyncHandler::failable::<_, _, std::io::Error>(|_| async move {
             set_node_cfg(HostConfiguration {
+                dup_addr_detect_for_link_local: false,
                 dup_addr_detect_transmits: 0,
             })?;
             add_interface(InterfaceDef::new("en0", NetworkDevice::eth()).v6())?;
@@ -522,6 +525,7 @@ fn interface_will_use_idle_channel_fcfs() -> Result<(), RuntimeError> {
         "receiver",
         AsyncHandler::failable::<_, _, std::io::Error>(|mut rx| async move {
             set_node_cfg(HostConfiguration {
+                dup_addr_detect_for_link_local: false,
                 dup_addr_detect_transmits: 0,
             })?;
             add_interface(InterfaceDef::new("en0", NetworkDevice::eth()).v6())?;

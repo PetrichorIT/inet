@@ -18,8 +18,6 @@ pub struct InterfaceDef {
     pub name: InterfaceName,
     /// The flags associated with the interface.
     pub flags: InterfaceFlags,
-    /// The maximum transmission unit (MTU) of the interface.
-    pub mtu: usize,
     /// The network device associated with the interface.
     pub device: NetworkDevice,
     /// The addresses associated with the interface.
@@ -72,7 +70,6 @@ impl InterfaceDef {
         Self {
             name: InterfaceName::new("lo0"),
             flags: InterfaceFlags::loopback(),
-            mtu: DEFAULT_MTU,
             device: NetworkDevice::loopback(),
             addrs: InterfaceAddrsDef::loopback(),
         }
@@ -82,7 +79,6 @@ impl InterfaceDef {
         Self {
             name: InterfaceName::new(name),
             flags: InterfaceFlags::en0(false),
-            mtu: DEFAULT_MTU,
             device,
             addrs: InterfaceAddrsDef::default(),
         }
@@ -120,12 +116,6 @@ impl InterfaceDef {
             DEFAULT_V6_MASK,
         ));
         self.flags.v6 = true;
-        self
-    }
-
-    #[must_use]
-    pub fn mtu(mut self, mtu: usize) -> Self {
-        self.mtu = mtu;
         self
     }
 }

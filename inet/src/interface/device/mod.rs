@@ -81,11 +81,15 @@ impl NetworkDevice {
 
     pub fn gate(name: &str, pos: usize) -> Option<Self> {
         let gate = current().gate((name, pos))?;
-        Some(Self {
+        Some(Self::from_gate(gate))
+    }
+
+    pub fn from_gate(gate: GateRef) -> Self {
+        Self {
             addr: MacAddress::generate(),
             mtu: None,
             inner: Box::new(EthernetDeviceDriver::new(gate.clone(), gate)),
-        })
+        }
     }
 
     /// Custom device

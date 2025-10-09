@@ -272,18 +272,18 @@ impl Serialize for Ipv6Prefix {
 }
 
 impl FromStr for Ipv6Prefix {
-    type Err = Ipv6PrefixParsingError;
+    type Err = IpPrefixParsingError;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let split = s.split('/').collect::<Vec<_>>();
         if split.len() != 2 {
-            return Err(Ipv6PrefixParsingError::MissingPrefixLen);
+            return Err(IpPrefixParsingError::MissingPrefixLen);
         }
         let prefix = split[0]
             .parse()
-            .map_err(Ipv6PrefixParsingError::AddrParseError)?;
+            .map_err(IpPrefixParsingError::AddrParseError)?;
         let len = split[1]
             .parse()
-            .map_err(Ipv6PrefixParsingError::ParseIntError)?;
+            .map_err(IpPrefixParsingError::ParseIntError)?;
         Ok(Self::new(prefix, len))
     }
 }
@@ -377,22 +377,22 @@ impl<E> Default for Ipv6LongestPrefixTable<E> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Ipv6PrefixParsingError {
+pub enum IpPrefixParsingError {
     MissingPrefixLen,
     AddrParseError(AddrParseError),
     ParseIntError(ParseIntError),
 }
 
-impl fmt::Display for Ipv6PrefixParsingError {
+impl fmt::Display for IpPrefixParsingError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{self:?}")
     }
 }
 
-impl error::Error for Ipv6PrefixParsingError {}
+impl error::Error for IpPrefixParsingError {}
 
-impl From<Ipv6PrefixParsingError> for io::Error {
-    fn from(value: Ipv6PrefixParsingError) -> Self {
+impl From<IpPrefixParsingError> for io::Error {
+    fn from(value: IpPrefixParsingError) -> Self {
         io::Error::new(io::ErrorKind::InvalidData, value)
     }
 }

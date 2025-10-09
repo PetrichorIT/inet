@@ -243,7 +243,7 @@ impl IOContext {
         };
 
         let mut available_ifaces = self.ifaces.iter().collect::<Vec<_>>();
-        available_ifaces.sort_by_key(|(_, iface)| iface.prio);
+        available_ifaces.sort_by_key(|(_, iface)| iface.state.prio);
 
         let valid_ifaces = available_ifaces
             .iter()
