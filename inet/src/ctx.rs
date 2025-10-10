@@ -3,30 +3,25 @@ use crate::{
     dns::{DnsResolver, default_dns_resolve},
     env::fs::Fs,
     extensions::Extensions,
+    handle::{IOHandle, IOHandleWeak},
     interface::{ID_IPV6_TIMEOUT, IfId, InterfaceController, KIND_LINK_UPDATE},
     ipv4::Ipv4,
     ipv6::Ipv6,
     tcp::Tcp,
 };
-use des::{
-    net::module::{current, try_current},
-    prelude::{Header, Message, ModuleId},
-};
+use des::prelude::{Header, Message, ModuleId};
 use fxhash::{FxBuildHasher, FxHashMap};
 use std::{
-    cell::RefCell,
-    io::{Error, Result},
+    fmt::Debug,
+    io::Result,
     net::IpAddr,
     panic::UnwindSafe,
+    sync::{Arc, Mutex, Weak},
 };
 use types::ip::{IpPacket, KIND_IPV4, KIND_IPV6};
 
 use super::socket::*;
 use types::{tcp::PROTO_TCP, udp::PROTO_UDP};
-
-thread_local! {
-    static CURRENT: RefCell<Option<Box<IOContext>>> = const { RefCell::new(None) };
-}
 
 pub(crate) struct IOContext {
     // Link-Layer
@@ -50,7 +45,11 @@ pub(crate) struct IOContext {
 
     pub(super) current: Current,
     pub(super) meta_changed: bool,
+
+    pub(super) handle: IOHandleWeak,
 }
+
+unsafe impl Send for IOContext {}
 
 #[derive(Debug, Clone)]
 pub struct Current {
@@ -82,57 +81,45 @@ impl IOContext {
             extensions: Extensions::new(),
             current: Current { ifid: IfId::NULL },
             meta_changed: true,
+
+            handle: Weak::new(),
         }
     }
 
-    pub(super) fn swap_in(ingoing: Option<Box<IOContext>>) -> Option<Box<IOContext>> {
-        CURRENT.with(|ctx| {
-            let mut ctx = ctx.borrow_mut();
-            let ret = ctx.take();
-            *ctx = ingoing.map(|mut ctx| {
-                ctx.id = current().id();
-                ctx
-            });
-            ret
-        })
+    pub fn make(self) -> IOHandle {
+        let handle = Arc::new(Mutex::new(self));
+        let weak = Arc::downgrade(&handle);
+        handle.lock().expect("illegal state").handle = weak;
+        IOHandle(handle)
+    }
+
+    pub(super) fn handle(&self) -> IOHandle {
+        IOHandle(self.handle.upgrade().expect("illegal state"))
+    }
+
+    // pub(super) fn is_current(&self) -> bool {
+    //     let handle = self.handle();
+    //     let current_handle = Self::try_current_handle();
+    //     current_handle.is_some_and(|current_handle| Arc::ptr_eq(&current_handle.0, &handle.0))
+    // }
+}
+
+impl IOContext {
+    pub fn current_handle() -> IOHandle {
+        IOHandle::current()
+    }
+    pub fn try_current_handle() -> Option<IOHandle> {
+        IOHandle::try_current()
     }
 
     pub(super) fn with_current<R>(f: impl FnOnce(&mut IOContext) -> R) -> R {
-        CURRENT.with(|cell| {
-            let mut brw = cell.borrow_mut();
-            f(brw.as_mut().unwrap_or_else(|| {
-                panic!("Missing IOContext");
-            }))
-        })
+        let handle = Self::current_handle();
+        handle.do_io(f)
     }
 
     pub(super) fn failable_api<T>(f: impl FnOnce(&mut IOContext) -> Result<T>) -> Result<T> {
-        CURRENT.with(|cell| {
-            let mut ctx = cell.borrow_mut();
-            let Some(ctx) = ctx.as_mut() else {
-                return Err(Error::other("Missing IOContext"));
-            };
-            if try_current().is_some_and(|m| m.id() != ctx.id) {
-                return Err(Error::other("Drop chain"));
-            }
-            f(ctx)
-        })
-    }
-
-    pub(super) fn try_with_current<R>(f: impl FnOnce(&mut IOContext) -> R) -> Option<R> {
-        CURRENT
-            .try_with(|cell| {
-                let mut brw = cell.try_borrow_mut().expect("BorrowMut at IOContext");
-                brw.as_mut().and_then(|brw| {
-                    if try_current().is_some_and(|m| m.id() == brw.id) {
-                        Some(f(brw))
-                    } else {
-                        None
-                    }
-                })
-            })
-            .ok()
-            .flatten()
+        let handle = Self::current_handle();
+        handle.do_failable(f)
     }
 }
 

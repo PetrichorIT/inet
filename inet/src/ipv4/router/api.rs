@@ -3,17 +3,17 @@ use std::{
     net::Ipv4Addr,
 };
 
-use crate::IOContext;
+use crate::{IOContext, IOHandle, ioctx};
 
 use super::{FwdEntryV4, Ipv4Gateway, Ipv6RouterConfig, RoutingTableId};
 
 pub fn declare_ipv6_router(cfg: Ipv6RouterConfig) -> io::Result<()> {
-    IOContext::failable_api(|ctx| ctx.declare_ipv6_router(cfg))
+    ioctx().declare_ipv6_router(cfg)
 }
 
 /// Sets the default routing gateway for the entire node.
 pub fn set_default_gateway(ip: Ipv4Addr) -> io::Result<()> {
-    IOContext::failable_api(|ctx| ctx.set_default_gateway(ip))
+    ioctx().set_default_gateway(ip)
 }
 
 /// Adds a routing entry to the routing tables.
@@ -33,15 +33,44 @@ pub fn add_routing_entry_to(
     interface: &str,
     table: RoutingTableId,
 ) -> io::Result<()> {
-    IOContext::failable_api(|ctx| ctx.add_routing_entry(addr, mask, gw, interface, table))
+    ioctx().add_routing_entry_to(addr, mask, gw, interface, table)
 }
 
 pub fn add_routing_table() -> io::Result<RoutingTableId> {
-    IOContext::failable_api(|ctx| ctx.add_routing_table())
+    ioctx().add_routing_table()
 }
 
 pub fn route() -> io::Result<Vec<FwdEntryV4>> {
-    IOContext::failable_api(|ctx| Ok(ctx.route()))
+    ioctx().route()
+}
+
+impl IOHandle {
+    pub fn declare_ipv6_router(&self, cfg: Ipv6RouterConfig) -> io::Result<()> {
+        self.do_failable(|ctx| ctx.declare_ipv6_router(cfg))
+    }
+
+    pub fn set_default_gateway(&self, ip: Ipv4Addr) -> io::Result<()> {
+        self.do_failable(|ctx| ctx.set_default_gateway(ip))
+    }
+
+    pub fn add_routing_entry_to(
+        &self,
+        addr: Ipv4Addr,
+        mask: Ipv4Addr,
+        gw: Ipv4Addr,
+        interface: &str,
+        table: RoutingTableId,
+    ) -> io::Result<()> {
+        self.do_failable(|ctx| ctx.add_routing_entry(addr, mask, gw, interface, table))
+    }
+
+    pub fn add_routing_table(&self) -> io::Result<RoutingTableId> {
+        self.do_failable(|ctx| ctx.add_routing_table())
+    }
+
+    pub fn route(&self) -> io::Result<Vec<FwdEntryV4>> {
+        self.do_failable(|ctx| Ok(ctx.route()))
+    }
 }
 
 impl IOContext {

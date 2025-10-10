@@ -1,18 +1,64 @@
 use fxhash::{FxBuildHasher, FxHashMap};
-use std::any::{Any, TypeId};
+use std::{
+    any::{Any, TypeId},
+    fmt::Debug,
+    marker::PhantomData,
+};
 
-use crate::IOContext;
-
-pub fn load_ext<E: Default + Any>(value: E) {
-    IOContext::with_current(|ctx| ctx.extensions.with_ext(|val| *val = value))
-}
+use crate::{IOContext, IOHandle};
 
 pub fn with_ext<E: Default + Any, R>(f: impl FnOnce(&mut E) -> R) -> R {
-    IOContext::with_current(|ctx| ctx.extensions.with_ext(f))
+    ExtensionHandle::new().with(f)
 }
 
 pub fn try_with_ext<E: Default + Any, R>(f: impl FnOnce(&mut E) -> R) -> Option<R> {
-    IOContext::try_with_current(|ctx| ctx.extensions.with_ext(f))
+    ExtensionHandle::new().try_with(f)
+}
+
+pub struct ExtensionHandle<E> {
+    handle: IOHandle,
+    _phantom: PhantomData<E>,
+}
+
+impl<E> Debug for ExtensionHandle<E> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ExtensionHandle")
+            .field("handle", &self.handle)
+            .finish()
+    }
+}
+
+impl<E> Clone for ExtensionHandle<E> {
+    fn clone(&self) -> Self {
+        Self {
+            handle: self.handle.clone(),
+            _phantom: PhantomData,
+        }
+    }
+}
+
+impl<E: Default + Any> ExtensionHandle<E> {
+    pub fn new() -> Self {
+        Self {
+            handle: IOHandle::current(),
+            _phantom: PhantomData,
+        }
+    }
+
+    pub fn try_new() -> Option<Self> {
+        Some(Self {
+            handle: IOContext::try_current_handle()?,
+            _phantom: PhantomData,
+        })
+    }
+
+    pub fn with<R>(&self, f: impl FnOnce(&mut E) -> R) -> R {
+        self.handle.do_io(|ctx| ctx.extensions.with_ext(f))
+    }
+
+    pub fn try_with<R>(&self, f: impl FnOnce(&mut E) -> R) -> Option<R> {
+        self.handle.try_do_io(|ctx| ctx.extensions.with_ext(f))
+    }
 }
 
 #[derive(Default)]

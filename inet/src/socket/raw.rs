@@ -7,12 +7,13 @@ use std::{
 use tokio::sync::mpsc::{self, Receiver, Sender};
 use types::ip::IpPacket;
 
-use crate::{interface::IfId, IOContext};
+use crate::{IOContext, IOHandle, interface::IfId};
 
 use super::{Fd, SocketDomain};
 
 /// A specialiced socket for capturing custom IP datagrams.
 pub struct RawIpSocket {
+    handle: IOHandle,
     fd: Fd,
     rx: Receiver<(IfId, IpPacket)>,
     tx: Sender<(IfId, IpPacket)>,
@@ -21,22 +22,26 @@ pub struct RawIpSocket {
 impl RawIpSocket {
     /// Creates a new receiver on the AF_INET domain.
     pub fn new_v4() -> Result<RawIpSocket> {
-        IOContext::failable_api(|ctx| ctx.create_raw_ip_socket(SocketDomain::AF_INET))
+        let handle = IOHandle::current();
+        handle.do_failable(|ctx| ctx.create_raw_ip_socket(SocketDomain::AF_INET))
     }
 
     /// Creates a new receiver on the AF_INET6 domain.
     pub fn new_v6() -> Result<RawIpSocket> {
-        IOContext::failable_api(|ctx| ctx.create_raw_ip_socket(SocketDomain::AF_INET6))
+        let handle = IOHandle::current();
+        handle.do_failable(|ctx| ctx.create_raw_ip_socket(SocketDomain::AF_INET6))
     }
 
     /// Binds the socket to capture datagrams with a given proto/next_header.
     pub fn bind_proto(&self, proto: u8) -> Result<()> {
-        IOContext::failable_api(|ctx| ctx.proto_bind_raw_ip_socket(self.fd, proto, self.tx.clone()))
+        self.handle
+            .do_failable(|ctx| ctx.proto_bind_raw_ip_socket(self.fd, proto, self.tx.clone()))
     }
 
     /// Unbinds a socket from capturing packets of a certain TOS.
     pub fn unbind_proto(&self, proto: u8) -> Result<()> {
-        IOContext::failable_api(|ctx| ctx.proto_unbind_raw_ip_socket(self.fd, proto))
+        self.handle
+            .do_failable(|ctx| ctx.proto_unbind_raw_ip_socket(self.fd, proto))
     }
 
     /// Receives datagrams, if there are any (blockingly).
@@ -57,13 +62,14 @@ impl RawIpSocket {
 
     /// Sends datatgrams using this socket as a sender.
     pub fn try_send(&self, pkt: IpPacket) -> Result<()> {
-        IOContext::failable_api(|ctx: &mut IOContext| ctx.raw_socket_send_ip_packet(self.fd, pkt))
+        self.handle
+            .do_failable(|ctx: &mut IOContext| ctx.raw_socket_send_ip_packet(self.fd, pkt))
     }
 }
 
 impl Drop for RawIpSocket {
     fn drop(&mut self) {
-        IOContext::try_with_current(|ctx| ctx.drop_raw_ip_socket(self.fd));
+        self.handle.try_do_io(|ctx| ctx.drop_raw_ip_socket(self.fd));
     }
 }
 
@@ -83,7 +89,12 @@ impl IOContext {
         }
 
         let (tx, rx) = mpsc::channel(32);
-        Ok(RawIpSocket { fd, rx, tx })
+        Ok(RawIpSocket {
+            fd,
+            rx,
+            tx,
+            handle: self.handle(),
+        })
     }
 
     fn proto_bind_raw_ip_socket(

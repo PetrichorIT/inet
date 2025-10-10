@@ -44,6 +44,9 @@ mod ctx;
 pub use ctx::Current;
 use ctx::*;
 
+mod handle;
+pub use handle::{IOHandle, ioctx};
+
 /// Initaliztion function for inet-plugins.
 ///
 /// Call this function as the first step in your simulation (pre runtime creation)

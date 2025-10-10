@@ -3,7 +3,7 @@
 //! - Joined multicast listening groups (hosts)
 //! - Required multicast groups for subnet (router)
 
-use crate::{IOContext, interface::IfId};
+use crate::{IOContext, IOHandle, interface::IfId, ioctx};
 use fxhash::{FxBuildHasher, FxHashMap};
 use std::{io, net::Ipv6Addr, time::Duration};
 use types::{
@@ -31,19 +31,37 @@ const LAST_LISTENER_QUERY_INTERVAL: Duration = Duration::from_secs(1);
 const LAST_LISTENER_QUERY_COUNT: u32 = ROBUSTNESS;
 
 pub fn join_multicast_group(addr: Ipv6Addr, ifid: Option<IfId>) -> io::Result<()> {
-    IOContext::failable_api(|ctx| ctx.ipv6_join_multicast_group(addr, ifid))
+    ioctx().ipv6_join_multicast_group(addr, ifid)
 }
 
 pub fn leave_multicast_group(addr: Ipv6Addr) -> io::Result<()> {
-    IOContext::failable_api(|ctx| ctx.ipv6_leave_multicast_group(addr))
+    ioctx().ipv6_leave_multicast_group(addr)
 }
 
 pub fn designate_mdl(ifid: IfId) -> io::Result<()> {
-    IOContext::failable_api(|ctx| ctx.designate_ipv6_mld_querier(ifid))
+    ioctx().ipv6_designate_mdl(ifid)
 }
 
 pub fn undesignate_mdl(ifid: IfId) -> io::Result<()> {
-    IOContext::failable_api(|ctx| ctx.undesignate_ipv6_mld_querier(ifid))
+    ioctx().ipv6_undesignate_mdl(ifid)
+}
+
+impl IOHandle {
+    pub fn ipv6_join_multicast_group(&self, addr: Ipv6Addr, ifid: Option<IfId>) -> io::Result<()> {
+        self.do_failable(|ctx| ctx.ipv6_join_multicast_group(addr, ifid))
+    }
+
+    pub fn ipv6_leave_multicast_group(&self, addr: Ipv6Addr) -> io::Result<()> {
+        self.do_failable(|ctx| ctx.ipv6_leave_multicast_group(addr))
+    }
+
+    pub fn ipv6_designate_mdl(&self, ifid: IfId) -> io::Result<()> {
+        self.do_failable(|ctx| ctx.designate_ipv6_mld_querier(ifid))
+    }
+
+    pub fn ipv6_undesignate_mdl(&self, ifid: IfId) -> io::Result<()> {
+        self.do_failable(|ctx| ctx.undesignate_ipv6_mld_querier(ifid))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

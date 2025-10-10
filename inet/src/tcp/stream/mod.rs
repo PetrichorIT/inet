@@ -1,7 +1,7 @@
 use super::{State, interest::TcpInterest};
+use crate::IOHandle;
 use crate::io::{Interest, Ready};
 use crate::{
-    IOContext,
     dns::{ToSocketAddrs, lookup_host},
     socket::{AsRawFd, Fd, FromRawFd, IntoRawFd},
 };
@@ -28,12 +28,13 @@ pub struct TcpStream {
 #[derive(Debug)]
 pub(in crate::tcp) struct Inner {
     pub fd: Fd,
+    pub handle: IOHandle,
 }
 
 impl TcpStream {
-    pub(crate) fn from_fd(fd: Fd) -> Self {
+    pub(crate) fn from_fd(fd: Fd, handle: IOHandle) -> Self {
         Self {
-            inner: Arc::new(Inner { fd }),
+            inner: Arc::new(Inner { fd, handle }),
         }
     }
 
@@ -46,19 +47,20 @@ impl TcpStream {
     /// the error returned from the last connection attempt (the last address) is returned.
     pub async fn connect<A: ToSocketAddrs>(addr: A) -> Result<TcpStream, Error> {
         let addrs = lookup_host(addr).await?;
+        let handle = IOHandle::current();
         let mut last_err = None;
 
         for peer in addrs {
-            let fd = IOContext::with_current(|ctx| ctx.tcp_connect(peer, None, None))?;
+            let fd = handle.do_io(|ctx| ctx.tcp_connect(peer, None, None))?;
 
-            if IOContext::with_current(|ctx| ctx.tcp_connection(fd, |c| c.state != State::Estab))? {
-                let interest = TcpInterest::write(fd);
+            if handle.do_io(|ctx| ctx.tcp_connection(fd, |c| c.state != State::Estab))? {
+                let interest = TcpInterest::write(fd, handle.clone());
                 match interest.await.inspect_err(|_| {
-                    let _ = IOContext::with_current(|ctx| ctx.tcp_drop(fd));
+                    let _ = handle.do_io(|ctx| ctx.tcp_drop(fd));
                 }) {
                     Ok(_) => {
                         return Ok(TcpStream {
-                            inner: Arc::new(Inner { fd }),
+                            inner: Arc::new(Inner { fd, handle }),
                         });
                     }
                     Err(e) => {
@@ -73,12 +75,16 @@ impl TcpStream {
 
     /// Returns the local address that this stream is bound to.
     pub fn local_addr(&self) -> Result<SocketAddr, Error> {
-        IOContext::with_current(|ctx| ctx.socket_get_addr(self.inner.fd))
+        self.inner
+            .handle
+            .do_io(|ctx| ctx.socket_get_addr(self.inner.fd))
     }
 
     /// Returns the peer address that this stream is bound to.
     pub fn peer_addr(&self) -> Result<SocketAddr, Error> {
-        IOContext::with_current(|ctx| ctx.socket_get_peer(self.inner.fd))
+        self.inner
+            .handle
+            .do_io(|ctx| ctx.socket_get_peer(self.inner.fd))
     }
 
     /// Waits for any of the requested ready states.
@@ -87,7 +93,7 @@ impl TcpStream {
     /// It can be used to concurrently read / write to the same socket on a single task
     /// without splitting the socket.
     pub async fn ready(&self, interest: Interest) -> Result<Ready, Error> {
-        let interest = TcpInterest::from_io(self.inner.fd, interest);
+        let interest = TcpInterest::from_io(self.inner.fd, interest, self.inner.handle.clone());
         interest.await
     }
 
@@ -107,7 +113,9 @@ impl TcpStream {
     /// Because try_read() is non-blocking, the buffer does not have to be stored by the async task
     /// and can exist entirely on the stack.
     pub fn try_read(&self, buf: &mut [u8]) -> Result<usize, Error> {
-        IOContext::with_current(|ctx| ctx.tcp_read(self.inner.fd, buf))
+        self.inner
+            .handle
+            .do_io(|ctx| ctx.tcp_read(self.inner.fd, buf))
     }
 
     /// Receives data on the socket from the remote address to which it is connected,
@@ -119,8 +127,11 @@ impl TcpStream {
     pub async fn peek(&self, buf: &mut [u8]) -> Result<usize, Error> {
         loop {
             self.readable().await?;
-
-            match IOContext::with_current(|ctx| ctx.tcp_peek(self.inner.fd, buf)) {
+            match self
+                .inner
+                .handle
+                .do_io(|ctx| ctx.tcp_peek(self.inner.fd, buf))
+            {
                 Ok(n) => return Ok(n),
                 Err(e) if e.kind() == ErrorKind::WouldBlock => continue,
                 Err(e) => return Err(e),
@@ -142,7 +153,9 @@ impl TcpStream {
     /// The function will attempt to write the entire contents of `buf`,
     /// but only part of the buffer may be written.
     pub fn try_write(&self, buf: &[u8]) -> Result<usize, Error> {
-        IOContext::with_current(|ctx| ctx.tcp_write(self.inner.fd, buf))
+        self.inner
+            .handle
+            .do_io(|ctx| ctx.tcp_write(self.inner.fd, buf))
     }
 
     /// Reads the linger duration for this socket by getting the `SO_LINGER`
@@ -153,7 +166,9 @@ impl TcpStream {
     /// [`set_linger`]: TcpStream::set_linger
     ///
     pub fn linger(&self) -> Result<Option<Duration>, Error> {
-        IOContext::with_current(|ctx| ctx.tcp_connection(self.inner.fd, |con| con.cfg.linger))
+        self.inner
+            .handle
+            .do_io(|ctx| ctx.tcp_connection(self.inner.fd, |con| con.cfg.linger))
     }
 
     /// Sets the linger duration of this socket by setting the `SO_LINGER` option.
@@ -166,7 +181,9 @@ impl TcpStream {
     /// way that allows the process to continue as quickly as possible.
     ///
     pub fn set_linger(&self, dur: Option<Duration>) -> Result<(), Error> {
-        IOContext::with_current(|ctx| ctx.tcp_connection(self.inner.fd, |con| con.cfg.linger = dur))
+        self.inner
+            .handle
+            .do_io(|ctx| ctx.tcp_connection(self.inner.fd, |con| con.cfg.linger = dur))
     }
 
     /// Gets the value of the `IP_TTL` option for this socket.
@@ -175,7 +192,9 @@ impl TcpStream {
     ///
     /// [`set_ttl`]: TcpStream::set_ttl
     pub fn ttl(&self) -> Result<u32, Error> {
-        IOContext::with_current(|ctx| ctx.tcp_connection(self.inner.fd, |con| con.cfg.ttl as u32))
+        self.inner
+            .handle
+            .do_io(|ctx| ctx.tcp_connection(self.inner.fd, |con| con.cfg.ttl as u32))
     }
 
     /// Sets the value for the `IP_TTL` option on this socket.
@@ -185,7 +204,9 @@ impl TcpStream {
     ///
     pub fn set_ttl(&self, ttl: u32) -> Result<(), Error> {
         let ttl = u8::try_from(ttl).expect("invalid ttl value");
-        IOContext::with_current(|ctx| ctx.tcp_connection(self.inner.fd, |con| con.cfg.ttl = ttl))
+        self.inner
+            .handle
+            .do_io(|ctx| ctx.tcp_connection(self.inner.fd, |con| con.cfg.ttl = ttl))
     }
 
     /// Splits a `TcpStream` into a read half and a write half, which can be used to read and write the stream concurrently.
@@ -216,7 +237,7 @@ impl AsyncRead for TcpStream {
         cx: &mut std::task::Context<'_>,
         buf: &mut tokio::io::ReadBuf<'_>,
     ) -> std::task::Poll<std::io::Result<()>> {
-        IOContext::with_current(|ctx| {
+        self.inner.handle.do_io(|ctx| {
             ctx.tcp_poll_read(self.inner.fd, cx, buf)
                 .map(|rdy| rdy.map(|n| buf.advance(n)))
         })
@@ -229,13 +250,17 @@ impl AsyncWrite for TcpStream {
         cx: &mut std::task::Context<'_>,
         buf: &[u8],
     ) -> std::task::Poll<Result<usize, std::io::Error>> {
-        IOContext::with_current(|ctx| ctx.tcp_poll_write(self.inner.fd, cx, buf))
+        self.inner
+            .handle
+            .do_io(|ctx| ctx.tcp_poll_write(self.inner.fd, cx, buf))
     }
     fn poll_flush(
         self: std::pin::Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
     ) -> std::task::Poll<Result<(), std::io::Error>> {
-        IOContext::with_current(|ctx| ctx.tcp_flush(self.inner.fd, cx))
+        self.inner
+            .handle
+            .do_io(|ctx| ctx.tcp_flush(self.inner.fd, cx))
     }
     fn poll_shutdown(
         self: std::pin::Pin<&mut Self>,
@@ -262,13 +287,16 @@ impl IntoRawFd for TcpStream {
 impl FromRawFd for TcpStream {
     fn from_raw_fd(fd: Fd) -> TcpStream {
         TcpStream {
-            inner: Arc::new(Inner { fd }),
+            inner: Arc::new(Inner {
+                fd,
+                handle: IOHandle::current(),
+            }),
         }
     }
 }
 
 impl Drop for Inner {
     fn drop(&mut self) {
-        IOContext::try_with_current(|ctx| ctx.tcp_close(self.fd));
+        self.handle.try_do_io(|ctx| ctx.tcp_close(self.fd));
     }
 }

@@ -4,25 +4,34 @@ use std::{
     task::Poll,
 };
 
-use crate::io::{self, Ready};
-use crate::{IOContext, socket::Fd};
+use crate::socket::Fd;
+use crate::{
+    IOHandle,
+    io::{self, Ready},
+};
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug)]
 pub(super) struct TcpInterest {
     pub fd: Fd,
+    pub handle: IOHandle,
     pub interest: io::Interest,
 }
 
 impl TcpInterest {
-    pub(super) fn write(fd: Fd) -> Self {
+    pub(super) fn write(fd: Fd, handle: IOHandle) -> Self {
         Self {
             fd,
+            handle,
             interest: io::Interest::WRITABLE,
         }
     }
 
-    pub(crate) fn from_io(fd: Fd, interest: io::Interest) -> Self {
-        Self { fd, interest }
+    pub(crate) fn from_io(fd: Fd, interest: io::Interest, handle: IOHandle) -> Self {
+        Self {
+            fd,
+            handle,
+            interest,
+        }
     }
 }
 
@@ -33,7 +42,7 @@ impl Future for TcpInterest {
         self: std::pin::Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
     ) -> std::task::Poll<Self::Output> {
-        IOContext::with_current(|ctx| {
+        self.handle.do_io(|ctx| {
             let Some(handle) = ctx.tcp.streams.get_mut(&self.fd) else {
                 return Poll::Ready(Err(Error::new(
                     ErrorKind::InvalidInput,

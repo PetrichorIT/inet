@@ -4,7 +4,7 @@ use des::time::SimTime;
 use types::iface::MacAddress;
 
 use super::ArpConfig;
-use crate::{IOContext, interface::InterfaceName, socket::SocketIfaceBinding};
+use crate::{IOContext, IOHandle, interface::InterfaceName, ioctx, socket::SocketIfaceBinding};
 
 /// An entry in the address resoloution table
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -59,12 +59,12 @@ impl Display for ArpEntry {
 ///
 /// ```
 pub fn arpa() -> Result<Vec<ArpEntry>> {
-    IOContext::failable_api(|ctx| Ok(ctx.arpa()))
+    ioctx().arpa()
 }
 
 /// Adds a permantent entry to the IP network neighbor table
 pub fn set_arp_entry(ip: Ipv4Addr, mac: MacAddress, if_name: InterfaceName) -> Result<()> {
-    IOContext::failable_api(|ctx| ctx.set_arp_entry(ip, mac, if_name))
+    ioctx().set_arp_entry(ip, mac, if_name)
 }
 
 /// Sets the configuration of the ARP table
@@ -72,7 +72,26 @@ pub fn set_arp_entry(ip: Ipv4Addr, mac: MacAddress, if_name: InterfaceName) -> R
 /// Note that this change will only affect newer
 /// entries and not propagate to older ones.
 pub fn set_arp_config(cfg: ArpConfig) -> Result<()> {
-    IOContext::failable_api(|ctx| ctx.set_arp_config(cfg))
+    ioctx().set_arp_config(cfg)
+}
+
+impl IOHandle {
+    pub fn arpa(&self) -> Result<Vec<ArpEntry>> {
+        self.do_failable(|ctx| Ok(ctx.arpa()))
+    }
+
+    pub fn set_arp_entry(
+        &self,
+        ip: Ipv4Addr,
+        mac: MacAddress,
+        if_name: InterfaceName,
+    ) -> Result<()> {
+        self.do_failable(|ctx| ctx.set_arp_entry(ip, mac, if_name))
+    }
+
+    pub fn set_arp_config(&self, cfg: ArpConfig) -> Result<()> {
+        self.do_failable(|ctx| ctx.set_arp_config(cfg))
+    }
 }
 
 impl IOContext {

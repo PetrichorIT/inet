@@ -7,41 +7,82 @@ use types::{
 };
 
 use crate::{
+    IOHandle,
     ctx::IOContext,
     interface::{DEFAULT_V6_MASK, IfId, InterfaceDef, NetworkDevice},
+    ioctx,
     ipv6::cfg::{RouterInterfaceConfiguration, RouterPrefix},
 };
 
 pub fn declare_router() -> io::Result<()> {
-    IOContext::failable_api(|ctx| ctx.ipv6_router_declare_router())
+    ioctx().ipv6_declare_router()
 }
 
 pub fn add_routing_interface(
     name: impl AsRef<str>,
     device: NetworkDevice,
     addrs: &[Ipv6Addr],
-
     adv: bool,
 ) -> io::Result<()> {
-    IOContext::failable_api(|ctx| ctx.ipv6_router_add_routing_interface(name, device, addrs, adv))
+    ioctx().ipv6_add_routing_interface(name, device, addrs, adv)
 }
 
 pub fn add_routing_entry(prefix: Ipv6Prefix, next_hop: Ipv6Addr, via: Ipv6Addr) -> io::Result<()> {
-    IOContext::failable_api(|ctx| ctx.ipv6_router_add_routing_entry(prefix, next_hop, via))
+    ioctx().ipv6_add_routing_entry(prefix, next_hop, via)
 }
 
 pub fn add_routing_prefix(name: impl AsRef<str>, prefix: Ipv6Prefix) -> io::Result<()> {
-    IOContext::failable_api(|ctx| {
-        ctx.ipv6_router_add_routing_prefix(IfId::new(name.as_ref()), prefix)
-    })
+    ioctx().ipv6_add_routing_prefix(name, prefix)
 }
 
 pub fn add_solicitation_entry(addr: Ipv6Addr, mac: MacAddress, ifid: IfId) -> io::Result<()> {
-    IOContext::failable_api(|ctx| {
-        ctx.ipv6.neighbors.update(addr, mac, ifid, false);
-        ctx.ipv6.neighbors.set_reachable(addr);
-        Ok(())
-    })
+    ioctx().ipv6_add_solicitation_entry(addr, mac, ifid)
+}
+
+impl IOHandle {
+    pub fn ipv6_declare_router(&self) -> io::Result<()> {
+        self.do_failable(|ctx| ctx.ipv6_router_declare_router())
+    }
+
+    pub fn ipv6_add_routing_interface(
+        &self,
+        name: impl AsRef<str>,
+        device: NetworkDevice,
+        addrs: &[Ipv6Addr],
+        adv: bool,
+    ) -> io::Result<()> {
+        self.do_failable(|ctx| ctx.ipv6_router_add_routing_interface(name, device, addrs, adv))
+    }
+
+    pub fn ipv6_add_routing_entry(
+        &self,
+        prefix: Ipv6Prefix,
+        next_hop: Ipv6Addr,
+        via: Ipv6Addr,
+    ) -> io::Result<()> {
+        self.do_failable(|ctx| ctx.ipv6_router_add_routing_entry(prefix, next_hop, via))
+    }
+
+    pub fn ipv6_add_routing_prefix(
+        &self,
+        name: impl AsRef<str>,
+        prefix: Ipv6Prefix,
+    ) -> io::Result<()> {
+        self.do_failable(|ctx| ctx.ipv6_router_add_routing_prefix(IfId::new(name.as_ref()), prefix))
+    }
+
+    pub fn ipv6_add_solicitation_entry(
+        &self,
+        addr: Ipv6Addr,
+        mac: MacAddress,
+        ifid: IfId,
+    ) -> io::Result<()> {
+        self.do_failable(|ctx| {
+            ctx.ipv6.neighbors.update(addr, mac, ifid, false);
+            ctx.ipv6.neighbors.set_reachable(addr);
+            Ok(())
+        })
+    }
 }
 
 impl IOContext {

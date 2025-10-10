@@ -1,44 +1,54 @@
 use std::io;
 
-use crate::ctx::IOContext;
+use crate::{IOHandle, ioctx};
 
 use super::cfg::HostConfiguration;
 
 pub fn set_node_cfg(cfg: HostConfiguration) -> io::Result<()> {
-    IOContext::failable_api(|ctx| {
-        ctx.ipv6.cfg = cfg;
-        Ok(())
-    })
+    ioctx().ipv6_set_node_cfg(cfg)
 }
 
 pub fn ipv6() {
-    IOContext::with_current(|ctx| {
-        tracing::info!("[ Prefix list ]");
-        for prefix in &*ctx.ipv6.prefixes {
-            tracing::info!(
-                "{}{}",
-                prefix.prefix,
-                prefix
-                    .assigned_addr
-                    .as_ref()
-                    .map(|addr| format!(" assinged {addr}"))
-                    .unwrap_or(String::new())
-            );
-        }
+    ioctx().ipv6_info();
+}
 
-        tracing::info!("[ Destination cache ]");
-        for (dst, entry) in &ctx.ipv6.destinations.mapping {
-            tracing::info!("{dst} -> {} mtu {}", entry.next_hop, entry.path_mtu);
-        }
+impl IOHandle {
+    pub fn ipv6_set_node_cfg(&self, cfg: HostConfiguration) -> io::Result<()> {
+        self.do_failable(|ctx| {
+            ctx.ipv6.cfg = cfg;
+            Ok(())
+        })
+    }
 
-        tracing::info!("[ Default routers ]");
-        for router in &ctx.ipv6.default_routers.list {
-            tracing::info!("{}", router.addr);
-        }
+    pub fn ipv6_info(&self) {
+        self.do_io(|ctx| {
+            tracing::info!("[ Prefix list ]");
+            for prefix in &*ctx.ipv6.prefixes {
+                tracing::info!(
+                    "{}{}",
+                    prefix.prefix,
+                    prefix
+                        .assigned_addr
+                        .as_ref()
+                        .map(|addr| format!(" assinged {addr}"))
+                        .unwrap_or(String::new())
+                );
+            }
 
-        tracing::info!("[ Neighbor cache ]");
-        for (ip, entry) in &ctx.ipv6.neighbors.mapping {
-            tracing::info!("{ip} @ {entry}");
-        }
-    })
+            tracing::info!("[ Destination cache ]");
+            for (dst, entry) in &ctx.ipv6.destinations.mapping {
+                tracing::info!("{dst} -> {} mtu {}", entry.next_hop, entry.path_mtu);
+            }
+
+            tracing::info!("[ Default routers ]");
+            for router in &ctx.ipv6.default_routers.list {
+                tracing::info!("{}", router.addr);
+            }
+
+            tracing::info!("[ Neighbor cache ]");
+            for (ip, entry) in &ctx.ipv6.neighbors.mapping {
+                tracing::info!("{ip} @ {entry}");
+            }
+        })
+    }
 }

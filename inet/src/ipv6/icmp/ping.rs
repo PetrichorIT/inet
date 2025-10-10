@@ -1,4 +1,4 @@
-use crate::{ctx::IOContext, interface::IfId};
+use crate::{IOHandle, ctx::IOContext, interface::IfId, ioctx};
 use bytes_io::{Bytes, ToBytes};
 use des::time::SimTime;
 use std::{fmt, io, iter, net::Ipv6Addr, time::Duration};
@@ -20,9 +20,15 @@ pub async fn ping(addr: impl Into<Ipv6Addr>) -> io::Result<Ping> {
 /// This function takes the number of samples as an extra paramter.
 /// The default value used by `ping` is 3.
 pub async fn ping_with(addr: impl Into<Ipv6Addr>, c: usize) -> io::Result<Ping> {
-    let addr = addr.into();
-    let rx = IOContext::failable_api(|ctx| ctx.ipv6_icmp_initate_ping(addr, c))?;
-    rx.await.map_err(|_| io::Error::other("broke pipe"))?
+    ioctx().ipv6_ping_with(addr.into(), c).await
+}
+
+impl IOHandle {
+    pub async fn ipv6_ping_with(&self, addr: Ipv6Addr, c: usize) -> io::Result<Ping> {
+        let addr = addr.into();
+        let rx = self.do_failable(|ctx| ctx.ipv6_icmp_initate_ping(addr, c))?;
+        rx.await.map_err(|_| io::Error::other("broke pipe"))?
+    }
 }
 
 #[allow(dead_code)]

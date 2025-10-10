@@ -13,7 +13,7 @@ use tokio::sync::{Mutex, mpsc};
 use valuable::Valuable;
 
 use crate::{
-    IOContext,
+    IOHandle,
     dns::{ToSocketAddrs, lookup_host},
     socket::Fd,
 };
@@ -23,6 +23,7 @@ use super::{Config, TcpStream};
 pub struct TcpListener {
     fd: Fd,
     rx: Mutex<mpsc::Receiver<Result<Fd, Error>>>,
+    handle: IOHandle,
     backlog: Arc<AtomicU32>,
 }
 
@@ -87,10 +88,12 @@ impl TcpListener {
     pub(super) fn from_raw(
         fd: Fd,
         rx: mpsc::Receiver<Result<Fd, Error>>,
+        handle: IOHandle,
         backlog: Arc<AtomicU32>,
     ) -> Self {
         Self {
             fd,
+            handle,
             rx: Mutex::new(rx),
             backlog,
         }
@@ -112,9 +115,10 @@ impl TcpListener {
     /// This function sets the SO_REUSEADDR option on the socket.
     pub async fn bind<A: ToSocketAddrs>(addr: A) -> Result<TcpListener, Error> {
         let addrs = lookup_host(addr).await?;
+        let handle = IOHandle::current();
 
         // Get the current context
-        IOContext::with_current(|ctx| {
+        handle.do_io(|ctx| {
             let mut last_err = None;
 
             for addr in addrs {
@@ -143,7 +147,7 @@ impl TcpListener {
         self.backlog.fetch_sub(1, Ordering::SeqCst);
 
         let fd = fd?;
-        let stream = TcpStream::from_fd(fd);
+        let stream = TcpStream::from_fd(fd, self.handle.clone());
 
         stream.writable().await?;
 
@@ -153,13 +157,13 @@ impl TcpListener {
 
     /// Returns the local address that this socket is bound to.
     pub fn local_addr(&self) -> Result<SocketAddr, Error> {
-        IOContext::with_current(|ctx| ctx.socket_get_addr(self.fd))
+        self.handle.do_io(|ctx| ctx.socket_get_addr(self.fd))
     }
     /// Gets the value of the IP_TTL option for this socket.
     ///
     /// For more information about this option, see [set_ttl](TcpListener::set_ttl).
     pub fn ttl(&self) -> Result<u32, Error> {
-        IOContext::with_current(|ctx| {
+        self.handle.do_io(|ctx| {
             if let Some(handle) = ctx.tcp.listeners.get(&self.fd) {
                 Ok(handle.config.ttl as u32)
             } else {
@@ -172,7 +176,7 @@ impl TcpListener {
     ///
     /// This value sets the time-to-live field that is used in every packet sent from this socket.
     pub fn set_ttl(&self, ttl: u32) -> Result<(), Error> {
-        IOContext::with_current(|ctx| {
+        self.handle.do_io(|ctx| {
             if let Some(handle) = ctx.tcp.listeners.get_mut(&self.fd) {
                 handle.config.ttl = u8::try_from(ttl).expect("u8");
                 Ok(())
@@ -185,6 +189,6 @@ impl TcpListener {
 
 impl Drop for TcpListener {
     fn drop(&mut self) {
-        IOContext::try_with_current(|ctx| ctx.tcp_unbind(self.fd));
+        self.handle.try_do_io(|ctx| ctx.tcp_unbind(self.fd));
     }
 }

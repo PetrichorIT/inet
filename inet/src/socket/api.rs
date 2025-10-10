@@ -1,4 +1,6 @@
-use super::{Fd, IOContext, Socket, SocketDomain, SocketType};
+use crate::{IOHandle, ioctx};
+
+use super::{Fd, Socket, SocketDomain, SocketType};
 use std::{
     io::{Error, ErrorKind, Result},
     net::SocketAddr,
@@ -27,7 +29,7 @@ use std::{
 /// to use is specific to the “communication domain” in which
 /// communication is to take place.
 pub fn socket(domain: SocketDomain, typ: SocketType, protocol: i32) -> Result<Fd> {
-    IOContext::failable_api(|ctx| ctx.socket(domain, typ, protocol))
+    ioctx().socket(domain, typ, protocol)
 }
 
 /// bind - bind name to a socket.
@@ -42,8 +44,7 @@ pub fn socket(domain: SocketDomain, typ: SocketType, protocol: i32) -> Result<Fd
 /// It is normally necessary to assign a local address using bind()
 /// before a SOCK_STREAM socket may receive connections.
 pub fn bind(sockfd: Fd, addr: SocketAddr) -> Result<()> {
-    IOContext::failable_api(|ctx| ctx.socket_bind(sockfd, addr))?;
-    Ok(())
+    ioctx().bind(sockfd, addr)
 }
 
 /// close - close a file descriptor
@@ -54,15 +55,35 @@ pub fn bind(sockfd: Fd, addr: SocketAddr) -> Result<()> {
 /// removed (regardless of the file descriptor that was used to
 /// obtain the lock).
 pub fn close(fd: Fd) -> Result<()> {
-    IOContext::failable_api(|ctx| ctx.socket_close(fd))
+    ioctx().close(fd)
 }
 
 #[doc(hidden)]
 pub fn bsd_socket_info(fd: Fd) -> Result<Socket> {
-    IOContext::failable_api(|ctx| {
-        ctx.sockets
-            .get(&fd)
-            .cloned()
-            .ok_or(Error::new(ErrorKind::NotFound, "no socket for fd"))
-    })
+    ioctx().bsd_socket_info(fd)
+}
+
+impl IOHandle {
+    pub fn socket(&self, domain: SocketDomain, typ: SocketType, protocol: i32) -> Result<Fd> {
+        self.do_failable(|ctx| ctx.socket(domain, typ, protocol))
+    }
+
+    pub fn bind(&self, sockfd: Fd, addr: SocketAddr) -> Result<()> {
+        self.do_failable(|ctx| ctx.socket_bind(sockfd, addr))?;
+        Ok(())
+    }
+
+    pub fn close(&self, fd: Fd) -> Result<()> {
+        self.do_failable(|ctx| ctx.socket_close(fd))
+    }
+
+    #[doc(hidden)]
+    pub fn bsd_socket_info(&self, fd: Fd) -> Result<Socket> {
+        self.do_failable(|ctx| {
+            ctx.sockets
+                .get(&fd)
+                .cloned()
+                .ok_or(Error::new(ErrorKind::NotFound, "no socket for fd"))
+        })
+    }
 }

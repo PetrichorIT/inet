@@ -2,7 +2,7 @@ use std::io;
 
 use types::ip::Ipv6Prefix;
 
-use crate::IOContext;
+use crate::{IOContext, IOHandle};
 
 use super::PolicyTable;
 
@@ -28,4 +28,32 @@ pub fn policy_reset() -> io::Result<()> {
         ctx.ipv6.policies = PolicyTable::default();
         Ok(())
     })
+}
+
+impl IOHandle {
+    pub fn policy_add(
+        &self,
+        prefix: Ipv6Prefix,
+        precedence: usize,
+        label: usize,
+    ) -> io::Result<()> {
+        self.do_failable(|ctx| {
+            ctx.ipv6.policies.add(prefix, precedence, label);
+            Ok(())
+        })
+    }
+
+    pub fn policy_remove(&self, prefix: Ipv6Prefix) -> io::Result<()> {
+        self.do_failable(|ctx| {
+            ctx.ipv6.policies.remove(prefix);
+            Ok(())
+        })
+    }
+
+    pub fn policy_reset(&self) -> io::Result<()> {
+        self.do_failable(|ctx| {
+            ctx.ipv6.policies = PolicyTable::default();
+            Ok(())
+        })
+    }
 }

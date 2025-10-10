@@ -1,6 +1,6 @@
 use bytes_io::BytesMut;
 use inet::{
-    extensions::{try_with_ext, with_ext},
+    extensions::ExtensionHandle,
     socket::{close, socket},
 };
 use std::{
@@ -25,6 +25,7 @@ use inet::socket::{SocketDomain, SocketType};
 pub struct UnixListener {
     pub(super) fd: Fd,
     pub(super) rx: Mutex<Receiver<IncomingStream>>,
+    pub(super) handle: ExtensionHandle<UdsExtension>,
 }
 
 #[derive(Debug)]
@@ -52,8 +53,9 @@ impl UnixListener {
         P: AsRef<Path>,
     {
         let fd = socket(SocketDomain::AF_UNIX, SocketType::SOCK_STREAM, 0)?;
+        let ehandle = ExtensionHandle::<UdsExtension>::new();
 
-        with_ext::<UdsExtension, _>(|uds| {
+        ehandle.clone().with(|uds| {
             let addr = SocketAddr::from(path.as_ref().to_path_buf());
             if uds.listeners.values().any(|v| v.addr == addr) {
                 return Err(Error::new(ErrorKind::AddrInUse, "address already in use"));
@@ -62,6 +64,7 @@ impl UnixListener {
             let (tx, rx) = channel(8);
             let handle = UnixListenerHandle { addr, tx };
             let listener = UnixListener {
+                handle: ehandle,
                 fd,
                 rx: Mutex::new(rx),
             };
@@ -84,6 +87,7 @@ impl UnixListener {
         let (client, server) = establish_link(
             (incoming.fd, incoming.remote_addr.clone()),
             (fd, incoming.local_addr),
+            self.handle.clone(),
         );
 
         incoming
@@ -98,13 +102,14 @@ impl UnixListener {
 impl Drop for UnixListener {
     fn drop(&mut self) {
         let _ = close(self.fd);
-        let _ = try_with_ext::<UdsExtension, _>(|uds| uds.listeners.remove(&self.fd));
+        let _ = self.handle.try_with(|uds| uds.listeners.remove(&self.fd));
     }
 }
 
 pub(super) fn establish_link(
     client: (Fd, SocketAddr),
     server: (Fd, SocketAddr),
+    handle: ExtensionHandle<UdsExtension>,
 ) -> (UnixStream, UnixStream) {
     // (1) create server socket
     let server_buf = Arc::new(Mutex::new(BytesMut::with_capacity(4096)));
@@ -127,6 +132,8 @@ pub(super) fn establish_link(
         tx_buf: client_buf.clone(),
         tx_readable: client_buf_readable.clone(),
         tx_writable: client_buf_writable.clone(),
+
+        handle: handle.clone(),
     };
 
     let client_stream = UnixStream {
@@ -141,6 +148,8 @@ pub(super) fn establish_link(
         tx_buf: server_buf,
         tx_readable: server_buf_readable,
         tx_writable: server_buf_writable,
+
+        handle,
     };
 
     (client_stream, server_stream)

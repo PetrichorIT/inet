@@ -260,7 +260,10 @@ impl IOContext {
         manager.publish();
         self.udp.binds.insert(socket, manager);
 
-        Ok(UdpSocket { fd: socket })
+        Ok(UdpSocket {
+            handle: self.handle(),
+            fd: socket,
+        })
     }
 
     fn udp_connect(&mut self, fd: Fd, peer: SocketAddr) -> Result<()> {

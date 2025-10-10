@@ -1,6 +1,6 @@
 use bytes_io::{Buf, BufMut, BytesMut};
 use inet::{
-    extensions::with_ext,
+    extensions::ExtensionHandle,
     socket::{close, socket},
 };
 use std::{
@@ -37,6 +37,9 @@ pub struct UnixStream {
     pub(super) tx_buf: Arc<Mutex<BytesMut>>,
     pub(super) tx_readable: Arc<sync::Mutex<Option<Waker>>>,
     pub(super) tx_writable: Arc<sync::Mutex<Option<Waker>>>,
+
+    #[allow(unused)]
+    pub(super) handle: ExtensionHandle<UdsExtension>,
 }
 
 impl UnixStream {
@@ -53,8 +56,9 @@ impl UnixStream {
     where
         P: AsRef<Path>,
     {
+        let handle = ExtensionHandle::<UdsExtension>::new();
         let socket = socket(SocketDomain::AF_UNIX, SocketType::SOCK_STREAM, 0)?;
-        let rx = with_ext::<UdsExtension, _>(|uds| {
+        let rx = handle.with(|uds| {
             let addr = SocketAddr::from(path.as_ref().to_path_buf());
             let Some(listener) = uds.listeners.values().find(|s| s.addr == addr) else {
                 return Err(Error::new(
@@ -94,6 +98,7 @@ impl UnixStream {
         Ok(establish_link(
             (lhs, SocketAddr::unnamed()),
             (rhs, SocketAddr::unnamed()),
+            ExtensionHandle::<UdsExtension>::new(),
         ))
     }
 

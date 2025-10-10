@@ -2,15 +2,16 @@ use std::io::{Error, ErrorKind, Result};
 use std::task::Poll;
 use std::{future::Future, task::Waker};
 
+use crate::IOHandle;
 use crate::io::{Interest, Ready};
 use crate::socket::Fd;
-use crate::IOContext;
 
 // TODO: cancelation safety
 // - this interest is currently cancellation safe, but does not remove the enqued waker on drop
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub struct UdpInterest {
+    pub(crate) handle: IOHandle,
     pub(crate) fd: Fd,
     pub(crate) io_interest: Interest,
     pub(crate) resolved: bool,
@@ -34,7 +35,7 @@ impl Future for UdpInterest {
         cx: &mut std::task::Context<'_>,
     ) -> Poll<Self::Output> {
         if self.io_interest.is_readable() {
-            return IOContext::with_current(|ctx| {
+            return self.handle.clone().do_io(|ctx| {
                 let Some(socket) = ctx.udp.binds.get_mut(&self.fd) else {
                     self.resolved = true;
                     return Poll::Ready(Err(Error::new(
@@ -57,7 +58,7 @@ impl Future for UdpInterest {
         }
 
         if self.io_interest.is_writable() {
-            return IOContext::with_current(|ctx| {
+            return self.handle.clone().do_io(|ctx| {
                 let Some(socket) = ctx.sockets.get(&self.fd) else {
                     self.resolved = true;
                     return Poll::Ready(Err(Error::new(

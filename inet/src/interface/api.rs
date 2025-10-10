@@ -3,8 +3,9 @@ use super::{
     def::InterfaceDef,
 };
 use crate::{
-    IOContext,
+    IOContext, IOHandle,
     interface::{InterfaceAddrV4, InterfaceAddrV6},
+    ioctx,
     ipv4::{
         arp::ArpEntryInternal,
         router::{FwdEntryV4, Ipv4Gateway, RoutingTableId},
@@ -27,19 +28,37 @@ use valuable::Valuable;
 
 /// Declares and activiates an new network interface on the current module
 pub fn add_interface(iface: InterfaceDef) -> io::Result<()> {
-    IOContext::failable_api(|ctx| ctx.add_interface(iface))
+    ioctx().add_interface(iface)
 }
 
 pub fn interface_add_addr(iface: impl AsRef<str>, addr: IpAddr) -> io::Result<()> {
-    IOContext::failable_api(|ctx| ctx.interface_add_addr(iface.as_ref(), addr))
+    ioctx().interface_add_addr(iface, addr)
 }
 
 pub fn interface_status(iface: impl AsRef<str>) -> io::Result<InterfaceStatus> {
-    IOContext::failable_api(|ctx| ctx.interface_status(iface.as_ref()))
+    ioctx().interface_status(iface.as_ref())
 }
 
 pub fn interface_status_by_ifid(ifid: IfId) -> io::Result<InterfaceStatus> {
-    IOContext::failable_api(|ctx| ctx.interface_status_by_ifid(ifid))
+    ioctx().interface_status_by_ifid(ifid)
+}
+
+impl IOHandle {
+    pub fn add_interface(&self, iface: InterfaceDef) -> io::Result<()> {
+        self.do_failable(|ctx| ctx.add_interface(iface))
+    }
+
+    pub fn interface_add_addr(&self, iface: impl AsRef<str>, addr: IpAddr) -> io::Result<()> {
+        self.do_failable(|ctx| ctx.interface_add_addr(iface.as_ref(), addr))
+    }
+
+    pub fn interface_status(&self, iface: impl AsRef<str>) -> io::Result<InterfaceStatus> {
+        self.do_failable(|ctx| ctx.interface_status(iface.as_ref()))
+    }
+
+    pub fn interface_status_by_ifid(&self, ifid: IfId) -> io::Result<InterfaceStatus> {
+        self.do_failable(|ctx| ctx.interface_status_by_ifid(ifid))
+    }
 }
 
 #[derive(Debug, Clone, Valuable, Serialize, Deserialize)]

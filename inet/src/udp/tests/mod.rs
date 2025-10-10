@@ -1,7 +1,12 @@
 use std::time::Duration;
 
 use des::{
-    runtime::{random, RuntimeError},
+    net::{
+        globals,
+        module::{Prop, PropType},
+    },
+    prelude::current,
+    runtime::{RuntimeError, random},
     time::sleep,
 };
 use serial_test::serial;
@@ -70,6 +75,48 @@ fn ping_pong() -> Result<(), RuntimeError> {
             acc += n;
             socket.send_to(&buf[..n], from).await.unwrap();
         }
+        Ok(())
+    });
+
+    sim.run()
+}
+
+impl PropType for UdpSocket {
+    fn as_value(&self) -> serde_yml::Value {
+        serde_yml::Value::Null
+    }
+
+    fn from_value(_: serde_yml::Value) -> Result<Self, des::net::Error>
+    where
+        Self: Sized,
+    {
+        Err(des::net::Error::new_current(des::net::ErrorKind::Other))
+    }
+}
+
+#[test]
+#[serial]
+fn inspect_foreign_io_object() -> Result<(), RuntimeError> {
+    let mut sim = SimpleSim::new(crate::init);
+    sim.node("192.168.2.100", || async move {
+        let sock = UdpSocket::bind("0.0.0.0:0").await?;
+        assert_eq!(sock.local_addr()?.port(), 1024);
+        current().prop("sock").unwrap().set(sock);
+        Ok(())
+    });
+
+    sim.node("192.168.2.101", || async move {
+        sleep(Duration::from_secs(1)).await;
+
+        let foreign: Prop<UdpSocket, true> = globals()
+            .get(&"192_168_2_100".into())
+            .unwrap()
+            .prop("sock")
+            .unwrap()
+            .expect("has value");
+
+        assert_eq!(foreign.map(|sock| sock.local_addr())?.port(), 1024);
+
         Ok(())
     });
 

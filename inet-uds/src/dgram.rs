@@ -1,6 +1,6 @@
 use bytes_io::Bytes;
 use inet::{
-    extensions::{try_with_ext, with_ext},
+    extensions::ExtensionHandle,
     socket::{close, socket},
 };
 use std::{
@@ -28,6 +28,7 @@ use crate::{UdsExtension, addr::SocketAddr};
 #[derive(Debug)]
 pub struct UnixDatagram {
     fd: Fd,
+    handle: ExtensionHandle<UdsExtension>,
     rx: Mutex<Receiver<(Bytes, SocketAddr)>>,
 }
 
@@ -52,7 +53,7 @@ impl UnixDatagram {
     ///
     /// Returns an error if the socket is invalid.
     pub fn local_addr(&self) -> Result<SocketAddr, Error> {
-        with_ext::<UdsExtension, _>(|uds| {
+        self.handle.with(|uds| {
             uds.dgrams
                 .get(&self.fd)
                 .map(|h| h.addr.clone())
@@ -66,7 +67,7 @@ impl UnixDatagram {
     ///
     /// Returns an error if the socket is invalid or has no peer addr.
     pub fn peer_addr(&self) -> Result<SocketAddr, Error> {
-        with_ext::<UdsExtension, _>(|uds| {
+        self.handle.with(|uds| {
             uds.dgrams
                 .get(&self.fd)
                 .map(|h| {
@@ -92,8 +93,10 @@ impl UnixDatagram {
     where
         P: AsRef<Path>,
     {
+        let ehandle = ExtensionHandle::<UdsExtension>::new();
         let fd: Fd = socket(SocketDomain::AF_UNIX, SocketType::SOCK_DGRAM, 0)?;
-        with_ext::<UdsExtension, _>(|uds| {
+
+        ehandle.clone().with(|uds| {
             let path: &Path = path.as_ref();
             let addr = SocketAddr::from(path.to_path_buf());
 
@@ -108,6 +111,7 @@ impl UnixDatagram {
                 tx,
             };
             let socket = UnixDatagram {
+                handle: ehandle,
                 fd,
                 rx: Mutex::new(rx),
             };
@@ -123,8 +127,9 @@ impl UnixDatagram {
     ///
     /// May fail if the socket cannot be created.
     pub fn unbound() -> Result<UnixDatagram, Error> {
+        let ehandle = ExtensionHandle::<UdsExtension>::new();
         let fd: Fd = socket(SocketDomain::AF_UNIX, SocketType::SOCK_DGRAM, 0)?;
-        with_ext::<UdsExtension, _>(|uds| {
+        ehandle.clone().with(|uds| {
             let addr = SocketAddr::unnamed();
 
             let (tx, rx) = channel(64);
@@ -134,6 +139,7 @@ impl UnixDatagram {
                 tx,
             };
             let socket = UnixDatagram {
+                handle: ehandle,
                 fd,
                 rx: Mutex::new(rx),
             };
@@ -153,8 +159,8 @@ impl UnixDatagram {
         let a = Self::unbound()?;
         let b = Self::unbound()?;
 
-        with_ext::<UdsExtension, _>(|uds| uds.connect_dgram(a.fd, b.fd))?;
-        with_ext::<UdsExtension, _>(|uds| uds.connect_dgram(b.fd, a.fd))?;
+        a.handle.with(|uds| uds.connect_dgram(a.fd, b.fd))?;
+        a.handle.with(|uds| uds.connect_dgram(b.fd, a.fd))?;
 
         Ok((a, b))
     }
@@ -174,7 +180,7 @@ impl UnixDatagram {
     {
         let addr = SocketAddr::from(path.as_ref().to_path_buf());
 
-        with_ext::<UdsExtension, _>(|uds| {
+        self.handle.with(|uds| {
             let Some((peer, _)) = uds.dgrams.iter().find(|h| h.1.addr == addr) else {
                 return Err(Error::new(
                     ErrorKind::ConnectionRefused,
@@ -194,7 +200,7 @@ impl UnixDatagram {
     /// no peer was connected.
     pub async fn send(&self, buf: &[u8]) -> Result<usize, Error> {
         let addr = self.local_addr()?;
-        let sender = with_ext::<UdsExtension, _>(|uds| {
+        let sender = self.handle.with(|uds| {
             let fd = self.fd;
             let Some(handle) = uds.dgrams.get(&fd) else {
                 return Err(Error::other("socket unbound"));
@@ -226,7 +232,7 @@ impl UnixDatagram {
         P: AsRef<Path>,
     {
         let addr = self.local_addr()?;
-        let sender = with_ext::<UdsExtension, _>(|uds| {
+        let sender = self.handle.with(|uds| {
             let target = SocketAddr::from(target.as_ref().to_path_buf());
             if let Some((_, handle)) = uds.dgrams.iter().find(|(_, h)| h.addr == target) {
                 Ok(handle.tx.clone())
@@ -250,9 +256,10 @@ impl UnixDatagram {
     /// May fail if either the peer is dead, or
     /// no peer was connected.
     pub async fn recv(&self, buf: &mut [u8]) -> Result<usize, Error> {
-        let peered =
-            with_ext::<UdsExtension, _>(|uds| uds.dgrams.get(&self.fd).map(|v| v.peer.is_some()))
-                .unwrap_or(false);
+        let peered = self
+            .handle
+            .with(|uds| uds.dgrams.get(&self.fd).map(|v| v.peer.is_some()))
+            .unwrap_or(false);
         if !peered {
             return Err(Error::other("no peer"));
         }
@@ -280,7 +287,7 @@ impl UnixDatagram {
 
 impl Drop for UnixDatagram {
     fn drop(&mut self) {
-        try_with_ext::<UdsExtension, _>(|uds| uds.dgrams.remove(&self.fd));
+        self.handle.try_with(|uds| uds.dgrams.remove(&self.fd));
         let _ = close(self.fd);
     }
 }

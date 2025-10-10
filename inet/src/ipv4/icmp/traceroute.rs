@@ -1,5 +1,5 @@
 use crate::{
-    IOContext, UdpSocket,
+    IOContext, IOHandle, UdpSocket, ioctx,
     socket::{AsRawFd, Fd},
 };
 use des::{
@@ -47,63 +47,69 @@ pub enum Trace {
 /// path to the provided target. Nodes must respond to
 /// ICMP Echo Requests to be identified.
 pub async fn traceroute(addr: Ipv4Addr) -> Result<Traceroute> {
-    let socket = UdpSocket::bind((Ipv4Addr::UNSPECIFIED, 0)).await?;
-    IOContext::failable_api(|ctx| Ok(ctx.traceroute_create(socket.as_raw_fd(), addr)))?;
+    ioctx().ipv4_traceroute(addr).await
+}
 
-    let mut port = random::<u16>();
-    let mut distance = 1;
-    let mut last_rtt = Duration::from_millis(200);
-    let mut traceroute = Traceroute {
-        target: addr,
-        nodes: Vec::new(),
-    };
+impl IOHandle {
+    pub async fn ipv4_traceroute(&self, addr: Ipv4Addr) -> Result<Traceroute> {
+        let socket = UdpSocket::bind((Ipv4Addr::UNSPECIFIED, 0)).await?;
+        self.do_failable(|ctx| Ok(ctx.traceroute_create(socket.as_raw_fd(), addr)))?;
 
-    'outer: loop {
-        socket.set_ttl(distance)?;
-        socket.connect((addr, port)).await?;
-        socket.send(&[0; 8]).await?;
+        let mut port = random::<u16>();
+        let mut distance = 1;
+        let mut last_rtt = Duration::from_millis(200);
+        let mut traceroute = Traceroute {
+            target: addr,
+            nodes: Vec::new(),
+        };
 
-        IOContext::failable_api(|ctx| Ok(ctx.traceroute_register_send(addr)))?;
-        sleep(last_rtt * 2).await;
+        'outer: loop {
+            socket.set_ttl(distance)?;
+            socket.connect((addr, port)).await?;
+            socket.send(&[0; 8]).await?;
 
-        // let last_err = None;
-        for _ in 0..4 {
-            if let Some(e) = socket.take_error()? {
-                if e.kind() == ErrorKind::ConnectionRefused {
-                    // reached end port;
-                    match &format!("{e}")[..] {
-                        "PortUnreachable" => return Ok(traceroute),
-                        _ => return Err(e),
+            self.do_failable(|ctx| Ok(ctx.traceroute_register_send(addr)))?;
+            sleep(last_rtt * 2).await;
+
+            // let last_err = None;
+            for _ in 0..4 {
+                if let Some(e) = socket.take_error()? {
+                    if e.kind() == ErrorKind::ConnectionRefused {
+                        // reached end port;
+                        match &format!("{e}")[..] {
+                            "PortUnreachable" => return Ok(traceroute),
+                            _ => return Err(e),
+                        }
                     }
-                }
 
-                if let Some(trace) =
-                    IOContext::failable_api(|ctx| Ok(ctx.traceroute_get_error(addr)))?
-                {
-                    traceroute.nodes.push(Trace::Found {
-                        addr: trace.0,
-                        rtt: trace.1,
-                    });
-                    last_rtt = trace.1;
+                    if let Some(trace) =
+                        self.do_failable(|ctx| Ok(ctx.traceroute_get_error(addr)))?
+                    {
+                        traceroute.nodes.push(Trace::Found {
+                            addr: trace.0,
+                            rtt: trace.1,
+                        });
+                        last_rtt = trace.1;
 
-                    port = port.wrapping_add(1);
-                    distance += 1;
-                    continue 'outer;
+                        port = port.wrapping_add(1);
+                        distance += 1;
+                        continue 'outer;
+                    } else {
+                        // OTHER ERR
+                        todo!()
+                    }
                 } else {
-                    // OTHER ERR
-                    todo!()
+                    // TTL TO SHORT
+                    sleep(last_rtt * 2).await;
+                    continue;
                 }
-            } else {
-                // TTL TO SHORT
-                sleep(last_rtt * 2).await;
-                continue;
             }
-        }
 
-        return Err(socket
-            .take_error()?
-            .unwrap_or(Error::other("traceroute failed")));
-        // return Err()
+            return Err(socket
+                .take_error()?
+                .unwrap_or(Error::other("traceroute failed")));
+            // return Err()
+        }
     }
 }
 

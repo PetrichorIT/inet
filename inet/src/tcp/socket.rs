@@ -1,5 +1,5 @@
 use super::{TcpListener, TcpStream};
-use crate::IOContext;
+use crate::IOHandle;
 use crate::socket::{Fd, SocketDomain, SocketType};
 use crate::tcp::interest::TcpInterest;
 use crate::tcp::stream::Inner;
@@ -16,23 +16,27 @@ pub struct TcpSocket {
     fd: Fd,
     addr: Cell<SocketAddr>,
     config: RefCell<Config>,
+    handle: IOHandle,
 }
 
 impl TcpSocket {
     /// Creates a new socket configured for IPv4.
     pub fn new_v4() -> Result<TcpSocket> {
-        IOContext::with_current(|ctx| {
+        let handle = IOHandle::current();
+        handle.clone().do_io(|ctx| {
             Ok(TcpSocket {
                 addr: Cell::new(SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0))),
                 config: RefCell::new(ctx.tcp.config.clone()),
                 fd: ctx.socket(SocketDomain::AF_INET, SocketType::SOCK_STREAM, 0)?,
+                handle,
             })
         })
     }
 
     /// Creates a new socket configured for IPv6.
     pub fn new_v6() -> Result<TcpSocket> {
-        IOContext::with_current(|ctx| {
+        let handle = IOHandle::current();
+        handle.clone().do_io(|ctx| {
             Ok(TcpSocket {
                 addr: Cell::new(SocketAddr::V6(SocketAddrV6::new(
                     Ipv6Addr::UNSPECIFIED,
@@ -42,6 +46,7 @@ impl TcpSocket {
                 ))),
                 config: RefCell::new(ctx.tcp.config.clone()),
                 fd: ctx.socket(SocketDomain::AF_INET6, SocketType::SOCK_STREAM, 0)?,
+                handle,
             })
         })
     }
@@ -153,7 +158,7 @@ impl TcpSocket {
     ///
     /// Will fail on windows if called before bind
     pub fn local_addr(&self) -> Result<SocketAddr> {
-        IOContext::with_current(|ctx| ctx.socket_get_addr(self.fd))
+        self.handle.do_io(|ctx| ctx.socket_get_addr(self.fd))
     }
 
     /// Returns the value of the SO_ERROR option.
@@ -170,7 +175,7 @@ impl TcpSocket {
             return Err(Error::other("Expected other ip typ"));
         }
 
-        let addr = IOContext::with_current(|ctx| ctx.socket_bind(self.fd, addr))?;
+        let addr = self.handle.do_io(|ctx| ctx.socket_bind(self.fd, addr))?;
         self.addr.set(addr);
         Ok(())
     }
@@ -187,19 +192,25 @@ impl TcpSocket {
     pub async fn connect(mut self, peer: SocketAddr) -> Result<TcpStream> {
         let fd = self.fd;
         self.fd = 0;
-        let fd = IOContext::with_current(|ctx| {
-            ctx.tcp_connect(peer, Some(self.config.borrow().clone()), Some(fd))
-        })?;
+        let fd = self
+            .handle
+            .do_io(|ctx| ctx.tcp_connect(peer, Some(self.config.borrow().clone()), Some(fd)))?;
 
-        if IOContext::with_current(|ctx| ctx.tcp_connection(fd, |c| c.state != State::Estab))? {
-            let interest = TcpInterest::write(fd);
+        if self
+            .handle
+            .do_io(|ctx| ctx.tcp_connection(fd, |c| c.state != State::Estab))?
+        {
+            let interest = TcpInterest::write(fd, self.handle.clone());
             return interest
                 .await
                 .inspect_err(|_| {
-                    let _ = IOContext::with_current(|ctx| ctx.tcp_drop(fd));
+                    let _ = self.handle.do_io(|ctx| ctx.tcp_drop(fd));
                 })
                 .map(|_| TcpStream {
-                    inner: Arc::new(Inner { fd }),
+                    inner: Arc::new(Inner {
+                        fd,
+                        handle: self.handle.clone(),
+                    }),
                 });
         }
 
@@ -221,14 +232,9 @@ impl TcpSocket {
 
         let fd = Some(self.fd);
         self.fd = 0;
-        IOContext::with_current(move |ctx| {
-            ctx.tcp_bind(
-                local_addr,
-                Some(self.config.borrow().clone()),
-                fd,
-                Some(backlog as usize),
-            )
-        })
+        let cfg = self.config.borrow().clone();
+        self.handle
+            .do_io(|ctx| ctx.tcp_bind(local_addr, Some(cfg), fd, Some(backlog as usize)))
     }
 
     /// DEPRECATED
@@ -242,7 +248,7 @@ impl TcpSocket {
 impl Drop for TcpSocket {
     fn drop(&mut self) {
         if self.fd != 0 {
-            IOContext::try_with_current(|ctx| ctx.socket_close(self.fd));
+            self.handle.try_do_io(|ctx| ctx.socket_close(self.fd));
         }
     }
 }

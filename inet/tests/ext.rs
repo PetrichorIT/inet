@@ -1,11 +1,11 @@
 use std::time::Duration;
 
 use des::{
-    net::{handlers::AsyncHandler, Sim},
+    net::{Sim, handlers::AsyncHandler},
     runtime::{Builder, RuntimeError},
     time::sleep,
 };
-use inet::extensions::{load_ext, with_ext};
+use inet::extensions::with_ext;
 
 #[test]
 fn basic_extension() -> Result<(), RuntimeError> {
@@ -18,7 +18,7 @@ fn basic_extension() -> Result<(), RuntimeError> {
     sim.node(
         "mynode",
         AsyncHandler::new(|_| async move {
-            load_ext(MyExt { value: 42 });
+            with_ext(|e| *e = MyExt { value: 42 });
             sleep(Duration::from_secs(1)).await;
 
             with_ext::<MyExt, _>(|ext| {

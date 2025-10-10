@@ -7,8 +7,8 @@ use tokio::sync::oneshot;
 use types::icmpv4::{IcmpV4Packet, IcmpV4Type, PROTO_ICMPV4};
 use types::ip::{IpPacket, Ipv4Flags, Ipv4Packet};
 
-use crate::IOContext;
 use crate::socket::SocketIfaceBinding;
+use crate::{IOContext, IOHandle, ioctx};
 
 #[derive(Debug)]
 pub struct PingCB {
@@ -48,9 +48,14 @@ pub async fn ping(addr: impl Into<Ipv4Addr>) -> Result<Ping> {
 /// This function takes the number of samples as an extra paramter.
 /// The default value used by `ping` is 3.
 pub async fn ping_with(addr: impl Into<Ipv4Addr>, c: usize) -> Result<Ping> {
-    let addr = addr.into();
-    let rx = IOContext::failable_api(|ctx| ctx.icmp_initiate_ping(addr, c))?;
-    rx.await.map_err(|_| Error::other("broke pipe"))?
+    ioctx().ipv4_ping_with(addr.into(), c).await
+}
+
+impl IOHandle {
+    pub async fn ipv4_ping_with(&self, addr: Ipv4Addr, c: usize) -> Result<Ping> {
+        let rx = self.do_failable(|ctx| ctx.icmp_initiate_ping(addr, c))?;
+        rx.await.map_err(|_| Error::other("broke pipe"))?
+    }
 }
 
 impl IOContext {

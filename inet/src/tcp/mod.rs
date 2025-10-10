@@ -1,5 +1,5 @@
 use crate::{
-    IOContext,
+    IOContext, IOHandle,
     interface::{IfId, KIND_IO_TIMEOUT},
     io::Interest,
     socket::{Fd, SocketDomain, SocketIfaceBinding, SocketType},
@@ -445,7 +445,7 @@ impl IOContext {
         );
         self.tcp.listeners.insert(fd, handle);
 
-        Ok(TcpListener::from_raw(fd, rx, backlog))
+        Ok(TcpListener::from_raw(fd, rx, self.handle(), backlog))
     }
 
     fn tcp_unbind(&mut self, fd: Fd) {
@@ -701,5 +701,5 @@ fn is_valid_dst_for(socket_addr: &SocketAddr, packet_addr: &SocketAddr) -> bool 
 }
 
 pub fn set_config(config: Config) {
-    IOContext::with_current(|ctx| ctx.tcp.config = config)
+    IOHandle::current().do_io(|ctx| ctx.tcp.config = config)
 }

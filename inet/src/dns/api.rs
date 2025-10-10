@@ -1,6 +1,7 @@
 use crate::ctx::IOContext;
+use crate::{IOHandle, ioctx};
 
-use super::{resolver, DnsResolver};
+use super::{DnsResolver, resolver};
 use std::io::Result;
 use std::net::SocketAddr;
 
@@ -21,7 +22,7 @@ pub async fn lookup_host<T>(host: T) -> Result<impl Iterator<Item = SocketAddr>>
 where
     T: resolver::ToSocketAddrs,
 {
-    resolver::lookup_host(host).await
+    ioctx().lookup_host(host).await
 }
 
 /// Overrides the local dns resolver for the current node context.
@@ -33,7 +34,13 @@ where
 ///
 /// This function fails, if called from outside of a node context.
 pub fn set_dns_resolver(resolver: DnsResolver) -> Result<()> {
-    IOContext::failable_api(|ctx| ctx.set_dns_resolver(resolver))
+    ioctx().set_dns_resolver(resolver)
+}
+
+impl IOHandle {
+    pub fn set_dns_resolver(&self, resolver: DnsResolver) -> Result<()> {
+        self.do_failable(|ctx| ctx.set_dns_resolver(resolver))
+    }
 }
 
 impl IOContext {

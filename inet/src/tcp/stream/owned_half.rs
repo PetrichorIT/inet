@@ -1,4 +1,3 @@
-use crate::IOContext;
 use crate::tcp::interest::TcpInterest;
 
 use super::{Inner, TcpStream};
@@ -55,7 +54,11 @@ impl OwnedReadHalf {
         loop {
             self.readable().await?;
 
-            match IOContext::with_current(|ctx| ctx.tcp_peek(self.inner.fd, buf)) {
+            match self
+                .inner
+                .handle
+                .do_io(|ctx| ctx.tcp_peek(self.inner.fd, buf))
+            {
                 Ok(n) => return Ok(n),
                 Err(e) if e.kind() == ErrorKind::WouldBlock => continue,
                 Err(e) => return Err(e),
@@ -65,12 +68,16 @@ impl OwnedReadHalf {
 
     /// Returns the local address that this stream is bound to.
     pub fn local_addr(&self) -> Result<SocketAddr, Error> {
-        IOContext::with_current(|ctx| ctx.socket_get_addr(self.inner.fd))
+        self.inner
+            .handle
+            .do_io(|ctx| ctx.socket_get_addr(self.inner.fd))
     }
 
     /// Returns the peer address that this stream is bound to.
     pub fn peer_addr(&self) -> Result<SocketAddr, Error> {
-        IOContext::with_current(|ctx| ctx.socket_get_peer(self.inner.fd))
+        self.inner
+            .handle
+            .do_io(|ctx| ctx.socket_get_peer(self.inner.fd))
     }
 
     /// DEPRECATED
@@ -90,7 +97,7 @@ impl OwnedReadHalf {
     /// It can be used to concurrently read / write to the same socket on a single task
     /// without splitting the socket.
     pub async fn ready(&self, interest: Interest) -> Result<Ready, Error> {
-        let io = TcpInterest::from_io(self.inner.fd, interest);
+        let io = TcpInterest::from_io(self.inner.fd, interest, self.inner.handle.clone());
         io.await
     }
 
@@ -110,7 +117,9 @@ impl OwnedReadHalf {
     /// Because try_read() is non-blocking, the buffer does not have to be stored by the async task
     /// and can exist entirely on the stack.
     pub fn try_read(&self, buf: &mut [u8]) -> Result<usize, Error> {
-        IOContext::with_current(|ctx| ctx.tcp_read(self.inner.fd, buf))
+        self.inner
+            .handle
+            .do_io(|ctx| ctx.tcp_read(self.inner.fd, buf))
     }
 
     /// DEPRECATED
@@ -148,12 +157,16 @@ impl OwnedWriteHalf {
 
     /// Returns the local address that this stream is bound to.
     pub fn local_addr(&self) -> Result<SocketAddr, Error> {
-        IOContext::with_current(|ctx| ctx.socket_get_addr(self.inner.fd))
+        self.inner
+            .handle
+            .do_io(|ctx| ctx.socket_get_addr(self.inner.fd))
     }
 
     /// Returns the peer address that this stream is bound to.
     pub fn peer_addr(&self) -> Result<SocketAddr, Error> {
-        IOContext::with_current(|ctx| ctx.socket_get_peer(self.inner.fd))
+        self.inner
+            .handle
+            .do_io(|ctx| ctx.socket_get_peer(self.inner.fd))
     }
 
     /// Waits for any of the requested ready states.
@@ -162,7 +175,7 @@ impl OwnedWriteHalf {
     /// It can be used to concurrently read / write to the same socket on a single task
     /// without splitting the socket.
     pub async fn ready(&self, interest: Interest) -> Result<Ready, Error> {
-        let io = TcpInterest::from_io(self.inner.fd, interest);
+        let io = TcpInterest::from_io(self.inner.fd, interest, self.inner.handle.clone());
         io.await
     }
 
@@ -179,7 +192,9 @@ impl OwnedWriteHalf {
     /// The function will attempt to write the entire contents of `buf`,
     /// but only part of the buffer may be written.
     pub fn try_write(&self, buf: &[u8]) -> Result<usize, Error> {
-        IOContext::with_current(|ctx| ctx.tcp_write(self.inner.fd, buf))
+        self.inner
+            .handle
+            .do_io(|ctx| ctx.tcp_write(self.inner.fd, buf))
     }
 
     /// DEPRECATED
@@ -196,7 +211,7 @@ impl AsyncRead for OwnedReadHalf {
         cx: &mut std::task::Context<'_>,
         buf: &mut tokio::io::ReadBuf<'_>,
     ) -> std::task::Poll<std::io::Result<()>> {
-        IOContext::with_current(|ctx| {
+        self.inner.handle.do_io(|ctx| {
             ctx.tcp_poll_read(self.inner.fd, cx, buf)
                 .map(|rdy| rdy.map(|n| buf.advance(n)))
         })
@@ -209,13 +224,17 @@ impl AsyncWrite for OwnedWriteHalf {
         cx: &mut std::task::Context<'_>,
         buf: &[u8],
     ) -> std::task::Poll<Result<usize, Error>> {
-        IOContext::with_current(|ctx| ctx.tcp_poll_write(self.inner.fd, cx, buf))
+        self.inner
+            .handle
+            .do_io(|ctx| ctx.tcp_poll_write(self.inner.fd, cx, buf))
     }
     fn poll_flush(
         self: std::pin::Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
     ) -> std::task::Poll<Result<(), std::io::Error>> {
-        IOContext::with_current(|ctx| ctx.tcp_flush(self.inner.fd, cx))
+        self.inner
+            .handle
+            .do_io(|ctx| ctx.tcp_flush(self.inner.fd, cx))
     }
     fn poll_shutdown(
         self: std::pin::Pin<&mut Self>,
