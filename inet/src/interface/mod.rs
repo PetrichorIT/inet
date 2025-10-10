@@ -8,6 +8,7 @@ use std::{collections::VecDeque, result};
 use crate::IOContext;
 use crate::{ctx::LinkLayerResult, socket::Fd};
 use des::prelude::*;
+use tokio::sync::watch;
 use types::arp::ArpPacket;
 use types::arp::KIND_ARP;
 use types::iface::MacAddress;
@@ -30,6 +31,9 @@ pub use flags::*;
 mod addrs;
 pub use self::addrs::*;
 
+mod handle;
+pub use self::handle::*;
+
 /// A network interface, mapping a physical network device
 /// to internal abstractions
 #[derive(Debug)]
@@ -47,6 +51,13 @@ pub struct InterfaceState {
     pub prio: usize,
     pub send_q: usize,
     pub buffer: VecDeque<Message>,
+    pub events: watch::Sender<InterfaceEvent>,
+}
+
+#[derive(Debug, Clone)]
+pub enum InterfaceEvent {
+    Up,
+    AddrUp(IpAddr),
 }
 
 impl Default for InterfaceState {
@@ -56,6 +67,7 @@ impl Default for InterfaceState {
             prio: 200,
             send_q: 0,
             buffer: VecDeque::new(),
+            events: watch::channel(InterfaceEvent::Up).0,
         }
     }
 }

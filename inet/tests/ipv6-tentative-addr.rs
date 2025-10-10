@@ -5,13 +5,15 @@ use des::{
     net::{
         Sim,
         channel::{ChannelDropBehaviour, DatarateChannel, DatarateChannelMetrics},
+        handlers::AsyncHandler,
         module::Module,
     },
     runtime::{Builder, RuntimeError},
+    time::SimTime,
 };
 use inet::{
     interface::{InterfaceDef, NetworkDevice, add_interface, interface_status},
-    ipv6::{api::set_node_cfg, cfg::HostConfiguration},
+    ipv6::{api::set_node_cfg, cfg::HostConfiguration, router},
 };
 use serial_test::serial;
 use types::{icmpv6::IcmpV6Packet, iface::MacAddress, ip::Ipv6Packet};
@@ -120,6 +122,21 @@ impl Module for AssignSameAddr {
     }
 }
 
+struct Router;
+impl Module for Router {
+    fn at_sim_start(&mut self, _stage: usize) {
+        router::declare_router().unwrap();
+        router::add_routing_interface(
+            "port",
+            NetworkDevice::eth(),
+            &["2003:a:1::1".parse().unwrap()],
+            true,
+        )
+        .unwrap();
+        router::add_routing_prefix("port", "2003:a:1::/64".parse().unwrap()).unwrap();
+    }
+}
+
 #[test]
 #[serial]
 fn tentative_addr_with_checks() -> Result<(), RuntimeError> {
@@ -214,4 +231,88 @@ fn tentative_addr_collision() -> Result<(), RuntimeError> {
 
     let rt = Builder::seeded(123).build(app.freeze());
     rt.run().map(|_| ())
+}
+
+#[test]
+#[serial]
+fn interface_handle_wait_for_link_local() -> Result<(), RuntimeError> {
+    // des::tracing::init();
+
+    let mut sim = Sim::new(()).with_stack(inet::init);
+    sim.node(
+        "sender",
+        AsyncHandler::failable::<_, _, std::io::Error>(|_| async move {
+            let mut handle = add_interface(InterfaceDef::new("en0", NetworkDevice::eth()).v6())?;
+            handle.wait_for_link_local().await;
+            assert_eq!(SimTime::now(), 1.0);
+            Ok(())
+        }),
+    );
+
+    sim.node(
+        "receiver",
+        AsyncHandler::failable::<_, _, std::io::Error>(|_| async move {
+            let mut handle = add_interface(InterfaceDef::new("en0", NetworkDevice::eth()).v6())?;
+            handle.wait_for_link_local().await;
+            assert_eq!(SimTime::now(), 1.0);
+            Ok(())
+        }),
+    );
+
+    let so = sim.gate("sender", "port");
+    let co = sim.gate("receiver", "port");
+
+    so.connect_with(
+        co,
+        Some(DatarateChannel::new(DatarateChannelMetrics {
+            bitrate: 1000_000,
+            latency: Duration::from_millis(20),
+            jitter: Duration::ZERO,
+            drop_behaviour: ChannelDropBehaviour::Queue(None),
+        })),
+    );
+
+    let rt = Builder::seeded(123).build(sim.freeze());
+    let result = rt.run().map(|_| ());
+
+    result
+}
+
+#[test]
+#[serial]
+fn interface_handle_wait_for_global() -> Result<(), RuntimeError> {
+    // des::tracing::init();
+
+    let mut sim = Sim::new(()).with_stack(inet::init);
+    sim.node(
+        "client",
+        AsyncHandler::failable::<_, _, std::io::Error>(|_| async move {
+            let mut handle = add_interface(InterfaceDef::new("en0", NetworkDevice::eth()).v6())?;
+            handle.wait_for_global().await;
+            assert!(SimTime::now() > 1.0.into());
+            Ok(())
+        })
+        .require_join(),
+    );
+    sim.node("router", Router);
+
+    let so = sim.gate("client", "port");
+    let co = sim.gate("router", "port");
+
+    so.connect_with(
+        co,
+        Some(DatarateChannel::new(DatarateChannelMetrics {
+            bitrate: 1000_000,
+            latency: Duration::from_millis(20),
+            jitter: Duration::ZERO,
+            drop_behaviour: ChannelDropBehaviour::Queue(None),
+        })),
+    );
+
+    let rt = Builder::seeded(123)
+        .max_time(10.0.into())
+        .build(sim.freeze());
+    let result = rt.run().map(|_| ());
+
+    result
 }

@@ -1,10 +1,9 @@
-use super::{
-    IfId, InterfaceAddrBindings, InterfaceAddrsV6, InterfaceFlags, InterfaceName, MacAddress,
-    def::InterfaceDef,
-};
+use super::{IfId, InterfaceAddrsV6, MacAddress, def::InterfaceDef};
 use crate::{
     IOContext, IOHandle,
-    interface::{InterfaceAddrV4, InterfaceAddrV6},
+    interface::{
+        InterfaceAddrV4, InterfaceAddrV6, InterfaceEvent, InterfaceHandle, InterfaceStatus,
+    },
     ioctx,
     ipv4::{
         arp::ArpEntryInternal,
@@ -12,22 +11,16 @@ use crate::{
     },
     ipv6::{multicast::NodeEvent, ndp::QueryType},
 };
-use des::{
-    net::module::{current, try_current},
-    time::SimTime,
-};
-use serde::{Deserialize, Serialize};
+use des::{net::module::current, time::SimTime};
 use std::{
-    fmt::Debug,
-    io::{self, Error, ErrorKind},
+    io::{self, Error},
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
 };
 use tracing::Level;
 use types::ip::Ipv6AddrExt;
-use valuable::Valuable;
 
 /// Declares and activiates an new network interface on the current module
-pub fn add_interface(iface: InterfaceDef) -> io::Result<()> {
+pub fn add_interface(iface: InterfaceDef) -> io::Result<InterfaceHandle> {
     ioctx().add_interface(iface)
 }
 
@@ -44,7 +37,7 @@ pub fn interface_status_by_ifid(ifid: IfId) -> io::Result<InterfaceStatus> {
 }
 
 impl IOHandle {
-    pub fn add_interface(&self, iface: InterfaceDef) -> io::Result<()> {
+    pub fn add_interface(&self, iface: InterfaceDef) -> io::Result<InterfaceHandle> {
         self.do_failable(|ctx| ctx.add_interface(iface))
     }
 
@@ -53,37 +46,16 @@ impl IOHandle {
     }
 
     pub fn interface_status(&self, iface: impl AsRef<str>) -> io::Result<InterfaceStatus> {
-        self.do_failable(|ctx| ctx.interface_status(iface.as_ref()))
+        InterfaceHandle::get(iface)?.status()
     }
 
     pub fn interface_status_by_ifid(&self, ifid: IfId) -> io::Result<InterfaceStatus> {
-        self.do_failable(|ctx| ctx.interface_status_by_ifid(ifid))
-    }
-}
-
-#[derive(Debug, Clone, Valuable, Serialize, Deserialize)]
-pub struct InterfaceStatus {
-    pub name: InterfaceName,
-    pub flags: InterfaceFlags,
-    pub addrs: InterfaceAddrBindings,
-    pub send_q: usize,
-    pub queuelen: usize,
-}
-
-impl InterfaceStatus {
-    pub fn publish(&self) {
-        if cfg!(feature = "props") {
-            let Some(module) = try_current() else { return };
-            module
-                .prop::<InterfaceStatus>(&format!("inet.iface.{}", self.name))
-                .unwrap()
-                .set(self.clone());
-        }
+        InterfaceHandle::get(ifid.to_string())?.status()
     }
 }
 
 impl IOContext {
-    pub fn add_interface(&mut self, def: InterfaceDef) -> io::Result<()> {
+    pub fn add_interface(&mut self, def: InterfaceDef) -> io::Result<InterfaceHandle> {
         let iface = def.into_legacy();
         let ifid = iface.name.id();
 
@@ -160,6 +132,8 @@ impl IOContext {
         let mut addrs = InterfaceAddrsV6::default();
         std::mem::swap(&mut addrs, &mut iface.bindings.v6);
 
+        let rx = iface.state.events.subscribe();
+
         iface.status().publish();
         self.ifaces.insert(iface.name.id(), iface);
 
@@ -194,7 +168,12 @@ impl IOContext {
         }
 
         self.ifaces.get(&ifid).unwrap().status().publish();
-        Ok(())
+
+        Ok(InterfaceHandle {
+            id: ifid,
+            io: self.handle(),
+            rx,
+        })
     }
 
     pub fn interface_add_addr(&mut self, name: &str, addr: IpAddr) -> io::Result<()> {
@@ -267,7 +246,9 @@ impl IOContext {
             let multicast = Ipv6Addr::solicied_node_multicast(binding.addr);
 
             let needs_mld_report = iface.bindings.v6.join(multicast);
+            let event = InterfaceEvent::AddrUp(binding.addr.into());
             iface.bindings.v6.add(binding);
+            iface.state.events.send_replace(event);
 
             iface.status().publish();
             if needs_mld_report {
@@ -275,29 +256,5 @@ impl IOContext {
             }
             Ok(())
         }
-    }
-
-    fn interface_status(&self, iface_name: &str) -> io::Result<InterfaceStatus> {
-        let Some((_, iface)) = self
-            .ifaces
-            .iter()
-            .find(|iface| &*iface.1.name == iface_name)
-        else {
-            return Err(Error::new(
-                ErrorKind::InvalidInput,
-                "no such interface exists",
-            ));
-        };
-        Ok(iface.status())
-    }
-
-    fn interface_status_by_ifid(&self, ifid: IfId) -> io::Result<InterfaceStatus> {
-        let Some(iface) = self.ifaces.get(&ifid) else {
-            return Err(Error::new(
-                ErrorKind::InvalidInput,
-                "no such interface exists",
-            ));
-        };
-        Ok(iface.status())
     }
 }

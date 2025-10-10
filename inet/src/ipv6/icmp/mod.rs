@@ -1,6 +1,6 @@
 use crate::{
     ctx::IOContext,
-    interface::{IfId, InterfaceAddrV6},
+    interface::{IfId, InterfaceAddrV6, InterfaceEvent},
     ipv6::{Ipv6SendFlags, addrs::CanidateAddr, timer::TimerToken},
     socket::{SocketDomain, SocketType},
 };
@@ -907,7 +907,9 @@ impl IOContext {
                 binding.deadline = SimTime::now() + binding.validity;
             }
 
+            let event = InterfaceEvent::AddrUp(binding.addr.into());
             iface.bindings.v6.add(binding);
+            iface.state.events.send_replace(event);
             iface.status().publish();
 
             Ok(())

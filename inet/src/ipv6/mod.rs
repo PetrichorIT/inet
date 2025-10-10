@@ -198,11 +198,9 @@ impl IOContext {
             && !flags.contains(Ipv6SendFlags::REQUIRED_SRC_UNSPECIFIED)
             && !multicast_bypass
         {
-            tracing::info!("src addr assign");
             // (0) Check link local
             let canidates = self.ipv6_src_addr_canidate_set(pkt.dst, ifid);
             if let Some(src) = canidates.select(&self.ipv6.policies) {
-                tracing::info!("src addr assign = {src:?}");
                 pkt.src = src.addr;
             } else if flags.contains(Ipv6SendFlags::ALLOW_SRC_UNSPECIFIED) {
                 /* Do nothing the flag allows this */
