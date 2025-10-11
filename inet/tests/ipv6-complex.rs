@@ -129,7 +129,7 @@ fn run() -> Result<(), RuntimeError> {
     sim.node(
         "host-1",
         AsyncHandler::io(|_| async move {
-            add_interface(InterfaceDef::ethv6_autocfg(NetworkDevice::eth()))?;
+            ioctx().add_interface(InterfaceDef::ethv6_autocfg(NetworkDevice::eth()))?;
             tokio::spawn(pong(800));
 
             sleep(Duration::from_secs(5)).await;
@@ -145,7 +145,7 @@ fn run() -> Result<(), RuntimeError> {
     sim.node(
         "host-2",
         AsyncHandler::io(|_| async move {
-            add_interface(InterfaceDef::ethv6_autocfg(NetworkDevice::eth()))?;
+            ioctx().add_interface(InterfaceDef::ethv6_autocfg(NetworkDevice::eth()))?;
             tokio::spawn(pong(800));
 
             sleep(Duration::from_secs(5)).await;
@@ -161,7 +161,7 @@ fn run() -> Result<(), RuntimeError> {
     sim.node(
         "host-3",
         AsyncHandler::io(|_| async move {
-            add_interface(InterfaceDef::ethv6_autocfg(NetworkDevice::eth()))?;
+            ioctx().add_interface(InterfaceDef::ethv6_autocfg(NetworkDevice::eth()))?;
             tokio::spawn(pong(800));
 
             sleep(Duration::from_secs(5)).await;
@@ -177,7 +177,7 @@ fn run() -> Result<(), RuntimeError> {
     sim.node(
         "host-4",
         AsyncHandler::io(|_| async move {
-            add_interface(InterfaceDef::ethv6_autocfg(NetworkDevice::eth()))?;
+            ioctx().add_interface(InterfaceDef::ethv6_autocfg(NetworkDevice::eth()))?;
             tokio::spawn(pong(800));
 
             sleep(Duration::from_secs(5)).await;
@@ -193,7 +193,7 @@ fn run() -> Result<(), RuntimeError> {
     sim.node(
         "host-5",
         AsyncHandler::io(|_| async move {
-            add_interface(InterfaceDef::ethv6_autocfg(NetworkDevice::eth()))?;
+            ioctx().add_interface(InterfaceDef::ethv6_autocfg(NetworkDevice::eth()))?;
             tokio::spawn(pong(800));
 
             sleep(Duration::from_secs(5)).await;
@@ -209,7 +209,7 @@ fn run() -> Result<(), RuntimeError> {
     sim.node(
         "host-6",
         AsyncHandler::io(|_| async move {
-            add_interface(InterfaceDef::ethv6_autocfg(NetworkDevice::eth()))?;
+            ioctx().add_interface(InterfaceDef::ethv6_autocfg(NetworkDevice::eth()))?;
             tokio::spawn(pong(800));
 
             sleep(Duration::from_secs(5)).await;

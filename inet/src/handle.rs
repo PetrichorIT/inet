@@ -10,6 +10,9 @@ use crate::ctx::IOContext;
 
 static NCURRENT: LazyLock<Mutex<Option<IOHandle>>> = const { LazyLock::new(Mutex::default) };
 
+/// Retrieves the current IO handle.
+#[track_caller]
+#[inline]
 pub fn ioctx() -> IOHandle {
     IOHandle::current()
 }
@@ -21,11 +24,15 @@ pub struct IOHandle(pub(super) Arc<Mutex<IOContext>>);
 pub(super) type IOHandleWeak = Weak<Mutex<IOContext>>;
 
 impl IOHandle {
+    #[track_caller]
     pub fn current() -> Self {
         let lock = NCURRENT.lock().expect("could not aquire io context lock");
-        lock.as_ref().cloned().expect("could not retrive handle")
+        lock.as_ref()
+            .cloned()
+            .expect("could not aquire handle to IO context (no active context found)")
     }
 
+    #[track_caller]
     pub fn try_current() -> Option<Self> {
         let lock = NCURRENT.try_lock().ok()?;
         lock.as_ref().cloned()
@@ -41,14 +48,17 @@ impl IOHandle {
         ret
     }
 
+    #[track_caller]
     pub(super) fn do_io<R>(&self, f: impl FnOnce(&mut IOContext) -> R) -> R {
         f(&mut self.0.lock().expect("could not lock IOContext"))
     }
 
+    #[track_caller]
     pub(super) fn try_do_io<R>(&self, f: impl FnOnce(&mut IOContext) -> R) -> Option<R> {
         Some(f(&mut *self.0.try_lock().ok()?))
     }
 
+    #[track_caller]
     pub(super) fn do_failable<T>(&self, f: impl FnOnce(&mut IOContext) -> Result<T>) -> Result<T> {
         let mut ctx = self.0.lock().expect("failed to get inner io context");
         if try_current().is_some_and(|m| m.id() != ctx.id) {

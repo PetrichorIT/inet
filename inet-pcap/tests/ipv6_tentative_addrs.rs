@@ -1,13 +1,14 @@
 use std::fs::File;
 
 use des::{
-    net::{module::Module, Sim},
+    net::{Sim, module::Module},
     registry,
     runtime::{Builder, RuntimeError},
 };
 use inet::{
     env::RoutingPort,
-    interface::{add_interface, InterfaceDef, NetworkDevice},
+    interface::{InterfaceDef, NetworkDevice},
+    ioctx,
     ipv6::util::setup_router,
     utils::{self, getaddrinfo},
 };
@@ -20,7 +21,9 @@ impl Module for HostAlice {
     fn at_sim_start(&mut self, _stage: usize) {
         pcap(File::create("out/ipv6_tentative_alice.pcap").unwrap()).unwrap();
 
-        add_interface(InterfaceDef::new("en0", NetworkDevice::eth()).v6()).unwrap();
+        ioctx()
+            .add_interface(InterfaceDef::new("en0", NetworkDevice::eth()).v6())
+            .unwrap();
     }
 
     fn at_sim_end(&mut self) -> Result<(), RuntimeError> {
@@ -37,7 +40,9 @@ impl Module for HostBob {
     fn at_sim_start(&mut self, _stage: usize) {
         pcap(File::create("out/ipv6_tentative_bob.pcap").unwrap()).unwrap();
 
-        add_interface(InterfaceDef::new("en0", NetworkDevice::eth()).v6()).unwrap();
+        ioctx()
+            .add_interface(InterfaceDef::new("en0", NetworkDevice::eth()).v6())
+            .unwrap();
     }
 
     fn at_sim_end(&mut self) -> Result<(), RuntimeError> {

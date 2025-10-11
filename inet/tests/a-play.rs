@@ -7,8 +7,11 @@ use des::{
 };
 use serial_test::serial;
 
-use inet::interface::{InterfaceDef, NetworkDevice, add_interface};
 use inet::tcp::TcpStream;
+use inet::{
+    interface::{InterfaceDef, NetworkDevice},
+    ioctx,
+};
 
 #[serial]
 #[test]
@@ -17,7 +20,7 @@ fn connect_no_local_ip_version() {
     sim.node(
         "sender",
         AsyncHandler::io(|_| async move {
-            add_interface(
+            ioctx().add_interface(
                 InterfaceDef::new("en0", NetworkDevice::eth())
                     .ip(Ipv4Addr::new(42, 0, 0, 42).into()),
             )?;

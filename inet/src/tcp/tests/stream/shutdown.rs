@@ -9,7 +9,8 @@ use serial_test::serial;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use crate::{
-    interface::{InterfaceDef, NetworkDevice, add_interface},
+    interface::{InterfaceDef, NetworkDevice},
+    ioctx,
     socket::{AsRawFd, bsd_socket_info},
     tcp::{TcpListener, TcpStream},
 };
@@ -21,11 +22,10 @@ fn test_tcp_removes_tcb() {
     sim.node(
         "client",
         AsyncHandler::io(|_| async move {
-            add_interface(
+            ioctx().add_interface(
                 InterfaceDef::new("en0", NetworkDevice::eth())
                     .ip(Ipv4Addr::new(192, 168, 2, 100).into()),
-            )
-            .unwrap();
+            )?;
 
             let mut sock = TcpStream::connect(("192.168.2.200", 80)).await?;
             let fd = sock.as_raw_fd();
@@ -44,11 +44,10 @@ fn test_tcp_removes_tcb() {
     sim.node(
         "server",
         AsyncHandler::io(|_| async move {
-            add_interface(
+            ioctx().add_interface(
                 InterfaceDef::new("en0", NetworkDevice::eth())
                     .ip(Ipv4Addr::new(192, 168, 2, 200).into()),
-            )
-            .unwrap();
+            )?;
 
             let lis = TcpListener::bind(("0.0.0.0", 80)).await?;
             let (mut stream, _) = lis.accept().await?;

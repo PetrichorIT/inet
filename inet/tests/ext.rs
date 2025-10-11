@@ -5,7 +5,7 @@ use des::{
     runtime::{Builder, RuntimeError},
     time::sleep,
 };
-use inet::extensions::with_ext;
+use inet::extensions::ExtensionHandle;
 
 #[test]
 fn basic_extension() -> Result<(), RuntimeError> {
@@ -18,12 +18,14 @@ fn basic_extension() -> Result<(), RuntimeError> {
     sim.node(
         "mynode",
         AsyncHandler::new(|_| async move {
-            with_ext(|e| *e = MyExt { value: 42 });
+            let ext = ExtensionHandle::<MyExt>::new();
+
+            ext.with(|e| *e = MyExt { value: 42 });
             sleep(Duration::from_secs(1)).await;
 
-            with_ext::<MyExt, _>(|ext| {
+            ext.with(|ext| {
                 assert_eq!(ext.value, 42);
-                println!("success")
+                println!("success");
             });
         }),
     );

@@ -10,7 +10,8 @@ use des::{
 };
 use inet::{
     UdpSocket,
-    interface::{InterfaceDef, NetworkDevice, add_interface},
+    interface::{InterfaceDef, NetworkDevice},
+    ioctx,
     ipv6::router,
     types::ip::{Ipv6AddrExt, Ipv6Prefix},
     utils::LinkLayerSwitch,
@@ -42,7 +43,7 @@ struct Router;
 impl Module for Router {
     fn at_sim_start(&mut self, _stage: usize) {
         router::declare_router().unwrap();
-        add_interface(InterfaceDef::loopback()).unwrap();
+        ioctx().add_interface(InterfaceDef::loopback()).unwrap();
 
         let prefix = current()
             .parent()

@@ -1,7 +1,4 @@
-use std::{
-    io::{Error, ErrorKind, Result},
-    net::IpAddr,
-};
+use std::{io::Result, net::IpAddr};
 
 use des::prelude::try_current;
 use serde::{Deserialize, Serialize};
@@ -14,7 +11,11 @@ use crate::{
     interface::{IfId, InterfaceAddrBindings, InterfaceEvent, InterfaceFlags, InterfaceName},
 };
 
-#[derive(Debug)]
+/// A handle to an existing interface (in a given IO context).
+///
+/// This handle can be used to manipulate / interact with the interface and
+/// its associated events.
+#[derive(Debug, Clone)]
 pub struct InterfaceHandle {
     pub(super) id: IfId,
     pub(super) io: IOHandle,
@@ -31,21 +32,7 @@ pub struct InterfaceStatus {
 }
 
 impl InterfaceHandle {
-    pub fn get(name: impl AsRef<str>) -> Result<Self> {
-        let io =
-            IOHandle::try_current().ok_or_else(|| Error::other("could not retrive IO handle"))?;
-        let (id, rx) = io
-            .do_io(|ctx| {
-                ctx.ifaces
-                    .iter()
-                    .find(|(_, v)| &*v.name == name.as_ref())
-                    .map(|(k, v)| (*k, v.state.events.subscribe()))
-            })
-            .ok_or_else(|| Error::new(ErrorKind::NotFound, "no such interface exists"))?;
-
-        Ok(Self { io, id, rx })
-    }
-
+    /// The interface's ID.
     pub fn id(&self) -> IfId {
         self.id
     }
@@ -56,7 +43,9 @@ impl InterfaceHandle {
         }
     }
 
-    /// Waits for an addr to become available
+    /// Waits for a new link-local address to become available.
+    ///
+    /// Note that this method will wait only for **new** link-local addresses.
     pub async fn wait_for_link_local(&mut self) {
         self.wait_for(|e| match e {
             InterfaceEvent::AddrUp(IpAddr::V6(addr)) => addr.is_link_local(),
@@ -65,7 +54,9 @@ impl InterfaceHandle {
         .await
     }
 
-    /// Waits for an addr to become available
+    /// Waits for a new global-unicast address to become available.
+    ///
+    /// Note that this method will wait only for **new** global-unicast addresses.
     pub async fn wait_for_global(&mut self) {
         self.wait_for(|e| match e {
             InterfaceEvent::AddrUp(IpAddr::V6(addr)) => {
@@ -76,20 +67,22 @@ impl InterfaceHandle {
         .await
     }
 
+    /// Manually adds a new unicast address to the interface.
+    /// This may not add the address immediately, if deduplication checks are required.
+    ///
+    /// # Errors
+    ///
+    /// This method may fail if the given interface does not support the address.
     pub fn add_addr(&self, addr: IpAddr) -> Result<()> {
         self.io
             .do_failable(|ctx| ctx.interface_add_addr(&self.id.to_string(), addr))
     }
 
-    pub fn status(&self) -> Result<InterfaceStatus> {
-        self.io.do_failable(|ctx| {
-            let Some(iface) = ctx.ifaces.get(&self.id) else {
-                return Err(Error::new(
-                    ErrorKind::InvalidInput,
-                    "no such interface exists",
-                ));
-            };
-            Ok(iface.status())
+    /// Retrieves the status of the interface.
+    pub fn status(&self) -> InterfaceStatus {
+        self.io.do_io(|ctx| {
+            let iface = ctx.ifaces.get(&self.id).expect("no such interface");
+            iface.status()
         })
     }
 }

@@ -14,7 +14,8 @@ use std::{
 
 use inet::{
     Current, UdpSocket,
-    interface::{IfId, InterfaceDef, add_interface, interface_status_by_ifid},
+    interface::{IfId, InterfaceDef},
+    ioctx,
     ipv4::{self, router::add_routing_entry},
     types::ip::{IpAddrLike, Ipv4Prefix, Ipv6AddrExt, Ipv6Prefix},
 };
@@ -93,7 +94,9 @@ impl RipRoutingDeamon {
         port: &RoutingPort,
         cfg: RipConfig,
     ) -> Self {
-        add_interface(InterfaceDef::new("lan", port.clone().into()).ipv4(raddr, mask)).unwrap();
+        ioctx()
+            .add_interface(InterfaceDef::new("lan", port.clone().into()).ipv4(raddr, mask))
+            .unwrap();
 
         let ports = RoutingInformation::collect();
         let mut c = 0;
@@ -113,7 +116,7 @@ impl RipRoutingDeamon {
                 if chan {
                     let iface = InterfaceDef::new(&format!("en{c}"), new_port.into())
                         .ipv4(raddr, Ipv4Addr::UNSPECIFIED);
-                    add_interface(iface).unwrap();
+                    ioctx().add_interface(iface).unwrap();
                     c += 1;
                 }
             }
@@ -296,7 +299,7 @@ impl RipRoutingDeamon {
                 } else {
                     // current
                     let c = Current::fetch();
-                    let info = interface_status_by_ifid(c.ifid).unwrap();
+                    let info = ioctx().get_interface_by_ifid(c.ifid).unwrap().status();
                     (info.name.to_string(), true)
                 };
                 (v4, incoming, new_neighbor)

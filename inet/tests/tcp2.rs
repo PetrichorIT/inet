@@ -2,7 +2,8 @@ use std::{error::Error, net::Ipv4Addr, time::Duration};
 
 use des::{net::Sim, prelude::Module, registry, runtime::Builder, time::sleep};
 use inet::{
-    interface::{InterfaceDef, NetworkDevice, add_interface},
+    interface::{InterfaceDef, NetworkDevice},
+    ioctx,
     tcp::{TcpListener, TcpStream},
 };
 use tokio::{
@@ -17,10 +18,12 @@ struct Server;
 
 impl Module for Client {
     fn at_sim_start(&mut self, _stage: usize) {
-        add_interface(
-            InterfaceDef::new("en0", NetworkDevice::eth()).ip(Ipv4Addr::new(69, 0, 0, 100).into()),
-        )
-        .unwrap();
+        ioctx()
+            .add_interface(
+                InterfaceDef::new("en0", NetworkDevice::eth())
+                    .ip(Ipv4Addr::new(69, 0, 0, 100).into()),
+            )
+            .unwrap();
 
         spawn(async move {
             let mut sock = TcpStream::connect("69.0.0.69:8000").await.unwrap();
@@ -38,10 +41,12 @@ impl Module for Client {
 
 impl Module for Server {
     fn at_sim_start(&mut self, _stage: usize) {
-        add_interface(
-            InterfaceDef::new("en0", NetworkDevice::eth()).ip(Ipv4Addr::new(69, 0, 0, 69).into()),
-        )
-        .unwrap();
+        ioctx()
+            .add_interface(
+                InterfaceDef::new("en0", NetworkDevice::eth())
+                    .ip(Ipv4Addr::new(69, 0, 0, 69).into()),
+            )
+            .unwrap();
 
         spawn(async move {
             let list = TcpListener::bind("0.0.0.0:8000").await.unwrap();

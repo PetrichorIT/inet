@@ -7,7 +7,7 @@ use std::{
     pin::Pin,
 };
 
-use inet::extensions::with_ext;
+use inet::ioctx;
 use tokio::sync::{
     mpsc::{self, Sender},
     oneshot,
@@ -29,7 +29,8 @@ pub fn resolve(
     host: &str,
     port: u16,
 ) -> Pin<Box<dyn Future<Output = Result<Vec<SocketAddr>>> + Send + 'static>> {
-    let tx = with_ext::<DnsExtension, _>(|ext| ext.tx.clone());
+    let ext = ioctx().get_extension::<DnsExtension>();
+    let tx = ext.with(|ext| ext.tx.clone());
     let tx = tx.unwrap_or_else(|| {
         let (tx, rx) = mpsc::channel(8);
         let ns = RecursiveNameserver::new(Zonefile::local())
@@ -42,7 +43,7 @@ pub fn resolve(
         tracing::trace!("starting client resolver");
         tokio::spawn(server.deploy());
 
-        with_ext::<DnsExtension, _>(|ext| ext.tx = Some(tx.clone()));
+        ext.with(|ext| ext.tx = Some(tx.clone()));
         tx
     });
 

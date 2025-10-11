@@ -5,7 +5,8 @@ use std::sync::{
 
 use des::{net::globals, prelude::*, registry, time::sleep};
 use inet::{
-    interface::{InterfaceDef, NetworkDevice, add_interface},
+    interface::{InterfaceDef, NetworkDevice},
+    ioctx,
     tcp::{TcpListener, TcpStream},
 };
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -26,7 +27,9 @@ impl Module for Node {
         dbg!(current().props_keys());
 
         let ip = current().prop::<IpAddr>("addr").unwrap().get().unwrap();
-        add_interface(InterfaceDef::new("en0", NetworkDevice::eth()).ip(ip)).unwrap();
+        ioctx()
+            .add_interface(InterfaceDef::new("en0", NetworkDevice::eth()).ip(ip))
+            .unwrap();
 
         let target = current()
             .prop::<Vec<u8>>("targets")

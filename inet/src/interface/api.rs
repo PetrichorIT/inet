@@ -1,10 +1,7 @@
 use super::{IfId, InterfaceAddrsV6, MacAddress, def::InterfaceDef};
 use crate::{
     IOContext, IOHandle,
-    interface::{
-        InterfaceAddrV4, InterfaceAddrV6, InterfaceEvent, InterfaceHandle, InterfaceStatus,
-    },
-    ioctx,
+    interface::{InterfaceAddrV4, InterfaceAddrV6, InterfaceEvent, InterfaceHandle, InterfaceName},
     ipv4::{
         arp::ArpEntryInternal,
         router::{FwdEntryV4, Ipv4Gateway, RoutingTableId},
@@ -13,44 +10,63 @@ use crate::{
 };
 use des::{net::module::current, time::SimTime};
 use std::{
-    io::{self, Error},
+    io::{self, Error, ErrorKind},
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
 };
 use tracing::Level;
 use types::ip::Ipv6AddrExt;
 
-/// Declares and activiates an new network interface on the current module
-pub fn add_interface(iface: InterfaceDef) -> io::Result<InterfaceHandle> {
-    ioctx().add_interface(iface)
-}
-
-pub fn interface_add_addr(iface: impl AsRef<str>, addr: IpAddr) -> io::Result<()> {
-    ioctx().interface_add_addr(iface, addr)
-}
-
-pub fn interface_status(iface: impl AsRef<str>) -> io::Result<InterfaceStatus> {
-    ioctx().interface_status(iface.as_ref())
-}
-
-pub fn interface_status_by_ifid(ifid: IfId) -> io::Result<InterfaceStatus> {
-    ioctx().interface_status_by_ifid(ifid)
-}
-
 impl IOHandle {
+    /// Creates a new network interface from an interface definition.
+    /// Returns a handle to the newly created interface.
+    ///
+    /// # Errors
+    ///
+    /// This function may fail if:
+    /// - an interface with the same name already exists.
+    /// - a requested address cannot be supported
+    /// - a misconfiguration is present
+    ///
     pub fn add_interface(&self, iface: InterfaceDef) -> io::Result<InterfaceHandle> {
         self.do_failable(|ctx| ctx.add_interface(iface))
     }
 
-    pub fn interface_add_addr(&self, iface: impl AsRef<str>, addr: IpAddr) -> io::Result<()> {
-        self.do_failable(|ctx| ctx.interface_add_addr(iface.as_ref(), addr))
+    /// Retrieves a handle to an existing interface, based on its name.
+    ///
+    /// # Errors
+    ///
+    /// This function may fail if no interface with the given name exists.
+    pub fn get_interface(&self, desc: &str) -> io::Result<InterfaceHandle> {
+        self.get_interface_by(|name| &**name == desc)
     }
 
-    pub fn interface_status(&self, iface: impl AsRef<str>) -> io::Result<InterfaceStatus> {
-        InterfaceHandle::get(iface)?.status()
+    /// Retrieves a handle to an existing interface, based on its id.
+    ///
+    /// # Errors
+    ///
+    /// This function may fail if no interface with the given id exists.
+    pub fn get_interface_by_ifid(&self, id: IfId) -> io::Result<InterfaceHandle> {
+        self.get_interface_by(|name| name.id() == id)
     }
 
-    pub fn interface_status_by_ifid(&self, ifid: IfId) -> io::Result<InterfaceStatus> {
-        InterfaceHandle::get(ifid.to_string())?.status()
+    pub(super) fn get_interface_by(
+        &self,
+        mut f: impl FnMut(&InterfaceName) -> bool,
+    ) -> io::Result<InterfaceHandle> {
+        let (id, rx) = self
+            .do_io(|ctx| {
+                ctx.ifaces
+                    .iter()
+                    .find(|(_, v)| f(&v.name))
+                    .map(|(k, v)| (*k, v.state.events.subscribe()))
+            })
+            .ok_or_else(|| Error::new(ErrorKind::NotFound, "no such interface exists"))?;
+
+        Ok(InterfaceHandle {
+            io: self.clone(),
+            id,
+            rx,
+        })
     }
 }
 

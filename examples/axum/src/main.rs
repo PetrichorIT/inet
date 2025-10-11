@@ -8,7 +8,8 @@ use hyper::{
     Body, Request, Uri,
 };
 use inet::{
-    interface::{add_interface, InterfaceDef, NetworkDevice},
+    interface::{InterfaceDef, NetworkDevice},
+    ioctx,
     tcp::TcpListener,
 };
 use inet_pcap::pcap;
@@ -20,11 +21,12 @@ struct Client;
 
 impl Module for Client {
     fn at_sim_start(&mut self, _: usize) {
-        add_interface(
-            InterfaceDef::new("en0", NetworkDevice::eth())
-                .ip(Ipv4Addr::new(192, 168, 2, 101).into()),
-        )
-        .unwrap();
+        ioctx()
+            .add_interface(
+                InterfaceDef::new("en0", NetworkDevice::eth())
+                    .ip(Ipv4Addr::new(192, 168, 2, 101).into()),
+            )
+            .unwrap();
 
         pcap(File::create("results/client.pcap").unwrap()).unwrap();
 
@@ -49,11 +51,12 @@ struct Server;
 
 impl Module for Server {
     fn at_sim_start(&mut self, _: usize) {
-        add_interface(
-            InterfaceDef::new("en0", NetworkDevice::eth())
-                .ip(Ipv4Addr::new(192, 168, 2, 10).into()),
-        )
-        .unwrap();
+        ioctx()
+            .add_interface(
+                InterfaceDef::new("en0", NetworkDevice::eth())
+                    .ip(Ipv4Addr::new(192, 168, 2, 10).into()),
+            )
+            .unwrap();
 
         spawn(async move {
             let router = Router::new().route(

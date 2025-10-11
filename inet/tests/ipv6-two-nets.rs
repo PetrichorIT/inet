@@ -14,7 +14,8 @@ use des::{
 };
 use inet::{
     UdpSocket,
-    interface::{InterfaceDef, NetworkDevice, add_interface, interface_status},
+    interface::{InterfaceDef, NetworkDevice},
+    ioctx,
     ipv6::router,
     utils,
 };
@@ -25,10 +26,12 @@ struct Host;
 
 impl Module for Host {
     fn at_sim_start(&mut self, _stage: usize) {
-        add_interface(InterfaceDef::ethv6_autocfg(NetworkDevice::eth())).unwrap();
+        ioctx()
+            .add_interface(InterfaceDef::ethv6_autocfg(NetworkDevice::eth()))
+            .unwrap();
         tokio::spawn(async move {
             des::time::sleep(Duration::from_secs(2)).await;
-            interface_status("en0").unwrap().publish();
+            ioctx().get_interface("en0").unwrap().status().publish();
 
             if current().path().as_str() == "net[0].host[0]" {
                 des::time::sleep(Duration::from_secs(1)).await;

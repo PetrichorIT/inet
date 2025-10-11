@@ -1,22 +1,23 @@
 use std::{
     error::Error,
-    io::ErrorKind,
+    io::{self, ErrorKind},
     net::{IpAddr, Ipv6Addr},
     sync::{
-        atomic::{AtomicBool, Ordering},
         Arc,
+        atomic::{AtomicBool, Ordering},
     },
     time::Duration,
 };
 
 use des::{
-    net::{globals, module::Module, Sim},
+    net::{Sim, globals, module::Module},
     registry,
     runtime::{Builder, RuntimeError},
 };
 use inet::{
     env::RoutingPort,
-    interface::{add_interface, interface_status, InterfaceDef, NetworkDevice},
+    interface::{InterfaceDef, NetworkDevice},
+    ioctx,
     ipv6::{self, util::setup_router},
     utils,
 };
@@ -29,7 +30,9 @@ struct AliceSuccess {
 
 impl Module for AliceSuccess {
     fn at_sim_start(&mut self, _stage: usize) {
-        add_interface(InterfaceDef::ethv6_autocfg(NetworkDevice::eth())).unwrap();
+        ioctx()
+            .add_interface(InterfaceDef::ethv6_autocfg(NetworkDevice::eth()))
+            .unwrap();
 
         let done = self.done.clone();
         tokio::spawn(async move {
@@ -67,7 +70,9 @@ struct AliceFailure {
 
 impl Module for AliceFailure {
     fn at_sim_start(&mut self, _stage: usize) {
-        add_interface(InterfaceDef::ethv6_autocfg(NetworkDevice::eth())).unwrap();
+        ioctx()
+            .add_interface(InterfaceDef::ethv6_autocfg(NetworkDevice::eth()))
+            .unwrap();
 
         let done = self.done.clone();
         tokio::spawn(async move {
@@ -101,12 +106,15 @@ struct Bob;
 
 impl Module for Bob {
     fn at_sim_start(&mut self, _stage: usize) {
-        // add_interface(Interface::loopback()).unwrap();
-        add_interface(InterfaceDef::ethv6_autocfg(NetworkDevice::eth())).unwrap();
+        // ioctx().add_interface(Interface::loopback()).unwrap();
+        ioctx()
+            .add_interface(InterfaceDef::ethv6_autocfg(NetworkDevice::eth()))
+            .unwrap();
 
         tokio::spawn(async {
             des::time::sleep(Duration::from_secs(5)).await;
-            interface_status("en0").unwrap().publish();
+            ioctx().get_interface("en0")?.status().publish();
+            Ok::<_, io::Error>(())
         });
     }
 }

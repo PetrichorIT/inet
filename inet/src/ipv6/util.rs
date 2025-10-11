@@ -3,9 +3,10 @@ use std::{io, net::Ipv6Addr, time::Duration};
 use types::ip::Ipv6Prefix;
 
 use crate::{
-    env::RoutingPort,
-    interface::{add_interface, InterfaceDef, NetworkDevice},
     IOContext,
+    env::RoutingPort,
+    interface::{InterfaceDef, NetworkDevice},
+    ioctx,
 };
 
 use super::cfg::{RouterInterfaceConfiguration, RouterPrefix};
@@ -24,7 +25,7 @@ pub fn setup_router(
         .ipv6_link_local();
 
         iface.flags.router = true;
-        add_interface(iface)?;
+        ioctx().add_interface(iface)?;
     }
 
     IOContext::failable_api(|ctx| {

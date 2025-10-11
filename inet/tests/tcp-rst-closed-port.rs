@@ -5,7 +5,8 @@ use std::sync::{
 
 use des::{prelude::*, registry, time::sleep};
 use inet::{
-    interface::{InterfaceDef, NetworkDevice, add_interface},
+    interface::{InterfaceDef, NetworkDevice},
+    ioctx,
     tcp::{TcpListener, TcpStream},
 };
 use tokio::spawn;
@@ -17,10 +18,12 @@ struct OneAttemptClient {
 
 impl Module for OneAttemptClient {
     fn at_sim_start(&mut self, _: usize) {
-        add_interface(
-            InterfaceDef::new("en0", NetworkDevice::eth()).ip(Ipv4Addr::new(69, 0, 0, 200).into()),
-        )
-        .unwrap();
+        ioctx()
+            .add_interface(
+                InterfaceDef::new("en0", NetworkDevice::eth())
+                    .ip(Ipv4Addr::new(69, 0, 0, 200).into()),
+            )
+            .unwrap();
 
         let done = self.done.clone();
         spawn(async move {
@@ -44,10 +47,12 @@ struct MultipleAttemptClient<const EXPECT: bool> {
 
 impl<const EXPECT: bool> Module for MultipleAttemptClient<EXPECT> {
     fn at_sim_start(&mut self, _: usize) {
-        add_interface(
-            InterfaceDef::new("en0", NetworkDevice::eth()).ip(Ipv4Addr::new(69, 0, 0, 100).into()),
-        )
-        .unwrap();
+        ioctx()
+            .add_interface(
+                InterfaceDef::new("en0", NetworkDevice::eth())
+                    .ip(Ipv4Addr::new(69, 0, 0, 100).into()),
+            )
+            .unwrap();
 
         let done = self.done.clone();
         spawn(async move {
@@ -74,10 +79,12 @@ struct EmptyServer {}
 
 impl Module for EmptyServer {
     fn at_sim_start(&mut self, _: usize) {
-        add_interface(
-            InterfaceDef::new("en0", NetworkDevice::eth()).ip(Ipv4Addr::new(69, 0, 0, 69).into()),
-        )
-        .unwrap();
+        ioctx()
+            .add_interface(
+                InterfaceDef::new("en0", NetworkDevice::eth())
+                    .ip(Ipv4Addr::new(69, 0, 0, 69).into()),
+            )
+            .unwrap();
     }
 }
 
@@ -86,10 +93,12 @@ struct BoundServer {}
 
 impl Module for BoundServer {
     fn at_sim_start(&mut self, _: usize) {
-        add_interface(
-            InterfaceDef::new("en0", NetworkDevice::eth()).ip(Ipv4Addr::new(69, 0, 0, 69).into()),
-        )
-        .unwrap();
+        ioctx()
+            .add_interface(
+                InterfaceDef::new("en0", NetworkDevice::eth())
+                    .ip(Ipv4Addr::new(69, 0, 0, 69).into()),
+            )
+            .unwrap();
 
         spawn(async move {
             let sock = TcpListener::bind("0.0.0.0:10000").await.unwrap();

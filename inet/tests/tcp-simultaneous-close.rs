@@ -10,6 +10,7 @@ use std::{
 use des::prelude::*;
 use inet::{
     interface::*,
+    ioctx,
     socket::{AsRawFd, Fd},
     tcp::{Config, TcpListener, TcpStream, set_config},
 };
@@ -35,10 +36,12 @@ struct TcpServer {
 
 impl Module for TcpServer {
     fn at_sim_start(&mut self, _: usize) {
-        add_interface(
-            InterfaceDef::new("en0", NetworkDevice::eth()).ip(Ipv4Addr::new(69, 0, 0, 100).into()),
-        )
-        .unwrap();
+        ioctx()
+            .add_interface(
+                InterfaceDef::new("en0", NetworkDevice::eth())
+                    .ip(Ipv4Addr::new(69, 0, 0, 100).into()),
+            )
+            .unwrap();
 
         let done = self.done.clone();
         let fd = self.fd.clone();
@@ -113,10 +116,12 @@ struct TcpClient {
 
 impl Module for TcpClient {
     fn at_sim_start(&mut self, _: usize) {
-        add_interface(
-            InterfaceDef::new("en0", NetworkDevice::eth()).ip(Ipv4Addr::new(69, 0, 0, 200).into()),
-        )
-        .unwrap();
+        ioctx()
+            .add_interface(
+                InterfaceDef::new("en0", NetworkDevice::eth())
+                    .ip(Ipv4Addr::new(69, 0, 0, 200).into()),
+            )
+            .unwrap();
 
         let done = self.done.clone();
         let fd = self.fd.clone();

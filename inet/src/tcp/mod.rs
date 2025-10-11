@@ -359,6 +359,29 @@ impl IOContext {
         }
     }
 
+    pub fn tcp_poll_peek(
+        &mut self,
+        fd: Fd,
+        cx: &mut Context<'_>,
+        buf: &mut ReadBuf<'_>,
+    ) -> Poll<Result<usize, Error>> {
+        let Some(con) = self.tcp.streams.get_mut(&fd) else {
+            todo!()
+        };
+
+        match con.peek(buf.initialize_unfilled()) {
+            Ok(n) => {
+                // No set_active since peek does not consume data
+                Poll::Ready(Ok(n))
+            }
+            Err(e) if e.kind() == ErrorKind::WouldBlock => {
+                con.interface.register(Interest::READABLE, cx);
+                Poll::Pending
+            }
+            Err(e) => Poll::Ready(Err(e)),
+        }
+    }
+
     //
     // TCP write()
     //

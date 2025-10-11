@@ -7,7 +7,8 @@ use des::{
 };
 use inet::{
     env::RoutingPort,
-    interface::{InterfaceDef, NetworkDevice, add_interface},
+    interface::{InterfaceDef, NetworkDevice},
+    ioctx,
     ipv6::util::setup_router,
     tcp::{TcpListener, TcpStream},
     utils,
@@ -22,7 +23,9 @@ impl Module for HostAlice {
     fn at_sim_start(&mut self, _stage: usize) {
         pcap(File::create("out/ipv6_tcp_stack_alice.pcap").unwrap()).unwrap();
 
-        add_interface(InterfaceDef::ethv6_autocfg(NetworkDevice::eth())).unwrap();
+        ioctx()
+            .add_interface(InterfaceDef::ethv6_autocfg(NetworkDevice::eth()))
+            .unwrap();
 
         tokio::spawn(async move {
             des::time::sleep(Duration::from_secs(2)).await;
@@ -42,7 +45,9 @@ impl Module for HostBob {
     fn at_sim_start(&mut self, _stage: usize) {
         pcap(File::create("out/ipv6_tcp_stack_bob.pcap").unwrap()).unwrap();
 
-        add_interface(InterfaceDef::ethv6_autocfg(NetworkDevice::eth())).unwrap();
+        ioctx()
+            .add_interface(InterfaceDef::ethv6_autocfg(NetworkDevice::eth()))
+            .unwrap();
 
         tokio::spawn(async move {
             let list = TcpListener::bind(":::8000").await.unwrap();

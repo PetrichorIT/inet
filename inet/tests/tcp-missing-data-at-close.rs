@@ -10,7 +10,7 @@ use std::{
 use types::{ip::Ipv4Packet, tcp::TcpPacket};
 
 use des::prelude::*;
-use inet::{interface::*, socket::AsRawFd, tcp::TcpSocket};
+use inet::{interface::*, ioctx, socket::AsRawFd, tcp::TcpSocket};
 
 #[derive(Default)]
 struct Link {}
@@ -51,10 +51,12 @@ struct TcpServer {
 
 impl Module for TcpServer {
     fn at_sim_start(&mut self, _: usize) {
-        add_interface(
-            InterfaceDef::new("en0", NetworkDevice::eth()).ip(Ipv4Addr::new(69, 0, 0, 100).into()),
-        )
-        .unwrap();
+        ioctx()
+            .add_interface(
+                InterfaceDef::new("en0", NetworkDevice::eth())
+                    .ip(Ipv4Addr::new(69, 0, 0, 100).into()),
+            )
+            .unwrap();
 
         // inet::pcap::pcap(inet::pcap::PcapConfig {
         //     filters: inet::pcap::PcapFilters::default(),
@@ -143,10 +145,12 @@ struct TcpClient {
 
 impl Module for TcpClient {
     fn at_sim_start(&mut self, _: usize) {
-        add_interface(
-            InterfaceDef::new("en0", NetworkDevice::eth()).ip(Ipv4Addr::new(69, 0, 0, 200).into()),
-        )
-        .unwrap();
+        ioctx()
+            .add_interface(
+                InterfaceDef::new("en0", NetworkDevice::eth())
+                    .ip(Ipv4Addr::new(69, 0, 0, 200).into()),
+            )
+            .unwrap();
 
         // inet::pcap::pcap(inet::pcap::PcapConfig {
         //     filters: inet::pcap::PcapFilters::default(),

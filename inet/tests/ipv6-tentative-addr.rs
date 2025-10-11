@@ -12,7 +12,8 @@ use des::{
     time::SimTime,
 };
 use inet::{
-    interface::{InterfaceDef, NetworkDevice, add_interface, interface_status},
+    interface::{InterfaceDef, NetworkDevice},
+    ioctx,
     ipv6::{api::set_node_cfg, cfg::HostConfiguration, router},
 };
 use serial_test::serial;
@@ -23,15 +24,17 @@ struct WithChecks;
 
 impl Module for WithChecks {
     fn at_sim_start(&mut self, _stage: usize) {
-        add_interface(InterfaceDef::new("en0", NetworkDevice::eth()).v6()).unwrap();
+        let handle = ioctx()
+            .add_interface(InterfaceDef::new("en0", NetworkDevice::eth()).v6())
+            .unwrap();
 
-        let state = interface_status("en0").unwrap();
+        let state = handle.status();
         assert_eq!(state.addrs.addrs().count(), 0);
         assert_eq!(state.addrs.multicast_scopes().len(), 1); // sol-multicast (delayed) + all nodes multicast
     }
 
     fn at_sim_end(&mut self) -> Result<(), RuntimeError> {
-        let state = interface_status("en0").unwrap();
+        let state = ioctx().get_interface("en0").unwrap().status();
         assert_eq!(state.addrs.addrs().count(), 1);
         assert_eq!(state.addrs.multicast_scopes().len(), 2); // sol-multicast (delayed) + all nodes multicast
         Ok(())
@@ -49,14 +52,16 @@ impl Module for WithoutChecks {
         })
         .unwrap();
 
-        add_interface(InterfaceDef::new("en0", NetworkDevice::eth()).v6()).unwrap();
-        let state = interface_status("en0").unwrap();
+        let handle = ioctx()
+            .add_interface(InterfaceDef::new("en0", NetworkDevice::eth()).v6())
+            .unwrap();
+        let state = handle.status();
         assert_eq!(state.addrs.addrs().count(), 1);
         assert_eq!(state.addrs.multicast_scopes().len(), 2); // sol-multicast + all nodes multicast
     }
 
     fn at_sim_end(&mut self) -> Result<(), RuntimeError> {
-        let state = interface_status("en0").unwrap();
+        let state = ioctx().get_interface("en0").unwrap().status();
         assert_eq!(state.addrs.addrs().count(), 1);
         assert_eq!(state.addrs.multicast_scopes().len(), 2); // sol-multicast + all nodes multicast
         Ok(())
@@ -68,15 +73,17 @@ struct ManualAssignWithoutDedup;
 
 impl Module for ManualAssignWithoutDedup {
     fn at_sim_start(&mut self, _stage: usize) {
-        add_interface(InterfaceDef::ethv6_autocfg(NetworkDevice::eth())).unwrap();
+        let handle = ioctx()
+            .add_interface(InterfaceDef::ethv6_autocfg(NetworkDevice::eth()))
+            .unwrap();
 
-        let state = interface_status("en0").unwrap();
+        let state = handle.status();
         assert_eq!(state.addrs.addrs().count(), 1);
         assert_eq!(state.addrs.multicast_scopes().len(), 2); // sol-multicast + all nodes multicast
     }
 
     fn at_sim_end(&mut self) -> Result<(), RuntimeError> {
-        let state = interface_status("en0").unwrap();
+        let state = ioctx().get_interface("en0").unwrap().status();
         assert_eq!(state.addrs.addrs().count(), 1);
         assert_eq!(state.addrs.multicast_scopes().len(), 2); // sol-multicast + all nodes multicast
         Ok(())
@@ -106,13 +113,17 @@ impl Module for AssignSameAddr {
         let mac = MacAddress::from([1, 2, 3, 4, 5, 6]);
         assert!(!mac.is_multicast());
         device.addr = mac;
-        add_interface(InterfaceDef::new("en0", device).v6()).unwrap();
+        ioctx()
+            .add_interface(InterfaceDef::new("en0", device).v6())
+            .unwrap();
     }
 
     fn at_sim_end(&mut self) -> Result<(), RuntimeError> {
         assert_ne!(
-            interface_status("en0")
+            ioctx()
+                .get_interface("en0")
                 .unwrap()
+                .status()
                 .addrs
                 .addrs()
                 .collect::<Vec<_>>(),
@@ -242,7 +253,8 @@ fn interface_handle_wait_for_link_local() -> Result<(), RuntimeError> {
     sim.node(
         "sender",
         AsyncHandler::failable::<_, _, std::io::Error>(|_| async move {
-            let mut handle = add_interface(InterfaceDef::new("en0", NetworkDevice::eth()).v6())?;
+            let mut handle =
+                ioctx().add_interface(InterfaceDef::new("en0", NetworkDevice::eth()).v6())?;
             handle.wait_for_link_local().await;
             assert_eq!(SimTime::now(), 1.0);
             Ok(())
@@ -252,7 +264,8 @@ fn interface_handle_wait_for_link_local() -> Result<(), RuntimeError> {
     sim.node(
         "receiver",
         AsyncHandler::failable::<_, _, std::io::Error>(|_| async move {
-            let mut handle = add_interface(InterfaceDef::new("en0", NetworkDevice::eth()).v6())?;
+            let mut handle =
+                ioctx().add_interface(InterfaceDef::new("en0", NetworkDevice::eth()).v6())?;
             handle.wait_for_link_local().await;
             assert_eq!(SimTime::now(), 1.0);
             Ok(())
@@ -287,7 +300,8 @@ fn interface_handle_wait_for_global() -> Result<(), RuntimeError> {
     sim.node(
         "client",
         AsyncHandler::failable::<_, _, std::io::Error>(|_| async move {
-            let mut handle = add_interface(InterfaceDef::new("en0", NetworkDevice::eth()).v6())?;
+            let mut handle =
+                ioctx().add_interface(InterfaceDef::new("en0", NetworkDevice::eth()).v6())?;
             handle.wait_for_global().await;
             assert!(SimTime::now() > 1.0.into());
             Ok(())

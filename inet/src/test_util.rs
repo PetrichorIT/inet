@@ -13,7 +13,8 @@ use des::{
 use tokio::sync::mpsc::Receiver;
 
 use crate::{
-    interface::{InterfaceDef, NetworkDevice, add_interface},
+    interface::{InterfaceDef, NetworkDevice},
+    ioctx,
     utils::LinkLayerSwitch,
 };
 
@@ -112,7 +113,8 @@ impl SimpleSim {
             AsyncHandler::io(move |_rx| {
                 let f = f();
                 async move {
-                    add_interface(InterfaceDef::new("en0", NetworkDevice::eth()).ip(addr))?;
+                    ioctx()
+                        .add_interface(InterfaceDef::new("en0", NetworkDevice::eth()).ip(addr))?;
                     f.await
                 }
             }),
@@ -138,7 +140,8 @@ impl SimpleSim {
                 // TODO: add option to ensure no packet escapes the IOContext, aka rx remains empty
                 let f = f();
                 async move {
-                    add_interface(InterfaceDef::new("en0", NetworkDevice::eth()).ip(addr))?;
+                    ioctx()
+                        .add_interface(InterfaceDef::new("en0", NetworkDevice::eth()).ip(addr))?;
                     f.await
                 }
             })

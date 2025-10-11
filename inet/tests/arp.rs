@@ -1,7 +1,8 @@
 use bytes_io::Bytes;
 use des::{net::globals, prelude::*, registry, time::sleep};
 use inet::{
-    interface::{InterfaceDef, NetworkDevice, add_interface},
+    interface::{InterfaceDef, NetworkDevice},
+    ioctx,
     ipv4::arp::arpa,
     socket::RawIpSocket,
 };
@@ -26,7 +27,9 @@ impl Default for Node {
 impl Module for Node {
     fn at_sim_start(&mut self, _stage: usize) {
         let ip = current().prop::<IpAddr>("addr").unwrap().get().unwrap();
-        add_interface(InterfaceDef::new("en0", NetworkDevice::eth()).ip(ip)).unwrap();
+        ioctx()
+            .add_interface(InterfaceDef::new("en0", NetworkDevice::eth()).ip(ip))
+            .unwrap();
 
         self.ip = ip;
 

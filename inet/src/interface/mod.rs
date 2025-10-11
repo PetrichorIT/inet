@@ -17,7 +17,6 @@ mod def;
 pub use self::def::*;
 
 mod api;
-pub use self::api::*;
 
 mod device;
 pub use self::device::*;

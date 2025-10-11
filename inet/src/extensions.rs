@@ -7,12 +7,13 @@ use std::{
 
 use crate::{IOContext, IOHandle};
 
-pub fn with_ext<E: Default + Any, R>(f: impl FnOnce(&mut E) -> R) -> R {
-    ExtensionHandle::new().with(f)
-}
-
-pub fn try_with_ext<E: Default + Any, R>(f: impl FnOnce(&mut E) -> R) -> Option<R> {
-    ExtensionHandle::new().try_with(f)
+impl IOHandle {
+    pub fn get_extension<E: Default + Any>(&self) -> ExtensionHandle<E> {
+        ExtensionHandle {
+            handle: self.clone(),
+            _phantom: PhantomData,
+        }
+    }
 }
 
 pub struct ExtensionHandle<E> {

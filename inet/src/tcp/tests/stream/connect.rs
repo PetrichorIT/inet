@@ -8,7 +8,8 @@ use des::{
 use serial_test::serial;
 
 use crate::{
-    interface::{InterfaceDef, NetworkDevice, add_interface},
+    interface::{InterfaceDef, NetworkDevice},
+    ioctx,
     tcp::{Config, TcpListener, TcpStream, set_config},
 };
 
@@ -44,7 +45,7 @@ fn connect_ip_version_missmatch() {
     sim.node(
         "alice",
         AsyncHandler::io(|_| async move {
-            add_interface(
+            ioctx().add_interface(
                 InterfaceDef::new("en0", NetworkDevice::eth())
                     .ip(Ipv4Addr::new(42, 0, 0, 42).into()),
             )?;
@@ -78,7 +79,7 @@ fn connect_without_ipv4_gateway() {
     sim.node(
         "alice",
         AsyncHandler::io(|_| async move {
-            add_interface(
+            ioctx().add_interface(
                 InterfaceDef::new("en0", NetworkDevice::eth())
                     .ip(Ipv4Addr::new(42, 0, 0, 42).into()),
             )?;
@@ -112,7 +113,7 @@ fn connect_to_non_listener_peer() {
     sim.node(
         "alice",
         AsyncHandler::io(|_| async move {
-            add_interface(
+            ioctx().add_interface(
                 InterfaceDef::new("en0", NetworkDevice::eth())
                     .ip(Ipv4Addr::new(100, 0, 0, 42).into()),
             )?;
@@ -129,7 +130,7 @@ fn connect_to_non_listener_peer() {
     sim.node(
         "bob",
         AsyncHandler::io(|_| async move {
-            add_interface(
+            ioctx().add_interface(
                 InterfaceDef::new("en0", NetworkDevice::eth())
                     .ip(Ipv4Addr::new(100, 0, 0, 69).into()),
             )?;
@@ -147,7 +148,7 @@ fn connect_syn_timeout_no_rst() {
     sim.node(
         "alice",
         AsyncHandler::io(|_| async move {
-            add_interface(
+            ioctx().add_interface(
                 InterfaceDef::new("en0", NetworkDevice::eth())
                     .ip(Ipv4Addr::new(100, 0, 0, 42).into()),
             )?;
@@ -168,7 +169,7 @@ fn connect_syn_timeout_no_rst() {
     sim.node(
         "bob",
         AsyncHandler::io(|_| async move {
-            add_interface(
+            ioctx().add_interface(
                 InterfaceDef::new("en0", NetworkDevice::eth())
                     .ip(Ipv4Addr::new(100, 0, 0, 69).into()),
             )?;
@@ -190,7 +191,7 @@ fn connect_success() {
     sim.node(
         "alice",
         AsyncHandler::io(|_| async move {
-            add_interface(
+            ioctx().add_interface(
                 InterfaceDef::new("en0", NetworkDevice::eth())
                     .ip(Ipv4Addr::new(100, 0, 0, 42).into()),
             )?;
@@ -205,7 +206,7 @@ fn connect_success() {
     sim.node(
         "bob",
         AsyncHandler::io(|_| async move {
-            add_interface(
+            ioctx().add_interface(
                 InterfaceDef::new("en0", NetworkDevice::eth())
                     .ip(Ipv4Addr::new(100, 0, 0, 69).into()),
             )?;
@@ -226,7 +227,7 @@ fn connect_success_without_accept() {
     sim.node(
         "alice",
         AsyncHandler::io(|_| async move {
-            add_interface(
+            ioctx().add_interface(
                 InterfaceDef::new("en0", NetworkDevice::eth())
                     .ip(Ipv4Addr::new(100, 0, 0, 42).into()),
             )?;
@@ -241,7 +242,7 @@ fn connect_success_without_accept() {
     sim.node(
         "bob",
         AsyncHandler::io(|_| async move {
-            add_interface(
+            ioctx().add_interface(
                 InterfaceDef::new("en0", NetworkDevice::eth())
                     .ip(Ipv4Addr::new(100, 0, 0, 69).into()),
             )?;

@@ -2,8 +2,9 @@ use des::{net::handlers::AsyncHandler, prelude::*, time::sleep};
 use serial_test::serial;
 
 use crate::{
-    interface::{add_interface, InterfaceDef, NetworkDevice},
     UdpSocket,
+    interface::{InterfaceDef, NetworkDevice},
+    ioctx,
 };
 
 const CHANNEL: DatarateChannelMetrics = DatarateChannelMetrics::new(
@@ -20,11 +21,11 @@ fn specific_bind_recv_restrictivly() -> Result<(), RuntimeError> {
     sim.node(
         "receiver",
         AsyncHandler::io(|_| async move {
-            add_interface(
+            ioctx().add_interface(
                 InterfaceDef::new("net-a", NetworkDevice::gate("net-a", 0).unwrap())
                     .ip(Ipv4Addr::new(192, 168, 2, 100).into()),
             )?;
-            add_interface(
+            ioctx().add_interface(
                 InterfaceDef::new("net-b", NetworkDevice::gate("net-b", 0).unwrap())
                     .ip(Ipv4Addr::new(10, 20, 30, 100).into()),
             )?;
@@ -42,7 +43,7 @@ fn specific_bind_recv_restrictivly() -> Result<(), RuntimeError> {
     sim.node(
         "net-a-sender",
         AsyncHandler::io(|_| async move {
-            add_interface(
+            ioctx().add_interface(
                 InterfaceDef::new("en0", NetworkDevice::eth())
                     .ip(Ipv4Addr::new(192, 168, 2, 101).into()),
             )?;
@@ -62,7 +63,7 @@ fn specific_bind_recv_restrictivly() -> Result<(), RuntimeError> {
     sim.node(
         "net-b-sender",
         AsyncHandler::io(|_| async move {
-            add_interface(
+            ioctx().add_interface(
                 InterfaceDef::new("en0", NetworkDevice::eth())
                     .ip(Ipv4Addr::new(10, 20, 30, 101).into()),
             )?;
@@ -99,11 +100,11 @@ fn zero_bind_recv_all() -> Result<(), RuntimeError> {
     sim.node(
         "receiver",
         AsyncHandler::io(|_| async move {
-            add_interface(
+            ioctx().add_interface(
                 InterfaceDef::new("net-a", NetworkDevice::gate("net-a", 0).unwrap())
                     .ip(Ipv4Addr::new(192, 168, 2, 100).into()),
             )?;
-            add_interface(
+            ioctx().add_interface(
                 InterfaceDef::new("net-b", NetworkDevice::gate("net-b", 0).unwrap())
                     .ip(Ipv4Addr::new(10, 20, 30, 100).into()),
             )?;
@@ -123,7 +124,7 @@ fn zero_bind_recv_all() -> Result<(), RuntimeError> {
     sim.node(
         "net-a-sender",
         AsyncHandler::io(|_| async move {
-            add_interface(
+            ioctx().add_interface(
                 InterfaceDef::new("en0", NetworkDevice::eth())
                     .ip(Ipv4Addr::new(192, 168, 2, 101).into()),
             )?;
@@ -142,7 +143,7 @@ fn zero_bind_recv_all() -> Result<(), RuntimeError> {
     sim.node(
         "net-b-sender",
         AsyncHandler::io(|_| async move {
-            add_interface(
+            ioctx().add_interface(
                 InterfaceDef::new("en0", NetworkDevice::eth())
                     .ip(Ipv4Addr::new(10, 20, 30, 101).into()),
             )?;

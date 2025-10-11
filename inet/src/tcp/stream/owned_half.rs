@@ -80,15 +80,15 @@ impl OwnedReadHalf {
             .do_io(|ctx| ctx.socket_get_peer(self.inner.fd))
     }
 
-    /// DEPRECATED
-    #[deprecated(note = "Cannot create simulated socket from std::net::TcpStream")]
-    #[allow(unused)]
+    /// Poll Peek
     pub fn poll_peek(
         &self,
         cx: &mut Context<'_>,
         buf: &mut ReadBuf<'_>,
     ) -> Poll<Result<usize, Error>> {
-        unimplemented!()
+        self.inner
+            .handle
+            .do_io(|ctx| ctx.tcp_poll_peek(self.inner.fd, cx, buf))
     }
 
     /// Waits for any of the requested ready states.
@@ -129,11 +129,17 @@ impl OwnedReadHalf {
         unimplemented!()
     }
 
-    /// DEPRECATED
-    #[deprecated(note = "Cannot create simulated socket from std::net::TcpStream")]
-    #[allow(unused)]
+    /// Read vectored
     pub fn try_read_vectored(&self, bufs: &mut [IoSliceMut<'_>]) -> Result<usize, Error> {
-        unimplemented!()
+        let mut n = 0;
+        for buf in bufs {
+            n += match self.try_read(buf) {
+                Ok(n) => n,
+                Err(e) if e.kind() == ErrorKind::WouldBlock && n > 0 => break,
+                Err(e) => return Err(e),
+            };
+        }
+        Ok(n)
     }
 }
 
@@ -197,11 +203,19 @@ impl OwnedWriteHalf {
             .do_io(|ctx| ctx.tcp_write(self.inner.fd, buf))
     }
 
-    /// DEPRECATED
-    #[deprecated(note = "Cannot create simulated socket from std::net::TcpStream")]
-    #[allow(unused)]
+    /// Write vectored
     pub fn try_write_vectored(&self, bufs: &[IoSlice<'_>]) -> Result<usize, Error> {
-        unimplemented!()
+        let mut n = 0;
+        for buf in bufs {
+            n += match self.try_write(buf) {
+                Ok(n) => n,
+                Err(e) if e.kind() == ErrorKind::WouldBlock && n > 0 => {
+                    break;
+                }
+                Err(e) => return Err(e),
+            };
+        }
+        Ok(n)
     }
 }
 

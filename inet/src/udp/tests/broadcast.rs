@@ -1,11 +1,7 @@
 use serial_test::serial;
 use std::io;
 
-use crate::{
-    interface::{add_interface, InterfaceDef},
-    test_util::SimpleSim,
-    UdpSocket,
-};
+use crate::{UdpSocket, interface::InterfaceDef, ioctx, test_util::SimpleSim};
 use des::{prelude::*, time::sleep};
 
 //
@@ -123,7 +119,7 @@ fn broadcast_with_loopback() -> Result<(), RuntimeError> {
         sim.node_require_join(&addr.to_string(), move || {
             let packets = packets.clone();
             async move {
-                add_interface(InterfaceDef::loopback())?;
+                ioctx().add_interface(InterfaceDef::loopback())?;
 
                 let sender = tokio::spawn(async move {
                     let udp = UdpSocket::bind("0.0.0.0:0").await?;
@@ -163,7 +159,7 @@ fn broadcast_with_loopback() -> Result<(), RuntimeError> {
 fn broadcast_loopback_assigns_lo_addr() -> Result<(), RuntimeError> {
     let mut sim = SimpleSim::new(crate::init);
     sim.node_require_join("192.168.2.100", || async move {
-        add_interface(InterfaceDef::loopback())?;
+        ioctx().add_interface(InterfaceDef::loopback())?;
 
         let h = tokio::spawn(async move {
             sleep(Duration::from_secs(1)).await;

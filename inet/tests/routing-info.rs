@@ -3,7 +3,8 @@ use std::str::FromStr;
 use des::{prelude::*, registry};
 use inet::{
     env::{RoutingInformation, RoutingPeer},
-    interface::{add_interface, InterfaceDef, NetworkDevice},
+    interface::{InterfaceDef, NetworkDevice},
+    ioctx,
 };
 
 #[derive(Default)]
@@ -17,18 +18,20 @@ struct Main;
 
 impl Module for A {
     fn at_sim_start(&mut self, _stage: usize) {
-        add_interface(
-            InterfaceDef::new("en0", NetworkDevice::eth()).ip("192.168.2.100".parse().unwrap()),
-        )
-        .unwrap();
+        ioctx()
+            .add_interface(
+                InterfaceDef::new("en0", NetworkDevice::eth()).ip("192.168.2.100".parse().unwrap()),
+            )
+            .unwrap();
     }
 }
 impl Module for B {
     fn at_sim_start(&mut self, _stage: usize) {
-        add_interface(
-            InterfaceDef::new("en0", NetworkDevice::eth()).ip("192.168.2.200".parse().unwrap()),
-        )
-        .unwrap();
+        ioctx()
+            .add_interface(
+                InterfaceDef::new("en0", NetworkDevice::eth()).ip("192.168.2.200".parse().unwrap()),
+            )
+            .unwrap();
     }
 }
 impl Module for C {}

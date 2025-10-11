@@ -1,7 +1,8 @@
 use bytes_io::Bytes;
 use des::{net::handlers::AsyncHandler, prelude::*, time::sleep};
 use inet::{
-    interface::{IfId, InterfaceDef, NetworkDevice, add_interface},
+    interface::{IfId, InterfaceDef, NetworkDevice},
+    ioctx,
     ipv6::router,
     socket::RawIpSocket,
 };
@@ -21,7 +22,7 @@ fn icmp_drop_packet_too_big() -> Result<(), RuntimeError> {
     sim.node(
         "alice",
         AsyncHandler::io(|_| async move {
-            add_interface(InterfaceDef::ethv6_autocfg(NetworkDevice::eth()))?;
+            ioctx().add_interface(InterfaceDef::ethv6_autocfg(NetworkDevice::eth()))?;
             sleep(Duration::from_secs(2)).await;
 
             let raw = RawIpSocket::new_v6()?;
@@ -54,7 +55,7 @@ fn icmp_drop_packet_too_big() -> Result<(), RuntimeError> {
     sim.node(
         "bob",
         AsyncHandler::io(|mut rx| async move {
-            add_interface(InterfaceDef::ethv6_autocfg(NetworkDevice::eth()))?;
+            ioctx().add_interface(InterfaceDef::ethv6_autocfg(NetworkDevice::eth()))?;
             sleep(Duration::from_secs(2)).await;
 
             let msg = rx.recv().await.unwrap();

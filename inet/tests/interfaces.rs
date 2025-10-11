@@ -25,7 +25,7 @@ struct SocketBind {
 
 impl Module for SocketBind {
     fn at_sim_start(&mut self, _: usize) {
-        add_interface(InterfaceDef::loopback()).unwrap();
+        ioctx().add_interface(InterfaceDef::loopback()).unwrap();
 
         let done = self.done.clone();
         tokio::spawn(async move {
@@ -96,12 +96,13 @@ struct UdpEcho4200;
 
 impl Module for UdpEcho4200 {
     fn at_sim_start(&mut self, _: usize) {
-        add_interface(
-            InterfaceDef::new("en0", NetworkDevice::eth())
-                .ip(Ipv4Addr::new(1, 1, 1, 42).into())
-                .ip(Ipv4Addr::new(255, 255, 255, 0).into()),
-        )
-        .unwrap();
+        ioctx()
+            .add_interface(
+                InterfaceDef::new("en0", NetworkDevice::eth())
+                    .ip(Ipv4Addr::new(1, 1, 1, 42).into())
+                    .ip(Ipv4Addr::new(255, 255, 255, 0).into()),
+            )
+            .unwrap();
 
         tokio::spawn(async move {
             let socket = UdpSocket::bind("0.0.0.0:42").await.unwrap();
@@ -132,12 +133,13 @@ struct UdpSingleEchoSender {
 
 impl Module for UdpSingleEchoSender {
     fn at_sim_start(&mut self, _: usize) {
-        add_interface(
-            InterfaceDef::new("en0", NetworkDevice::eth())
-                .ip(Ipv4Addr::new(1, 1, 1, 1).into())
-                .ip(Ipv4Addr::new(255, 255, 255, 0).into()),
-        )
-        .unwrap();
+        ioctx()
+            .add_interface(
+                InterfaceDef::new("en0", NetworkDevice::eth())
+                    .ip(Ipv4Addr::new(1, 1, 1, 1).into())
+                    .ip(Ipv4Addr::new(255, 255, 255, 0).into()),
+            )
+            .unwrap();
 
         let done = self.done.clone();
         tokio::spawn(async move {
@@ -203,12 +205,13 @@ struct UdpSingleClusteredSender {
 
 impl Module for UdpSingleClusteredSender {
     fn at_sim_start(&mut self, _: usize) {
-        add_interface(
-            InterfaceDef::new("en0", NetworkDevice::eth())
-                .ip(Ipv4Addr::new(1, 1, 1, 1).into())
-                .ip(Ipv4Addr::new(255, 255, 255, 0).into()),
-        )
-        .unwrap();
+        ioctx()
+            .add_interface(
+                InterfaceDef::new("en0", NetworkDevice::eth())
+                    .ip(Ipv4Addr::new(1, 1, 1, 1).into())
+                    .ip(Ipv4Addr::new(255, 255, 255, 0).into()),
+            )
+            .unwrap();
 
         let done = self.done.clone();
         tokio::spawn(async move {
@@ -283,12 +286,13 @@ struct UdpConcurrentClients {
 
 impl Module for UdpConcurrentClients {
     fn at_sim_start(&mut self, _: usize) {
-        add_interface(
-            InterfaceDef::new("en0", NetworkDevice::eth())
-                .ip(Ipv4Addr::new(1, 1, 1, 1).into())
-                .ip(Ipv4Addr::new(255, 255, 255, 0).into()),
-        )
-        .unwrap();
+        ioctx()
+            .add_interface(
+                InterfaceDef::new("en0", NetworkDevice::eth())
+                    .ip(Ipv4Addr::new(1, 1, 1, 1).into())
+                    .ip(Ipv4Addr::new(255, 255, 255, 0).into()),
+            )
+            .unwrap();
 
         let done = self.done.clone();
         tokio::spawn(async move {
@@ -402,7 +406,7 @@ fn interface_does_not_use_busy_channel() -> Result<(), RuntimeError> {
                 dup_addr_detect_for_link_local: false,
                 dup_addr_detect_transmits: 0,
             })?;
-            add_interface(InterfaceDef::new("en0", NetworkDevice::eth()).v6())?;
+            ioctx().add_interface(InterfaceDef::new("en0", NetworkDevice::eth()).v6())?;
 
             // Sleep to prevent MLD messags from blocking the sender
             des::time::sleep(Duration::from_secs(1)).await;
@@ -438,7 +442,7 @@ fn interface_does_not_use_busy_channel() -> Result<(), RuntimeError> {
                 dup_addr_detect_for_link_local: false,
                 dup_addr_detect_transmits: 0,
             })?;
-            add_interface(InterfaceDef::new("en0", NetworkDevice::eth()).v6())?;
+            ioctx().add_interface(InterfaceDef::new("en0", NetworkDevice::eth()).v6())?;
 
             let mut count = 0;
             let mut sock = RawIpSocket::new_v6()?;
@@ -496,7 +500,7 @@ fn interface_will_use_idle_channel_fcfs() -> Result<(), RuntimeError> {
                 dup_addr_detect_for_link_local: false,
                 dup_addr_detect_transmits: 0,
             })?;
-            add_interface(InterfaceDef::new("en0", NetworkDevice::eth()).v6())?;
+            ioctx().add_interface(InterfaceDef::new("en0", NetworkDevice::eth()).v6())?;
 
             // Sleep to prevent MLD messags from blocking the sender
             des::time::sleep(Duration::from_secs(1)).await;
@@ -528,7 +532,7 @@ fn interface_will_use_idle_channel_fcfs() -> Result<(), RuntimeError> {
                 dup_addr_detect_for_link_local: false,
                 dup_addr_detect_transmits: 0,
             })?;
-            add_interface(InterfaceDef::new("en0", NetworkDevice::eth()).v6())?;
+            ioctx().add_interface(InterfaceDef::new("en0", NetworkDevice::eth()).v6())?;
 
             let mut count = 0;
             let mut sock = RawIpSocket::new_v6()?;

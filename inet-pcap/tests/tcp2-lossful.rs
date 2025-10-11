@@ -10,7 +10,8 @@ use des::{
     runtime::{Builder, random},
 };
 use inet::{
-    interface::{InterfaceDef, NetworkDevice, add_interface},
+    interface::{InterfaceDef, NetworkDevice},
+    ioctx,
     tcp::{TcpListener, TcpStream},
 };
 use inet_pcap::pcap;
@@ -34,11 +35,12 @@ fn lossfull_stream() {
         AsyncHandler::io(move |_| {
             let bytes = bytes.clone();
             async move {
-                add_interface(
-                    InterfaceDef::new("en0", NetworkDevice::eth())
-                        .ip(Ipv4Addr::new(192, 168, 2, 100).into()),
-                )
-                .unwrap();
+                ioctx()
+                    .add_interface(
+                        InterfaceDef::new("en0", NetworkDevice::eth())
+                            .ip(Ipv4Addr::new(192, 168, 2, 100).into()),
+                    )
+                    .unwrap();
 
                 pcap(File::create("out/tcp2-lossful-client.pcap").unwrap()).unwrap();
 
@@ -55,11 +57,12 @@ fn lossfull_stream() {
         AsyncHandler::io(move |_| {
             let bytes = bytes2.clone();
             async move {
-                add_interface(
-                    InterfaceDef::new("en0", NetworkDevice::eth())
-                        .ip(Ipv4Addr::new(192, 168, 2, 200).into()),
-                )
-                .unwrap();
+                ioctx()
+                    .add_interface(
+                        InterfaceDef::new("en0", NetworkDevice::eth())
+                            .ip(Ipv4Addr::new(192, 168, 2, 200).into()),
+                    )
+                    .unwrap();
 
                 pcap(File::create("out/tcp2-lossful-server.pcap").unwrap()).unwrap();
 

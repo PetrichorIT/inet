@@ -3,10 +3,13 @@ use des::{
     prelude::*,
     time::sleep,
 };
-use inet::tcp::{TcpListener, TcpStream};
 use inet::{
-    interface::{InterfaceDef, NetworkDevice, add_interface, interface_status},
+    interface::{InterfaceDef, NetworkDevice},
     ipv6::router,
+};
+use inet::{
+    ioctx,
+    tcp::{TcpListener, TcpStream},
 };
 use serial_test::serial;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -21,7 +24,7 @@ fn test() -> Result<(), RuntimeError> {
     sim.node(
         "alice",
         AsyncHandler::io(|_| async move {
-            add_interface(InterfaceDef::ethv6_autocfg(NetworkDevice::eth()))?;
+            ioctx().add_interface(InterfaceDef::ethv6_autocfg(NetworkDevice::eth()))?;
             sleep(Duration::from_secs(3)).await;
 
             let target_addr: Ipv6Addr = globals()
@@ -43,10 +46,17 @@ fn test() -> Result<(), RuntimeError> {
     sim.node(
         "bob",
         AsyncHandler::io(|_| async move {
-            add_interface(InterfaceDef::ethv6_autocfg(NetworkDevice::eth()))?;
+            ioctx().add_interface(InterfaceDef::ethv6_autocfg(NetworkDevice::eth()))?;
             sleep(Duration::from_secs(2)).await;
 
-            let addr = interface_status("en0").unwrap().addrs.v6.unicast[1].addr;
+            let addr = ioctx()
+                .get_interface("en0")
+                .unwrap()
+                .status()
+                .addrs
+                .v6
+                .unicast[1]
+                .addr;
             current().prop("addr").unwrap().set(addr);
 
             let list = TcpListener::bind(":::80").await?;

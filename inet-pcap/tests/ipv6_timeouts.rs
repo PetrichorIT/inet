@@ -1,12 +1,13 @@
 use des::{
-    net::{module::Module, Sim},
+    net::{Sim, module::Module},
     registry,
     runtime::{Builder, RuntimeError},
 };
 use inet::{
     env::RoutingPort,
-    interface::{add_interface, InterfaceDef, NetworkDevice},
-    ipv4::router::{declare_ipv6_router, Ipv6RouterConfig},
+    interface::{InterfaceDef, NetworkDevice},
+    ioctx,
+    ipv4::router::{Ipv6RouterConfig, declare_ipv6_router},
     ipv6::util::setup_router,
     utils::{self, getaddrinfo},
 };
@@ -21,7 +22,9 @@ impl Module for Expect3Addrs {
     fn at_sim_start(&mut self, _stage: usize) {
         pcap(File::create("out/ipv6_timeout_alice.pcap").unwrap()).unwrap();
 
-        add_interface(InterfaceDef::new("en0", NetworkDevice::eth()).v6()).unwrap();
+        ioctx()
+            .add_interface(InterfaceDef::new("en0", NetworkDevice::eth()).v6())
+            .unwrap();
     }
 
     fn at_sim_end(&mut self) -> Result<(), RuntimeError> {
@@ -38,7 +41,9 @@ impl Module for Expect3Then1Addrs {
     fn at_sim_start(&mut self, _stage: usize) {
         pcap(File::create("out/ipv6_timeout_bob.pcap").unwrap()).unwrap();
 
-        add_interface(InterfaceDef::new("en0", NetworkDevice::eth()).v6()).unwrap();
+        ioctx()
+            .add_interface(InterfaceDef::new("en0", NetworkDevice::eth()).v6())
+            .unwrap();
     }
 
     fn at_sim_end(&mut self) -> Result<(), RuntimeError> {
@@ -82,7 +87,7 @@ impl Module for RouterWithoutAdv {
             .ipv6_link_local();
 
             iface.flags.router = true;
-            add_interface(iface).unwrap();
+            ioctx().add_interface(iface).unwrap();
         }
 
         declare_ipv6_router(Ipv6RouterConfig {

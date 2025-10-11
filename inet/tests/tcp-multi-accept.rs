@@ -8,7 +8,8 @@ use std::sync::{
 
 use des::{prelude::*, registry};
 use inet::{
-    interface::{InterfaceDef, NetworkDevice, add_interface},
+    interface::{InterfaceDef, NetworkDevice},
+    ioctx,
     tcp::{TcpListener, TcpStream},
 };
 use tokio::spawn;
@@ -20,10 +21,12 @@ struct Client {
 
 impl Module for Client {
     fn at_sim_start(&mut self, _: usize) {
-        add_interface(
-            InterfaceDef::new("en0", NetworkDevice::eth()).ip(Ipv4Addr::new(192, 168, 0, 1).into()),
-        )
-        .unwrap();
+        ioctx()
+            .add_interface(
+                InterfaceDef::new("en0", NetworkDevice::eth())
+                    .ip(Ipv4Addr::new(192, 168, 0, 1).into()),
+            )
+            .unwrap();
 
         let done = self.done.clone();
         spawn(async move {
@@ -50,10 +53,12 @@ struct Server {
 
 impl Module for Server {
     fn at_sim_start(&mut self, _: usize) {
-        add_interface(
-            InterfaceDef::new("en0", NetworkDevice::eth()).ip(Ipv4Addr::new(192, 168, 0, 2).into()),
-        )
-        .unwrap();
+        ioctx()
+            .add_interface(
+                InterfaceDef::new("en0", NetworkDevice::eth())
+                    .ip(Ipv4Addr::new(192, 168, 0, 2).into()),
+            )
+            .unwrap();
 
         let done = self.done.clone();
         spawn(async move {

@@ -13,7 +13,8 @@ use serial_test::serial;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use crate::{
-    interface::{InterfaceDef, NetworkDevice, add_interface},
+    interface::{InterfaceDef, NetworkDevice},
+    ioctx,
     tcp::{Config, TcpListener, TcpStream, set_config},
 };
 
@@ -31,7 +32,7 @@ fn large_stream() {
         AsyncHandler::io(move |_| {
             let bytes = bytes.clone();
             async move {
-                add_interface(
+                ioctx().add_interface(
                     InterfaceDef::new("en0", NetworkDevice::eth())
                         .ip(Ipv4Addr::new(100, 0, 0, 42).into()),
                 )?;
@@ -57,7 +58,7 @@ fn large_stream() {
         AsyncHandler::io(move |_| {
             let bytes = bytes2.clone();
             async move {
-                add_interface(
+                ioctx().add_interface(
                     InterfaceDef::new("en0", NetworkDevice::eth())
                         .ip(Ipv4Addr::new(100, 0, 0, 69).into()),
                 )?;
@@ -135,7 +136,7 @@ fn lossful_stream() {
         AsyncHandler::io(move |_| {
             let bytes = bytes.clone();
             async move {
-                add_interface(
+                ioctx().add_interface(
                     InterfaceDef::new("en0", NetworkDevice::eth())
                         .ip(Ipv4Addr::new(100, 0, 0, 42).into()),
                 )?;
@@ -161,7 +162,7 @@ fn lossful_stream() {
         AsyncHandler::io(move |_| {
             let bytes = bytes2.clone();
             async move {
-                add_interface(
+                ioctx().add_interface(
                     InterfaceDef::new("en0", NetworkDevice::eth())
                         .ip(Ipv4Addr::new(100, 0, 0, 69).into()),
                 )?;
