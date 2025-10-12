@@ -138,7 +138,7 @@ impl IOContext {
         });
         if let Some((trg, sendable)) = sendable {
             for pkt in sendable {
-                self.ipv4_send_lan_local(SocketIfaceBinding::Bound(if_name.id()), trg, pkt, true)
+                self.ipv4_send_lan_local(SocketIfaceBinding::Bound(if_name.id()), trg, pkt)
                     .unwrap();
             }
         }

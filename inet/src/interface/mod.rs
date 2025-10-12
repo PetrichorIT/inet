@@ -74,7 +74,6 @@ impl Default for InterfaceState {
 #[derive(Debug)]
 pub enum InterfaceError {
     PacketToBig(Message, usize),
-    InterfaceBusy(Message),
 }
 
 impl InterfaceController {
@@ -131,25 +130,10 @@ impl InterfaceController {
         }
     }
 
-    pub(crate) fn send(&mut self, msg: Message) -> Result<(), InterfaceError> {
-        if self.state.busy != InterfaceBusyState::Idle {
-            return Err(InterfaceError::InterfaceBusy(msg));
-        }
-
-        if msg.body.length() > self.device.mtu() {
-            return Err(InterfaceError::PacketToBig(msg, self.device.mtu()));
-        }
-
-        match self.send_raw(msg) {
-            Ok(()) => Ok(()),
-            Err(_) => unreachable!("this was checked in this function"),
-        }
-    }
-
     fn send_raw(&mut self, msg: Message) -> result::Result<(), Message> {
         assert!(
             msg.body.length() <= self.device.mtu(),
-            "should have been checked before in send() / send_buffered()"
+            "should have been checked before in send()"
         );
 
         match self.device.ready() {
@@ -232,9 +216,6 @@ impl From<InterfaceError> for io::Error {
                 io::ErrorKind::InvalidInput,
                 format!("packet to big {} > {}", pkt.body.length(), allowed),
             ),
-            InterfaceError::InterfaceBusy(_) => {
-                io::Error::new(io::ErrorKind::WouldBlock, "interface busy")
-            }
         }
     }
 }

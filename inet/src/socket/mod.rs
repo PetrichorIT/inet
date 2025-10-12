@@ -256,7 +256,8 @@ impl IOContext {
                 if addr.is_ipv4() {
                     iface.bindings.has_v4_capability().then_some(ifid)
                 } else {
-                    (iface.bindings.has_v4_capability() || iface.bindings.has_v6_capability())
+                    ((iface.bindings.has_v4_capability() || iface.bindings.has_v6_capability())
+                        && iface.flags.v6)
                         .then_some(ifid)
                 }
             })

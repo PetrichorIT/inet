@@ -64,11 +64,11 @@ impl InterfaceAddrsV4 {
     pub fn add(&mut self, unicast: InterfaceAddrV4) {
         assert!(
             !self.unicast.contains(&unicast),
-            "cannot assign ipv6 binding '{unicast}': address allready assigned"
+            "cannot assign ipv4 binding '{unicast}': address already assigned"
         );
         assert!(
             !unicast.addr.is_multicast(),
-            "cannot assign ipv6 binding '{unicast}': address is multicast scope"
+            "cannot assign ipv4 binding '{unicast}': address is multicast scope"
         );
         self.unicast.push(unicast);
     }
@@ -82,7 +82,7 @@ impl InterfaceAddrsV6 {
     pub fn add(&mut self, unicast: InterfaceAddrV6) {
         assert!(
             !self.unicast.contains(&unicast),
-            "cannot assign ipv6 binding '{unicast}': address allready assigned"
+            "cannot assign ipv6 binding '{unicast}': address already assigned"
         );
         assert!(
             !unicast.addr.is_multicast(),
@@ -143,17 +143,6 @@ impl InterfaceAddrsV6 {
             self.recv_all_multicast || self.multicast.contains(&dst)
         } else {
             self.unicast.iter().any(|binding| binding.matches(dst))
-        }
-    }
-
-    /// Whether `dst` is contained in a bound subnet.
-    pub fn matches_subnet(&self, dst: Ipv6Addr) -> bool {
-        if dst.is_multicast() {
-            true
-        } else {
-            self.unicast
-                .iter()
-                .any(|binding| binding.matches_subnet(dst))
         }
     }
 }
@@ -284,14 +273,6 @@ impl InterfaceAddrV6 {
     pub fn matches(&self, addr: Ipv6Addr) -> bool {
         addr == self.addr
     }
-
-    /// Whether `addr` is contained in the same prefix as this interface.
-    pub fn matches_subnet(&self, addr: Ipv6Addr) -> bool {
-        let mask = u128::from(self.mask);
-        let target = u128::from(self.addr);
-        let addr = u128::from(addr);
-        target & mask == target & addr
-    }
 }
 
 impl fmt::Display for InterfaceAddrV4 {
@@ -334,6 +315,55 @@ mod tests {
     }
 
     #[test]
+    #[should_panic = "address already assigned"]
+    fn addr_duplicate_in_v4() {
+        let mut v4 = InterfaceAddrsV4::default();
+        for _ in 0..2 {
+            v4.add(InterfaceAddrV4::new(
+                Ipv4Addr::new(192, 168, 2, 132),
+                Ipv4Addr::new(255, 255, 0, 0),
+            ));
+        }
+    }
+
+    #[test]
+    #[should_panic = "address is multicast scope"]
+    fn addr_multicast_in_v4() {
+        let mut v4 = InterfaceAddrsV4::default();
+        v4.add(InterfaceAddrV4::new(
+            Ipv4Addr::new(224, 0, 0, 4),
+            Ipv4Addr::new(255, 255, 0, 0),
+        ));
+    }
+
+    #[test]
+    #[should_panic = "address already assigned"]
+    fn addr_duplicate_in_v6() {
+        let mut v6 = InterfaceAddrsV6::default();
+        for _ in 0..2 {
+            v6.add(InterfaceAddrV6::new_static(
+                "2003:a:1::23".parse().unwrap(),
+                64,
+            ));
+        }
+    }
+
+    #[test]
+    #[should_panic = "address is multicast scope"]
+    fn addr_multicast_in_v6() {
+        let mut v6 = InterfaceAddrsV6::default();
+        v6.add(InterfaceAddrV6::solicited_node_multicast(
+            "2003:a:1::23".parse().unwrap(),
+        ));
+    }
+
+    #[test]
+    fn remove_nonexisting_silent_fail_v6() {
+        let mut v6 = InterfaceAddrsV6::default();
+        assert_eq!(v6.remove("2003:a:1::23".parse().unwrap()), None);
+    }
+
+    #[test]
     fn loopback_namespace_v4() {
         let iface = InterfaceAddrV4::new(Ipv4Addr::LOCALHOST, Ipv4Addr::new(255, 255, 255, 0));
 
@@ -356,5 +386,24 @@ mod tests {
     fn broadcast_v4() {
         let iface = InterfaceAddrV4::new(Ipv4Addr::new(192, 168, 2, 110), Ipv4Addr::BROADCAST);
         assert_eq!(iface.matches_subnet(Ipv4Addr::BROADCAST.into()), true);
+    }
+
+    #[test]
+    fn fmt_v4() {
+        let v4 = InterfaceAddrV4::new(Ipv4Addr::new(192, 168, 2, 110), Ipv4Addr::BROADCAST);
+        assert_eq!(v4.to_string(), "inet 192.168.2.110 netmask 255.255.255.255");
+    }
+
+    #[test]
+    fn fmt_v6() {
+        let mac = MacAddress::from([1, 2, 3, 4, 5, 6]);
+        let v6 = InterfaceAddrV6::new_link_local(mac);
+        assert_eq!(
+            v6.to_string(),
+            format!(
+                "inet6 {} prefixlen 64",
+                mac.embed_into(Ipv6Addr::LINK_LOCAL)
+            )
+        );
     }
 }

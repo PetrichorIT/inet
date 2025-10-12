@@ -115,10 +115,13 @@ impl IOContext {
 
 #[cfg(test)]
 mod tests {
+    use serial_test::serial;
+
     use super::*;
     use std::error::Error;
 
     #[test]
+    #[serial]
     fn router_times_out_entries() -> Result<(), Box<dyn Error>> {
         let en0 = IfId::new("en0");
         let en1 = IfId::new("en1");

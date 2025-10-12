@@ -108,9 +108,6 @@ impl IOContext {
     pub fn current_handle() -> IOHandle {
         IOHandle::current()
     }
-    pub fn try_current_handle() -> Option<IOHandle> {
-        IOHandle::try_current()
-    }
 
     pub(super) fn with_current<R>(f: impl FnOnce(&mut IOContext) -> R) -> R {
         let handle = Self::current_handle();
@@ -211,14 +208,9 @@ impl IOContext {
         }
     }
 
-    pub fn send_ip_packet(
-        &mut self,
-        ifid: SocketIfaceBinding,
-        pkt: IpPacket,
-        buffered: bool,
-    ) -> Result<()> {
+    pub fn send_ip_packet(&mut self, ifid: SocketIfaceBinding, pkt: IpPacket) -> Result<()> {
         match pkt {
-            IpPacket::V4(pkt) => self.ipv4_send(ifid, pkt, buffered),
+            IpPacket::V4(pkt) => self.ipv4_send(ifid, pkt),
             IpPacket::V6(pkt) => self.ipv6_send(pkt, ifid.unwrap_ifid()),
         }
     }

@@ -222,16 +222,8 @@ impl IOContext {
             // any interface
             let mut addrs = Vec::new();
             for (ifid, iface) in &self.ifaces {
-                for addr in iface.bindings.v6.addrs() {
-                    addrs.push(CanidateAddr {
-                        addr,
-                        ifid: *ifid,
-                        preferred: false,
-                        deprecated: false,
-                        temporary: false,
-                        home_addr: false,
-                        care_of_addr: false,
-                    });
+                for addr in &iface.bindings.v6.unicast {
+                    addrs.push(addr.to_canidate_addr(*ifid));
                 }
             }
             addrs
@@ -240,16 +232,9 @@ impl IOContext {
             iface
                 .bindings
                 .v6
-                .addrs()
-                .map(|v| CanidateAddr {
-                    addr: v,
-                    ifid: preferred_iface,
-                    preferred: false,
-                    deprecated: false,
-                    temporary: false,
-                    home_addr: false,
-                    care_of_addr: false,
-                })
+                .unicast
+                .iter()
+                .map(|v| v.to_canidate_addr(preferred_iface))
                 .collect()
         };
 

@@ -119,7 +119,7 @@ impl IOContext {
                     dst: ip_icmp.src,
                     content: icmp.write_to_bytes().expect("Failed to parse ICMP"),
                 };
-                self.send_ip_packet(SocketIfaceBinding::Bound(ifid), IpPacket::V4(ip), true)
+                self.send_ip_packet(SocketIfaceBinding::Bound(ifid), IpPacket::V4(ip))
                     .expect("Failed to send");
             }
             IcmpV4Type::EchoReply {
@@ -226,7 +226,7 @@ impl IOContext {
                 ip.proto = PROTO_ICMPV4;
                 ip.content = icmp.write_to_bytes().expect("Failed to parse ICMP");
 
-                self.send_ip_packet(SocketIfaceBinding::NotBound, IpPacket::V4(ip), true)
+                self.send_ip_packet(SocketIfaceBinding::NotBound, IpPacket::V4(ip))
                     .unwrap()
             }
             ErrorKind::NotConnected => {
@@ -244,7 +244,7 @@ impl IOContext {
                 ip.proto = PROTO_ICMPV4;
                 ip.content = icmp.write_to_bytes().expect("Failed to parse ICMP");
 
-                let _ = self.send_ip_packet(SocketIfaceBinding::NotBound, IpPacket::V4(ip), true);
+                let _ = self.send_ip_packet(SocketIfaceBinding::NotBound, IpPacket::V4(ip));
             }
             _ => {}
         }
@@ -261,7 +261,7 @@ impl IOContext {
         ip.src = Ipv4Addr::UNSPECIFIED;
         ip.proto = PROTO_ICMPV4;
         ip.content = icmp.write_to_bytes().expect("Failed to parse ICMP");
-        self.send_ip_packet(SocketIfaceBinding::Bound(ifid), IpPacket::V4(ip), true)
+        self.send_ip_packet(SocketIfaceBinding::Bound(ifid), IpPacket::V4(ip))
             .unwrap();
     }
 
@@ -278,7 +278,7 @@ impl IOContext {
             ip.src = Ipv4Addr::UNSPECIFIED;
             ip.proto = PROTO_ICMPV4;
             ip.content = icmp.write_to_bytes().expect("Failed to parse ICMP");
-            self.send_ip_packet(SocketIfaceBinding::Bound(ifid), IpPacket::V4(ip), true)
+            self.send_ip_packet(SocketIfaceBinding::Bound(ifid), IpPacket::V4(ip))
                 .unwrap();
         }
     }

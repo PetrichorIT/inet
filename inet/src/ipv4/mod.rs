@@ -66,7 +66,6 @@ impl IOContext {
             if let Err(error) = self.send_ip_packet(
                 SocketIfaceBinding::Any(self.ifaces.keys().cloned().collect()),
                 IpPacket::V4(pkt.clone()), // TODO: to not copy, use a result Err(Packet)
-                true,
             ) {
                 tracing::error!("failed to forward ip-packet {error}");
                 self.icmp_routing_failed(error, &pkt);
@@ -104,12 +103,7 @@ impl IOContext {
         })
     }
 
-    pub fn ipv4_send(
-        &mut self,
-        ifid: SocketIfaceBinding,
-        pkt: Ipv4Packet,
-        buffered: bool,
-    ) -> io::Result<()> {
+    pub fn ipv4_send(&mut self, ifid: SocketIfaceBinding, pkt: Ipv4Packet) -> io::Result<()> {
         // (0) Routing table destintation lookup
 
         let Some((route, rifid)) = self.ipv4.fwd.lookup(pkt.dst) else {
@@ -120,29 +114,21 @@ impl IOContext {
         };
 
         match route {
-            Ipv4Gateway::Local => self.ipv4_send_lan_local(
-                SocketIfaceBinding::Bound(rifid.id()),
-                pkt.dst,
-                pkt,
-                buffered,
-            ),
+            Ipv4Gateway::Local => {
+                self.ipv4_send_lan_local(SocketIfaceBinding::Bound(rifid.id()), pkt.dst, pkt)
+            }
             Ipv4Gateway::Gateway(gw) => {
-                self.ipv4_send_lan_local(SocketIfaceBinding::Bound(rifid.id()), *gw, pkt, buffered)
+                self.ipv4_send_lan_local(SocketIfaceBinding::Bound(rifid.id()), *gw, pkt)
             }
             // TODO: move logic to extra, non-arp fn
-            Ipv4Gateway::Broadcast => self.ipv4_broadcast(ifid, pkt, buffered),
+            Ipv4Gateway::Broadcast => self.ipv4_broadcast(ifid, pkt),
         }
     }
 
-    pub fn ipv4_broadcast(
-        &mut self,
-        ifid: SocketIfaceBinding,
-        pkt: Ipv4Packet,
-        buffered: bool,
-    ) -> io::Result<()> {
+    pub fn ipv4_broadcast(&mut self, ifid: SocketIfaceBinding, pkt: Ipv4Packet) -> io::Result<()> {
         // Since we are broadcasting, use ff
         match ifid {
-            SocketIfaceBinding::Bound(_) => self.ipv4_send_lan_local(ifid, pkt.dst, pkt, buffered),
+            SocketIfaceBinding::Bound(_) => self.ipv4_send_lan_local(ifid, pkt.dst, pkt),
             _ => {
                 for iface in self.ifaces.values_mut() {
                     let mut pkt = pkt.clone();
@@ -155,11 +141,7 @@ impl IOContext {
                         .with_dst(MacAddress::BROADCAST.into())
                         .with_content(pkt);
 
-                    if buffered {
-                        iface.send_buffered(msg)?;
-                    } else {
-                        iface.send(msg)?;
-                    }
+                    iface.send_buffered(msg)?;
                 }
                 Ok(())
             }
@@ -171,7 +153,6 @@ impl IOContext {
         ifid: SocketIfaceBinding,
         dst: Ipv4Addr,
         pkt: Ipv4Packet,
-        buffered: bool,
     ) -> io::Result<()> {
         let Some((negated, mac, ifid)) = self.arp_lookup(dst, &ifid) else {
             self.arp_missing_addr_mapping(ifid, pkt, dst)?;
@@ -203,11 +184,7 @@ impl IOContext {
             .with_dst(mac.into())
             .with_content(pkt);
 
-        if buffered {
-            iface.send_buffered(msg)
-        } else {
-            iface.send(msg)
-        }?;
+        iface.send_buffered(msg)?;
 
         Ok(())
     }

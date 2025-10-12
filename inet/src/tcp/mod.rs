@@ -120,7 +120,7 @@ impl IOContext {
             con.timers.update_send_time(segn, SimTime::now());
             let is_empty = con.outgoing.is_empty();
 
-            if let Err(error) = self.send_ip_packet(socket.interface.clone(), pkt, true) {
+            if let Err(error) = self.send_ip_packet(socket.interface.clone(), pkt) {
                 self.tcp.set_error(fd, error);
             }
 
@@ -282,7 +282,7 @@ impl IOContext {
 
                 let rst = TcpPacket::rst_for_syn(&pkt);
                 let rst = ip_packet.response(rst.write_to_bytes().unwrap());
-                self.send_ip_packet(SocketIfaceBinding::Bound(ifid), rst, true)
+                self.send_ip_packet(SocketIfaceBinding::Bound(ifid), rst)
                     .expect("failed to send");
                 true
             } else {

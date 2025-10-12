@@ -60,13 +60,8 @@ impl IOContext {
                             sendable.len()
                         );
                         for pkt in sendable {
-                            self.ipv4_send_lan_local(
-                                SocketIfaceBinding::Bound(ifid),
-                                trg,
-                                pkt,
-                                true,
-                            )
-                            .unwrap();
+                            self.ipv4_send_lan_local(SocketIfaceBinding::Bound(ifid), trg, pkt)
+                                .unwrap();
                         }
                     };
                 }
@@ -130,7 +125,7 @@ impl IOContext {
                     };
 
                     for pkt in sendable {
-                        self.ipv4_send_lan_local(SocketIfaceBinding::Bound(ifid), trg, pkt, true)
+                        self.ipv4_send_lan_local(SocketIfaceBinding::Bound(ifid), trg, pkt)
                             .unwrap();
                     }
                 }

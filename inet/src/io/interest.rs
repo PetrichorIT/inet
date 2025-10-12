@@ -47,21 +47,4 @@ impl Interest {
     pub const fn is_writable(&self) -> bool {
         self.contains(Interest::WRITABLE)
     }
-
-    /// Add together two `Interest` values.
-    ///
-    /// This function works from a `const` context.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use inet::io::Interest;
-    ///
-    /// const BOTH: Interest = Interest::READABLE.add(Interest::WRITABLE);
-    ///
-    /// assert!(BOTH.is_readable());
-    /// assert!(BOTH.is_writable());
-    pub const fn add(&self, other: Interest) -> Interest {
-        Interest::from_bits_truncate(self.bits() | other.bits())
-    }
 }

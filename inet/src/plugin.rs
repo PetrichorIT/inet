@@ -39,9 +39,7 @@ impl ProcessingElement for IOPlugin {
         IOContext::with_current(|ctx| ctx.event_end());
 
         self.ctx = IOHandle::swap_in(self.prev.take());
-        let Some(ref mut ctx) = self.ctx else {
-            panic!("Stole CTX")
-        };
+        let ctx = self.ctx.as_mut().expect("illegal state");
 
         let mut ctx = ctx.0.lock().expect("failed to get lock");
         if ctx.meta_changed {

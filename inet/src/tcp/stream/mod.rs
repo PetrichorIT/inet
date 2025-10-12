@@ -1,6 +1,6 @@
 use super::{State, interest::TcpInterest};
-use crate::IOHandle;
 use crate::io::{Interest, Ready};
+use crate::{IOHandle, ioctx};
 use crate::{
     dns::{ToSocketAddrs, lookup_host},
     socket::{AsRawFd, Fd, FromRawFd, IntoRawFd},
@@ -47,7 +47,7 @@ impl TcpStream {
     /// the error returned from the last connection attempt (the last address) is returned.
     pub async fn connect<A: ToSocketAddrs>(addr: A) -> Result<TcpStream, Error> {
         let addrs = lookup_host(addr).await?;
-        let handle = IOHandle::current();
+        let handle = ioctx();
         let mut last_err = None;
 
         for peer in addrs {
@@ -70,7 +70,7 @@ impl TcpStream {
             }
         }
 
-        Err(last_err.unwrap_or(Error::other("No address worked")))
+        Err(last_err.unwrap_or(Error::other("could not resolve to any address")))
     }
 
     /// Returns the local address that this stream is bound to.

@@ -1,12 +1,16 @@
 use bytes_io::{Bytes, ToBytes};
 use std::{
     io::{self, ErrorKind},
-    net::{Ipv4Addr, SocketAddr},
+    net::{IpAddr, Ipv4Addr, SocketAddr},
 };
 
 use types::{
     icmpv4::{IcmpV4DestinationUnreachableCode, IcmpV4Packet, IcmpV4Type},
-    ip::{Ipv4Flags, Ipv4Packet},
+    icmpv6::{
+        IcmpV6DestinationUnreachable, IcmpV6DestinationUnreachableCode, IcmpV6Packet,
+        IcmpV6PacketToBig,
+    },
+    ip::{Ipv4Flags, Ipv4Packet, Ipv6Packet},
     tcp::{TcpFlags, TcpPacket},
     udp::PROTO_UDP,
 };
@@ -58,6 +62,45 @@ impl TcpTestUnit {
                 },
                 &contained,
             )
+        } else {
+            Ok(())
+        }
+    }
+
+    pub fn icmp_v6(&mut self, icmp: IcmpV6Packet) -> io::Result<()> {
+        if let Some(ref mut con) = self.con {
+            let contained = Ipv6Packet {
+                flow_label: 0,
+                traffic_class: 0,
+                extension_headers: Vec::new(),
+                proto: PROTO_TCP,
+                hop_limit: 64,
+                src: if let IpAddr::V6(src) = con.quad.src.ip() {
+                    src
+                } else {
+                    unreachable!()
+                },
+                dst: if let IpAddr::V6(dst) = con.quad.dst.ip() {
+                    dst
+                } else {
+                    unreachable!()
+                },
+                content: TcpPacket {
+                    src_port: con.quad.src.port(),
+                    dst_port: con.quad.dst.port(),
+                    seq_no: 0,
+                    ack_no: 0,
+                    flags: TcpFlags::empty(),
+                    window: 0,
+                    urgent_ptr: 0,
+                    options: Vec::new(),
+                    content: Bytes::new(),
+                }
+                .write_to_bytes()
+                .unwrap(),
+            };
+
+            con.on_icmp_v6(&icmp, &contained)
         } else {
             Ok(())
         }
@@ -304,5 +347,80 @@ fn dst_unreachable_hard_on_close_like() -> io::Result<()> {
     })?;
     assert_eq!(test.state, State::Closed);
 
+    Ok(())
+}
+
+#[test]
+fn soft_error_v4() -> io::Result<()> {
+    let mut test = TcpTestUnit::new(
+        SocketAddr::new(Ipv4Addr::new(10, 0, 1, 104).into(), 80), // local
+        SocketAddr::new(Ipv4Addr::new(20, 0, 2, 204).into(), 1808), // peer
+    );
+
+    test.handshake(4000, WIN_4KB)?;
+    test.icmp_v4(IcmpV4Type::DestinationUnreachable {
+        next_hop_mtu: 0,
+        code: IcmpV4DestinationUnreachableCode::NetworkUnreachable,
+    })?;
+    assert_eq!(test.state, State::Estab);
+    assert_eq!(
+        test.interface.so_error.as_ref().map(|v| v.kind()),
+        Some(ErrorKind::Other)
+    );
+    Ok(())
+}
+
+#[test]
+fn ignorable_error_v4() -> io::Result<()> {
+    let mut test = TcpTestUnit::new(
+        SocketAddr::new(Ipv4Addr::new(10, 0, 1, 104).into(), 80), // local
+        SocketAddr::new(Ipv4Addr::new(20, 0, 2, 204).into(), 1808), // peer
+    );
+
+    test.handshake(4000, WIN_4KB)?;
+    test.icmp_v4(IcmpV4Type::BadIpHeader {
+        code: types::icmpv4::IcmpV4BadIpHeaderCode::BadLength,
+    })?;
+    assert_eq!(test.state, State::Estab);
+    assert_eq!(test.interface.so_error.as_ref().map(|v| v.kind()), None);
+    Ok(())
+}
+
+#[test]
+fn soft_error_v6() -> io::Result<()> {
+    let mut test = TcpTestUnit::new(
+        SocketAddr::new("2003:a:1::1".parse().unwrap(), 80), // local
+        SocketAddr::new("2003:b:2::2".parse().unwrap(), 1808), // peer
+    );
+
+    test.handshake(4000, WIN_4KB)?;
+    test.icmp_v6(IcmpV6Packet::DestinationUnreachable(
+        IcmpV6DestinationUnreachable {
+            code: IcmpV6DestinationUnreachableCode::NoRouteToDestination,
+            packet: Bytes::new(),
+        },
+    ))?;
+    assert_eq!(test.state, State::Estab);
+    assert_eq!(
+        test.interface.so_error.as_ref().map(|v| v.kind()),
+        Some(ErrorKind::Other)
+    );
+    Ok(())
+}
+
+#[test]
+fn ignorable_error_v6() -> io::Result<()> {
+    let mut test = TcpTestUnit::new(
+        SocketAddr::new("2003:a:1::1".parse().unwrap(), 80), // local
+        SocketAddr::new("2003:b:2::2".parse().unwrap(), 1808), // peer
+    );
+
+    test.handshake(4000, WIN_4KB)?;
+    test.icmp_v6(IcmpV6Packet::PacketToBig(IcmpV6PacketToBig {
+        mtu: 634,
+        packet: Bytes::new(),
+    }))?;
+    assert_eq!(test.state, State::Estab);
+    assert_eq!(test.interface.so_error.as_ref().map(|v| v.kind()), None);
     Ok(())
 }

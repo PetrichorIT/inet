@@ -1,5 +1,6 @@
 use std::{
     collections::VecDeque,
+    io::ErrorKind,
     str::FromStr,
     sync::{
         Arc,
@@ -8,7 +9,7 @@ use std::{
 };
 
 use bytes_io::Bytes;
-use des::{net::handlers::AsyncHandler, prelude::*};
+use des::{net::handlers::AsyncHandler, prelude::*, time::sleep};
 use inet::{
     interface::*,
     ipv6::{api::set_node_cfg, cfg::HostConfiguration},
@@ -16,7 +17,10 @@ use inet::{
     *,
 };
 use serial_test::serial;
-use types::ip::{IpPacket, Ipv6AddrExt, Ipv6Packet};
+use types::{
+    ip::{IpPacket, Ipv6AddrExt, Ipv6Packet},
+    udp::PROTO_UDP,
+};
 
 #[derive(Default)]
 struct SocketBind {
@@ -578,4 +582,133 @@ fn interface_will_use_idle_channel_fcfs() -> Result<(), RuntimeError> {
 
     assert!(DONE.load(std::sync::atomic::Ordering::SeqCst));
     result
+}
+
+#[test]
+#[serial]
+fn cannot_add_interface_with_same_name() -> Result<(), RuntimeError> {
+    let mut sim = Sim::new(()).with_stack(inet::init);
+    sim.node(
+        "sender",
+        AsyncHandler::failable::<_, _, std::io::Error>(|_| async move {
+            ioctx().add_interface(InterfaceDef::new("en0", NetworkDevice::eth()).v6())?;
+            let err = ioctx()
+                .add_interface(InterfaceDef::new("en0", NetworkDevice::eth()).v6())
+                .expect_err("must have failed");
+            assert_eq!(err.kind(), ErrorKind::Other);
+            assert_eq!(err.to_string(), "cannot duplicate interface with name en0");
+
+            Ok(())
+        })
+        .require_join(),
+    );
+
+    let a = sim.gate("sender", "port");
+    let b = sim.gate("sender", "dummy");
+    a.connect(b);
+
+    let rt = Builder::seeded(123).build(sim.freeze());
+    rt.run().map(|_| ())
+}
+
+#[test]
+#[serial]
+fn eth_device_on_nodelay_link() -> Result<(), RuntimeError> {
+    let mut sim = Sim::new(()).with_stack(inet::init);
+    sim.node(
+        "sender",
+        AsyncHandler::failable::<_, _, std::io::Error>(|_| async move {
+            ioctx()
+                .add_interface(InterfaceDef::new("en0", NetworkDevice::eth()).v6())?
+                .wait_for_link_local()
+                .await;
+
+            let v6 = RawIpSocket::new_v6()?;
+            v6.try_send(IpPacket::V6(Ipv6Packet {
+                traffic_class: 0,
+                flow_label: 0,
+                proto: PROTO_UDP,
+                src: "::".parse().unwrap(),
+                dst: "fe80::2".parse().unwrap(),
+                hop_limit: 64,
+                extension_headers: Vec::new(),
+                content: Bytes::from_static(b"12312312312"),
+            }))?;
+
+            Ok(())
+        })
+        .require_join(),
+    );
+
+    let a = sim.gate("sender", "port");
+    let b = sim.gate("sender", "dummy");
+    a.connect(b);
+
+    let rt = Builder::seeded(123).build(sim.freeze());
+    rt.run().map(|_| ())
+}
+
+#[test]
+#[serial]
+fn eth_device_from_selection() -> Result<(), RuntimeError> {
+    let mut sim = Sim::new(()).with_stack(inet::init);
+    sim.node(
+        "sender",
+        AsyncHandler::failable::<_, _, std::io::Error>(|_| async move {
+            ioctx().add_interface(
+                InterfaceDef::new("en0", NetworkDevice::eth_select(|p| p.name == "tom")).v6(),
+            )?;
+
+            ioctx().add_interface(
+                InterfaceDef::new("en1", NetworkDevice::bidirectional("tim")).v6(),
+            )?;
+
+            Ok(())
+        })
+        .require_join(),
+    );
+
+    let a = sim.gate("sender", "tim");
+    let b = sim.gate("sender", "tom");
+    a.connect(b);
+
+    let rt = Builder::seeded(123).build(sim.freeze());
+    rt.run().map(|_| ())
+}
+
+#[test]
+#[serial]
+fn interface_handle_add_addr() -> Result<(), RuntimeError> {
+    let mut sim = Sim::new(()).with_stack(inet::init);
+    sim.node(
+        "sender",
+        AsyncHandler::failable::<_, _, std::io::Error>(|_| async move {
+            let handle =
+                ioctx().add_interface(InterfaceDef::new("en0", NetworkDevice::eth()).v6())?;
+
+            assert_eq!(handle.id(), IfId::new("en0"));
+            handle.add_addr("192.168.2.101".parse().unwrap())?;
+            handle.add_addr("2003:a:b::1".parse().unwrap())?;
+
+            assert_eq!(
+                handle.status().addrs.v4.unicast[0].addr,
+                "192.168.2.101".parse::<Ipv4Addr>().unwrap()
+            );
+
+            // no v6 addr is ready yet;
+            assert_eq!(handle.status().addrs.v6.unicast.len(), 0);
+            sleep(Duration::from_secs(5)).await; // wait for ready
+            assert_eq!(handle.status().addrs.v6.unicast.len(), 2);
+
+            Ok(())
+        }),
+    );
+
+    let a = sim.gate("sender", "port");
+    let b = sim.gate("sender", "dummy");
+
+    a.connect(b);
+
+    let rt = Builder::seeded(123).build(sim.freeze());
+    rt.run().map(|_| ())
 }

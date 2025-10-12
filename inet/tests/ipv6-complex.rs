@@ -1,31 +1,30 @@
-#![cfg(feature = "props")]
-
 use std::{io, iter::repeat_with};
 
 use bytes_io::BytesMut;
 use des::{
-    net::{AsyncHandler, globals},
-    prelude::*,
+    net::{globals, handlers::AsyncHandler},
+    prelude::{ChannelDropBehaviour, DatarateChannelMetrics, *},
     runtime::rng,
     time::sleep,
 };
 use inet::{
     UdpSocket,
-    interface::{InterfaceDef, InterfaceStatus, NetworkDevice, add_interface},
+    interface::{InterfaceDef, InterfaceStatus, NetworkDevice},
+    ioctx,
     ipv6::router,
     utils::LinkLayerSwitch,
 };
 use rand::seq::IndexedRandom;
 use types::ip::{Ipv6AddrExt, Ipv6AddrScope};
 
-const LAN: ChannelMetrics = ChannelMetrics::new(
+const LAN: DatarateChannelMetrics = DatarateChannelMetrics::new(
     80_000_000,
     Duration::from_millis(5),
     Duration::ZERO,
     ChannelDropBehaviour::Queue(None),
 );
 
-const WAN: ChannelMetrics = ChannelMetrics::new(
+const WAN: DatarateChannelMetrics = DatarateChannelMetrics::new(
     8_000_000,
     Duration::from_millis(15),
     Duration::ZERO,
@@ -48,7 +47,11 @@ const WAN: ChannelMetrics = ChannelMetrics::new(
 ///
 #[test]
 fn run() -> Result<(), RuntimeError> {
-    // des::tracing::init();
+    des::tracing::init();
+
+    if cfg!(not(feature = "props")) {
+        return Ok(());
+    }
 
     let mut sim = Sim::new(()).with_stack(inet::init);
 
@@ -60,8 +63,6 @@ fn run() -> Result<(), RuntimeError> {
         "router-1",
         AsyncHandler::io(|_| async move {
             router::declare_router()?;
-            router::add_routing_prefix("2003:a:1::/64".parse()?)?;
-            router::add_routing_prefix("2003:a:2::/64".parse()?)?;
 
             router::add_routing_interface(
                 "en-lan",
@@ -73,6 +74,8 @@ fn run() -> Result<(), RuntimeError> {
                 ],
                 true,
             )?;
+            router::add_routing_prefix("en-lan", "2003:a:1::/64".parse()?)?;
+            router::add_routing_prefix("en-lan", "2003:a:2::/64".parse()?)?;
 
             router::add_routing_interface(
                 "en-wan",
@@ -94,7 +97,6 @@ fn run() -> Result<(), RuntimeError> {
         "router-2",
         AsyncHandler::io(|_| async move {
             router::declare_router()?;
-            router::add_routing_prefix("2003:b:1::/64".parse()?)?;
 
             router::add_routing_interface(
                 "en-lan",
@@ -102,6 +104,7 @@ fn run() -> Result<(), RuntimeError> {
                 &["2003:b:1::1".parse().unwrap(), Ipv6Addr::LINK_LOCAL],
                 true,
             )?;
+            router::add_routing_prefix("en-lan", "2003:b:1::/64".parse()?)?;
 
             router::add_routing_interface(
                 "en-wan",
@@ -224,28 +227,44 @@ fn run() -> Result<(), RuntimeError> {
     );
 
     // Connectors
-    sim.gate("host-1", "port")
-        .connect(sim.gate("switch-1", "port-0"), Some(Channel::new(LAN)));
-    sim.gate("host-2", "port")
-        .connect(sim.gate("switch-1", "port-1"), Some(Channel::new(LAN)));
-    sim.gate("host-3", "port")
-        .connect(sim.gate("switch-1", "port-2"), Some(Channel::new(LAN)));
-    sim.gate("host-4", "port")
-        .connect(sim.gate("switch-2", "port-0"), Some(Channel::new(LAN)));
-    sim.gate("host-5", "port")
-        .connect(sim.gate("switch-2", "port-1"), Some(Channel::new(LAN)));
-    sim.gate("host-6", "port")
-        .connect(sim.gate("switch-3", "port-1"), Some(Channel::new(LAN))); // port-0 is switch 2
+    sim.gate("host-1", "port").connect_with(
+        sim.gate("switch-1", "port-0"),
+        Some(DatarateChannel::new(LAN)),
+    );
+    sim.gate("host-2", "port").connect_with(
+        sim.gate("switch-1", "port-1"),
+        Some(DatarateChannel::new(LAN)),
+    );
+    sim.gate("host-3", "port").connect_with(
+        sim.gate("switch-1", "port-2"),
+        Some(DatarateChannel::new(LAN)),
+    );
+    sim.gate("host-4", "port").connect_with(
+        sim.gate("switch-2", "port-0"),
+        Some(DatarateChannel::new(LAN)),
+    );
+    sim.gate("host-5", "port").connect_with(
+        sim.gate("switch-2", "port-1"),
+        Some(DatarateChannel::new(LAN)),
+    );
+    sim.gate("host-6", "port").connect_with(
+        sim.gate("switch-3", "port-1"),
+        Some(DatarateChannel::new(LAN)),
+    ); // port-0 is switch 2
 
     // Fabric
     sim.gate("switch-1", "upstream")
-        .connect(sim.gate("router-1", "lan"), Some(Channel::new(LAN)));
+        .connect_with(sim.gate("router-1", "lan"), Some(DatarateChannel::new(LAN)));
     sim.gate("router-1", "wan")
-        .connect(sim.gate("router-2", "wan"), Some(Channel::new(WAN)));
-    sim.gate("router-2", "lan")
-        .connect(sim.gate("switch-3", "upstream"), Some(Channel::new(LAN)));
-    sim.gate("switch-3", "port-0")
-        .connect(sim.gate("switch-2", "upstream"), Some(Channel::new(LAN)));
+        .connect_with(sim.gate("router-2", "wan"), Some(DatarateChannel::new(WAN)));
+    sim.gate("router-2", "lan").connect_with(
+        sim.gate("switch-3", "upstream"),
+        Some(DatarateChannel::new(LAN)),
+    );
+    sim.gate("switch-3", "port-0").connect_with(
+        sim.gate("switch-2", "upstream"),
+        Some(DatarateChannel::new(LAN)),
+    );
 
     let (_, _, _) = Builder::seeded(213)
         .max_time(100.0.into())
@@ -259,7 +278,7 @@ fn pick_target_addr(hosts: &[&str]) -> Ipv6Addr {
     let host = hosts.choose(&mut rng()).unwrap();
 
     let addr = globals()
-        .node(*host)
+        .get(&(*host).into())
         .expect("node must exists")
         .prop::<InterfaceStatus>("inet.iface.en0")
         .expect("prop failed")

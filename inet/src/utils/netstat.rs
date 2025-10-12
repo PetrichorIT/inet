@@ -1,7 +1,7 @@
-use std::{io::Result, net::SocketAddr};
+use std::{io, net::SocketAddr};
 
 use crate::{
-    IOContext,
+    IOContext, ioctx,
     socket::{SocketDomain, SocketType},
 };
 
@@ -62,8 +62,8 @@ impl NetstatConnectionProto {
 /// # Errors
 ///
 /// This function may fail, if called from outside of a node context.
-pub fn netstat() -> Result<Netstat> {
-    IOContext::failable_api(|ctx| Ok(ctx.netstat()))
+pub fn netstat() -> io::Result<Netstat> {
+    ioctx().do_failable(|ctx| Ok(ctx.netstat()))
 }
 
 impl IOContext {
@@ -102,5 +102,23 @@ impl IOContext {
         }
 
         Netstat { active_connections }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use des::runtime::RuntimeError;
+
+    use crate::{test_util::SimpleSim, utils::netstat};
+
+    #[test]
+    fn test_netstat() -> Result<(), RuntimeError> {
+        let mut sim = SimpleSim::default();
+        sim.node("192.168.2.1", || async move {
+            let _stat = netstat()?;
+            Ok(())
+        });
+
+        sim.run()
     }
 }

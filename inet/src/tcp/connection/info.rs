@@ -22,7 +22,7 @@ impl Connection {
 
     #[inline]
     pub fn publish(&self) {
-        if cfg!(feature = "props") {
+        if cfg!(feature = "props") && self.cfg.allow_publish {
             let Some(module) = try_current() else { return };
             module
                 .prop::<ConnectionInfo>(&format!(
@@ -37,7 +37,7 @@ impl Connection {
 
 impl Drop for Connection {
     fn drop(&mut self) {
-        if cfg!(feature = "props") {
+        if cfg!(feature = "props") && self.cfg.allow_publish {
             let Some(module) = try_current() else { return };
             module
                 .prop_raw(&format!(

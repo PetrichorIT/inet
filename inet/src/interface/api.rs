@@ -1,7 +1,7 @@
 use super::{IfId, InterfaceAddrsV6, MacAddress, def::InterfaceDef};
 use crate::{
     IOContext, IOHandle,
-    interface::{InterfaceAddrV4, InterfaceAddrV6, InterfaceEvent, InterfaceHandle, InterfaceName},
+    interface::{InterfaceAddrV4, InterfaceAddrV6, InterfaceEvent, InterfaceHandle},
     ipv4::{
         arp::ArpEntryInternal,
         router::{FwdEntryV4, Ipv4Gateway, RoutingTableId},
@@ -37,7 +37,7 @@ impl IOHandle {
     ///
     /// This function may fail if no interface with the given name exists.
     pub fn get_interface(&self, desc: &str) -> io::Result<InterfaceHandle> {
-        self.get_interface_by(|name| &**name == desc)
+        self.get_interface_by_ifid(IfId::new(desc))
     }
 
     /// Retrieves a handle to an existing interface, based on its id.
@@ -46,20 +46,8 @@ impl IOHandle {
     ///
     /// This function may fail if no interface with the given id exists.
     pub fn get_interface_by_ifid(&self, id: IfId) -> io::Result<InterfaceHandle> {
-        self.get_interface_by(|name| name.id() == id)
-    }
-
-    pub(super) fn get_interface_by(
-        &self,
-        mut f: impl FnMut(&InterfaceName) -> bool,
-    ) -> io::Result<InterfaceHandle> {
-        let (id, rx) = self
-            .do_io(|ctx| {
-                ctx.ifaces
-                    .iter()
-                    .find(|(_, v)| f(&v.name))
-                    .map(|(k, v)| (*k, v.state.events.subscribe()))
-            })
+        let rx = self
+            .do_io(|ctx| ctx.ifaces.get(&id).map(|v| v.state.events.subscribe()))
             .ok_or_else(|| Error::new(ErrorKind::NotFound, "no such interface exists"))?;
 
         Ok(InterfaceHandle {
@@ -76,6 +64,7 @@ impl IOContext {
         let ifid = iface.name.id();
 
         if self.ifaces.contains_key(&iface.name.id()) {
+            // FIXME: this error can occur even if name1 != name2, but id == id (hash collision)
             return Err(Error::other(format!(
                 "cannot duplicate interface with name {}",
                 iface.name

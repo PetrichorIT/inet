@@ -172,6 +172,12 @@ mod tests {
     }
 
     #[test]
+    fn iface_trunc_can_match_original() {
+        assert!(IfId::new("interface-delta").matches("interface-delta"));
+        assert!(!IfId::new("interface-delta").matches("interface-not-delta"));
+    }
+
+    #[test]
     fn iface_debug() {
         assert_eq!(IfId::new("en0").to_string(), "en0");
         assert_eq!(IfId::new("eth0").to_string(), "eth0");

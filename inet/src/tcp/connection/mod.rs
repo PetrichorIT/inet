@@ -59,10 +59,6 @@ impl State {
         *self = new;
     }
 
-    pub fn is_synchronized(&self) -> bool {
-        !matches!(*self, State::SynSent | State::SynRcvd | State::Closed)
-    }
-
     pub fn is_writable(&self) -> bool {
         matches!(self, State::Estab | State::CloseWait)
     }
@@ -120,10 +116,6 @@ impl Connection {
         self.timers.next_timeout()
     }
 
-    pub fn is_synchronized(&self) -> bool {
-        self.state.is_synchronized()
-    }
-
     pub fn outgoing_next(&mut self) -> Option<(IpPacket, u32)> {
         if self.cfg.enable_queue_optimizations {
             self.optimize_queue_elements();
@@ -157,7 +149,7 @@ impl Connection {
                     dst,
                     content: tcp.write_to_bytes().expect("failed to encodes"),
                 }),
-                _ => todo!(),
+                _ => unreachable!("illegal state"),
             };
 
             (ip, tcp.seq_no)
@@ -868,18 +860,6 @@ impl Connection {
         self.outgoing.clear();
 
         // TODO: reassemble packets in transmission queue
-    }
-
-    #[deprecated]
-    pub fn on_icmp_destination_unreachable(&mut self, error: Error) {
-        if let State::SynSent = self.state {
-            tracing::warn!("closing tcp connection due to icmp destination unreachable");
-            self.state.transition_to(State::Closed);
-            self.interface.set_error(error);
-            self.interface.wake(Interest::BOTH);
-        } else {
-            unimplemented!("should not really happen here")
-        }
     }
 
     pub fn on_packet(&mut self, seg: TcpPacket) -> io::Result<()> {

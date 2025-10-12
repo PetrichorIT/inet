@@ -183,6 +183,18 @@ fn connect_simultaneous_open() -> io::Result<()> {
 }
 
 #[test]
+fn accept_ignore_non_syn() -> io::Result<()> {
+    let mut test = TcpTestUnit::new(
+        SocketAddr::new(Ipv4Addr::new(10, 0, 1, 104).into(), 80), // local
+        SocketAddr::new(Ipv4Addr::new(20, 0, 2, 204).into(), 1808), // peer
+    );
+    test.incoming(TcpPacket::new(1808, 80, 4000, 1, WIN_4KB, Vec::new()))?;
+    assert!(test.con.is_none());
+
+    Ok(())
+}
+
+#[test]
 fn accept_syn_ack_lost() -> io::Result<()> {
     let mut test = TcpTestUnit::new(
         SocketAddr::new(Ipv4Addr::new(10, 0, 1, 104).into(), 80), // local

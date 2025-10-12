@@ -5,7 +5,7 @@ use std::{
     marker::PhantomData,
 };
 
-use crate::{IOContext, IOHandle};
+use crate::IOHandle;
 
 impl IOHandle {
     pub fn get_extension<E: Default + Any>(&self) -> ExtensionHandle<E> {
@@ -23,9 +23,7 @@ pub struct ExtensionHandle<E> {
 
 impl<E> Debug for ExtensionHandle<E> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("ExtensionHandle")
-            .field("handle", &self.handle)
-            .finish()
+        f.debug_struct("ExtensionHandle").finish()
     }
 }
 
@@ -44,13 +42,6 @@ impl<E: Default + Any> ExtensionHandle<E> {
             handle: IOHandle::current(),
             _phantom: PhantomData,
         }
-    }
-
-    pub fn try_new() -> Option<Self> {
-        Some(Self {
-            handle: IOContext::try_current_handle()?,
-            _phantom: PhantomData,
-        })
     }
 
     pub fn with<R>(&self, f: impl FnOnce(&mut E) -> R) -> R {

@@ -202,6 +202,9 @@ impl IOContext {
             let canidates = self.ipv6_src_addr_canidate_set(pkt.dst, ifid);
             if let Some(src) = canidates.select(&self.ipv6.policies) {
                 pkt.src = src.addr;
+                if ifid.is_null() {
+                    ifid = src.ifid;
+                }
             } else if flags.contains(Ipv6SendFlags::ALLOW_SRC_UNSPECIFIED) {
                 /* Do nothing the flag allows this */
             } else {
@@ -231,6 +234,7 @@ impl IOContext {
                     .send_buffered(Message::default().with_kind(KIND_IPV6).with_content(pkt))?;
                 return Ok(());
             } else {
+                assert!(!ifid.is_null());
                 // FIXME: dangerous since this execut4e directly
                 let iface = self.ifaces.get(&ifid).unwrap();
                 schedule_in(
@@ -327,7 +331,6 @@ impl IOContext {
                         ));
                     }
                 }
-                InterfaceError::InterfaceBusy(_) => {}
             }
         }
 
@@ -371,7 +374,6 @@ impl IOContext {
                             "packet exceeds local max MTU",
                         ));
                     }
-                    InterfaceError::InterfaceBusy(_) => tracing::error!("unbusy send"),
                 }
             }
         }

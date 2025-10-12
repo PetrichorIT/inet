@@ -1,14 +1,13 @@
 use std::any::Any;
 
+use crate::{
+    env::{RoutingInformation, RoutingPort},
+    interface::device::driver::{EthernetDeviceDriver, LoopbackDeviceDriver},
+};
 use des::{
     net::module::current,
     prelude::{GateRef, Header, Message},
     time::SimTime,
-};
-
-use crate::{
-    env::{RoutingInformation, RoutingPort},
-    interface::device::driver::{EthernetDeviceDriver, LoopbackDeviceDriver},
 };
 
 use super::{InterfaceBusyState, MacAddress};
@@ -49,6 +48,7 @@ fn as_any(v: &dyn MediumDeviceDriver) -> &dyn Any {
 }
 
 impl NetworkDevice {
+    #[inline]
     pub fn from_raw<T: MediumDeviceDriver>(addr: MacAddress, inner: T) -> Self {
         Self {
             addr,
@@ -72,11 +72,7 @@ impl NetworkDevice {
 
     /// Creates a local, loopback device.
     pub fn loopback() -> Self {
-        Self {
-            addr: MacAddress::NULL,
-            mtu: None,
-            inner: Box::new(LoopbackDeviceDriver {}),
-        }
+        Self::from_raw(MacAddress::NULL, LoopbackDeviceDriver {})
     }
 
     pub fn gate(name: &str, pos: usize) -> Option<Self> {
@@ -85,20 +81,10 @@ impl NetworkDevice {
     }
 
     pub fn from_gate(gate: GateRef) -> Self {
-        Self {
-            addr: MacAddress::generate(),
-            mtu: None,
-            inner: Box::new(EthernetDeviceDriver::new(gate.clone(), gate)),
-        }
-    }
-
-    /// Custom device
-    pub fn custom(receiving: GateRef, sending: GateRef) -> Self {
-        Self {
-            addr: MacAddress::generate(),
-            mtu: None,
-            inner: Box::new(EthernetDeviceDriver::new(receiving, sending)),
-        }
+        Self::from_raw(
+            MacAddress::generate(),
+            EthernetDeviceDriver::new(gate.clone(), gate),
+        )
     }
 
     /// Creates the default ethernet device using the gates
@@ -122,14 +108,10 @@ impl NetworkDevice {
                     .find(|p| p.input.name() == "port" && p.input.pos() == 0);
 
                 if let Some(default_port) = default_port {
-                    Self {
-                        addr: MacAddress::generate(),
-                        mtu: None,
-                        inner: Box::new(EthernetDeviceDriver::new(
-                            default_port.output,
-                            default_port.input,
-                        )),
-                    }
+                    Self::from_raw(
+                        MacAddress::generate(),
+                        EthernetDeviceDriver::new(default_port.output, default_port.input),
+                    )
                 } else {
                     panic!(
                         "cannot create default ethernet device, module has mutiple valid ports, but not (in/out)"
@@ -146,11 +128,10 @@ impl NetworkDevice {
         for r in rinfo.ports {
             let valid = f(&r);
             if valid {
-                return Self {
-                    addr: MacAddress::generate(),
-                    mtu: None,
-                    inner: Box::new(EthernetDeviceDriver::new(r.output, r.input)),
-                };
+                return Self::from_raw(
+                    MacAddress::generate(),
+                    EthernetDeviceDriver::new(r.output, r.input),
+                );
             }
         }
 

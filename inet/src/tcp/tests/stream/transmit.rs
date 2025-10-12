@@ -6,7 +6,8 @@ use des::{
         handlers::{AsyncHandler, HandlerFn},
     },
     prelude::{ChannelDropBehaviour, DatarateChannel, DatarateChannelMetrics, send},
-    runtime::{Builder, random},
+    runtime::{Builder, RuntimeError, random},
+    time::SimTime,
 };
 use rand::{RngCore, rng};
 use serial_test::serial;
@@ -15,8 +16,65 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use crate::{
     interface::{InterfaceDef, NetworkDevice},
     ioctx,
-    tcp::{Config, TcpListener, TcpStream, set_config},
+    tcp::{
+        Config, TcpListener, TcpStream, set_config,
+        tests::stream::consume_any_data_echo_if_possible,
+    },
+    test_util::SimpleSim,
 };
+
+#[serial]
+#[test]
+fn peeking_stream() -> Result<(), RuntimeError> {
+    let mut sim = SimpleSim::default();
+    sim.node_require_join("192.168.2.101", || async move {
+        let (mut accepted, _) = TcpListener::bind("0.0.0.0:80").await?.accept().await?;
+        let mut buf = [0; 1024];
+        loop {
+            let n = accepted.peek(&mut buf).await?;
+            if n == 1024 {
+                accepted.read(&mut buf).await?;
+                break;
+            }
+        }
+
+        Ok(())
+    });
+
+    sim.node_require_join("192.168.2.102", || async move {
+        TcpStream::connect("192.168.2.101:80")
+            .await?
+            .write_all(&[1; 1024])
+            .await?;
+        Ok(())
+    });
+
+    sim.run()
+}
+
+#[test]
+#[serial]
+fn interest_based_writing() -> Result<(), RuntimeError> {
+    let mut sim = SimpleSim::default();
+    sim.node("192.168.2.101", || async move {
+        let (accepted, _) = TcpListener::bind("0.0.0.0:80").await?.accept().await?;
+        consume_any_data_echo_if_possible(accepted).await
+    });
+
+    sim.node_require_join("192.168.2.102", || async move {
+        let stream = TcpStream::connect("192.168.2.101:80").await?;
+        let mut acc = 0;
+        while acc < 100_000 {
+            stream.writable().await?;
+            acc += stream.try_write(&[1; 1024])?;
+        }
+
+        assert!(SimTime::now().as_secs_f64() > 1.2);
+        Ok(())
+    });
+
+    sim.run()
+}
 
 #[serial]
 #[test]

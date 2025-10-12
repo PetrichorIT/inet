@@ -46,13 +46,6 @@ pub trait PcapSubscriber {
     fn open(&mut self) -> Result<()> {
         Ok(())
     }
-
-    /// A teardown handler called once, when the subscriber will be deactivated.
-    ///
-    /// The default configuration takes no actions.
-    fn close(&mut self) -> Result<()> {
-        Ok(())
-    }
 }
 
 /// Points in the packet flow, where libpcap may
@@ -83,7 +76,7 @@ impl Pcap {
     }
 
     fn register(&mut self, id: ModuleId, deamon: Box<dyn PcapSubscriber>) {
-        match self.mapping.binary_search_by(|e| e.0 .0.cmp(&id.0)) {
+        match self.mapping.binary_search_by(|e| e.0.0.cmp(&id.0)) {
             Ok(i) | Err(i) => self.mapping.insert(i, (id, deamon)),
         }
 
@@ -94,17 +87,11 @@ impl Pcap {
     }
 
     fn close(&mut self, id: ModuleId) {
-        let Some(pcap) = self.deamon(id) else {
-            return;
-        };
-
-        try_warn!(pcap.close());
-
         self.mapping.retain(|e| e.0 != id);
     }
 
     fn deamon(&mut self, id: ModuleId) -> Option<&mut dyn PcapSubscriber> {
-        match self.mapping.binary_search_by(|e| e.0 .0.cmp(&id.0)) {
+        match self.mapping.binary_search_by(|e| e.0.0.cmp(&id.0)) {
             Ok(i) => Some(&mut *self.mapping[i].1),
             Err(_) => None,
         }

@@ -3,12 +3,12 @@ use std::{io, net::Ipv4Addr, time::Duration};
 use des::{runtime::RuntimeError, time::sleep};
 use serial_test::serial;
 
-use crate::{test_util::SimpleSim, UdpSocket};
+use crate::{UdpSocket, test_util::SimpleSim};
 
 #[test]
 #[serial]
 fn recv_truncates_packets() -> Result<(), RuntimeError> {
-    let mut sim = SimpleSim::new(crate::init);
+    let mut sim = SimpleSim::default();
     sim.node_require_join("192.168.2.100", || async move {
         let sock = UdpSocket::bind("0.0.0.0:100").await?;
         let mut buf = [0u8; 100];
@@ -42,7 +42,7 @@ fn recv_truncates_packets() -> Result<(), RuntimeError> {
 #[test]
 #[serial]
 fn recv_from_ignores_other_packets() -> Result<(), RuntimeError> {
-    let mut sim = SimpleSim::new(crate::init);
+    let mut sim = SimpleSim::default();
     sim.node_require_join("192.168.2.100", || async move {
         let sock = UdpSocket::bind("0.0.0.0:100").await?;
         sock.connect("192.168.2.101:100").await?;
@@ -83,7 +83,7 @@ fn recv_from_ignores_other_packets() -> Result<(), RuntimeError> {
 #[test]
 #[serial]
 fn recv_from_default_to_recv_when_connected() -> Result<(), RuntimeError> {
-    let mut sim = SimpleSim::new(crate::init);
+    let mut sim = SimpleSim::default();
 
     sim.node_require_join("192.168.2.100", || async move {
         let udp = UdpSocket::bind("0.0.0.0:100").await?;
@@ -127,7 +127,7 @@ fn recv_from_default_to_recv_when_connected() -> Result<(), RuntimeError> {
 #[test]
 #[serial]
 fn peek_preserves_packets() -> Result<(), RuntimeError> {
-    let mut sim = SimpleSim::new(crate::init);
+    let mut sim = SimpleSim::default();
 
     sim.node_require_join("192.168.2.100", || async move {
         let udp = UdpSocket::bind("0.0.0.0:100").await?;

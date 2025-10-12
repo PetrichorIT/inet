@@ -111,7 +111,6 @@ impl IOContext {
         self.send_ip_packet(
             SocketIfaceBinding::Any(self.ifaces.keys().cloned().collect::<Vec<_>>()),
             IpPacket::V4(ip),
-            true,
         )
         .expect("Failed to send");
     }

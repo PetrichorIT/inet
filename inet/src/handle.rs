@@ -32,12 +32,6 @@ impl IOHandle {
             .expect("could not aquire handle to IO context (no active context found)")
     }
 
-    #[track_caller]
-    pub fn try_current() -> Option<Self> {
-        let lock = NCURRENT.try_lock().ok()?;
-        lock.as_ref().cloned()
-    }
-
     pub(super) fn swap_in(ingoing: Option<IOHandle>) -> Option<IOHandle> {
         let mut lock = NCURRENT.lock().expect("could not aquire io context lock");
         let ret = lock.take();

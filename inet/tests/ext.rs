@@ -5,7 +5,7 @@ use des::{
     runtime::{Builder, RuntimeError},
     time::sleep,
 };
-use inet::extensions::ExtensionHandle;
+use inet::{extensions::ExtensionHandle, ioctx};
 
 #[test]
 fn basic_extension() -> Result<(), RuntimeError> {
@@ -19,6 +19,8 @@ fn basic_extension() -> Result<(), RuntimeError> {
         "mynode",
         AsyncHandler::new(|_| async move {
             let ext = ExtensionHandle::<MyExt>::new();
+            assert_eq!(format!("{:?}", ioctx()), "IOHandle");
+            assert_eq!(format!("{ext:?}"), "ExtensionHandle");
 
             ext.with(|e| *e = MyExt { value: 42 });
             sleep(Duration::from_secs(1)).await;

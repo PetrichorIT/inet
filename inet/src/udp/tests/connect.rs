@@ -1,23 +1,23 @@
 use std::{
     collections::HashMap,
     io,
-    net::{Ipv4Addr, Ipv6Addr},
+    net::{Ipv4Addr, Ipv6Addr, SocketAddr},
     str::FromStr,
     time::Duration,
 };
 
 use des::{
-    runtime::{random, RuntimeError},
+    runtime::{RuntimeError, random},
     time::sleep,
 };
 use serial_test::serial;
 
-use crate::{test_util::SimpleSim, UdpSocket};
+use crate::{UdpSocket, test_util::SimpleSim};
 
 #[test]
 #[serial]
 fn ipv4() -> Result<(), RuntimeError> {
-    let mut sim = SimpleSim::new(crate::init);
+    let mut sim = SimpleSim::default();
 
     let nodes = vec![
         Ipv4Addr::new(192, 168, 2, 101),
@@ -81,7 +81,7 @@ fn ipv4() -> Result<(), RuntimeError> {
 #[test]
 #[serial]
 fn ipv6() -> Result<(), RuntimeError> {
-    let mut sim = SimpleSim::new(crate::init);
+    let mut sim = SimpleSim::default();
 
     let nodes = vec![
         Ipv6Addr::from_str("fe80::aa00")?,
@@ -139,5 +139,38 @@ fn ipv6() -> Result<(), RuntimeError> {
         });
     }
 
+    sim.run()
+}
+
+#[test]
+#[serial]
+fn connect_failure() -> Result<(), RuntimeError> {
+    let mut sim = SimpleSim::default();
+    sim.node_require_join("192.168.2.101", || async move {
+        let socket = UdpSocket::bind("0.0.0.0:0").await?;
+        let error = socket.connect("[2003:1:a::a]:80").await.unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "address not available - ip version missmatch"
+        );
+        Ok(())
+    });
+    sim.run()
+}
+
+#[test]
+#[serial]
+fn connect_no_addrs() -> Result<(), RuntimeError> {
+    let mut sim = SimpleSim::default();
+    sim.node_require_join("192.168.2.101", || async move {
+        let set: &[SocketAddr] = &[];
+        let error = UdpSocket::bind("0.0.0.0:0")
+            .await?
+            .connect(set)
+            .await
+            .unwrap_err();
+        assert_eq!(error.to_string(), "could not resolve to any address");
+        Ok(())
+    });
     sim.run()
 }

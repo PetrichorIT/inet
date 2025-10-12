@@ -160,28 +160,37 @@ impl SimpleSim {
     pub fn run(self) -> Result<(), RuntimeError> {
         let rt = Builder::seeded(123)
             .max_time(100.0.into())
-            .build(self.sim.freeze());
+            .build(self.into_inner());
         rt.run().map(|_| ())
     }
 
     pub fn run_max_time(self, f: f64) -> Result<(), RuntimeError> {
         let rt = Builder::seeded(123)
             .max_time(f.into())
-            .build(self.sim.freeze());
+            .build(self.into_inner());
         rt.run().map(|_| ())
     }
 }
 
 impl Default for SimpleSim {
     fn default() -> Self {
-        let mut sim = Sim::new(()).with_stack(crate::init);
-        sim.node("switch", LinkLayerSwitch::default());
+        Self::new(crate::init)
+    }
+}
 
-        Self {
-            sim,
-            clients: Vec::new(),
-            metrics: DEFAULT_CHANNEL_METRICS,
-            v6: false,
+#[cfg(test)]
+mod tests {
+    use serial_test::serial;
+
+    use super::*;
+
+    #[test]
+    #[serial]
+    #[should_panic = "no address available"]
+    fn too_many_clients() {
+        let mut sim = SimpleSim::default();
+        for i in 0..300 {
+            sim.node_require_join(&i.to_string(), || async move { Ok(()) });
         }
     }
 }

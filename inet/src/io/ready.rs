@@ -79,8 +79,6 @@ impl Ready {
     }
 }
 
-// use crate::io::Interest;
-
 impl Ready {
     pub(crate) fn from_interest(interest: Interest) -> Ready {
         let mut ready = Ready::empty();
@@ -94,5 +92,46 @@ impl Ready {
         }
 
         ready
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_is_readable() {
+        assert!(Ready::READABLE.is_readable());
+        assert!(!Ready::WRITABLE.is_readable());
+
+        let both = Ready::READABLE | Ready::WRITABLE;
+        assert!(both.is_readable());
+    }
+
+    #[test]
+    fn test_is_writable() {
+        assert!(!Ready::READABLE.is_writable());
+        assert!(Ready::WRITABLE.is_writable());
+
+        let both = Ready::READABLE | Ready::WRITABLE;
+        assert!(both.is_writable());
+    }
+
+    #[test]
+    fn test_is_read_closed() {
+        assert!(!Ready::READABLE.is_read_closed());
+        assert!(!Ready::WRITABLE.is_read_closed());
+
+        let both = Ready::READ_CLOSED | Ready::WRITABLE;
+        assert!(both.is_read_closed());
+    }
+
+    #[test]
+    fn test_is_write_closed() {
+        assert!(!Ready::READABLE.is_write_closed());
+        assert!(!Ready::WRITABLE.is_write_closed());
+
+        let both = Ready::WRITE_CLOSED | Ready::READABLE;
+        assert!(both.is_write_closed());
     }
 }

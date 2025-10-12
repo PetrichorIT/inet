@@ -3,12 +3,12 @@ use std::time::Duration;
 use des::{runtime::RuntimeError, time::sleep};
 use serial_test::serial;
 
-use crate::{test_util::SimpleSim, UdpSocket};
+use crate::{UdpSocket, test_util::SimpleSim};
 
 #[test]
 #[serial]
 fn select_recv_two_sockets() -> Result<(), RuntimeError> {
-    let mut sim = SimpleSim::new(crate::init);
+    let mut sim = SimpleSim::default();
     sim.node_require_join("192.168.2.100", || async move {
         let a = UdpSocket::bind("0.0.0.0:100").await?;
         let b = UdpSocket::bind("0.0.0.0:101").await?;
@@ -55,7 +55,7 @@ fn select_recv_two_sockets() -> Result<(), RuntimeError> {
 #[test]
 #[serial]
 fn select_recv_send() -> Result<(), RuntimeError> {
-    let mut sim = SimpleSim::new(crate::init);
+    let mut sim = SimpleSim::default();
     sim.metrics.bitrate = 5_000;
     sim.metrics.latency = Duration::from_micros(5);
 
@@ -92,6 +92,58 @@ fn select_recv_send() -> Result<(), RuntimeError> {
         }
 
         assert_eq!(recv, 100);
+        Ok(())
+    });
+
+    sim.node_require_join("192.168.2.101", || async move {
+        sleep(Duration::from_secs(2)).await;
+
+        let sock = UdpSocket::bind("0.0.0.0:0").await?;
+        sock.send_to(&[1; 100], "192.168.2.100:100").await?;
+
+        Ok(())
+    });
+
+    sim.run()
+}
+
+#[test]
+#[serial]
+fn select_send_send() -> Result<(), RuntimeError> {
+    let mut sim = SimpleSim::default();
+    sim.metrics.bitrate = 5_000;
+    sim.metrics.latency = Duration::from_micros(5);
+
+    sim.node_require_join("192.168.2.100", || async move {
+        // Update ARP entries, to ensure correct send behaviour
+        UdpSocket::bind("0.0.0.0:0")
+            .await?
+            .send_to(&[1], "192.168.2.101:1")
+            .await?;
+
+        sleep(Duration::from_secs(2)).await;
+        let sock = UdpSocket::bind("0.0.0.0:100").await?;
+        sock.writable().await?;
+
+        let mut snd = vec![
+            &[100; 1300],
+            &[100; 1300],
+            &[100; 1300],
+            &[100; 1300],
+            &[100; 1300],
+        ];
+        for _ in 0..5 {
+            tokio::select! {
+                frame = sock.send_to(snd[0], "192.168.2.101:1") => {
+                    frame?;
+                    snd.remove(0);
+                },
+                frame = sock.send_to(snd[0], "192.168.2.101:1") => {
+                    frame?;
+                    snd.remove(0);
+                },
+            };
+        }
         Ok(())
     });
 

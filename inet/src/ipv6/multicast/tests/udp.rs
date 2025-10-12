@@ -8,7 +8,7 @@ use crate::{UdpSocket, ipv6::multicast::tests::assert_memberships_are, test_util
 #[test]
 #[serial]
 fn udp_can_receive_site_local_multicast() -> Result<(), RuntimeError> {
-    let mut sim = SimpleSim::new(crate::init);
+    let mut sim = SimpleSim::default();
     sim.v6 = true;
     let group = "ff15::1234".parse().unwrap();
 
@@ -37,7 +37,7 @@ fn udp_can_receive_site_local_multicast() -> Result<(), RuntimeError> {
 #[test]
 #[serial]
 fn udp_leaves_group_at_drop() -> Result<(), RuntimeError> {
-    let mut sim = SimpleSim::new(crate::init);
+    let mut sim = SimpleSim::default();
     sim.v6 = true;
     let group = "ff15::1234".parse().unwrap();
 

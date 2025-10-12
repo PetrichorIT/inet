@@ -133,8 +133,4 @@ impl<W: BlockWriter<IfId>> PcapSubscriber for LibPcapDeamon<W> {
         }
         self.write_packet(ifid, pkt.message)
     }
-
-    fn close(&mut self) -> Result<()> {
-        self.writer.flush()
-    }
 }

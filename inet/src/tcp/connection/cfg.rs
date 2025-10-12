@@ -30,6 +30,11 @@ pub struct Config {
     pub reuseaddr: bool,
     pub rst_for_syn: bool,
     pub clock: Arc<dyn Fn() -> SimTime>,
+
+    // NOTE:
+    // internal test cases are not serial_test::serial, since they use no global scope.
+    // however, publishing may lead to race conditions -> swap lock failure since shared state is accessed.
+    pub allow_publish: bool,
 }
 
 impl Config {
@@ -55,6 +60,8 @@ impl Config {
             reuseport: false,
             rst_for_syn: true,
             clock: Arc::new(SimTime::now),
+
+            allow_publish: false,
         }
     }
 
@@ -104,6 +111,8 @@ impl Default for Config {
             reuseport: false,
             rst_for_syn: true,
             clock: Arc::new(SimTime::now),
+
+            allow_publish: true,
         }
     }
 }
@@ -130,3 +139,35 @@ impl Debug for Config {
 }
 
 unsafe impl Send for Config {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_config_debug() {
+        let mut cfg = Config::test_default();
+        cfg.iss = None;
+        cfg.clock = Arc::new(|| 10.0.into());
+
+        let iss = cfg.iss_for(
+            &Quad {
+                src: "203.1.3.1:4148".parse().unwrap(),
+                dst: "203.1.3.2:41".parse().unwrap(),
+            },
+            &[1, 2, 3, 4],
+        );
+        assert_eq!(iss, 1_031_746_549);
+    }
+
+    #[test]
+    fn test_config_fmt() {
+        let cfg = Config::test_default();
+        assert_eq!(
+            format!("{cfg:?}"),
+            "Config { enable_congestion_control: false, enable_reorder_buffer: true, enable_sack: \
+            false, send_buffer_cap: 4096, recv_buffer_cap: 4096, syn_resent_count: 3, initial_rto: 10s, \
+            mss: None, iss: Some(0), ttl: 64, linger: None, reuseport: false, reuseaddr: false, rst_for_syn: true }"
+        );
+    }
+}

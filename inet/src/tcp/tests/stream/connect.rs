@@ -1,8 +1,12 @@
-use std::{io::ErrorKind, net::Ipv4Addr, time::Duration};
+use std::{
+    io::ErrorKind,
+    net::{Ipv4Addr, SocketAddr},
+    time::Duration,
+};
 
 use des::{
     net::{Sim, handlers::AsyncHandler},
-    runtime::Builder,
+    runtime::{Builder, RuntimeError},
     time::SimTime,
 };
 use serial_test::serial;
@@ -11,6 +15,7 @@ use crate::{
     interface::{InterfaceDef, NetworkDevice},
     ioctx,
     tcp::{Config, TcpListener, TcpStream, set_config},
+    test_util::SimpleSim,
 };
 
 use super::run_default_sim;
@@ -186,6 +191,36 @@ fn connect_syn_timeout_no_rst() {
 
 #[serial]
 #[test]
+fn connect_fails_no_addr() -> Result<(), RuntimeError> {
+    let mut sim = SimpleSim::default();
+    sim.node_require_join("192.168.2.101", || async move {
+        let error = TcpStream::connect::<&[SocketAddr]>(&[])
+            .await
+            .expect_err("must fail");
+        assert_eq!(error.to_string(), "could not resolve to any address");
+        Ok(())
+    });
+
+    sim.run()
+}
+
+#[serial]
+#[test]
+fn connect_fails_after_all_addr() -> Result<(), RuntimeError> {
+    let mut sim = SimpleSim::default();
+    sim.node_require_join("192.168.2.101", || async move {
+        let error = TcpStream::connect(("2003:a:1::3123", 0))
+            .await
+            .expect_err("must fail");
+        assert_eq!(error.to_string(), "address not available");
+        Ok(())
+    });
+
+    sim.run()
+}
+
+#[serial]
+#[test]
 fn connect_success() {
     let mut sim = Sim::new(()).with_stack(crate::init);
     sim.node(
@@ -196,7 +231,8 @@ fn connect_success() {
                     .ip(Ipv4Addr::new(100, 0, 0, 42).into()),
             )?;
 
-            let _stream = TcpStream::connect("100.0.0.69:8000").await?;
+            let stream = TcpStream::connect("100.0.0.69:8000").await?;
+            assert_eq!(stream.local_addr()?, "100.0.0.42:1024".parse().unwrap());
             tracing::info!("CONNECT");
             Ok(())
         })

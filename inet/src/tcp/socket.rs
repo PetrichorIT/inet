@@ -1,6 +1,6 @@
 use super::{TcpListener, TcpStream};
 use crate::IOHandle;
-use crate::socket::{Fd, SocketDomain, SocketType};
+use crate::socket::{AsRawFd, Fd, SocketDomain, SocketType};
 use crate::tcp::interest::TcpInterest;
 use crate::tcp::stream::Inner;
 use crate::tcp::{Config, State};
@@ -161,18 +161,13 @@ impl TcpSocket {
         self.handle.do_io(|ctx| ctx.socket_get_addr(self.fd))
     }
 
-    /// Returns the value of the SO_ERROR option.
-    pub fn take_error(&self) -> Result<Option<Error>> {
-        Ok(None)
-    }
-
     /// Binds the socket to the given address.
     ///
     /// This calls the bind(2) operating-system function.
     /// Behavior is platform specific. Refer to the target platform’s documentation for more details.
     pub fn bind(&self, addr: SocketAddr) -> Result<()> {
         if self.addr.get().is_ipv4() != addr.ip().is_ipv4() {
-            return Err(Error::other("Expected other ip typ"));
+            return Err(Error::other("invalid address family"));
         }
 
         let addr = self.handle.do_io(|ctx| ctx.socket_bind(self.fd, addr))?;
@@ -236,12 +231,11 @@ impl TcpSocket {
         self.handle
             .do_io(|ctx| ctx.tcp_bind(local_addr, Some(cfg), fd, Some(backlog as usize)))
     }
+}
 
-    /// DEPRECATED
-    #[deprecated(note = "Not implemented in simulation context")]
-    #[allow(unused)]
-    pub fn from_std_stream(std_stream: std::net::TcpStream) -> TcpSocket {
-        unimplemented!()
+impl AsRawFd for TcpSocket {
+    fn as_raw_fd(&self) -> Fd {
+        self.fd
     }
 }
 

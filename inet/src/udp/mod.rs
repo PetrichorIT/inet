@@ -341,7 +341,7 @@ impl IOContext {
 
                 let ifid = socket_info.interface.clone();
 
-                self.ipv4_send(ifid, ip, true)?;
+                self.ipv4_send(ifid, ip)?;
                 Ok(buf.len())
             }
             (IpAddr::V6(local), IpAddr::V6(target)) => {

@@ -1,4 +1,5 @@
 use std::{
+    fmt::Debug,
     io::{Error, ErrorKind},
     net::SocketAddr,
     sync::{
@@ -15,6 +16,7 @@ use valuable::Valuable;
 use crate::{
     IOHandle,
     dns::{ToSocketAddrs, lookup_host},
+    ioctx,
     socket::Fd,
 };
 
@@ -115,10 +117,7 @@ impl TcpListener {
     /// This function sets the SO_REUSEADDR option on the socket.
     pub async fn bind<A: ToSocketAddrs>(addr: A) -> Result<TcpListener, Error> {
         let addrs = lookup_host(addr).await?;
-        let handle = IOHandle::current();
-
-        // Get the current context
-        handle.do_io(|ctx| {
+        ioctx().do_io(|ctx| {
             let mut last_err = None;
 
             for addr in addrs {
@@ -146,9 +145,7 @@ impl TcpListener {
 
         self.backlog.fetch_sub(1, Ordering::SeqCst);
 
-        let fd = fd?;
-        let stream = TcpStream::from_fd(fd, self.handle.clone());
-
+        let stream = TcpStream::from_fd(fd?, self.handle.clone());
         stream.writable().await?;
 
         let peer = stream.peer_addr()?;
@@ -184,6 +181,12 @@ impl TcpListener {
                 Err(Error::other("Lost Tcp"))
             }
         })
+    }
+}
+
+impl Debug for TcpListener {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TcpListener").field("fd", &self.fd).finish()
     }
 }
 

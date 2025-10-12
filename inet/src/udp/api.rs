@@ -30,36 +30,19 @@ impl UdpSocket {
     /// The port allocated can be queried via the `local_addr` method.
     pub async fn bind(addr: impl ToSocketAddrs) -> Result<UdpSocket> {
         let addrs = lookup_host(addr).await?;
-        let handle = IOHandle::current();
-        // Get the current context
-
-        let mut last_err = None;
-
-        for addr in addrs {
-            match handle.do_io(|ctx| ctx.udp_bind(addr)) {
-                Ok(socket) => return Ok(socket),
-                Err(e) => last_err = Some(e),
+        IOHandle::current().do_io(|ctx| {
+            let mut last_err = None;
+            for addr in addrs {
+                match ctx.udp_bind(addr) {
+                    Ok(socket) => return Ok(socket),
+                    Err(e) => last_err = Some(e),
+                }
             }
-        }
 
-        Err(last_err.unwrap_or_else(|| {
-            Error::new(ErrorKind::InvalidInput, "could not resolve to any address")
-        }))
-    }
-
-    /// This call is deprecated, since simulated sockets should not be
-    /// base on real sockets managed by the OS.
-    #[deprecated(note = "Cannot create simulated socket from std::net::UdpSocket")]
-    #[allow(unused)]
-    pub fn from_std(socket: std::net::UdpSocket) -> Result<UdpSocket> {
-        panic!("No implemented for feature 'sim'")
-    }
-
-    /// This call is deprecated, since simulated sockets should not be
-    /// base on real sockets managed by the OS.
-    #[deprecated(note = "Cannot extract std::net::UdpSocket from simulated socket")]
-    pub fn into_std(self) -> Result<std::net::UdpSocket> {
-        panic!("No implemented for feature 'sim'")
+            Err(last_err.unwrap_or_else(|| {
+                Error::new(ErrorKind::InvalidInput, "could not resolve to any address")
+            }))
+        })
     }
 
     /// Returns the local address that this socket is bound to.
@@ -76,7 +59,6 @@ impl UdpSocket {
     /// limiting packets that are read via recv from the address specified in `addr`.
     pub async fn connect<A: ToSocketAddrs>(&self, addr: A) -> Result<()> {
         let addrs = lookup_host(addr).await?;
-
         IOHandle::current().do_io(|ctx| {
             let mut last_err = None;
             for peer in addrs {
@@ -85,7 +67,9 @@ impl UdpSocket {
                     Err(e) => last_err = Some(e),
                 }
             }
-            Err(last_err.unwrap())
+            Err(last_err.unwrap_or_else(|| {
+                Error::new(ErrorKind::InvalidInput, "could not resolve to any address")
+            }))
         })
     }
 

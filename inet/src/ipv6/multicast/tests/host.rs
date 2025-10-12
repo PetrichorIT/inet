@@ -5,7 +5,7 @@ use serial_test::serial;
 
 use crate::{
     interface::IfId,
-    ipv6::multicast::{designate_mdl, join_multicast_group, leave_multicast_group, GroupState},
+    ipv6::multicast::{GroupState, designate_mdl, join_multicast_group, leave_multicast_group},
     test_util::SimpleSim,
 };
 
@@ -14,7 +14,7 @@ use super::*;
 #[test]
 #[serial]
 fn host_unsolicited_report() -> Result<(), RuntimeError> {
-    let mut sim = SimpleSim::new(crate::init);
+    let mut sim = SimpleSim::default();
     sim.node_require_join("fe80::1", || async move {
         designate_mdl(IfId::new("en0"))?;
         sleep(Duration::from_secs(90)).await;
@@ -34,7 +34,7 @@ fn host_unsolicited_report() -> Result<(), RuntimeError> {
 #[test]
 #[serial]
 fn host_leave_scope_ends_group() -> Result<(), RuntimeError> {
-    let mut sim = SimpleSim::new(crate::init);
+    let mut sim = SimpleSim::default();
     sim.node_require_join("fe80::1", || async move {
         designate_mdl(IfId::new("en0"))?;
 
@@ -63,7 +63,7 @@ fn host_leave_scope_ends_group() -> Result<(), RuntimeError> {
 #[test]
 #[serial]
 fn host_leave_scope_group_remains() -> Result<(), RuntimeError> {
-    let mut sim = SimpleSim::new(crate::init);
+    let mut sim = SimpleSim::default();
     sim.node_require_join("fe80::1", || async move {
         designate_mdl(IfId::new("en0"))?;
 

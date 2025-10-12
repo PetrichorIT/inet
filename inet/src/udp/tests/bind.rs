@@ -5,6 +5,7 @@ use crate::{
     UdpSocket,
     interface::{InterfaceDef, NetworkDevice},
     ioctx,
+    test_util::SimpleSim,
 };
 
 const CHANNEL: DatarateChannelMetrics = DatarateChannelMetrics::new(
@@ -171,4 +172,17 @@ fn zero_bind_recv_all() -> Result<(), RuntimeError> {
         .build(sim.freeze())
         .run()
         .map(|_| ())
+}
+
+#[test]
+#[serial]
+fn bind_no_addrs() -> Result<(), RuntimeError> {
+    let mut sim = SimpleSim::default();
+    sim.node_require_join("192.168.2.101", || async move {
+        let set: &[SocketAddr] = &[];
+        let error = UdpSocket::bind(set).await.unwrap_err();
+        assert_eq!(error.to_string(), "could not resolve to any address");
+        Ok(())
+    });
+    sim.run()
 }

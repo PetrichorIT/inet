@@ -16,7 +16,7 @@ use des::{prelude::*, time::sleep};
 #[test]
 #[serial]
 fn deny_broadcast_without_option() -> Result<(), RuntimeError> {
-    let mut sim = SimpleSim::new(crate::init);
+    let mut sim = SimpleSim::default();
     sim.node_require_join("alice", || async move {
         let udp = UdpSocket::bind("0.0.0.0:0").await?;
         let error = udp
@@ -34,7 +34,7 @@ fn deny_broadcast_without_option() -> Result<(), RuntimeError> {
 #[test]
 #[serial]
 fn broadcast_no_loopback() -> Result<(), RuntimeError> {
-    let mut sim = SimpleSim::new(crate::init);
+    let mut sim = SimpleSim::default();
 
     let nodes = vec![
         Ipv4Addr::new(192, 168, 2, 101),
@@ -96,7 +96,7 @@ fn broadcast_no_loopback() -> Result<(), RuntimeError> {
 #[test]
 #[serial]
 fn broadcast_with_loopback() -> Result<(), RuntimeError> {
-    let mut sim = SimpleSim::new(crate::init);
+    let mut sim = SimpleSim::default();
 
     let nodes = vec![
         Ipv4Addr::new(192, 168, 2, 101),
@@ -157,7 +157,7 @@ fn broadcast_with_loopback() -> Result<(), RuntimeError> {
 #[test]
 #[serial]
 fn broadcast_loopback_assigns_lo_addr() -> Result<(), RuntimeError> {
-    let mut sim = SimpleSim::new(crate::init);
+    let mut sim = SimpleSim::default();
     sim.node_require_join("192.168.2.100", || async move {
         ioctx().add_interface(InterfaceDef::loopback())?;
 

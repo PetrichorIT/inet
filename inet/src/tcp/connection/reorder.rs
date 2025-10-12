@@ -4,7 +4,7 @@ use bytes_io::Buf;
 use des::time::SimTime;
 use types::tcp::{TcpOption, TcpPacket};
 
-use super::{wrapping_lt, Config};
+use super::{Config, wrapping_lt};
 
 #[derive(Debug, Default)]
 pub struct ReorderBuffer {
@@ -58,13 +58,15 @@ impl ReorderBuffer {
         }
     }
 
+    /// Generates a sequence of "regions" in the current sequence space that
+    /// are already in the sequence space. Combines multiple packets into a single region.
     pub fn sacks(&self) -> Vec<(u32, u32)> {
         let mut sacks = Vec::new();
         let mut current = None;
 
         for (_, pkt) in &self.pkts {
             if let Some((from, to)) = &mut current {
-                if *from == pkt.seq_no {
+                if *to == pkt.seq_no {
                     // extend
                     *to += pkt.content.len() as u32;
                 } else {
@@ -75,6 +77,8 @@ impl ReorderBuffer {
                 current = Some((pkt.seq_no, pkt.seq_no + pkt.content.len() as u32))
             }
         }
+
+        sacks.extend(current);
 
         sacks.truncate(4);
         sacks
@@ -90,7 +94,26 @@ mod tests {
     const WIN_4KB: u16 = 4096;
 
     #[test]
-    fn buffer_sorted_in_order_input() {
+    fn sacks_generated() {
+        let mut buf = ReorderBuffer::default();
+        buf.enqueue(
+            TcpPacket::new(80, 1808, 4050, 1, WIN_4KB, vec![2; 50]),
+            0.0.into(),
+        );
+        buf.enqueue(
+            TcpPacket::new(80, 1808, 4100, 1, WIN_4KB, vec![3; 50]),
+            0.0.into(),
+        );
+        buf.enqueue(
+            TcpPacket::new(80, 1808, 4200, 1, WIN_4KB, vec![6; 50]),
+            0.0.into(),
+        );
+
+        assert_eq!(buf.sacks(), [(4050, 4150), (4200, 4250)])
+    }
+
+    #[test]
+    fn sorted_in_order_input() {
         let mut buf = ReorderBuffer::default();
         buf.enqueue(
             TcpPacket::new(80, 1808, 4000, 1, WIN_4KB, vec![1; 50]),
@@ -125,7 +148,7 @@ mod tests {
     }
 
     #[test]
-    fn buffer_sorted_fuzz_input() {
+    fn sorted_fuzz_input() {
         for _ in 0..8 {
             let mut buf = ReorderBuffer::default();
 
@@ -160,7 +183,7 @@ mod tests {
     }
 
     #[test]
-    fn buffer_no_next_if_expected_not_reached() {
+    fn no_next_if_expected_not_reached() {
         let mut buf = ReorderBuffer::default();
         buf.enqueue(
             TcpPacket::new(80, 1808, 4000, 1, WIN_4KB, vec![5; 500]),
@@ -172,7 +195,7 @@ mod tests {
     }
 
     #[test]
-    fn buffer_next_at_exact_match() {
+    fn next_at_exact_match() {
         let mut buf = ReorderBuffer::default();
         buf.enqueue(
             TcpPacket::new(80, 1808, 4000, 1, WIN_4KB, vec![5; 500]),
@@ -187,7 +210,7 @@ mod tests {
     }
 
     #[test]
-    fn buffer_next_at_overreaching_match_trunc() {
+    fn next_at_overreaching_match_trunc() {
         let mut buf = ReorderBuffer::default();
         buf.enqueue(
             TcpPacket::new(80, 1808, 4000, 1, WIN_4KB, vec![5; 500]),
@@ -201,7 +224,7 @@ mod tests {
     }
 
     #[test]
-    fn buffer_next_at_overreaching_match_skip_packets() {
+    fn next_at_overreaching_match_skip_packets() {
         let mut buf = ReorderBuffer::default();
         buf.enqueue(
             TcpPacket::new(80, 1808, 4000, 1, WIN_4KB, vec![5; 500]),
@@ -219,7 +242,7 @@ mod tests {
     }
 
     #[test]
-    fn buffer_discards_old_packets() {
+    fn discards_old_packets() {
         let mut buf = ReorderBuffer::default();
         buf.enqueue(
             TcpPacket::new(80, 1808, 4000, 1, WIN_4KB, vec![5; 500]),

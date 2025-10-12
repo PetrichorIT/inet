@@ -18,13 +18,13 @@ use super::UdpSocket;
 mod bind;
 mod broadcast;
 mod cancel;
-mod connectivity;
+mod connect;
 mod recv;
 
 #[test]
 #[serial]
 fn ping_pong() -> Result<(), RuntimeError> {
-    let mut sim = SimpleSim::new(crate::init);
+    let mut sim = SimpleSim::default();
     sim.node("192.168.2.100", || async move {
         let out = std::iter::repeat_with(|| random())
             .take(4098)
@@ -97,7 +97,7 @@ impl PropType for UdpSocket {
 #[test]
 #[serial]
 fn inspect_foreign_io_object() -> Result<(), RuntimeError> {
-    let mut sim = SimpleSim::new(crate::init);
+    let mut sim = SimpleSim::default();
     sim.node("192.168.2.100", || async move {
         let sock = UdpSocket::bind("0.0.0.0:0").await?;
         assert_eq!(sock.local_addr()?.port(), 1024);

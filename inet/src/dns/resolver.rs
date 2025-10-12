@@ -187,3 +187,70 @@ impl sealed::ToSocketAddrsPriv for (String, u16) {
             .await
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::{net::IpAddr, panic, str::FromStr};
+
+    use des::runtime::RuntimeError;
+    use serial_test::serial;
+
+    use crate::{dns::lookup_host, test_util::SimpleSim};
+
+    #[test]
+    #[serial]
+    fn sample_resolution_without_dns() -> Result<(), RuntimeError> {
+        let mut sim = SimpleSim::default();
+        sim.node_require_join("192.168.2.101", || async move {
+            let _ = lookup_host((IpAddr::from_str("192.168.2.1").unwrap(), 80)).await?;
+
+            let _ = lookup_host("192.168.2.1:80").await?;
+            let _ = lookup_host(("192.168.2.1", 80)).await?;
+
+            let _ = lookup_host("192.168.2.1:80".to_string()).await?;
+            let _ = lookup_host(("192.168.2.1".to_string(), 80)).await?;
+            Ok(())
+        });
+        sim.run()
+    }
+
+    #[test]
+    #[serial]
+    fn invalid_port() -> Result<(), RuntimeError> {
+        let mut sim = SimpleSim::default();
+        sim.node_require_join("192.168.2.101", || async move {
+            match lookup_host("192.168.2.10".to_string()).await {
+                Ok(_) => panic!("should fail"),
+                Err(e) => {
+                    assert_eq!(e.to_string(), "missing port specification");
+                }
+            }
+
+            match lookup_host("192.168.2.10:abc".to_string()).await {
+                Ok(_) => panic!("should fail"),
+                Err(e) => {
+                    assert_eq!(e.to_string(), "invalid digit found in string");
+                }
+            }
+
+            Ok(())
+        });
+        sim.run()
+    }
+
+    #[test]
+    #[serial]
+    fn no_resolution_without_dns_resolver() -> Result<(), RuntimeError> {
+        let mut sim = SimpleSim::default();
+        sim.node_require_join("192.168.2.101", || async move {
+            match lookup_host("www.test.org:80").await {
+                Ok(_) => panic!("should fail"),
+                Err(e) => {
+                    assert_eq!(e.to_string(), "name could not be resolved - no dns");
+                    Ok(())
+                }
+            }
+        });
+        sim.run()
+    }
+}
