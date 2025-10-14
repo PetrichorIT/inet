@@ -29,6 +29,7 @@ pub struct Config {
     pub reuseport: bool,
     pub reuseaddr: bool,
     pub rst_for_syn: bool,
+    pub no_delay: bool,
     pub clock: Arc<dyn Fn() -> SimTime>,
 
     // NOTE:
@@ -60,6 +61,7 @@ impl Config {
             reuseport: false,
             rst_for_syn: true,
             clock: Arc::new(SimTime::now),
+            no_delay: true,
 
             allow_publish: false,
         }
@@ -111,6 +113,7 @@ impl Default for Config {
             reuseport: false,
             rst_for_syn: true,
             clock: Arc::new(SimTime::now),
+            no_delay: false,
 
             allow_publish: true,
         }

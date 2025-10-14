@@ -133,6 +133,12 @@ impl TcpPacket {
     }
 
     #[must_use]
+    pub fn psh(mut self) -> Self {
+        self.flags.insert(TcpFlags::PSH);
+        self
+    }
+
+    #[must_use]
     pub fn rst(seq_no: u32, window: u16, cause: &TcpPacket) -> TcpPacket {
         TcpPacket {
             src_port: cause.dst_port,

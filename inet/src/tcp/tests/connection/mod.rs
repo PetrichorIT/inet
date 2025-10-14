@@ -15,7 +15,7 @@ use pcapng::{BlockWriter, DefaultBlockWriter, InterfaceDescriptionOption, Linkty
 use tracing::instrument;
 use types::{
     ip::{Ipv4Flags, Ipv4Packet, Ipv6Packet, KIND_IPV4, KIND_IPV6},
-    tcp::{PROTO_TCP, TcpPacket},
+    tcp::{PROTO_TCP, TcpFlags, TcpPacket},
 };
 
 mod cong;
@@ -23,6 +23,7 @@ mod dup_ack;
 mod handshake;
 mod icmp;
 mod lossful;
+mod no_delay;
 mod out_of_order;
 mod rst;
 mod rtt;
@@ -148,6 +149,17 @@ impl TcpTestUnit {
             self.optimize_queue_elements();
         }
 
+        if self
+            .outgoing
+            .iter()
+            .last()
+            .map_or(false, |v| !v.content.is_empty())
+            && self.unsend_bytes_in_tx_buffer() == 0
+        {
+            let last = self.outgoing.len() - 1;
+            self.outgoing[last].flags.insert(TcpFlags::PSH);
+        }
+
         f(tx(&mut self.con)
             .drain(..)
             .map(|pkt| {
@@ -159,19 +171,19 @@ impl TcpTestUnit {
 
     #[track_caller]
     pub fn assert_outgoing_eq(&mut self, pkts: &[TcpPacket]) {
-        self.assert_outgoing(|outgoing| {
-            assert_eq!(outgoing.len(), pkts.len(), "unequal number of packets");
-            for (i, (outgoing, pkt)) in outgoing.iter().zip(pkts).enumerate() {
-                assert_eq!(
-                    outgoing,
-                    pkt,
-                    "packet at index {} does not match:\n body len {} :: {}",
-                    i,
-                    outgoing.content.len(),
-                    pkt.content.len(),
-                );
-            }
-        });
+        let mut outgoing = Vec::new();
+        self.assert_outgoing(|o| outgoing = o);
+        assert_eq!(outgoing.len(), pkts.len(), "unequal number of packets");
+        for (i, (outgoing, pkt)) in outgoing.iter().zip(pkts).enumerate() {
+            assert_eq!(
+                outgoing,
+                pkt,
+                "packet at index {} does not match:\n body len {} :: {}",
+                i,
+                outgoing.content.len(),
+                pkt.content.len(),
+            );
+        }
     }
 
     pub fn write_and_ack(&mut self, buf: &[u8]) -> io::Result<usize> {

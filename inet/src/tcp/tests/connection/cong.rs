@@ -114,19 +114,19 @@ fn congestion_avoidance_multiplicative_decrease() -> io::Result<()> {
     // Lost '1 (multiplicative decrease)
     test.set_time(15.0);
     test.tick()?;
-    test.assert_outgoing_eq(&[TcpPacket::new(80, 1808, 4, 4001, WIN_4KB, vec![4])]);
+    test.assert_outgoing_eq(&[TcpPacket::new(80, 1808, 4, 4001, WIN_4KB, vec![4]).psh()]);
     assert_eq!(test.snd.c.cwnd, 2 * 536);
 
     // Lost '2 (multiplicative decrease)
     test.set_time(30.0);
     test.tick()?;
-    test.assert_outgoing_eq(&[TcpPacket::new(80, 1808, 4, 4001, WIN_4KB, vec![4])]);
+    test.assert_outgoing_eq(&[TcpPacket::new(80, 1808, 4, 4001, WIN_4KB, vec![4]).psh()]);
     assert_eq!(test.snd.c.cwnd, 536);
 
     // Lost '3 (lower bound of 1 MSS)
     test.set_time(45.0);
     test.tick()?;
-    test.assert_outgoing_eq(&[TcpPacket::new(80, 1808, 4, 4001, WIN_4KB, vec![4])]);
+    test.assert_outgoing_eq(&[TcpPacket::new(80, 1808, 4, 4001, WIN_4KB, vec![4]).psh()]);
     assert_eq!(test.snd.c.cwnd, 536);
 
     Ok(())

@@ -20,14 +20,9 @@ fn probing_via_data_acks() -> io::Result<()> {
         // <- DATA
         test.write(&[i as u8])?;
         test.tick()?;
-        test.assert_outgoing_eq(&[TcpPacket::new(
-            80,
-            1808,
-            1 + i,
-            4001,
-            WIN_4KB,
-            vec![i as u8],
-        )]);
+        test.assert_outgoing_eq(&[
+            TcpPacket::new(80, 1808, 1 + i, 4001, WIN_4KB, vec![i as u8]).psh(),
+        ]);
 
         // -> ACK
         test.set_time((i + 1) as f64);

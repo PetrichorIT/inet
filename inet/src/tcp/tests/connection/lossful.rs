@@ -57,7 +57,7 @@ fn loss_of_data_packets() -> io::Result<()> {
         server.tick()?;
         server.pipe(&mut client, 100)?;
 
-        assert_eq!(client.snd.num_unacked_bytes(), 0);
+        assert_eq!(client.snd.bytes_in_tx_buffer(), 0);
     }
 
     tracing::debug!("=== real test case begins ===");
@@ -65,7 +65,10 @@ fn loss_of_data_packets() -> io::Result<()> {
     let num_packets = 1 + 2 + 4 + 5 + 6 + 7;
     let num_send = num_packets * 536;
 
-    assert_eq!(client.num_unsend_bytes(), Some((TOTAL - num_send) as u32));
+    assert_eq!(
+        client.unsend_bytes_in_tx_buffer(),
+        (TOTAL - num_send) as u32
+    );
     assert_eq!(client.snd.c.cwnd, 8 * 536);
 
     client.tick()?;

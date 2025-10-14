@@ -26,7 +26,8 @@ fn transmitt_data_after_handshake() -> io::Result<()> {
         4001,
         WIN_4KB,
         vec![1, 2, 3, 4, 5, 6, 7, 8],
-    )]);
+    )
+    .psh()]);
 
     assert_eq!(test.write(&[8, 7, 6, 5, 4, 3, 2, 1])?, 8);
     test.tick()?;
@@ -37,7 +38,8 @@ fn transmitt_data_after_handshake() -> io::Result<()> {
         4001,
         WIN_4KB,
         vec![8, 7, 6, 5, 4, 3, 2, 1],
-    )]);
+    )
+    .psh()]);
 
     Ok(())
 }
@@ -140,7 +142,8 @@ fn tx_limited_by_peers_recv_window() -> io::Result<()> {
         4001,
         1024,
         data[3072..].to_vec(),
-    )]);
+    )
+    .psh()]);
 
     // no more data after final bytes
     test.incoming(TcpPacket::new(
@@ -209,7 +212,8 @@ fn tx_can_emit_multiple_packets() -> io::Result<()> {
         4001,
         WIN_4KB,
         data[3000..].to_vec(),
-    )]);
+    )
+    .psh()]);
 
     Ok(())
 }
@@ -232,7 +236,7 @@ fn tx_flush() -> io::Result<()> {
 
     test.incoming(TcpPacket::new(1808, 80, 4001, 501, 500, Vec::new()))?;
     test.tick()?;
-    test.assert_outgoing_eq(&[TcpPacket::new(80, 1808, 501, 4001, WIN_4KB, vec![1; 250])]);
+    test.assert_outgoing_eq(&[TcpPacket::new(80, 1808, 501, 4001, WIN_4KB, vec![1; 250]).psh()]);
     assert_eq!(test.is_flushed(), false);
 
     test.incoming(TcpPacket::new(1808, 80, 4001, 751, 500, Vec::new()))?;
@@ -304,7 +308,7 @@ fn sender_lost_pkt_will_be_retransmitted() -> io::Result<()> {
         TcpPacket::new(80, 1808, 1, 4001, WIN_4KB, vec![42; 500]),
         TcpPacket::new(80, 1808, 501, 4001, WIN_4KB, vec![42; 500]), // lost
         TcpPacket::new(80, 1808, 1001, 4001, WIN_4KB, vec![42; 500]),
-        TcpPacket::new(80, 1808, 1501, 4001, WIN_4KB, vec![42; 500]),
+        TcpPacket::new(80, 1808, 1501, 4001, WIN_4KB, vec![42; 500]).psh(),
     ]);
 
     test.incoming(TcpPacket::new(1808, 80, 4001, 501, WIN_4KB, Vec::new()))?;
@@ -318,7 +322,7 @@ fn sender_lost_pkt_will_be_retransmitted() -> io::Result<()> {
     test.assert_outgoing_eq(&[
         TcpPacket::new(80, 1808, 501, 4001, WIN_4KB, vec![42; 500]), // prev. lost
         TcpPacket::new(80, 1808, 1001, 4001, WIN_4KB, vec![42; 500]),
-        TcpPacket::new(80, 1808, 1501, 4001, WIN_4KB, vec![42; 500]),
+        TcpPacket::new(80, 1808, 1501, 4001, WIN_4KB, vec![42; 500]).psh(),
     ]);
 
     test.set_time(test.next_timeout().expect("failed"));
@@ -330,7 +334,7 @@ fn sender_lost_pkt_will_be_retransmitted() -> io::Result<()> {
 
     test.tick()?;
     test.assert_outgoing_eq(&[]);
-    assert_eq!(test.snd.num_unacked_bytes(), 0);
+    assert_eq!(test.snd.bytes_in_tx_buffer(), 0);
 
     Ok(())
 }
@@ -350,7 +354,7 @@ fn sender_multiple_same_seg_timeouts() -> io::Result<()> {
 
     test.assert_outgoing_eq(&[
         TcpPacket::new(80, 1808, 1, 4001, WIN_4KB, vec![42; 500]), // lost
-        TcpPacket::new(80, 1808, 501, 4001, WIN_4KB, vec![42; 500]),
+        TcpPacket::new(80, 1808, 501, 4001, WIN_4KB, vec![42; 500]).psh(),
     ]);
 
     for _ in 0..3 {
@@ -360,7 +364,7 @@ fn sender_multiple_same_seg_timeouts() -> io::Result<()> {
         test.tick()?;
         test.assert_outgoing_eq(&[
             TcpPacket::new(80, 1808, 1, 4001, WIN_4KB, vec![42; 500]), // lost
-            TcpPacket::new(80, 1808, 501, 4001, WIN_4KB, vec![42; 500]),
+            TcpPacket::new(80, 1808, 501, 4001, WIN_4KB, vec![42; 500]).psh(),
         ]);
     }
 
@@ -384,7 +388,7 @@ fn sender_progresses_after_partial_retransmission_success() -> io::Result<()> {
 
     test.assert_outgoing_eq(&[
         TcpPacket::new(80, 1808, 1, 4001, WIN_4KB, vec![42; 500]), // lost
-        TcpPacket::new(80, 1808, 501, 4001, WIN_4KB, vec![42; 500]),
+        TcpPacket::new(80, 1808, 501, 4001, WIN_4KB, vec![42; 500]).psh(),
     ]);
 
     // Failed Transmission
@@ -393,7 +397,7 @@ fn sender_progresses_after_partial_retransmission_success() -> io::Result<()> {
     test.tick()?;
     test.assert_outgoing_eq(&[
         TcpPacket::new(80, 1808, 1, 4001, WIN_4KB, vec![42; 500]), // lost
-        TcpPacket::new(80, 1808, 501, 4001, WIN_4KB, vec![42; 500]),
+        TcpPacket::new(80, 1808, 501, 4001, WIN_4KB, vec![42; 500]).psh(),
     ]);
 
     // Partial Sucess
@@ -401,7 +405,7 @@ fn sender_progresses_after_partial_retransmission_success() -> io::Result<()> {
     test.set_time(test.next_timeout().expect("req timeout"));
 
     test.tick()?;
-    test.assert_outgoing_eq(&[TcpPacket::new(80, 1808, 501, 4001, WIN_4KB, vec![42; 500])]);
+    test.assert_outgoing_eq(&[TcpPacket::new(80, 1808, 501, 4001, WIN_4KB, vec![42; 500]).psh()]);
 
     Ok(())
 }
@@ -431,7 +435,7 @@ fn sender_progresses_beyond_window_after_retransmission() -> io::Result<()> {
     test.incoming(TcpPacket::new(1808, 80, 4001, 501, WIN_4KB, Vec::new()))?;
 
     test.tick()?;
-    test.assert_outgoing_eq(&[TcpPacket::new(80, 1808, 501, 4001, WIN_4KB, vec![42; 500])]);
+    test.assert_outgoing_eq(&[TcpPacket::new(80, 1808, 501, 4001, WIN_4KB, vec![42; 500]).psh()]);
 
     Ok(())
 }
@@ -480,7 +484,7 @@ fn pure_ack_elision_with_queue_optimizations() -> io::Result<()> {
 
     test.assert_outgoing_eq(&[
         TcpPacket::new(80, 1808, 1, 4201, WIN_4KB, vec![1; 536]),
-        TcpPacket::new(80, 1808, 537, 4201, WIN_4KB, vec![1; 1000 - 536]),
+        TcpPacket::new(80, 1808, 537, 4201, WIN_4KB, vec![1; 1000 - 536]).psh(),
     ]);
 
     Ok(())

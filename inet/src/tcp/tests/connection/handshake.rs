@@ -278,7 +278,7 @@ fn non_empty_ack_of_syn_with_queue_optimizations() -> io::Result<()> {
 
     test.write(&[5; 536])?;
     test.tick()?;
-    test.assert_outgoing_eq(&[TcpPacket::new(80, 1808, 1, 4001, WIN_4KB, vec![5; 536])]);
+    test.assert_outgoing_eq(&[TcpPacket::new(80, 1808, 1, 4001, WIN_4KB, vec![5; 536]).psh()]);
 
     Ok(())
 }
@@ -302,14 +302,14 @@ fn packet_too_big_on_ack_of_syn() -> io::Result<()> {
 
     test.write(&[5; 1480])?;
     test.tick()?;
-    test.assert_outgoing_eq(&[TcpPacket::new(80, 1808, 1, 4001, WIN_4KB, vec![5; 1480])]);
+    test.assert_outgoing_eq(&[TcpPacket::new(80, 1808, 1, 4001, WIN_4KB, vec![5; 1480]).psh()]);
 
     // < Packet to big
     test.change_mtu(1280);
     test.tick()?;
     test.assert_outgoing_eq(&[
         TcpPacket::new(80, 1808, 1, 4001, WIN_4KB, vec![5; 1220]),
-        TcpPacket::new(80, 1808, 1221, 4001, WIN_4KB, vec![5; 260]),
+        TcpPacket::new(80, 1808, 1221, 4001, WIN_4KB, vec![5; 260]).psh(),
     ]);
 
     Ok(())

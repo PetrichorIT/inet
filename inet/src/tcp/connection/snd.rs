@@ -20,6 +20,8 @@ pub struct SendSequenceSpace {
     pub una: u32,
     /// send next
     pub nxt: u32,
+    /// last bytes of last non-mss segment
+    pub sml: u32,
     /// send window
     pub wnd: u16,
     /// send urgent pointer
@@ -52,6 +54,7 @@ impl SendSequenceSpace {
             iss,
             una: iss,
             nxt: iss,
+            sml: 0,
             wnd: cfg.send_buffer_cap as u16,
             up: false,
             wl1: 0,
@@ -128,20 +131,20 @@ impl SendSequenceSpace {
         self.c.ssthresh = self.c.cwnd;
     }
 
-    pub fn num_unacked_bytes(&self) -> u32 {
+    pub fn bytes_in_tx_buffer(&self) -> u32 {
         self.closed_at.unwrap_or(self.nxt).wrapping_sub(self.una)
     }
 
     pub fn remaining_window_space(&self) -> u32 {
-        let rem_window_space = (self.wnd as u32).saturating_sub(self.num_unacked_bytes());
+        let rem_window_space = (self.wnd as u32).saturating_sub(self.bytes_in_tx_buffer());
         tracing::info!(
             wnd = self.wnd,
             rem_window_space,
-            unacked = self.num_unacked_bytes(),
-            cwind = self.c.cwnd.saturating_sub(self.num_unacked_bytes())
+            unacked = self.bytes_in_tx_buffer(),
+            cwind = self.c.cwnd.saturating_sub(self.bytes_in_tx_buffer())
         );
         if self.c.enabled {
-            rem_window_space.min(self.c.cwnd.saturating_sub(self.num_unacked_bytes()))
+            rem_window_space.min(self.c.cwnd.saturating_sub(self.bytes_in_tx_buffer()))
         } else {
             rem_window_space
         }

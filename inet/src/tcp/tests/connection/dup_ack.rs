@@ -49,7 +49,7 @@ fn dup_ack_recognized() -> io::Result<()> {
     test.assert_outgoing_eq(&[]);
 
     test.incoming(TcpPacket::new(1808, 80, 4001, 501, WIN_4KB, Vec::new()))?;
-    test.assert_outgoing_eq(&[TcpPacket::new(80, 1808, 501, 4001, WIN_4KB, vec![42; 500])]);
+    test.assert_outgoing_eq(&[TcpPacket::new(80, 1808, 501, 4001, WIN_4KB, vec![42; 500]).psh()]);
 
     Ok(())
 }

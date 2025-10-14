@@ -121,6 +121,18 @@ impl Connection {
             self.optimize_queue_elements();
         }
 
+        // RFC 9293: 3.9.1.2 Send
+        //
+        // A TCP endpoint MAY implement PUSH flags on SEND calls (MAY-15). If PUSH flags are not implemented,
+        // then the sending TCP peer: (1) MUST NOT buffer data indefinitely (MUST-60), and
+        // (2) MUST set the PSH bit in the last buffered segment (i.e., when there is no more queued data to be sent) (MUST-61).
+        if self.outgoing.len() == 1
+            && !self.outgoing[0].content.is_empty()
+            && self.unsend_bytes_in_tx_buffer() == 0
+        {
+            self.outgoing[0].flags.insert(TcpFlags::PSH);
+        }
+
         self.outgoing.pop_front().map(|tcp| {
             use std::net::IpAddr::*;
             let ip = match (self.quad.src.ip(), self.quad.dst.ip()) {
@@ -485,6 +497,9 @@ impl Connection {
         }
         if wrapping_lt(self.snd.nxt, next_seq) {
             self.snd.nxt = next_seq;
+            if payload_bytes < self.snd.mss as usize {
+                self.snd.sml = next_seq;
+            }
         }
 
         // NOTE:
@@ -566,8 +581,8 @@ impl Connection {
     }
 
     /// The number of bytes in the tx buffer,
-    pub fn num_unsend_bytes(&self) -> Option<u32> {
-        (self.unacked.len() as u32).checked_sub(self.snd.num_unacked_bytes())
+    pub fn unsend_bytes_in_tx_buffer(&self) -> u32 {
+        self.unacked.len() as u32 - self.snd.bytes_in_tx_buffer()
     }
 
     #[tracing::instrument(skip(self))]
@@ -591,21 +606,26 @@ impl Connection {
         self.incoming
             .update(self.now(), Duration::from_secs_f64(self.timers.rto / 4.0));
 
-        // tracing::trace!("ON TICK: state {:?} una {} nxt {} unacked {:?}",
-        //           self.state, self.send.una, self.send.nxt, self.unacked);
-
         let expired = self.timers.expired(self.snd.una, now);
 
         if !expired.is_empty() {
             self.on_tick_retransmit(expired)?;
         }
 
-        loop {
-            let Some(num_unsend_bytes) = self.num_unsend_bytes() else {
-                break;
-            };
+        // We cannot yet send data the peer has not yet responded
+        if let State::SynSent | State::SynRcvd = self.state {
+            return Ok(());
+        }
 
+        // Senders algorithm
+        //
+        // Send (segmentize) new segments if there is not yet segmented data in the tx bufffer
+        // and there is space remaining in the window and the sender is not yet closed. Do not send
+        // data if not permitted by Nagles algorithm.
+        loop {
             // we should send new data if we have new data and space in the window
+            // if there is now new data continue only when we have to send a FIN
+            let num_unsend_bytes = self.unsend_bytes_in_tx_buffer();
             if num_unsend_bytes == 0 && self.snd.closed_at.is_some() {
                 return Ok(());
             }
@@ -616,6 +636,19 @@ impl Connection {
             }
 
             let bytes_to_be_sent = cmp::min(num_unsend_bytes, remaining_window_space);
+
+            // Nagles algorithm (modified)
+            // "If a TCP has less than a full-sized packet to transmit,
+            // and if any previously transmitted less than full-sized
+            // packet has not yet been acknowledged, do not transmit
+            // a packet."
+
+            let is_small_sized = bytes_to_be_sent < self.snd.mss as u32;
+            let small_sized_packet_in_flight = wrapping_lt(self.snd.una, self.snd.sml);
+
+            if !self.cfg.no_delay && is_small_sized && small_sized_packet_in_flight {
+                break;
+            }
 
             // NOTE:
             // only go to FIN mode if we are sure that all remaining bytes fit into the emitted segment
@@ -1154,7 +1187,7 @@ impl Connection {
                 // Only consider DUP ACK when theres actually unacked bytes, else
                 // we interpret data packets incorrectly
                 if (wrapping_lt(ackn, self.snd.una) || ackn == self.snd.una)
-                    && self.snd.num_unacked_bytes() > 0
+                    && self.snd.bytes_in_tx_buffer() > 0
                 {
                     self.snd.on_dup_ack();
 
@@ -1183,7 +1216,7 @@ impl Connection {
         // In addition to the processing for the ESTABLISHED state, if the retransmission queue is empty,
         // the user's CLOSE can be acknowledged ("ok") but do not delete the TCB.
         if let State::FinWait2 = self.state
-            && self.snd.num_unacked_bytes() == 0
+            && self.snd.bytes_in_tx_buffer() == 0
         {
             // TODO: Acknowledge close()
         }

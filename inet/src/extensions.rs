@@ -65,7 +65,7 @@ impl Extensions {
         }
     }
 
-    fn with_ext<E: Default + Any, R>(&mut self, f: impl FnOnce(&mut E) -> R) -> R {
+    pub fn with_ext<E: Default + Any, R>(&mut self, f: impl FnOnce(&mut E) -> R) -> R {
         let ext = self
             .mapping
             .entry(TypeId::of::<E>())

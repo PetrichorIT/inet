@@ -21,18 +21,18 @@ fn window_updates_prefer_higher_seqno() -> io::Result<()> {
     test.tick()?;
     test.assert_outgoing_eq(&[
         TcpPacket::new(80, 1808, 1, 4001, WIN_4KB, vec![1; 536]),
-        TcpPacket::new(80, 1808, 537, 4001, WIN_4KB, vec![1; 800 - 536]),
+        TcpPacket::new(80, 1808, 537, 4001, WIN_4KB, vec![1; 800 - 536]).psh(),
     ]);
 
     let ack1 = TcpPacket::new(1808, 80, 4001, 537, WIN_4KB - 536, Vec::new());
     let ack2 = TcpPacket::new(1808, 80, 4001, 801, WIN_4KB - 800, Vec::new());
 
     test.incoming(ack2)?;
-    assert_eq!(test.snd.num_unacked_bytes(), 0);
+    assert_eq!(test.snd.bytes_in_tx_buffer(), 0);
     assert_eq!(test.snd.wnd, WIN_4KB - 800);
 
     test.incoming(ack1)?;
-    assert_eq!(test.snd.num_unacked_bytes(), 0);
+    assert_eq!(test.snd.bytes_in_tx_buffer(), 0);
     assert_eq!(test.snd.wnd, WIN_4KB - 800);
 
     Ok(())

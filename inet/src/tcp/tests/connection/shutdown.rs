@@ -131,7 +131,9 @@ fn active_close_with_remaining_data() -> io::Result<()> {
     test.tick()?;
     test.assert_outgoing_eq(&[
         // Data packet with attached FIN
-        TcpPacket::new(80, 1808, 1, 4001, WIN_4KB, vec![1, 2, 3, 4, 5, 6, 7, 8]).fin(true),
+        TcpPacket::new(80, 1808, 1, 4001, WIN_4KB, vec![1, 2, 3, 4, 5, 6, 7, 8])
+            .fin(true)
+            .psh(),
     ]);
     assert_eq!(test.state, State::FinWait1);
 
@@ -372,7 +374,8 @@ fn active_close_lost_fin_with_data() -> io::Result<()> {
         WIN_4KB,
         vec![1, 2, 3, 4, 5, 6, 7, 8],
     )
-    .fin(true)]);
+    .fin(true)
+    .psh()]);
 
     // <- FIN with data (retransmit)
     test.set_time(15.0);
@@ -385,7 +388,8 @@ fn active_close_lost_fin_with_data() -> io::Result<()> {
         WIN_4KB,
         vec![1, 2, 3, 4, 5, 6, 7, 8],
     )
-    .fin(true)]);
+    .fin(true)
+    .psh()]);
 
     // -> ACK of FIN
     test.incoming(TcpPacket::new(1808, 80, 4001, 10, WIN_4KB, Vec::new()))?;
