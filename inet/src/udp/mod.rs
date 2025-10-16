@@ -370,11 +370,11 @@ impl IOContext {
                 self.ipv6_send(
                     ip,
                     if local.is_unspecified() {
-                        IfId::NULL
+                        None
                     } else if target.is_multicast() {
-                        IfId::NULL
+                        None
                     } else {
-                        ifid.unwrap_ifid()
+                        ifid.into_ifspec()
                     },
                 )?;
                 Ok(buf.len())

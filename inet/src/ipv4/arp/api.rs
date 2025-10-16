@@ -104,7 +104,7 @@ impl IOContext {
             }
 
             let permanent = entry.expires == SimTime::MAX;
-            let iface = if let Some(iface) = self.ifaces.get(&entry.iface) {
+            let iface = if let Some(iface) = self.ifaces.get_mut_spec(&entry.iface) {
                 iface.name.clone()
             } else {
                 InterfaceName::new("?")
@@ -133,7 +133,7 @@ impl IOContext {
             hostname: None,
             ip,
             mac,
-            iface: if_name.id(),
+            iface: Some(if_name.id()),
             expires: SimTime::MAX,
         });
         if let Some((trg, sendable)) = sendable {

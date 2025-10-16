@@ -105,10 +105,9 @@ impl IOContext {
         let Some(socket) = self.sockets.get(&fd) else {
             return;
         };
-        let Some(interface) = self.ifaces.get_mut(&socket.interface.unwrap_ifid()) else {
+        let Some(interface) = self.ifaces.get_mut_spec(&socket.interface.into_ifspec()) else {
             return;
         };
-
         let Some(con) = self.tcp.streams.get_mut(&fd) else {
             return;
         };
@@ -128,7 +127,7 @@ impl IOContext {
             let Some(socket) = self.sockets.get(&fd) else {
                 return;
             };
-            let Some(interface) = self.ifaces.get_mut(&socket.interface.unwrap_ifid()) else {
+            let Some(interface) = self.ifaces.get_mut_spec(&socket.interface.into_ifspec()) else {
                 return;
             };
             if !is_empty {

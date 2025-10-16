@@ -378,7 +378,7 @@ impl IOContext {
             content: icmp.write_to_bytes()?,
         };
 
-        self.ipv6_send(pkt, ifid)
+        self.ipv6_send(pkt, Some(ifid))
     }
 }
 

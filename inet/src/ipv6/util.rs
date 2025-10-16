@@ -31,7 +31,7 @@ pub fn setup_router(
     IOContext::failable_api(|ctx| {
         ctx.ipv6.is_router = true;
 
-        let ifids = ctx.ifaces.keys().cloned().collect::<Vec<_>>();
+        let ifids = ctx.ifaces.keys().collect::<Vec<_>>();
         for ifid in ifids {
             ctx.ipv6.router_cfg.insert(
                 ifid,

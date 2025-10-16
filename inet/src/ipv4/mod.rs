@@ -64,7 +64,7 @@ impl IOContext {
             tracing::debug!("fwd packet to {}", pkt.dst);
 
             if let Err(error) = self.send_ip_packet(
-                SocketIfaceBinding::Any(self.ifaces.keys().cloned().collect()),
+                SocketIfaceBinding::Any(self.ifaces.keys().collect()),
                 IpPacket::V4(pkt.clone()), // TODO: to not copy, use a result Err(Packet)
             ) {
                 tracing::error!("failed to forward ip-packet {error}");

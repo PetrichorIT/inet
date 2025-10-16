@@ -10,7 +10,7 @@ use types::{
 };
 use valuable::Valuable;
 
-use crate::interface::{IfId, InterfaceAddrV6};
+use crate::interface::{IfId, IfSpec, InterfaceAddrV6};
 
 #[derive(Debug, Default)]
 pub struct Solicitations {
@@ -101,14 +101,14 @@ impl NeighborCache {
         );
     }
 
-    pub fn lookup(&self, ip: Ipv6Addr) -> Option<(MacAddress, IfId)> {
+    pub fn lookup(&self, ip: Ipv6Addr) -> Option<(MacAddress, IfSpec)> {
         if ip.is_multicast() {
-            return Some((MacAddress::ipv6_multicast(ip), IfId::NULL));
+            return Some((MacAddress::ipv6_multicast(ip), None));
         }
 
         let entry = self.mapping.get(&ip)?;
         if entry.state == NeighborCacheEntryState::Reachable {
-            Some((entry.addr, entry.ifid))
+            Some((entry.addr, Some(entry.ifid)))
         } else {
             None
         }

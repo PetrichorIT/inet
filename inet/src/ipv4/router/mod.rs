@@ -1,6 +1,6 @@
 use crate::{
-    ipv6::cfg::{RouterInterfaceConfiguration, RouterPrefix},
     IOContext,
+    ipv6::cfg::{RouterInterfaceConfiguration, RouterPrefix},
 };
 use std::{io, time::Duration};
 
@@ -15,7 +15,7 @@ pub use table::*;
 impl IOContext {
     pub fn declare_ipv6_router(&mut self, cfg: Ipv6RouterConfig) -> io::Result<()> {
         self.ipv6.is_router = true;
-        let ifids = self.ifaces.keys().cloned().collect::<Vec<_>>();
+        let ifids = self.ifaces.keys().collect::<Vec<_>>();
         for ifid in ifids {
             self.ipv6.router_cfg.insert(
                 ifid,

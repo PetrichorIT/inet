@@ -4,13 +4,12 @@ use crate::{
     env::fs::Fs,
     extensions::Extensions,
     handle::{IOHandle, IOHandleWeak},
-    interface::{ID_IPV6_TIMEOUT, IfId, InterfaceController, KIND_LINK_UPDATE},
+    interface::{ID_IPV6_TIMEOUT, IfId, Interfaces, KIND_LINK_UPDATE},
     ipv4::Ipv4,
     ipv6::Ipv6,
     tcp::Tcp,
 };
 use des::prelude::{Header, Message, ModuleId};
-use fxhash::{FxBuildHasher, FxHashMap};
 use std::{
     fmt::Debug,
     io::Result,
@@ -27,7 +26,7 @@ pub(crate) struct IOContext {
     // Link-Layer
     #[allow(unused)]
     pub(super) id: ModuleId,
-    pub(super) ifaces: FxHashMap<IfId, InterfaceController>,
+    pub(super) ifaces: Interfaces,
 
     // Networking Layer
     pub(super) ipv4: Ipv4,
@@ -66,7 +65,7 @@ impl IOContext {
     pub fn new(id: ModuleId) -> Self {
         Self {
             id,
-            ifaces: FxHashMap::with_hasher(FxBuildHasher::default()),
+            ifaces: Interfaces::default(),
 
             ipv4: Ipv4::default(),
             ipv6: Ipv6::new(),
@@ -79,7 +78,9 @@ impl IOContext {
             fs: Fs::new(),
 
             extensions: Extensions::new(),
-            current: Current { ifid: IfId::NULL },
+            current: Current {
+                ifid: IfId::UNKNOWN,
+            },
             meta_changed: true,
 
             handle: Weak::new(),
@@ -96,12 +97,6 @@ impl IOContext {
     pub(super) fn handle(&self) -> IOHandle {
         IOHandle(self.handle.upgrade().expect("illegal state"))
     }
-
-    // pub(super) fn is_current(&self) -> bool {
-    //     let handle = self.handle();
-    //     let current_handle = Self::try_current_handle();
-    //     current_handle.is_some_and(|current_handle| Arc::ptr_eq(&current_handle.0, &handle.0))
-    // }
 }
 
 impl IOContext {
@@ -211,7 +206,7 @@ impl IOContext {
     pub fn send_ip_packet(&mut self, ifid: SocketIfaceBinding, pkt: IpPacket) -> Result<()> {
         match pkt {
             IpPacket::V4(pkt) => self.ipv4_send(ifid, pkt),
-            IpPacket::V6(pkt) => self.ipv6_send(pkt, ifid.unwrap_ifid()),
+            IpPacket::V6(pkt) => self.ipv6_send(pkt, ifid.into_ifspec()),
         }
     }
 }

@@ -8,7 +8,7 @@ use types::{
     tcp::PROTO_TCP,
 };
 
-use crate::{ctx::IOContext, interface::IfId, socket::SocketType};
+use crate::{ctx::IOContext, socket::SocketType};
 
 #[derive(Debug, Default)]
 pub struct PathMtuStore {
@@ -62,7 +62,7 @@ impl IOContext {
 
         if src.is_unspecified() {
             // (0) Check link local
-            let canidates = self.ipv6_src_addr_canidate_set(dst, IfId::NULL);
+            let canidates = self.ipv6_src_addr_canidate_set(dst, None);
             if let Some(csrc) = canidates.select(&self.ipv6.policies) {
                 src = csrc.addr;
             } else {

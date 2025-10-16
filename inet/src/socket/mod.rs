@@ -4,7 +4,7 @@ use fxhash::{FxBuildHasher, FxHashMap};
 use tokio::sync::mpsc::Sender;
 use types::ip::IpPacket;
 
-use crate::interface::IfId;
+use crate::interface::{IfId, IfSpec};
 
 use super::{IOContext, interface::InterfaceName};
 use std::{
@@ -108,10 +108,10 @@ pub enum SocketIfaceBinding {
 }
 
 impl SocketIfaceBinding {
-    pub fn unwrap_ifid(&self) -> IfId {
+    pub fn into_ifspec(&self) -> IfSpec {
         match self {
-            Self::Any(ifids) => ifids[0],
-            Self::Bound(ifid) => *ifid,
+            Self::Any(ids) => ids.first().copied(), // TODO: this is a dirty hack and should return IfSpec::None
+            Self::Bound(ifid) => Some(*ifid),
             _ => panic!("unwrap failed"),
         }
     }
@@ -242,23 +242,22 @@ impl IOContext {
             return Err(Error::new(ErrorKind::InvalidInput, "invalid fd"));
         };
 
-        let mut available_ifaces = self.ifaces.iter().collect::<Vec<_>>();
-        available_ifaces.sort_by_key(|(_, iface)| iface.state.prio);
+        let mut available_ifaces = self.ifaces.values().collect::<Vec<_>>();
+        available_ifaces.sort_by_key(|iface| iface.state.prio);
 
         let valid_ifaces = available_ifaces
             .iter()
-            .filter_map(|(ifid, iface)| {
-                let ifid = **ifid;
+            .filter_map(|iface| {
                 if !iface.flags.up {
                     return None;
                 }
 
                 if addr.is_ipv4() {
-                    iface.bindings.has_v4_capability().then_some(ifid)
+                    iface.bindings.has_v4_capability().then_some(iface.id())
                 } else {
                     ((iface.bindings.has_v4_capability() || iface.bindings.has_v6_capability())
                         && iface.flags.v6)
-                        .then_some(ifid)
+                        .then_some(iface.id())
                 }
             })
             .collect::<Vec<_>>();
@@ -317,10 +316,10 @@ impl IOContext {
         }
 
         // Find right interface
-        for (ifid, interface) in self
+        for interface in self
             .ifaces
-            .iter()
-            .filter(|(_, iface)| iface.bindings.matches(addr.ip()))
+            .values()
+            .filter(|iface| iface.bindings.matches(addr.ip()))
         {
             if !interface.flags.up {
                 continue;
@@ -362,7 +361,7 @@ impl IOContext {
             // Successful bind
             let socket = self.sockets.get_mut(&fd).expect("unreachable");
             socket.addr = SocketAddr::new(next, port);
-            socket.interface = SocketIfaceBinding::Bound(*ifid);
+            socket.interface = SocketIfaceBinding::Bound(interface.id());
 
             tracing::trace!(
                 "binding '0x{:x} to {} at {} (directed-bind)",
@@ -554,7 +553,7 @@ mod tests {
 
     impl IOContext {
         fn mock_add_interface(&mut self, iface: InterfaceDef) -> Result<()> {
-            self.ifaces.insert(iface.name.id(), iface.into_legacy());
+            self.ifaces.add(iface.into_legacy());
             Ok(())
         }
     }

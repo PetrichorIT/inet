@@ -75,7 +75,8 @@ impl Future for UdpInterest {
                     )));
                 };
 
-                let Some(interface) = ctx.ifaces.get_mut(&socket.interface.unwrap_ifid()) else {
+                let Some(interface) = ctx.ifaces.get_mut_spec(&socket.interface.into_ifspec())
+                else {
                     self.resolved = true;
                     return Poll::Ready(Err(Error::new(ErrorKind::InvalidInput, "interface down")));
                 };

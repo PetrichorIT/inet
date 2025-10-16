@@ -8,7 +8,10 @@ use types::{
 };
 use valuable::Valuable;
 
-use crate::{ctx::IOContext, interface::IfId};
+use crate::{
+    ctx::IOContext,
+    interface::{IfId, IfSpec},
+};
 
 mod api;
 pub use api::*;
@@ -65,16 +68,16 @@ impl Router {
         }
     }
 
-    pub fn lookup(&self, dst: Ipv6Addr) -> Option<(Ipv6Addr, IfId)> {
+    pub fn lookup(&self, dst: Ipv6Addr) -> Option<(Ipv6Addr, IfSpec)> {
         if dst.is_multicast() {
-            return Some((dst, IfId::NULL));
+            return Some((dst, None));
         }
         self.entries
             .iter()
             .find(|e| e.prefix.contains(dst))
-            .map(|e| (e.next_hop, e.ifid))
+            .map(|e| (e.next_hop, Some(e.ifid)))
             .inspect(|e| {
-                tracing::trace!("choose route towards {dst} -> {} over {}", e.0, e.1);
+                tracing::trace!("choose route towards {dst} -> {} over {:?}", e.0, e.1);
             })
     }
 
@@ -150,7 +153,7 @@ mod tests {
         assert_eq!(router.entries.len(), 3);
         assert_eq!(
             router.lookup("2003:1234::1234".parse()?),
-            Some(("2003:1234::cbab:1234".parse()?, en0))
+            Some(("2003:1234::cbab:1234".parse()?, Some(en0)))
         );
 
         router.time_out_entries(100.0.into());

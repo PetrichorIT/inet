@@ -106,7 +106,7 @@ impl IOContext {
                     dst: ip.src,
                     content: msg.write_to_bytes()?,
                 };
-                self.ipv6_send(pkt, ifid)?;
+                self.ipv6_send(pkt, Some(ifid))?;
                 return Ok(true);
             }
             IcmpV6Packet::EchoReply(msg) => {
@@ -125,7 +125,7 @@ impl IOContext {
                         dst: ip.src,
                         content: msg.write_to_bytes()?,
                     };
-                    self.ipv6_send(pkt, ifid)?;
+                    self.ipv6_send(pkt, Some(ifid))?;
                 }
                 return Ok(true);
             }
@@ -245,7 +245,7 @@ impl IOContext {
             dst: pkt.src,
             content: msg.write_to_bytes()?,
         };
-        self.ipv6_send(pkt, ifid)?;
+        self.ipv6_send(pkt, Some(ifid))?;
         Ok(())
     }
 
@@ -276,7 +276,7 @@ impl IOContext {
             content: icmp.write_to_bytes()?,
         };
 
-        self.ipv6_send(wrapped, self.current.ifid)?;
+        self.ipv6_send(wrapped, Some(self.current.ifid))?;
         Ok(())
     }
 
@@ -407,7 +407,7 @@ impl IOContext {
 
         tracing::info!("send router adv {dst:?}");
 
-        self.ipv6_send(pkt, ifid)?;
+        self.ipv6_send(pkt, Some(ifid))?;
         Ok(())
     }
 
@@ -427,7 +427,7 @@ impl IOContext {
         );
 
         // Check whether iface has availabe addr
-        let set = self.ipv6_src_addr_canidate_set(Ipv6Addr::MULTICAST_ALL_ROUTERS, ifid);
+        let set = self.ipv6_src_addr_canidate_set(Ipv6Addr::MULTICAST_ALL_ROUTERS, Some(ifid));
         let src = set
             .select(&self.ipv6.policies)
             .map(|canidate| canidate.addr);
@@ -452,7 +452,7 @@ impl IOContext {
             content: msg.write_to_bytes()?,
         };
 
-        self.ipv6_send_with_flags(pkt, ifid, Ipv6SendFlags::ALLOW_SRC_UNSPECIFIED)?;
+        self.ipv6_send_with_flags(pkt, Some(ifid), Ipv6SendFlags::ALLOW_SRC_UNSPECIFIED)?;
         // TOOD: timeout
 
         Ok(())
@@ -646,7 +646,7 @@ impl IOContext {
             self.ipv6.neighbors.set_reachable(ip.src);
             let pkts = self.ipv6.neighbors.dequeue(ip.src);
             for pkt in pkts {
-                self.ipv6_send(pkt, ifid)?;
+                self.ipv6_send(pkt, Some(ifid))?;
             }
         }
 
@@ -675,7 +675,7 @@ impl IOContext {
             content: msg.write_to_bytes()?,
         };
 
-        self.ipv6_send(pkt, ifid)?;
+        self.ipv6_send(pkt, Some(ifid))?;
         Ok(true)
     }
 
@@ -769,7 +769,7 @@ impl IOContext {
         let iface_addr = self.ifaces.get(&ifid).unwrap().device.addr;
 
         let dst = Ipv6Addr::solicied_node_multicast(target);
-        let set = self.ipv6_src_addr_canidate_set(dst, ifid);
+        let set = self.ipv6_src_addr_canidate_set(dst, Some(ifid));
         let src = set
             .select(&self.ipv6.policies)
             .map(|canidate| canidate.addr);
@@ -802,7 +802,7 @@ impl IOContext {
         if is_dedup {
             flags |= Ipv6SendFlags::REQUIRED_SRC_UNSPECIFIED;
         }
-        self.ipv6_send_with_flags(pkt, ifid, flags)?;
+        self.ipv6_send_with_flags(pkt, Some(ifid), flags)?;
 
         self.ipv6.timer.schedule(
             TimerToken::NeighborSolicitationRetransmitTimeout { target, ifid },
@@ -854,7 +854,7 @@ impl IOContext {
             // Make routing capable
             // ICMP errors may not only be emitted to the current node, but previous nodes on the path
 
-            let set = self.ipv6_src_addr_canidate_set(target, ifid);
+            let set = self.ipv6_src_addr_canidate_set(target, Some(ifid));
             let addr = set
                 .select(&self.ipv6.policies)
                 .unwrap_or(CanidateAddr::UNSPECIFED);
@@ -877,7 +877,7 @@ impl IOContext {
                     content: msg.write_to_bytes()?,
                 };
 
-                self.ipv6_send(ip, ifid)?;
+                self.ipv6_send(ip, Some(ifid))?;
             }
 
             Ok(())
@@ -939,7 +939,7 @@ impl IOContext {
             dst: Ipv6Addr::MULTICAST_ALL_NODES,
             content: msg.write_to_bytes()?,
         };
-        self.ipv6_send(pkt, ifid)?;
+        self.ipv6_send(pkt, Some(ifid))?;
 
         Ok(())
     }
@@ -979,7 +979,7 @@ impl IOContext {
 
         if fwd_pkts {
             for pkt in self.ipv6.neighbors.dequeue(adv.target) {
-                self.ipv6_send(pkt, ifid)?;
+                self.ipv6_send(pkt, Some(ifid))?;
             }
         }
 

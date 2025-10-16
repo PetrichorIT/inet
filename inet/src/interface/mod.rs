@@ -2,12 +2,15 @@
 //!
 //!
 
+use std::borrow::Borrow;
+use std::hash::Hash;
 use std::io;
 use std::{collections::VecDeque, result};
 
 use crate::IOContext;
 use crate::{ctx::LinkLayerResult, socket::Fd};
 use des::prelude::*;
+use fxhash::FxHashMap;
 use tokio::sync::watch;
 use types::arp::ArpPacket;
 use types::arp::KIND_ARP;
@@ -32,6 +35,57 @@ pub use self::addrs::*;
 
 mod handle;
 pub use self::handle::*;
+
+#[derive(Debug, Default)]
+pub struct Interfaces {
+    map: FxHashMap<IfId, InterfaceController>,
+}
+
+impl Interfaces {
+    pub fn contains_key<Q>(&self, k: &Q) -> bool
+    where
+        IfId: Borrow<Q>,
+        Q: Hash + Eq,
+    {
+        self.map.contains_key(k)
+    }
+
+    pub fn get<Q>(&self, k: &Q) -> Option<&InterfaceController>
+    where
+        IfId: Borrow<Q>,
+        Q: Hash + Eq,
+    {
+        self.map.get(k)
+    }
+
+    pub fn get_mut<Q>(&mut self, k: &Q) -> Option<&mut InterfaceController>
+    where
+        IfId: Borrow<Q>,
+        Q: Hash + Eq,
+    {
+        self.map.get_mut(k)
+    }
+
+    pub fn get_mut_spec(&mut self, k: &IfSpec) -> Option<&mut InterfaceController> {
+        k.and_then(|k| self.map.get_mut(&k))
+    }
+
+    pub fn add(&mut self, iface: InterfaceController) {
+        self.map.insert(iface.name.id(), iface);
+    }
+
+    pub fn keys(&self) -> impl Iterator<Item = IfId> {
+        self.map.keys().copied()
+    }
+
+    pub fn values(&self) -> impl Iterator<Item = &InterfaceController> {
+        self.map.values()
+    }
+
+    pub fn values_mut(&mut self) -> impl Iterator<Item = &mut InterfaceController> {
+        self.map.values_mut()
+    }
+}
 
 /// A network interface, mapping a physical network device
 /// to internal abstractions
@@ -77,6 +131,10 @@ pub enum InterfaceError {
 }
 
 impl InterfaceController {
+    pub fn id(&self) -> IfId {
+        self.name.id()
+    }
+
     pub fn status(&self) -> InterfaceStatus {
         InterfaceStatus {
             name: self.name.clone(),
@@ -248,12 +306,12 @@ impl IOContext {
         }
 
         // Define the physical device the packet arrived.
-        let Some((ifid, iface)) = self.device_for_message(&msg) else {
+        let Some(iface) = self.device_for_message(&msg) else {
             return PassThrough(msg);
         };
 
         // Capture all packets that can be addressed to a interface, event not targeted
-        let ifid = *ifid;
+        let ifid = iface.id();
 
         #[cfg(feature = "libpcap")]
         crate::libpcap::capture(crate::libpcap::PcapEnvelope {
@@ -299,10 +357,10 @@ impl IOContext {
         }
     }
 
-    fn device_for_message(&self, msg: &Message) -> Option<(&IfId, &InterfaceController)> {
+    fn device_for_message(&self, msg: &Message) -> Option<&InterfaceController> {
         self.ifaces
-            .iter()
-            .find(|(_, iface)| iface.device.matches(&msg.header))
+            .values()
+            .find(|iface| iface.device.matches(&msg.header))
     }
 
     pub(super) fn get_iface(&self, ifid: IfId) -> io::Result<&InterfaceController> {

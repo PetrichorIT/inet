@@ -17,7 +17,7 @@ use types::{
 
 use crate::{
     ctx::{IOContext, NetworkLayerResult},
-    interface::{IfId, InterfaceError},
+    interface::{IfId, IfSpec, InterfaceError},
 };
 
 use self::{
@@ -150,7 +150,7 @@ impl IOContext {
 
             if let Err(error) = self.ipv6_send_with_flags(
                 pkt, // TODO: to not copy, use a result Err(Packet)
-                IfId::NULL,
+                None,
                 Ipv6SendFlags::FOREIGN_PACKET,
             ) {
                 tracing::error!("failed to forward ip-packet {error}");
@@ -172,14 +172,14 @@ impl IOContext {
 }
 
 impl IOContext {
-    pub fn ipv6_send(&mut self, pkt: Ipv6Packet, ifid: IfId) -> io::Result<()> {
+    pub fn ipv6_send(&mut self, pkt: Ipv6Packet, ifid: IfSpec) -> io::Result<()> {
         self.ipv6_send_with_flags(pkt, ifid, Ipv6SendFlags::DEFAULT)
     }
 
     pub fn ipv6_send_with_flags(
         &mut self,
-        mut pkt: Ipv6Packet,
-        mut ifid: IfId,
+        pkt: Ipv6Packet,
+        ifid: IfSpec,
         flags: Ipv6SendFlags,
     ) -> io::Result<()> {
         // tracing::trace!(src = ?pkt.src, dst = ?pkt.dst, ?ifid, "ipv6_send({flags:?})");
@@ -192,28 +192,40 @@ impl IOContext {
             ));
         }
 
-        // Assign src addr if nessecary
-        let multicast_bypass = pkt.dst.is_multicast() && pkt.src.is_unspecified() && ifid.is_null();
-        if pkt.src.is_unspecified()
-            && !flags.contains(Ipv6SendFlags::REQUIRED_SRC_UNSPECIFIED)
-            && !multicast_bypass
-        {
-            // (0) Check link local
-            let canidates = self.ipv6_src_addr_canidate_set(pkt.dst, ifid);
+        if pkt.dst.is_multicast() {
+            if ifid.is_none() {
+                self.ipv6_send_multicast(pkt, flags)
+            } else {
+                // Since no duplication is required, treat the packet as unicast
+                self.ipv6_send_unicast(pkt, ifid, flags)
+            }
+        } else {
+            self.ipv6_send_unicast(pkt, ifid, flags)
+        }
+    }
+
+    /// Send a valid IPv6 packet with a given unicast destination
+    /// - pkt.dst must be a valid unicast addr
+    /// - ifid may be IfId::NULL but never IfId::ALL
+    fn ipv6_send_unicast(
+        &mut self,
+        mut pkt: Ipv6Packet,
+        mut ifspec: IfSpec,
+        flags: Ipv6SendFlags,
+    ) -> io::Result<()> {
+        debug_assert!(!pkt.dst.is_unspecified());
+
+        // (1)
+        if pkt.src.is_unspecified() && !flags.contains(Ipv6SendFlags::REQUIRED_SRC_UNSPECIFIED) {
+            let canidates = self.ipv6_src_addr_canidate_set(pkt.dst, ifspec);
             if let Some(src) = canidates.select(&self.ipv6.policies) {
                 pkt.src = src.addr;
-                if ifid.is_null() {
-                    ifid = src.ifid;
+                if ifspec.is_none() {
+                    ifspec = src.ifid.into();
                 }
             } else if flags.contains(Ipv6SendFlags::ALLOW_SRC_UNSPECIFIED) {
                 /* Do nothing the flag allows this */
             } else {
-                tracing::error!(
-                    IFACE = %ifid,
-                    DST = ?pkt.dst,
-                    FLAGS = ?flags,
-                    "cannot send packet: no valid src addr found"
-                );
                 return Err(io::Error::new(
                     io::ErrorKind::ConnectionRefused,
                     "host unreachable - no valid src addr",
@@ -221,22 +233,21 @@ impl IOContext {
             }
         }
 
-        // TODO:
-        // make better self-send-detection
-        if pkt.dst == pkt.src {
-            // Try to send via lookback interface
-            if let Some((_lo_ifid, lo_iface)) = self
-                .ifaces
-                .iter_mut()
-                .find(|(_, iface)| iface.flags.loopback)
-            {
-                lo_iface
+        // `ifid` may be NULL, `pkt.src` is set expect ALLOW_SRC_UNSPECIFIED
+
+        // (2) Self-Send bypass
+        if pkt.src == pkt.dst {
+            debug_assert!(!pkt.src.is_unspecified());
+
+            // TODO: this is not correct
+            let loopback = self.ifaces.values_mut().find(|iface| iface.flags.loopback);
+            if let Some(loopback) = loopback {
+                loopback
                     .send_buffered(Message::default().with_kind(KIND_IPV6).with_content(pkt))?;
-                return Ok(());
             } else {
-                assert!(!ifid.is_null());
+                assert!(ifspec.is_some());
                 // FIXME: dangerous since this execut4e directly
-                let iface = self.ifaces.get(&ifid).unwrap();
+                let iface = self.ifaces.get(&ifspec.unwrap()).unwrap();
                 schedule_in(
                     Message::default()
                         .with_last_gate(iface.device.input().unwrap())
@@ -246,37 +257,45 @@ impl IOContext {
                         .with_content(pkt),
                     Duration::ZERO,
                 );
-                return Ok(());
             }
+
+            return Ok(());
         }
 
-        if ifid.is_null() && pkt.dst.is_multicast() {
-            return self.ipv6_send_multicast(&pkt);
+        // (3) if the packet is foreign no IfId could be provided by (1) since the
+        // src addr is already fixed, thus compute a valid IfId for by input
+        if ifspec.is_none() && !flags.contains(Ipv6SendFlags::FOREIGN_PACKET) {
+            ifspec = self.ipv6_ifid_for_src_addr(pkt.src).into();
         }
 
-        // Interface specification:
-        // This should be borderline immpossible s
-        if ifid == IfId::NULL && !flags.contains(Ipv6SendFlags::FOREIGN_PACKET) {
-            ifid = self.ipv6_ifid_for_src_addr(pkt.src);
-        }
-
+        // (4) Next hop determination (routing)
+        // Figure out the appropriate next hop if that is not cached. If it is
+        // ifid will also be cached so no need to set
         let next_hop = self.ipv6.destinations.lookup(pkt.dst, &self.ipv6.neighbors);
         let next_hop = if let Some(next_hop) = next_hop {
             next_hop
         } else {
-            let (next_hop, new_ifid) = self.ipv6_next_hop_determination(pkt.src, pkt.dst, ifid)?;
-            if new_ifid != IfId::NULL {
-                ifid = new_ifid;
+            let (next_hop, new_ifid) = self.ipv6_next_hop_determination(pkt.src, pkt.dst)?;
+            if new_ifid.is_some() {
+                ifspec = new_ifid;
             }
             next_hop
         };
 
-        // tracing::info!("> next_hop = {:?}", next_hop);
+        // `ifid` may be NULL
+        // `next_hop` is an adjacent node
 
-        // (3) Begin LL address resoloution
-        let Some((mac, new_ifid)) = self.ipv6.neighbors.lookup(next_hop) else {
-            // FIXME: this is a diry trick
-            if ifid.is_null() {
+        // (5) Link layer resolution
+        let Some((mac_addr, lookup_ifid)) = self.ipv6.neighbors.lookup(next_hop) else {
+            // we cannot find a LL address for a node that should be adjacent
+            // -> node does not exist OR not yet resolved
+            // -> LL resolution must be started (requires interface)
+            // -> `IfId` may be NULL if [not provided by the socket && not set by src specification && not foreign packet]
+            // -> `next_hop` must be assumed on link -> thus determine where
+            let ifid = if let Some(ifid) = ifspec {
+                ifid
+            } else {
+                debug_assert!(self.ipv6.is_router);
                 // We still dont know where to look -> router?
                 for (cifid, ccfg) in &self.ipv6.router_cfg {
                     if ccfg
@@ -284,11 +303,11 @@ impl IOContext {
                         .iter()
                         .any(|pr| pr.prefix.contains(next_hop))
                     {
-                        ifid = *cifid;
-                        break;
+                        ifspec = (*cifid).into();
                     }
                 }
-            }
+                ifspec.expect("could not assign any interface")
+            };
 
             // Link-Layer resolution is not directly available
             // -> start solicitation procedure and queue packet
@@ -301,19 +320,21 @@ impl IOContext {
             return Ok(());
         };
 
-        let ifid = if new_ifid == IfId::NULL {
-            ifid
-        } else {
-            new_ifid
+        if lookup_ifid.is_some() {
+            ifspec = lookup_ifid;
         };
 
-        let iface = self.ifaces.get_mut(&ifid).unwrap();
+        let ifid = ifspec.expect("illegal state");
+
+        // (6) Message assembly
+        let iface = self.ifaces.get_mut(&ifid).expect("illegal state");
         let msg = Message::default()
             .with_src(iface.device.addr.into())
-            .with_dst(mac.into())
+            .with_dst(mac_addr.into())
             .with_kind(KIND_IPV6)
             .with_content(pkt);
 
+        // (7) Send packet
         if let Err(err) = iface.send_buffered(msg) {
             match err {
                 InterfaceError::PacketToBig(pkt, allowed_mtu) => {
@@ -337,17 +358,17 @@ impl IOContext {
         Ok(())
     }
 
-    fn ipv6_send_multicast(&mut self, pkt: &Ipv6Packet) -> Result<(), Error> {
+    fn ipv6_send_multicast(&mut self, pkt: Ipv6Packet, _flags: Ipv6SendFlags) -> Result<(), Error> {
         let ifids = self
             .ifaces
-            .iter()
-            .filter_map(|(id, iface)| iface.bindings.has_v6_capability().then_some(*id))
+            .values()
+            .filter_map(|iface| iface.bindings.has_v6_capability().then_some(iface.id()))
             .collect::<Vec<_>>();
 
         for ifid in ifids {
             let mut pkt = pkt.clone();
             if pkt.src.is_unspecified() {
-                let canidates = self.ipv6_src_addr_canidate_set(pkt.dst, ifid);
+                let canidates = self.ipv6_src_addr_canidate_set(pkt.dst, Some(ifid));
                 if let Some(src) = canidates.select(&self.ipv6.policies) {
                     pkt.src = src.addr;
                 } else {
@@ -382,9 +403,9 @@ impl IOContext {
     }
 
     fn ipv6_ifid_for_src_addr(&self, src: Ipv6Addr) -> IfId {
-        for (id, iface) in &self.ifaces {
+        for iface in self.ifaces.values() {
             if iface.bindings.v6.matches_recv(src) {
-                return *id;
+                return iface.id();
             }
         }
 
@@ -395,12 +416,11 @@ impl IOContext {
         &mut self,
         src: Ipv6Addr,
         dst: Ipv6Addr,
-        _ifid: IfId,
-    ) -> io::Result<(Ipv6Addr, IfId)> {
+    ) -> io::Result<(Ipv6Addr, IfSpec)> {
         if let Some(next_hop) = self.ipv6.prefixes.next_hop_determination(dst) {
             tracing::trace!("cached next hop {next_hop} for destination {dst}");
             self.ipv6.destinations.set(dst, next_hop);
-            Ok((next_hop, IfId::NULL))
+            Ok((next_hop, None))
         } else {
             if self.ipv6.is_router {
                 if let Some(v) = self.ipv6.router.lookup(dst) {
@@ -415,7 +435,7 @@ impl IOContext {
             self.ipv6
                 .default_routers
                 .next_router(&self.ipv6.neighbors)
-                .map(|addr| (addr, IfId::NULL))
+                .map(|addr| (addr, None))
                 .ok_or_else(|| io::Error::other("no router available"))
         }
     }

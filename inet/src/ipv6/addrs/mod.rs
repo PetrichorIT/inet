@@ -14,7 +14,10 @@ use std::{
     str::FromStr,
 };
 
-use crate::{ctx::IOContext, interface::IfId};
+use crate::{
+    ctx::IOContext,
+    interface::{IfId, IfSpec},
+};
 use types::ip::{Ipv6AddrExt, Ipv6LongestPrefixTable, Ipv6Prefix};
 
 mod api;
@@ -118,7 +121,7 @@ impl Default for PolicyTable {
 pub(super) struct SrcAddrCanidateSet {
     addrs: Vec<CanidateAddr>,
     dst: Ipv6Addr,
-    ifid: IfId,
+    ifid: IfSpec,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -135,7 +138,7 @@ pub struct CanidateAddr {
 impl CanidateAddr {
     pub const UNSPECIFED: CanidateAddr = CanidateAddr {
         addr: Ipv6Addr::UNSPECIFIED,
-        ifid: IfId::NULL,
+        ifid: IfId::UNKNOWN,
         preferred: false,
         deprecated: false,
         temporary: false,
@@ -168,7 +171,7 @@ impl FromStr for CanidateAddr {
 
         let mut canidate = CanidateAddr {
             addr,
-            ifid: IfId::NULL,
+            ifid: IfId::new(&addr.to_string()),
             preferred: addr.to_ipv4().is_some(),
             deprecated: false,
             temporary: false,
@@ -198,36 +201,12 @@ impl FromStr for CanidateAddr {
 }
 
 impl IOContext {
-    // pub(super) fn ipv6_src_addr_canidate_set_for_socket(
-    //     &self,
-    //     socket: &Socket,
-    //     dst: Ipv6Addr,
-    // ) -> SrcAddrCanidateSet {
-    //     let ifid = socket.interface.unwrap_ifid();
-    //     let mut set = self.ipv6_src_addr_canidate_set(dst, ifid);
-    //     if let IpAddr::V6(addr) = socket.addr.ip() {
-    //         if !addr.is_unspecified() {
-    //             set.addrs.retain(|canidate| canidate.addr == addr);
-    //         }
-    //     }
-    //     set
-    // }
-
     pub(super) fn ipv6_src_addr_canidate_set(
         &self,
         dst: Ipv6Addr,
-        preferred_iface: IfId,
+        preferred_iface: IfSpec,
     ) -> SrcAddrCanidateSet {
-        let mut addrs = if preferred_iface == IfId::NULL {
-            // any interface
-            let mut addrs = Vec::new();
-            for (ifid, iface) in &self.ifaces {
-                for addr in &iface.bindings.v6.unicast {
-                    addrs.push(addr.to_canidate_addr(*ifid));
-                }
-            }
-            addrs
-        } else {
+        let mut addrs = if let Some(preferred_iface) = preferred_iface {
             let iface = self.ifaces.get(&preferred_iface).unwrap();
             iface
                 .bindings
@@ -236,6 +215,15 @@ impl IOContext {
                 .iter()
                 .map(|v| v.to_canidate_addr(preferred_iface))
                 .collect()
+        } else {
+            // any interface
+            let mut addrs = Vec::new();
+            for iface in self.ifaces.values() {
+                for addr in &iface.bindings.v6.unicast {
+                    addrs.push(addr.to_canidate_addr(iface.id()));
+                }
+            }
+            addrs
         };
 
         // TODO:
@@ -243,7 +231,7 @@ impl IOContext {
 
         // For site local dst:
         // Only include addrs assigned to the interface facing this site
-        if preferred_iface != IfId::NULL {
+        if let Some(preferred_iface) = preferred_iface {
             addrs.retain(|canidate| canidate.ifid == preferred_iface);
         }
 
@@ -252,7 +240,7 @@ impl IOContext {
 }
 
 impl SrcAddrCanidateSet {
-    pub(super) fn new(addrs: Vec<CanidateAddr>, dst: Ipv6Addr, ifid: IfId) -> Self {
+    pub(super) fn new(addrs: Vec<CanidateAddr>, dst: Ipv6Addr, ifid: IfSpec) -> Self {
         Self { addrs, dst, ifid }
     }
 
@@ -316,11 +304,11 @@ impl SrcAddrCanidateSet {
                 }
 
                 // Rule 5: prefer outgoing iface
-                if self.ifid == sa.ifid && self.ifid != sb.ifid {
+                if sa.ifid == self.ifid && sb.ifid != self.ifid {
                     return Ordering::Greater;
                 }
 
-                if self.ifid == sb.ifid && self.ifid != sa.ifid {
+                if sb.ifid == self.ifid && sa.ifid != self.ifid {
                     return Ordering::Less;
                 }
 
@@ -404,7 +392,7 @@ impl AddrSelection {
                         SrcAddrCanidateSet {
                             addrs: src_set.clone(),
                             dst,
-                            ifid: IfId::NULL,
+                            ifid: None,
                         },
                     )
                 })
@@ -503,11 +491,14 @@ impl AddrSelection {
 
                 Ordering::Equal
             })
-            .map(|(dst, src, _)| Selection {
-                src: src.addr,
-                src_ifid: src.ifid,
-                dst,
+            .map(|(dst, src, _)| {
+                (src != CanidateAddr::UNSPECIFED).then_some(Selection {
+                    src: src.addr,
+                    src_ifid: src.ifid,
+                    dst,
+                })
             })
+            .flatten()
     }
 }
 
@@ -552,21 +543,21 @@ mod tests {
 
         let set = SrcAddrCanidateSet {
             dst: "2001:db8:1::1".parse()?,
-            ifid: IfId::new("eth0"),
+            ifid: IfId::new("eth0").into(),
             addrs: vec!["2001:db8:3::1 #eth0".parse()?, ("fe80::1 #eth0".parse()?)],
         };
         assert_eq!(set.select(&table), Some("2001:db8:3::1 #eth0".parse()?));
 
         let set = SrcAddrCanidateSet {
             dst: "ff05::1".parse()?,
-            ifid: IfId::new("eth0"),
+            ifid: IfId::new("eth0").into(),
             addrs: vec![("2001:db8:3::1 #eth0".parse()?), ("fe80::1 #eth0".parse()?)],
         };
         assert_eq!(set.select(&table), Some("2001:db8:3::1 #eth0".parse()?));
 
         let set = SrcAddrCanidateSet {
             dst: "fe80::1".parse()?,
-            ifid: IfId::new("eth0"),
+            ifid: IfId::new("eth0").into(),
             addrs: vec![("fe80::2 #eth0".parse()?), ("2001:db8:1::1 #eth0".parse()?)],
         };
         assert_eq!(set.select(&table), Some("fe80::2 #eth0".parse()?));
@@ -580,7 +571,7 @@ mod tests {
 
         let set = SrcAddrCanidateSet {
             dst: "2001:db8:1::1".parse()?,
-            ifid: IfId::new("eth0"),
+            ifid: IfId::new("eth0").into(),
             addrs: vec![
                 ("2001:db8:1::1 #eth0".parse()?),
                 ("2001:db8:2::1 #eth0".parse()?),
@@ -597,7 +588,7 @@ mod tests {
 
         let set = SrcAddrCanidateSet {
             dst: "2001:db8:1::1".parse()?,
-            ifid: IfId::new("eth0"),
+            ifid: IfId::new("eth0").into(),
             addrs: vec![
                 ("2001:db8:1::2 #eth0".parse()?),
                 ("2001:db8:3::2 #eth0".parse()?),
@@ -614,7 +605,7 @@ mod tests {
 
         let set = SrcAddrCanidateSet {
             dst: "2002:c633:6401::1".parse()?,
-            ifid: IfId::new("eth0"),
+            ifid: IfId::new("eth0").into(),
             addrs: vec![
                 ("2002:c633:6401::d5e3:7953:13eb:22e8 #eth0".parse()?),
                 ("2001:db8:1::2 #eth0".parse()?),
@@ -634,7 +625,7 @@ mod tests {
 
         let set = SrcAddrCanidateSet {
             dst: "2001:db8:1::1".parse()?,
-            ifid: IfId::new("eth0"),
+            ifid: IfId::new("eth0").into(),
             addrs: vec![
                 ("2001:db8:1::2 #eth0 (care-of-addr)".parse()?),
                 ("2001:db8:3::2 #eth0 (care-of-addr) (home-addr)".parse()?),
@@ -654,7 +645,7 @@ mod tests {
 
         let set = SrcAddrCanidateSet {
             dst: "2001:db8:1::d5e3:0:0:1".parse()?,
-            ifid: IfId::new("eth0"),
+            ifid: IfId::new("eth0").into(),
             addrs: vec![
                 ("2001:db8:1::2 #eth0".parse()?),
                 ("2001:db8:1::d5e3:7953:13eb:22e8 #eth0 (temporary)".parse()?),

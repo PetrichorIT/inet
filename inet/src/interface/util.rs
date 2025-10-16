@@ -28,6 +28,8 @@ impl From<LinkUpdate> for Message {
     }
 }
 
+pub type IfSpec = Option<IfId>;
+
 #[derive(Clone, Copy, PartialEq, Eq, Hash, MessageBody, Valuable, Serialize, Deserialize)]
 pub struct IfId {
     // byte 0..6 prefix
@@ -36,8 +38,7 @@ pub struct IfId {
 }
 
 impl IfId {
-    pub const NULL: Self = Self { bytes: [0; 8] };
-    pub const BROADCAST: Self = Self { bytes: [0xff; 8] };
+    pub const UNKNOWN: Self = Self { bytes: [0xff; 8] };
 
     pub fn new(name: &str) -> Self {
         let mut bytes = [0u8; 8];
@@ -54,12 +55,20 @@ impl IfId {
         Self { bytes }
     }
 
-    pub fn is_null(&self) -> bool {
-        self.bytes == Self::NULL.bytes
-    }
-
     pub fn matches(&self, name: &str) -> bool {
         Self::new(name) == *self
+    }
+}
+
+// impl Borrow<IfSpec> for IfId {
+//     fn borrow(&self) -> &IfSpec {
+//         todo!()
+//     }
+// }
+
+impl PartialEq<IfSpec> for IfId {
+    fn eq(&self, other: &IfSpec) -> bool {
+        Some(self) == other.as_ref()
     }
 }
 
@@ -189,10 +198,5 @@ mod tests {
     #[test]
     fn iface_id_nonrandom_hashing() {
         assert_eq!(IfId::new("en0"), IfId::new("en0"));
-    }
-
-    #[test]
-    fn iface_id_special_cases() {
-        assert_eq!(IfId::NULL, IfId::new(""));
     }
 }

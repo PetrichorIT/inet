@@ -2,7 +2,7 @@ use des::time::SimTime;
 use fxhash::{FxBuildHasher, FxHashMap};
 use std::{hash::Hash, net::Ipv4Addr, time::Duration};
 
-use crate::interface::IfId;
+use crate::interface::{IfId, IfSpec};
 use types::{iface::MacAddress, ip::Ipv4Packet};
 
 #[derive(Debug)]
@@ -30,7 +30,7 @@ pub(crate) struct ArpEntryInternal {
     pub hostname: Option<String>,
     pub ip: Ipv4Addr,
     pub mac: MacAddress,
-    pub iface: IfId,
+    pub iface: IfSpec,
     pub expires: SimTime,
 }
 
@@ -95,16 +95,15 @@ impl ArpTable {
         self.requests.remove(&ip).map(|msgs| (ip, msgs.buffer))
     }
 
-    pub fn wait_for_arp(&mut self, ip: Ipv4Packet, dst: Ipv4Addr) {
+    pub fn enqueue(&mut self, ip: Ipv4Packet, dst: Ipv4Addr, ifid: IfId) {
         self.tick();
-
         self.requests
             .entry(dst)
             .or_insert(ActiveRequest {
                 deadline: SimTime::now() + self.config.timeout,
                 buffer: Vec::with_capacity(4),
                 itr: 0,
-                iface: IfId::NULL,
+                iface: ifid,
             })
             .buffer
             .push(ip);

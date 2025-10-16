@@ -1,4 +1,4 @@
-use crate::{IOHandle, ctx::IOContext, interface::IfId, ioctx};
+use crate::{IOHandle, ctx::IOContext, ioctx};
 use bytes_io::{Bytes, ToBytes};
 use des::time::SimTime;
 use std::{fmt, io, iter, net::Ipv6Addr, time::Duration};
@@ -154,7 +154,7 @@ impl IOContext {
             content: msg.write_to_bytes()?,
         };
 
-        self.ipv6_send(pkt, IfId::NULL)
+        self.ipv6_send(pkt, None)
     }
 }
 

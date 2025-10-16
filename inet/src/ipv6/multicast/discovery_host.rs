@@ -216,7 +216,7 @@ impl IOContext {
         };
 
         // TODO: this should ?? always use fe80 addrs, but what to do when no such addr is availabel ??
-        self.ipv6_send_with_flags(pkt, ifid, Ipv6SendFlags::ALLOW_SRC_UNSPECIFIED)?;
+        self.ipv6_send_with_flags(pkt, Some(ifid), Ipv6SendFlags::ALLOW_SRC_UNSPECIFIED)?;
 
         Ok(())
     }
@@ -255,7 +255,7 @@ impl IOContext {
         };
 
         // TODO: this should ?? always use fe80 addrs, but what to do when no such addr is availabel ??
-        self.ipv6_send_with_flags(pkt, ifid, Ipv6SendFlags::ALLOW_SRC_UNSPECIFIED)
+        self.ipv6_send_with_flags(pkt, Some(ifid), Ipv6SendFlags::ALLOW_SRC_UNSPECIFIED)
     }
 }
 

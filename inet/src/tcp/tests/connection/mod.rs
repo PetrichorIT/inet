@@ -72,7 +72,9 @@ impl TcpTestUnit {
         Ok(())
     }
 
-    pub fn cfg(&mut self, cfg: Config) {
+    pub fn cfg(&mut self, mut cfg: Config) {
+        let clock_reader = self.clock.clone();
+        cfg.clock = Arc::new(move || *clock_reader.lock().unwrap());
         self.cfg = cfg;
     }
 

@@ -84,7 +84,7 @@ impl IOContext {
                 hostname: None,
                 ip: Ipv4Addr::BROADCAST,
                 mac: MacAddress::BROADCAST,
-                iface: iface.name.id(),
+                iface: Some(iface.name.id()),
                 expires: SimTime::MAX,
             });
 
@@ -103,7 +103,7 @@ impl IOContext {
                         hostname: Some(current().name()),
                         ip: binding,
                         mac: iface.device.addr,
-                        iface: iface.name.id(),
+                        iface: Some(iface.name.id()),
                         expires: SimTime::MAX,
                     });
                 }
@@ -140,7 +140,7 @@ impl IOContext {
         let rx = iface.state.events.subscribe();
 
         iface.status().publish();
-        self.ifaces.insert(iface.name.id(), iface);
+        self.ifaces.add(iface);
 
         if v6 && !router && !loopback {
             // Autocfg a link local address;
@@ -184,15 +184,12 @@ impl IOContext {
     pub fn interface_add_addr(&mut self, name: &str, addr: IpAddr) -> io::Result<()> {
         match addr {
             IpAddr::V4(addr) => {
-                let Some((ifid, iface)) = self
-                    .ifaces
-                    .iter_mut()
-                    .find(|(_, iface)| &*iface.name == name)
+                let Some(iface) = self.ifaces.values_mut().find(|iface| &*iface.name == name)
                 else {
                     todo!()
                 };
 
-                let _guard = tracing::span!(Level::INFO, "iface", id = %ifid).entered();
+                let _guard = tracing::span!(Level::INFO, "iface", id = %iface.id()).entered();
 
                 tracing::debug!("assigning blind address {addr}");
                 iface.bindings.v4.add(InterfaceAddrV4 {
@@ -205,12 +202,7 @@ impl IOContext {
             }
             IpAddr::V6(addr) => {
                 let binding = InterfaceAddrV6::new_static(addr, 64);
-                let ifid = self
-                    .ifaces
-                    .keys()
-                    .find(|key| key.matches(name))
-                    .cloned()
-                    .unwrap();
+                let ifid = self.ifaces.keys().find(|key| key.matches(name)).unwrap();
                 self.interface_add_addr_v6(ifid, binding, false)
             }
         }

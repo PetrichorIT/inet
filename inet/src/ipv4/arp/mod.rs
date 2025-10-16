@@ -50,7 +50,7 @@ impl IOContext {
                         hostname: None,
                         ip: arp.src_ipv4_addr(),
                         mac: arp.src_mac_addr(),
-                        iface: ifid,
+                        iface: Some(ifid),
                         expires: SimTime::ZERO,
                     });
 
@@ -109,7 +109,7 @@ impl IOContext {
                         hostname: None,
                         ip: arp.dst_ipv4_addr(),
                         mac: arp.dst_mac_addr(),
-                        iface: ifid,
+                        iface: Some(ifid),
                         expires: SimTime::ZERO,
                     });
 
@@ -151,7 +151,7 @@ impl IOContext {
                             hostname: None,
                             ip: addr,
                             mac: MacAddress::NULL,
-                            iface: IfId::NULL,
+                            iface: None,
                             expires: SimTime::now() + self.ipv4.arp.config.validity / 4,
                         })
                         .unwrap_or((addr, Vec::new()));
@@ -212,7 +212,7 @@ impl IOContext {
         self.ipv4
             .arp
             .lookup(&dst)
-            .map(|e| (e.negated, e.mac, e.iface))
+            .map(|e| (e.negated, e.mac, e.iface.unwrap()))
             .or_else(|| match preferred_iface {
                 SocketIfaceBinding::Bound(ifid) => {
                     let iface = self.ifaces.get(ifid)?;
@@ -250,7 +250,7 @@ impl IOContext {
         dst: Ipv4Addr,
     ) -> io::Result<()> {
         let active_lookup = self.ipv4.arp.active_lookup(&dst);
-        self.ipv4.arp.wait_for_arp(pkt, dst);
+        self.ipv4.arp.enqueue(pkt, dst, ifid.into_ifspec().unwrap());
 
         if active_lookup {
             return Ok(());
@@ -265,20 +265,17 @@ impl IOContext {
                 let mut iface = self.ifaces.get_mut(&ifid).unwrap();
                 if iface.flags.loopback && !dst.is_loopback() {
                     let name = iface.name.clone();
-                    let Some(eth) = self
-                        .ifaces
-                        .iter_mut()
-                        .find(|(_, iface)| !iface.flags.loopback)
+                    let Some(eth) = self.ifaces.values_mut().find(|iface| !iface.flags.loopback)
                     else {
                         panic!()
                     };
                     tracing::trace!(
                         "redirecting ARP request to new interface {} (socket operates on {})",
-                        eth.1.name,
+                        eth.name,
                         name
                     );
                     // ifid = *eth.0;
-                    iface = eth.1;
+                    iface = eth;
                 }
                 iface
             }
@@ -286,20 +283,17 @@ impl IOContext {
                 let mut iface = self.ifaces.get_mut(&ifids[0]).unwrap();
                 if iface.flags.loopback && !dst.is_loopback() {
                     let name = iface.name.clone();
-                    let Some(eth) = self
-                        .ifaces
-                        .iter_mut()
-                        .find(|(_, iface)| !iface.flags.loopback)
+                    let Some(eth) = self.ifaces.values_mut().find(|iface| !iface.flags.loopback)
                     else {
                         panic!()
                     };
                     tracing::trace!(
                         "redirecting ARP request to new interface {} (socket operates on {})",
-                        eth.1.name,
+                        eth.name,
                         name
                     );
                     // ifid = *eth.0;
-                    iface = eth.1;
+                    iface = eth;
                 }
                 iface
             }
