@@ -1,7 +1,7 @@
 use fxhash::FxHashSet;
 
 use super::{GroupState, Role};
-use crate::{interface::IfId, ipv6::multicast::NodeState, IOContext};
+use crate::{interface::IfId, ioctx, ipv6::multicast::NodeState};
 use std::net::Ipv6Addr;
 
 mod host;
@@ -9,7 +9,7 @@ mod querier;
 mod udp;
 
 fn assert_memberships_are(iface: &str, slice: &[&str]) {
-    IOContext::with_current(|ctx| {
+    ioctx().do_io(|ctx| {
         let ctrl = ctx.ipv6.mld.get(&IfId::new(iface)).unwrap();
         assert_eq!(
             ctrl.memberships
@@ -26,7 +26,7 @@ fn assert_memberships_are(iface: &str, slice: &[&str]) {
 }
 
 fn assert_multicast_groups_are(iface: &str, slice: &[&str]) {
-    IOContext::with_current(|ctx| {
+    ioctx().do_io(|ctx| {
         let ctrl = ctx.ipv6.mld.get(&IfId::new(iface)).unwrap();
         assert_eq!(
             ctrl.querier
@@ -41,14 +41,14 @@ fn assert_multicast_groups_are(iface: &str, slice: &[&str]) {
 }
 
 fn assert_multicast_role(iface: &str, role: Option<Role>) {
-    IOContext::with_current(|ctx| {
+    ioctx().do_io(|ctx| {
         let ctrl = ctx.ipv6.mld.get(&IfId::new(iface)).unwrap();
         assert_eq!(ctrl.querier.as_ref().map(|v| v.role), role);
     });
 }
 
 fn assert_multicast_group_state(iface: &str, addr: &str, state: GroupState) {
-    IOContext::with_current(|ctx| {
+    ioctx().do_io(|ctx| {
         let ctrl = ctx.ipv6.mld.get(&IfId::new(iface)).unwrap();
         let group = ctrl
             .querier

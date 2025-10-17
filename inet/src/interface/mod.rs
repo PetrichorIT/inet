@@ -158,6 +158,8 @@ impl InterfaceController {
     pub(super) fn add_write_interest(&mut self, fd: Fd) {
         if let InterfaceBusyState::Busy { interests, .. } = &mut self.state.busy {
             interests.push(fd);
+        } else {
+            // TODO: check this error condition
         }
     }
 

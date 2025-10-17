@@ -4,7 +4,7 @@ use des::time::SimTime;
 use types::iface::MacAddress;
 
 use super::ArpConfig;
-use crate::{IOContext, IOHandle, interface::InterfaceName, ioctx, socket::SocketIfaceBinding};
+use crate::{IOContext, IOHandle, interface::InterfaceName, ioctx};
 
 /// An entry in the address resoloution table
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -138,8 +138,7 @@ impl IOContext {
         });
         if let Some((trg, sendable)) = sendable {
             for pkt in sendable {
-                self.ipv4_send_lan_local(SocketIfaceBinding::Bound(if_name.id()), trg, pkt)
-                    .unwrap();
+                self.ipv4_send_lan_local(if_name.id(), trg, pkt).unwrap();
             }
         }
         Ok(())

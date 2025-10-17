@@ -13,7 +13,11 @@ use types::{
     ip::{IPV4_MINIMUM_MTU, IpPacket, Ipv4Packet, KIND_IPV4},
 };
 
-use crate::{IOContext, ctx::NetworkLayerResult, interface::IfId, socket::SocketIfaceBinding};
+use crate::{
+    IOContext,
+    ctx::NetworkLayerResult,
+    interface::{IfId, IfSpec},
+};
 
 pub mod arp;
 pub mod icmp;
@@ -63,9 +67,9 @@ impl IOContext {
 
             tracing::debug!("fwd packet to {}", pkt.dst);
 
-            if let Err(error) = self.send_ip_packet(
-                SocketIfaceBinding::Any(self.ifaces.keys().collect()),
-                IpPacket::V4(pkt.clone()), // TODO: to not copy, use a result Err(Packet)
+            if let Err(error) = self.ipv4_send(
+                None,
+                pkt.clone(), // TODO: to not copy, use a result Err(Packet)
             ) {
                 tracing::error!("failed to forward ip-packet {error}");
                 self.icmp_routing_failed(error, &pkt);
@@ -103,7 +107,25 @@ impl IOContext {
         })
     }
 
-    pub fn ipv4_send(&mut self, ifid: SocketIfaceBinding, pkt: Ipv4Packet) -> io::Result<()> {
+    pub fn ipv4_src_addr_for_dst(&self, dst: Ipv4Addr) -> io::Result<Ipv4Addr> {
+        let Some((_, rifid)) = self.ipv4.fwd.lookup(dst) else {
+            return Err(Error::new(
+                ErrorKind::ConnectionRefused,
+                "no gateway network reachable",
+            ));
+        };
+
+        let (subnet, _mask) = self
+            .ifaces
+            .get(&rifid.id())
+            .expect("illegal state")
+            .ipv4_subnet()
+            .expect("must have a subnet");
+
+        Ok(subnet)
+    }
+
+    pub fn ipv4_send(&mut self, ifspec: IfSpec, pkt: Ipv4Packet) -> io::Result<()> {
         // (0) Routing table destintation lookup
 
         let Some((route, rifid)) = self.ipv4.fwd.lookup(pkt.dst) else {
@@ -114,21 +136,17 @@ impl IOContext {
         };
 
         match route {
-            Ipv4Gateway::Local => {
-                self.ipv4_send_lan_local(SocketIfaceBinding::Bound(rifid.id()), pkt.dst, pkt)
-            }
-            Ipv4Gateway::Gateway(gw) => {
-                self.ipv4_send_lan_local(SocketIfaceBinding::Bound(rifid.id()), *gw, pkt)
-            }
+            Ipv4Gateway::Local => self.ipv4_send_lan_local(rifid.id(), pkt.dst, pkt),
+            Ipv4Gateway::Gateway(gw) => self.ipv4_send_lan_local(rifid.id(), *gw, pkt),
             // TODO: move logic to extra, non-arp fn
-            Ipv4Gateway::Broadcast => self.ipv4_broadcast(ifid, pkt),
+            Ipv4Gateway::Broadcast => self.ipv4_broadcast(ifspec, pkt),
         }
     }
 
-    pub fn ipv4_broadcast(&mut self, ifid: SocketIfaceBinding, pkt: Ipv4Packet) -> io::Result<()> {
+    pub fn ipv4_broadcast(&mut self, ifspec: IfSpec, pkt: Ipv4Packet) -> io::Result<()> {
         // Since we are broadcasting, use ff
-        match ifid {
-            SocketIfaceBinding::Bound(_) => self.ipv4_send_lan_local(ifid, pkt.dst, pkt),
+        match ifspec {
+            Some(id) => self.ipv4_send_lan_local(id, pkt.dst, pkt),
             _ => {
                 for iface in self.ifaces.values_mut() {
                     let mut pkt = pkt.clone();
@@ -150,12 +168,12 @@ impl IOContext {
 
     fn ipv4_send_lan_local(
         &mut self,
-        ifid: SocketIfaceBinding,
-        dst: Ipv4Addr,
+        ifid: IfId,
+        next_hop: Ipv4Addr,
         pkt: Ipv4Packet,
     ) -> io::Result<()> {
-        let Some((negated, mac, ifid)) = self.arp_lookup(dst, &ifid) else {
-            self.arp_missing_addr_mapping(ifid, pkt, dst)?;
+        let Some((negated, mac, ifid)) = self.arp_lookup(next_hop, ifid) else {
+            self.arp_missing_addr_mapping(ifid, pkt, next_hop)?;
             return Ok(());
         };
 

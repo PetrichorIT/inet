@@ -1,3 +1,5 @@
+use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
+
 /// The communication domain of a socket.
 #[allow(nonstandard_style)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -27,6 +29,17 @@ pub enum SocketDomain {
     AF_VSOCK,
     AF_KCM,
     AF_XDP,
+}
+
+impl SocketDomain {
+    pub const fn addr_unspecified(&self) -> SocketAddr {
+        match self {
+            Self::AF_INET => SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0)),
+            Self::AF_INET6 => SocketAddr::V6(SocketAddrV6::new(Ipv6Addr::UNSPECIFIED, 0, 0, 0)),
+            Self::AF_UNIX => SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0)),
+            _ => unreachable!(),
+        }
+    }
 }
 
 /// The type of communications semantics use in the socket.

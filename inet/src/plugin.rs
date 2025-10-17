@@ -31,12 +31,12 @@ impl ProcessingElement for IOPlugin {
         inner: &mut dyn FnMut(Option<Message>) -> Option<Message>,
     ) -> Option<Message> {
         let io = self.ctx.take().expect("Theft");
-        self.prev = IOHandle::swap_in(Some(io));
+        self.prev = IOHandle::swap_in(Some(io.clone()));
 
-        let res = msg.and_then(|msg| IOContext::with_current(|ctx| ctx.recv(msg)));
+        let res = msg.and_then(|msg| io.do_io(|ctx| ctx.recv(msg)));
         let res = inner(res);
 
-        IOContext::with_current(|ctx| ctx.event_end());
+        io.do_io(|ctx| ctx.event_end());
 
         self.ctx = IOHandle::swap_in(self.prev.take());
         let ctx = self.ctx.as_mut().expect("illegal state");

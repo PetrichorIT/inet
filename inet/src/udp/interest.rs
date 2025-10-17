@@ -59,30 +59,22 @@ impl Future for UdpInterest {
 
         if self.io_interest.is_writable() {
             return self.handle.clone().do_io(|ctx| {
-                let Some(socket) = ctx.sockets.get(&self.fd) else {
-                    self.resolved = true;
-                    return Poll::Ready(Err(Error::new(
-                        ErrorKind::InvalidInput,
-                        "invalid fd - socket dropped",
-                    )));
-                };
+                // assert(fd is valid UDP socket)
 
-                let Some(udp) = ctx.udp.binds.get_mut(&self.fd) else {
-                    self.resolved = true;
-                    return Poll::Ready(Err(Error::new(
-                        ErrorKind::InvalidInput,
-                        "invalid fd - socket dropped",
-                    )));
-                };
-
-                let Some(interface) = ctx.ifaces.get_mut_spec(&socket.interface.into_ifspec())
-                else {
-                    self.resolved = true;
-                    return Poll::Ready(Err(Error::new(ErrorKind::InvalidInput, "interface down")));
-                };
+                let id = ctx
+                    .iface_for_write_intention(self.fd)
+                    .inspect_err(|_| self.resolved = true)?;
+                let interface = ctx.ifaces.get_mut(&id).unwrap();
 
                 if interface.is_busy() {
                     interface.add_write_interest(self.fd);
+                    let Some(udp) = ctx.udp.binds.get_mut(&self.fd) else {
+                        self.resolved = true;
+                        return Poll::Ready(Err(Error::new(
+                            ErrorKind::InvalidInput,
+                            "invalid fd - socket dropped",
+                        )));
+                    };
                     udp.write_interest.push(UdpInterestGuard {
                         waker: cx.waker().clone(),
                     });

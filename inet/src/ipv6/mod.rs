@@ -18,6 +18,7 @@ use types::{
 use crate::{
     ctx::{IOContext, NetworkLayerResult},
     interface::{IfId, IfSpec, InterfaceError},
+    ipv6::addrs::CanidateAddr,
 };
 
 use self::{
@@ -400,6 +401,28 @@ impl IOContext {
         }
 
         Ok(())
+    }
+
+    pub fn ipv6_determine_iface_for_write_interest(
+        &mut self,
+        src: Ipv6Addr,
+        dst: Ipv6Addr,
+    ) -> io::Result<IfId> {
+        debug_assert!(!dst.is_unspecified());
+        debug_assert!(!dst.is_multicast()); // Multicast could be send onto any iface
+
+        if src.is_unspecified() {
+            self.ipv6_src_addr_for_dst(dst, None)
+                .map(|canid| canid.ifid)
+                .ok_or_else(|| Error::new(ErrorKind::NotFound, "no capable src addr"))
+        } else {
+            // (2) `src` is set to a given unicast addr -> must be on any interface
+            Ok(self.ipv6_ifid_for_src_addr(src))
+        }
+    }
+    pub fn ipv6_src_addr_for_dst(&self, dst: Ipv6Addr, ifspec: IfSpec) -> Option<CanidateAddr> {
+        let canidates = self.ipv6_src_addr_canidate_set(dst, ifspec);
+        canidates.select(&self.ipv6.policies)
     }
 
     fn ipv6_ifid_for_src_addr(&self, src: Ipv6Addr) -> IfId {

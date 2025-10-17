@@ -5,6 +5,8 @@ use serial_test::serial;
 use tokio::io::AsyncWriteExt;
 
 use crate::{
+    ioctx,
+    socket::AsRawFd,
     tcp::{self, Config, TcpListener, TcpStream},
     test_util::SimpleSim,
 };
@@ -19,7 +21,10 @@ fn bind_fails_after_all_addrs() -> Result<(), RuntimeError> {
             .expect_err("must fail since there is no binding addr");
 
         assert_eq!(binding.kind(), ErrorKind::AddrNotAvailable);
-        assert_eq!(binding.to_string(), "Address not available");
+        assert_eq!(
+            binding.to_string(),
+            "address not available - specific bind failed"
+        );
         Ok(())
     });
 
@@ -54,6 +59,54 @@ fn accept_incoming() -> Result<(), RuntimeError> {
     });
     sim.node("192.168.2.102", || async move {
         TcpStream::connect("192.168.2.101:80")
+            .await?
+            .write_all(&[1, 2, 3, 4])
+            .await?;
+        Ok(())
+    });
+
+    sim.run()
+}
+
+#[test]
+#[serial]
+fn accepted_socket_not_unspecified_v4() -> Result<(), RuntimeError> {
+    let mut sim = SimpleSim::default();
+    sim.node_require_join("192.168.2.101", || async move {
+        let binding = TcpListener::bind("0.0.0.0:80").await?;
+        let (accepted, _) = binding.accept().await?;
+        assert_eq!(
+            ioctx().bsd_socket_info(accepted.as_raw_fd())?.addr,
+            "192.168.2.101:80".parse().unwrap()
+        );
+        Ok(())
+    });
+    sim.node("192.168.2.102", || async move {
+        TcpStream::connect("192.168.2.101:80")
+            .await?
+            .write_all(&[1, 2, 3, 4])
+            .await?;
+        Ok(())
+    });
+
+    sim.run()
+}
+
+#[test]
+#[serial]
+fn accepted_socket_not_unspecified_v6() -> Result<(), RuntimeError> {
+    let mut sim = SimpleSim::default();
+    sim.node_require_join("fe80::1", || async move {
+        let binding = TcpListener::bind("[::]:80").await?;
+        let (accepted, _) = binding.accept().await?;
+        assert_eq!(
+            ioctx().bsd_socket_info(accepted.as_raw_fd())?.addr,
+            "[fe80::1]:80".parse().unwrap()
+        );
+        Ok(())
+    });
+    sim.node("fe80::2", || async move {
+        TcpStream::connect("[fe80::1]:80")
             .await?
             .write_all(&[1, 2, 3, 4])
             .await?;

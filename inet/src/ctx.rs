@@ -5,6 +5,7 @@ use crate::{
     extensions::Extensions,
     handle::{IOHandle, IOHandleWeak},
     interface::{ID_IPV6_TIMEOUT, IfId, Interfaces, KIND_LINK_UPDATE},
+    ioctx,
     ipv4::Ipv4,
     ipv6::Ipv6,
     tcp::Tcp,
@@ -12,7 +13,6 @@ use crate::{
 use des::prelude::{Header, Message, ModuleId};
 use std::{
     fmt::Debug,
-    io::Result,
     net::IpAddr,
     panic::UnwindSafe,
     sync::{Arc, Mutex, Weak},
@@ -57,7 +57,7 @@ pub struct Current {
 
 impl Current {
     pub fn fetch() -> Current {
-        IOContext::with_current(|ctx| ctx.current.clone())
+        ioctx().do_io(|ctx| ctx.current.clone())
     }
 }
 
@@ -96,22 +96,6 @@ impl IOContext {
 
     pub(super) fn handle(&self) -> IOHandle {
         IOHandle(self.handle.upgrade().expect("illegal state"))
-    }
-}
-
-impl IOContext {
-    pub fn current_handle() -> IOHandle {
-        IOHandle::current()
-    }
-
-    pub(super) fn with_current<R>(f: impl FnOnce(&mut IOContext) -> R) -> R {
-        let handle = Self::current_handle();
-        handle.do_io(f)
-    }
-
-    pub(super) fn failable_api<T>(f: impl FnOnce(&mut IOContext) -> Result<T>) -> Result<T> {
-        let handle = Self::current_handle();
-        handle.do_failable(f)
     }
 }
 
@@ -200,13 +184,6 @@ impl IOContext {
             (IpAddr::V4(_), IpAddr::V4(dst)) => self.ipv4_get_local_mtu(dst),
             (IpAddr::V6(src), IpAddr::V6(dst)) => self.ipv6_get_path_mtu(src, dst),
             _ => panic!("unsupported address family"),
-        }
-    }
-
-    pub fn send_ip_packet(&mut self, ifid: SocketIfaceBinding, pkt: IpPacket) -> Result<()> {
-        match pkt {
-            IpPacket::V4(pkt) => self.ipv4_send(ifid, pkt),
-            IpPacket::V6(pkt) => self.ipv6_send(pkt, ifid.into_ifspec()),
         }
     }
 }

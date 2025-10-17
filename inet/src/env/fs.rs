@@ -1,9 +1,9 @@
 //! Minimal filesystem abstractions.
 
-use crate::IOContext;
+use crate::{IOContext, ioctx};
 use des::runtime::rng;
 use fxhash::{FxBuildHasher, FxHashMap};
-use rand::{distr::Alphanumeric, Rng};
+use rand::{Rng, distr::Alphanumeric};
 use std::{
     io::{Error, ErrorKind, Result},
     path::{Component, Path, PathBuf},
@@ -104,7 +104,7 @@ pub struct TempDir {
 
 impl TempDir {
     pub fn new() -> Result<TempDir> {
-        IOContext::with_current(|ctx| ctx.tempdir_create())
+        ioctx().do_failable(|ctx| ctx.tempdir_create())
     }
 
     pub fn path(&self) -> &Path {

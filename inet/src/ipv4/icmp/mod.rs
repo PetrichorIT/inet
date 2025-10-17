@@ -29,7 +29,7 @@ use types::{
 use crate::{
     IOContext,
     interface::IfId,
-    socket::{SocketDomain, SocketIfaceBinding, SocketType},
+    socket::{SocketDomain, SocketType},
 };
 
 mod ping;
@@ -119,8 +119,7 @@ impl IOContext {
                     dst: ip_icmp.src,
                     content: icmp.write_to_bytes().expect("Failed to parse ICMP"),
                 };
-                self.send_ip_packet(SocketIfaceBinding::Bound(ifid), IpPacket::V4(ip))
-                    .expect("Failed to send");
+                self.ipv4_send(Some(ifid), ip).expect("Failed to send");
             }
             IcmpV4Type::EchoReply {
                 identifier,
@@ -226,8 +225,7 @@ impl IOContext {
                 ip.proto = PROTO_ICMPV4;
                 ip.content = icmp.write_to_bytes().expect("Failed to parse ICMP");
 
-                self.send_ip_packet(SocketIfaceBinding::NotBound, IpPacket::V4(ip))
-                    .unwrap()
+                self.ipv4_send(None, ip).unwrap()
             }
             ErrorKind::NotConnected => {
                 // Gateway error
@@ -244,7 +242,7 @@ impl IOContext {
                 ip.proto = PROTO_ICMPV4;
                 ip.content = icmp.write_to_bytes().expect("Failed to parse ICMP");
 
-                let _ = self.send_ip_packet(SocketIfaceBinding::NotBound, IpPacket::V4(ip));
+                let _ = self.ipv4_send(None, ip);
             }
             _ => {}
         }
@@ -261,8 +259,7 @@ impl IOContext {
         ip.src = Ipv4Addr::UNSPECIFIED;
         ip.proto = PROTO_ICMPV4;
         ip.content = icmp.write_to_bytes().expect("Failed to parse ICMP");
-        self.send_ip_packet(SocketIfaceBinding::Bound(ifid), IpPacket::V4(ip))
-            .unwrap();
+        self.ipv4_send(Some(ifid), ip).unwrap();
     }
 
     pub fn icmp_port_unreachable(&mut self, ifid: IfId, pkt: IpPacketRef) {
@@ -278,8 +275,7 @@ impl IOContext {
             ip.src = Ipv4Addr::UNSPECIFIED;
             ip.proto = PROTO_ICMPV4;
             ip.content = icmp.write_to_bytes().expect("Failed to parse ICMP");
-            self.send_ip_packet(SocketIfaceBinding::Bound(ifid), IpPacket::V4(ip))
-                .unwrap();
+            self.ipv4_send(Some(ifid), ip).unwrap();
         }
     }
 }

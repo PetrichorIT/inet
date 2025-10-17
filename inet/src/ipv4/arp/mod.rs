@@ -16,7 +16,6 @@ use std::io::{self, Error, ErrorKind};
 use std::net::Ipv4Addr;
 
 use crate::ctx::LinkLayerResult;
-use crate::socket::SocketIfaceBinding;
 use crate::{IOContext, interface::*};
 use des::prelude::{Message, schedule_in};
 use des::time::SimTime;
@@ -60,8 +59,7 @@ impl IOContext {
                             sendable.len()
                         );
                         for pkt in sendable {
-                            self.ipv4_send_lan_local(SocketIfaceBinding::Bound(ifid), trg, pkt)
-                                .unwrap();
+                            self.ipv4_send_lan_local(ifid, trg, pkt).unwrap();
                         }
                     };
                 }
@@ -125,8 +123,7 @@ impl IOContext {
                     };
 
                     for pkt in sendable {
-                        self.ipv4_send_lan_local(SocketIfaceBinding::Bound(ifid), trg, pkt)
-                            .unwrap();
+                        self.ipv4_send_lan_local(ifid, trg, pkt).unwrap();
                     }
                 }
                 Consumed()
@@ -169,8 +166,8 @@ impl IOContext {
                     req.deadline = SimTime::now() + self.ipv4.arp.config.timeout;
                     req.itr += 1;
                     let dst = req.buffer[0].dst;
-                    let binding = SocketIfaceBinding::Bound(req.iface);
-                    self.arp_send_request(binding, dst).unwrap();
+                    let id = req.iface;
+                    self.arp_send_request(id, dst).unwrap();
                 }
             }
         }
@@ -207,50 +204,33 @@ impl IOContext {
     pub fn arp_lookup(
         &self,
         dst: Ipv4Addr,
-        preferred_iface: &SocketIfaceBinding,
+        preferred_iface: IfId,
     ) -> Option<(bool, MacAddress, IfId)> {
         self.ipv4
             .arp
             .lookup(&dst)
             .map(|e| (e.negated, e.mac, e.iface.unwrap()))
-            .or_else(|| match preferred_iface {
-                SocketIfaceBinding::Bound(ifid) => {
-                    let iface = self.ifaces.get(ifid)?;
-                    let looback = iface.flags.loopback && dst.is_loopback();
-                    let self_addr = iface.bindings.v4.matches(dst);
-                    if looback || self_addr {
-                        Some((false, iface.device.addr, iface.name.id()))
-                    } else {
-                        None
-                    }
-                }
-                SocketIfaceBinding::Any(ifids) => {
-                    for ifid in ifids {
-                        let Some(iface) = self.ifaces.get(ifid) else {
-                            continue;
-                        };
-                        let looback = iface.flags.loopback && dst.is_loopback();
-                        let self_addr = iface.bindings.v4.matches(dst);
-                        if looback || self_addr {
-                            return Some((false, iface.device.addr, iface.name.id()));
-                        }
-                    }
+            .or_else(|| {
+                let iface = self.ifaces.get(&preferred_iface)?;
+                let looback = iface.flags.loopback && dst.is_loopback();
+                let self_addr = iface.bindings.v4.matches(dst);
+                if looback || self_addr {
+                    Some((false, iface.device.addr, iface.name.id()))
+                } else {
                     None
                 }
-
-                _ => panic!("not yet implemented: {} {:?}", dst, preferred_iface),
             })
         // .map(|(addr, ifid)| (addr, self.map_to_valid_ifid(ifid)))
     }
 
     pub fn arp_missing_addr_mapping(
         &mut self,
-        ifid: SocketIfaceBinding,
+        ifid: IfId,
         pkt: Ipv4Packet,
         dst: Ipv4Addr,
     ) -> io::Result<()> {
         let active_lookup = self.ipv4.arp.active_lookup(&dst);
-        self.ipv4.arp.enqueue(pkt, dst, ifid.into_ifspec().unwrap());
+        self.ipv4.arp.enqueue(pkt, dst, ifid);
 
         if active_lookup {
             return Ok(());
@@ -259,48 +239,21 @@ impl IOContext {
         self.arp_send_request(ifid, dst)
     }
 
-    pub fn arp_send_request(&mut self, ifid: SocketIfaceBinding, dst: Ipv4Addr) -> io::Result<()> {
-        let iface = match ifid {
-            SocketIfaceBinding::Bound(ifid) => {
-                let mut iface = self.ifaces.get_mut(&ifid).unwrap();
-                if iface.flags.loopback && !dst.is_loopback() {
-                    let name = iface.name.clone();
-                    let Some(eth) = self.ifaces.values_mut().find(|iface| !iface.flags.loopback)
-                    else {
-                        panic!()
-                    };
-                    tracing::trace!(
-                        "redirecting ARP request to new interface {} (socket operates on {})",
-                        eth.name,
-                        name
-                    );
-                    // ifid = *eth.0;
-                    iface = eth;
-                }
-                iface
-            }
-            SocketIfaceBinding::Any(ifids) => {
-                let mut iface = self.ifaces.get_mut(&ifids[0]).unwrap();
-                if iface.flags.loopback && !dst.is_loopback() {
-                    let name = iface.name.clone();
-                    let Some(eth) = self.ifaces.values_mut().find(|iface| !iface.flags.loopback)
-                    else {
-                        panic!()
-                    };
-                    tracing::trace!(
-                        "redirecting ARP request to new interface {} (socket operates on {})",
-                        eth.name,
-                        name
-                    );
-                    // ifid = *eth.0;
-                    iface = eth;
-                }
-                iface
-            }
-            SocketIfaceBinding::NotBound => {
-                return Err(Error::other("socket bound to no interface"));
-            }
-        };
+    pub fn arp_send_request(&mut self, ifid: IfId, dst: Ipv4Addr) -> io::Result<()> {
+        let mut iface = self.ifaces.get_mut(&ifid).unwrap();
+        if iface.flags.loopback && !dst.is_loopback() {
+            let name = iface.name.clone();
+            let Some(eth) = self.ifaces.values_mut().find(|iface| !iface.flags.loopback) else {
+                panic!()
+            };
+            tracing::trace!(
+                "redirecting ARP request to new interface {} (socket operates on {})",
+                eth.name,
+                name
+            );
+            // ifid = *eth.0;
+            iface = eth;
+        }
 
         self.ipv4.arp.requests.get_mut(&dst).unwrap().iface = iface.name.id();
 

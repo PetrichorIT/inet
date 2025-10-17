@@ -14,6 +14,7 @@ use serial_test::serial;
 use crate::{
     interface::{InterfaceDef, NetworkDevice},
     ioctx,
+    socket::AsRawFd,
     tcp::{Config, TcpListener, TcpStream, set_config},
     test_util::SimpleSim,
 };
@@ -291,4 +292,48 @@ fn connect_success_without_accept() {
     );
 
     run_default_sim(sim);
+}
+
+#[serial]
+#[test]
+fn connect_introduces_local_specified_addr_v4() -> Result<(), RuntimeError> {
+    let mut sim = SimpleSim::new(crate::init);
+    sim.node_require_join("100.0.0.42", || async move {
+        let stream = TcpStream::connect("100.0.0.69:8000").await?;
+        assert_eq!(
+            ioctx().bsd_socket_info(stream.as_raw_fd())?.addr,
+            "100.0.0.42:1024".parse().unwrap()
+        );
+        Ok(())
+    });
+    sim.node_require_join("100.0.0.69", || async move {
+        let list = TcpListener::bind("0.0.0.0:8000").await?;
+        des::time::sleep(Duration::from_secs(10)).await;
+        drop(list);
+        Ok(())
+    });
+
+    sim.run()
+}
+
+#[serial]
+#[test]
+fn connect_introduces_local_specified_addr_v6() -> Result<(), RuntimeError> {
+    let mut sim = SimpleSim::new(crate::init);
+    sim.node_require_join("fe80::1", || async move {
+        let stream = TcpStream::connect("[fe80::2]:8000").await?;
+        assert_eq!(
+            ioctx().bsd_socket_info(stream.as_raw_fd())?.addr,
+            "[fe80::1]:1024".parse().unwrap()
+        );
+        Ok(())
+    });
+    sim.node_require_join("fe80::2", || async move {
+        let list = TcpListener::bind("[::]:8000").await?;
+        des::time::sleep(Duration::from_secs(10)).await;
+        drop(list);
+        Ok(())
+    });
+
+    sim.run()
 }

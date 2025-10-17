@@ -3,7 +3,6 @@ use std::{io, net::Ipv6Addr, time::Duration};
 use types::ip::Ipv6Prefix;
 
 use crate::{
-    IOContext,
     env::RoutingPort,
     interface::{InterfaceDef, NetworkDevice},
     ioctx,
@@ -28,7 +27,7 @@ pub fn setup_router(
         ioctx().add_interface(iface)?;
     }
 
-    IOContext::failable_api(|ctx| {
+    ioctx().do_failable(|ctx| {
         ctx.ipv6.is_router = true;
 
         let ifids = ctx.ifaces.keys().collect::<Vec<_>>();

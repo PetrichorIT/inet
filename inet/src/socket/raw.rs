@@ -140,7 +140,10 @@ impl IOContext {
             return Err(Error::new(ErrorKind::InvalidInput, "no socket under fd"));
         };
 
-        self.send_ip_packet(socket.interface.clone(), pkt)
+        match pkt {
+            IpPacket::V4(pkt) => self.ipv4_send(socket.interface.into_ifspec(), pkt),
+            IpPacket::V6(pkt) => self.ipv6_send(pkt, socket.interface.into_ifspec()),
+        }
     }
 
     fn drop_raw_ip_socket(&mut self, fd: Fd) {

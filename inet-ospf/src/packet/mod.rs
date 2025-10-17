@@ -275,8 +275,6 @@ impl ToBytes for OspfLinkStateRequestPacket {
 impl FromBytes for OspfLinkStateRequestPacket {
     type Error = io::Error;
     fn from_bytes(stream: &mut BytesReader) -> Result<Self, Self::Error> {
-        println!("- link state: {:?}", stream.chunk());
-
         let ls_typ = u16::try_from(stream.read_u32::<BE>()? & 0xff_ff).expect("cannot fail");
         let link_state_id = stream.read_u32::<BE>()?;
         let advertising_router = stream.read_u32::<BE>()?;

@@ -5,9 +5,8 @@ use std::net::Ipv4Addr;
 use std::time::Duration;
 use tokio::sync::oneshot;
 use types::icmpv4::{IcmpV4Packet, IcmpV4Type, PROTO_ICMPV4};
-use types::ip::{IpPacket, Ipv4Flags, Ipv4Packet};
+use types::ip::{Ipv4Flags, Ipv4Packet};
 
-use crate::socket::SocketIfaceBinding;
 use crate::{IOContext, IOHandle, ioctx};
 
 #[derive(Debug)]
@@ -108,11 +107,7 @@ impl IOContext {
         );
         ip.content = icmp.write_to_bytes().expect("Failed to parse ICMP");
 
-        self.send_ip_packet(
-            SocketIfaceBinding::Any(self.ifaces.keys().collect::<Vec<_>>()),
-            IpPacket::V4(ip),
-        )
-        .expect("Failed to send");
+        self.ipv4_send(None, ip).expect("Failed to send");
     }
 }
 

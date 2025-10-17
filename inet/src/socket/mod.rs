@@ -10,10 +10,11 @@ use super::{IOContext, interface::InterfaceName};
 use std::{
     cell::Cell,
     fmt::Display,
-    io::{Error, ErrorKind, Result},
+    io::{self, Error, ErrorKind, Result},
+    net::IpAddr,
 };
 use std::{
-    net::{Ipv4Addr, SocketAddr, SocketAddrV4},
+    net::SocketAddr,
     ops::{Deref, DerefMut},
 };
 
@@ -108,11 +109,12 @@ pub enum SocketIfaceBinding {
 }
 
 impl SocketIfaceBinding {
+    #[track_caller]
     pub fn into_ifspec(&self) -> IfSpec {
         match self {
-            Self::Any(ids) => ids.first().copied(), // TODO: this is a dirty hack and should return IfSpec::None
+            Self::Any(_) => None,
             Self::Bound(ifid) => Some(*ifid),
-            _ => panic!("unwrap failed"),
+            _ => panic!("unwrap failed: binding was not bound to any iface"),
         }
     }
 
@@ -147,6 +149,33 @@ impl IOContext {
         (SocketDomain::AF_UNIX, SocketType::SOCK_STREAM),
     ];
 
+    pub(super) fn iface_for_write_intention(&mut self, fd: Fd) -> io::Result<IfId> {
+        let socket = self
+            .sockets
+            .get(&fd)
+            .ok_or_else(|| Error::new(ErrorKind::InvalidInput, "invalid fd - socket dropped"))?;
+
+        match &socket.interface {
+            SocketIfaceBinding::Bound(id) => Ok(*id),
+            SocketIfaceBinding::Any(ids) => {
+                // (0) Determine packet shape
+                let src = socket.addr.ip();
+                let dst = socket.peer.ip();
+
+                match (src, dst) {
+                    (IpAddr::V6(src), IpAddr::V6(dst)) if !dst.is_unspecified() => {
+                        self.ipv6_determine_iface_for_write_interest(src, dst)
+                    }
+                    _ => {
+                        // TODO: make actual resolution (ids is unreliable)
+                        Ok(ids[0])
+                    }
+                }
+            }
+            SocketIfaceBinding::NotBound => Err(Error::new(ErrorKind::InvalidInput, "not bound")),
+        }
+    }
+
     pub(super) fn fd_generate(&mut self) -> Fd {
         loop {
             self.sockets.next_fd = self.sockets.next_fd.wrapping_add(1);
@@ -172,9 +201,8 @@ impl IOContext {
 
         let fd = self.fd_generate();
         let socket = Socket {
-            addr: SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0)),
-            peer: SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0)),
-
+            addr: domain.addr_unspecified(),
+            peer: domain.addr_unspecified(),
             domain,
             typ,
             protocol,
@@ -310,7 +338,7 @@ impl IOContext {
         if self
             .sockets
             .values()
-            .any(|other| other.addr == addr && other.typ == socket.typ)
+            .any(|other| other.addr == addr && other.typ == socket.typ && other.peer == socket.peer)
         {
             return Err(Error::new(ErrorKind::AddrInUse, "address already in use"));
         }
@@ -348,18 +376,16 @@ impl IOContext {
             } else {
                 // Check direct port
                 let naddr = SocketAddr::new(next, port);
-                if self
-                    .sockets
-                    .values()
-                    .any(|other| other.addr == naddr && other.typ == socket.typ)
-                {
+                if self.sockets.values().any(|other| {
+                    other.addr == naddr && other.typ == socket.typ && other.peer == socket.peer
+                }) {
                     // E_INUSE
                     continue;
                 }
             }
 
             // Successful bind
-            let socket = self.sockets.get_mut(&fd).expect("unreachable");
+            let socket = self.sockets.get_mut(&fd).expect("illegal state");
             socket.addr = SocketAddr::new(next, port);
             socket.interface = SocketIfaceBinding::Bound(interface.id());
 
@@ -375,7 +401,7 @@ impl IOContext {
 
         Err(Error::new(
             ErrorKind::AddrNotAvailable,
-            "Address not available",
+            "address not available - specific bind failed",
         ))
     }
 
@@ -481,7 +507,7 @@ mod tests {
 
     use crate::interface::{InterfaceDef, NetworkDevice};
     use des::prelude::ModuleId;
-    use std::net::Ipv6Addr;
+    use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
 
     #[test]
     fn create_supported() {

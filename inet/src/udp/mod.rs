@@ -339,7 +339,7 @@ impl IOContext {
                     .expect("Socket should not have been dropped");
                 socket_info.send_q += buf.len();
 
-                let ifid = socket_info.interface.clone();
+                let ifid = socket_info.interface.into_ifspec();
 
                 self.ipv4_send(ifid, ip)?;
                 Ok(buf.len())
