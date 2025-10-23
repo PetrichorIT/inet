@@ -6,6 +6,8 @@ use types::ip::Ipv6Prefix;
 pub struct HostConfiguration {
     pub dup_addr_detect_for_link_local: bool,
     pub dup_addr_detect_transmits: usize, // The number of solicitations neeed, to confirm the uniqueness of an address
+
+    pub icmp_send_time_exceeded: bool,
 }
 
 impl Default for HostConfiguration {
@@ -13,6 +15,7 @@ impl Default for HostConfiguration {
         Self {
             dup_addr_detect_for_link_local: false,
             dup_addr_detect_transmits: 1,
+            icmp_send_time_exceeded: true,
         }
     }
 }

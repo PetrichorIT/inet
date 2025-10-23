@@ -3,7 +3,7 @@ use super::{IOContext, socket::*};
 use crate::interface::IfId;
 use bytes_io::{BufMut, FromBytes, ToBytes};
 use des::net::module::try_current;
-use fxhash::{FxBuildHasher, FxHashMap, FxHashSet};
+use fxhash::{FxHashMap, FxHashSet};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::VecDeque,
@@ -26,18 +26,12 @@ use interest::*;
 #[cfg(test)]
 mod tests;
 
+#[derive(Debug, Default)]
 pub(super) struct Udp {
     pub(super) binds: FxHashMap<Fd, UdpControlBlock>,
 }
 
-impl Udp {
-    pub(super) fn new() -> Udp {
-        Udp {
-            binds: FxHashMap::with_hasher(FxBuildHasher::default()),
-        }
-    }
-}
-
+#[derive(Debug)]
 pub(super) struct UdpControlBlock {
     pub(super) local_addr: SocketAddr,
     pub(super) multicast_listeners_v6: FxHashSet<Ipv6Addr>,
@@ -171,7 +165,7 @@ impl IOContext {
         let src = SocketAddr::new(packet.src(), udp.src_port);
         let dst = SocketAddr::new(packet.dst(), udp.dst_port);
 
-        let mut canidates = self.sockets.iter_mut().filter(|(_, sock)| {
+        let mut canidates = self.sockets.iter().filter(|(_, sock)| {
             sock.typ == SocketType::SOCK_DGRAM && sock.interface.contains(&ifid)
         });
 
@@ -183,7 +177,7 @@ impl IOContext {
                 };
 
                 if mng.is_valid_dst_for(dst) {
-                    sock.recv_q += udp.content.len();
+                    sock.add_recv_q(udp.content.len());
                     mng.push_incoming(src, dst, udp.clone());
                     recvd = true;
                 }
@@ -200,7 +194,7 @@ impl IOContext {
                 return false;
             }
 
-            sock.recv_q += udp.content.len();
+            sock.add_recv_q(udp.content.len());
 
             let Some(mng) = self.udp.binds.get_mut(fd) else {
                 tracing::error!("found udp socket, but missing udp manager");
@@ -224,6 +218,7 @@ impl IOContext {
         if ip.dst() == addr.ip() {
             // TTL execeeded is correct
             let _ = mng.error.replace(e);
+
             mng.publish();
         }
     }
@@ -237,7 +232,7 @@ impl IOContext {
             SocketDomain::AF_INET6
         };
 
-        let socket: Fd = self.socket(domain, SocketType::SOCK_DGRAM, 0)?;
+        let socket: Fd = self.socket_create(domain, SocketType::SOCK_DGRAM, 0)?;
 
         let baddr = self.socket_bind(socket, addr).inspect_err(|_| {
             let _ = self.socket_close(socket);
@@ -335,9 +330,9 @@ impl IOContext {
 
                 let socket_info = self
                     .sockets
-                    .get_mut(&fd)
+                    .get(fd)
                     .expect("Socket should not have been dropped");
-                socket_info.send_q += buf.len();
+                socket_info.add_send_q(buf.len());
 
                 let ifid = socket_info.interface.into_ifspec();
 
@@ -349,7 +344,7 @@ impl IOContext {
                     traffic_class: 0,
                     flow_label: 0,
                     proto: PROTO_UDP,
-                    hop_limit: 128,
+                    hop_limit: mng.ttl,
                     extension_headers: Vec::new(),
 
                     src: local,
@@ -360,9 +355,9 @@ impl IOContext {
 
                 let socket_info = self
                     .sockets
-                    .get_mut(&fd)
+                    .get(fd)
                     .expect("Socket should not have been dropped");
-                socket_info.send_q += buf.len();
+                socket_info.add_send_q(buf.len());
 
                 let ifid = socket_info.interface.clone();
 

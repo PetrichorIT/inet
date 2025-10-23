@@ -96,7 +96,7 @@ fn broadcast_no_loopback() -> Result<(), RuntimeError> {
 #[test]
 #[serial]
 fn broadcast_with_loopback() -> Result<(), RuntimeError> {
-    des::tracing::init();
+    // des::tracing::init();
 
     let mut sim = SimpleSim::default();
 

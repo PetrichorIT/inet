@@ -1,3 +1,11 @@
+use des::prelude::{Header, Message, ModuleId};
+use std::{
+    fmt::Debug,
+    net::IpAddr,
+    panic::UnwindSafe,
+    sync::{Arc, Mutex, Weak},
+};
+
 use crate::{
     Udp,
     dns::{DnsResolver, default_dns_resolve},
@@ -8,23 +16,18 @@ use crate::{
     ioctx,
     ipv4::Ipv4,
     ipv6::Ipv6,
+    socket::{Fd, SocketDomain, Sockets},
     tcp::Tcp,
 };
-use des::prelude::{Header, Message, ModuleId};
-use std::{
-    fmt::Debug,
-    net::IpAddr,
-    panic::UnwindSafe,
-    sync::{Arc, Mutex, Weak},
-};
-use types::ip::{IpPacket, KIND_IPV4, KIND_IPV6};
 
-use super::socket::*;
-use types::{tcp::PROTO_TCP, udp::PROTO_UDP};
+use types::{
+    ip::{IpPacket, IpPacketRef, KIND_IPV4, KIND_IPV6},
+    tcp::PROTO_TCP,
+    udp::PROTO_UDP,
+};
 
 pub(crate) struct IOContext {
     // Link-Layer
-    #[allow(unused)]
     pub(super) id: ModuleId,
     pub(super) ifaces: Interfaces,
 
@@ -68,16 +71,16 @@ impl IOContext {
             ifaces: Interfaces::default(),
 
             ipv4: Ipv4::default(),
-            ipv6: Ipv6::new(),
+            ipv6: Ipv6::default(),
 
             dns: default_dns_resolve,
-            sockets: Sockets::new(),
-            udp: Udp::new(),
-            tcp: Tcp::new(),
+            sockets: Sockets::default(),
+            udp: Udp::default(),
+            tcp: Tcp::default(),
 
-            fs: Fs::new(),
+            fs: Fs::default(),
 
-            extensions: Extensions::new(),
+            extensions: Extensions::default(),
             current: Current {
                 ifid: IfId::UNKNOWN,
             },
@@ -123,7 +126,7 @@ impl IOContext {
             NetworkLayerResult::TransportLayerPacket(msg, header) => (msg, header),
         };
 
-        let consumed = match pkt.tos() {
+        let consumed = match pkt.proto() {
             PROTO_UDP => self.capture_udp_packet(pkt.as_ref(), ifid),
             PROTO_TCP => self.tcp_on_packet(pkt.as_ref(), ifid),
             proto => {
@@ -136,7 +139,9 @@ impl IOContext {
                     let _ = handle.1.try_send((ifid, pkt));
                     return None;
                 }
-                panic!("internal error: unreachable code :: proto = {proto}");
+                tracing::error!("internal error: unreachable code :: proto = {proto}");
+
+                false
             }
         };
 
@@ -184,6 +189,15 @@ impl IOContext {
             (IpAddr::V4(_), IpAddr::V4(dst)) => self.ipv4_get_local_mtu(dst),
             (IpAddr::V6(src), IpAddr::V6(dst)) => self.ipv6_get_path_mtu(src, dst),
             _ => panic!("unsupported address family"),
+        }
+    }
+
+    pub fn icmp_port_unreachable(&mut self, interface: IfId, pkt: IpPacketRef) {
+        match pkt {
+            IpPacketRef::V4(pkt) => self.ipv4_icmp_port_unreachable(interface, pkt),
+            IpPacketRef::V6(pkt) => self
+                .ipv6_icmp_send_port_unreachable(interface, pkt)
+                .expect("no fail"),
         }
     }
 }

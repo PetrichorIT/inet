@@ -154,7 +154,7 @@ impl IOContext {
                         .unwrap_or((addr, Vec::new()));
 
                     for pkt in rem.1 {
-                        self.icmp_routing_failed(
+                        self.ipv4_icmp_routing_failed(
                             Error::new(ErrorKind::NotConnected, "Host unreachable"),
                             &pkt,
                         );

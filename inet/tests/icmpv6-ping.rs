@@ -1,176 +1,106 @@
 use std::{
-    error::Error,
     io::{self, ErrorKind},
-    net::{IpAddr, Ipv6Addr},
-    sync::{
-        Arc,
-        atomic::{AtomicBool, Ordering},
-    },
+    net::Ipv6Addr,
     time::Duration,
 };
 
-use des::{
-    net::{Sim, globals, module::Module},
-    registry,
-    runtime::{Builder, RuntimeError},
-};
+use des::{net::globals, prelude::Message, runtime::RuntimeError, time::sleep};
 use inet::{
+    IOPlugin,
     env::RoutingPort,
     interface::{InterfaceDef, NetworkDevice},
     ioctx,
     ipv6::{self, util::setup_router},
-    utils,
+    test_util::SimpleSim,
 };
 use serial_test::serial;
+use tokio::sync::mpsc::Receiver;
 
-#[derive(Default)]
-struct AliceSuccess {
-    done: Arc<AtomicBool>,
+async fn alice_success(_rx: Receiver<Message>) -> io::Result<()> {
+    ioctx().add_interface(InterfaceDef::ethv6_autocfg(NetworkDevice::eth()))?;
+
+    sleep(Duration::from_secs(10)).await;
+
+    let addr = globals()
+        .get(&"bob".into())
+        .unwrap()
+        .as_ref::<IOPlugin>()
+        .handle()
+        .get_interface("en0")?
+        .status()
+        .addrs
+        .v6
+        .unicast[0]
+        .addr;
+    let pinger = ipv6::icmp::ping::ping(addr).await?;
+    tracing::info!("pinger done {pinger:?}");
+
+    Ok(())
 }
 
-impl Module for AliceSuccess {
-    fn at_sim_start(&mut self, _stage: usize) {
-        ioctx()
-            .add_interface(InterfaceDef::ethv6_autocfg(NetworkDevice::eth()))
-            .unwrap();
+async fn alice_failure(_rx: Receiver<Message>) -> io::Result<()> {
+    ioctx().add_interface(InterfaceDef::ethv6_autocfg(NetworkDevice::eth()))?;
 
-        let done = self.done.clone();
-        tokio::spawn(async move {
-            des::time::sleep(Duration::from_secs(10)).await;
-            let addr = globals()
-                .get(&"bob".into())
-                .unwrap()
-                .prop::<Vec<IpAddr>>("inet.en0.addrs")
-                .unwrap()
-                .get()
-                .unwrap()
-                .remove(0);
+    sleep(Duration::from_secs(10)).await;
 
-            let _ping = ipv6::icmp::ping::ping(match addr {
-                IpAddr::V6(addr) => addr,
-                _ => panic!("Unexpected address type"),
-            })
-            .await
-            .unwrap();
+    let err = ipv6::icmp::ping::ping(
+        "2003:c1:e719:1234:88d5:1cff:0000:0000"
+            .parse::<Ipv6Addr>()
+            .unwrap(),
+    )
+    .await
+    .unwrap_err();
 
-            done.store(true, Ordering::SeqCst);
-        });
-    }
+    assert_eq!(
+        err.kind(),
+        ErrorKind::ConnectionRefused,
+        "invalid error: {err}"
+    );
 
-    fn at_sim_end(&mut self) -> Result<(), RuntimeError> {
-        assert!(self.done.load(Ordering::SeqCst));
-        Ok(())
-    }
+    Ok(())
 }
 
-#[derive(Default)]
-struct AliceFailure {
-    done: Arc<AtomicBool>,
+async fn bob(_rx: Receiver<Message>) -> io::Result<()> {
+    ioctx().add_interface(InterfaceDef::ethv6_autocfg(NetworkDevice::eth()))?;
+    sleep(Duration::from_secs(5)).await;
+    tracing::info!("published en0");
+    ioctx().get_interface("en0")?.status().publish();
+    Ok(())
 }
 
-impl Module for AliceFailure {
-    fn at_sim_start(&mut self, _stage: usize) {
-        ioctx()
-            .add_interface(InterfaceDef::ethv6_autocfg(NetworkDevice::eth()))
-            .unwrap();
-
-        let done = self.done.clone();
-        tokio::spawn(async move {
-            des::time::sleep(Duration::from_secs(10)).await;
-            let err = ipv6::icmp::ping::ping(
-                "2003:c1:e719:1234:88d5:1cff:0000:0000"
-                    .parse::<Ipv6Addr>()
-                    .unwrap(),
-            )
-            .await
-            .unwrap_err();
-
-            assert_eq!(
-                err.kind(),
-                ErrorKind::ConnectionRefused,
-                "invalid error: {err}"
-            );
-
-            done.store(true, Ordering::SeqCst);
-        });
-    }
-
-    fn at_sim_end(&mut self) -> Result<(), RuntimeError> {
-        assert!(self.done.load(Ordering::SeqCst));
-        Ok(())
-    }
+async fn router(_rx: Receiver<Message>) -> io::Result<()> {
+    setup_router(
+        "fe80::1111:2222".parse().unwrap(),
+        RoutingPort::collect(),
+        vec![
+            "2003:c1:e719:8fff::/64".parse().unwrap(),
+            "2003:c1:e719:1234::/64".parse().unwrap(),
+        ],
+    )
 }
-
-#[derive(Default)]
-struct Bob;
-
-impl Module for Bob {
-    fn at_sim_start(&mut self, _stage: usize) {
-        // ioctx().add_interface(Interface::loopback()).unwrap();
-        ioctx()
-            .add_interface(InterfaceDef::ethv6_autocfg(NetworkDevice::eth()))
-            .unwrap();
-
-        tokio::spawn(async {
-            des::time::sleep(Duration::from_secs(5)).await;
-            ioctx().get_interface("en0")?.status().publish();
-            Ok::<_, io::Error>(())
-        });
-    }
-}
-
-#[derive(Default)]
-struct Router;
-
-impl Module for Router {
-    fn at_sim_start(&mut self, _stage: usize) {
-        setup_router(
-            "fe80::1111:2222".parse().unwrap(),
-            RoutingPort::collect(),
-            vec![
-                "2003:c1:e719:8fff::/64".parse().unwrap(),
-                "2003:c1:e719:1234::/64".parse().unwrap(),
-            ],
-        )
-        .unwrap();
-    }
-}
-
-type Switch = utils::LinkLayerSwitch;
 
 #[test]
 #[serial]
-fn icmpv6_ping_success() -> Result<(), Box<dyn Error>> {
-    type Alice = AliceSuccess;
-
+fn v2_icmpv6_ping_success() -> Result<(), RuntimeError> {
     // des::tracing::init();
 
-    let app = Sim::new(()).with_stack(inet::init).with_ndl(
-        "tests/icmpv6_ping.yml",
-        registry![Bob, Alice, Router, Switch, else _],
-    )?;
-    let rt = Builder::seeded(123)
-        .max_time(30.0.into())
-        .build(app.freeze());
-    let _res = rt.run();
+    let mut sim = SimpleSim::default();
+    sim.raw("alice", alice_success);
+    sim.raw("bob", bob);
+    sim.raw("router", router);
 
-    Ok(())
+    sim.run()
 }
 
 #[test]
 #[serial]
-fn icmpv6_ping_failure() -> Result<(), Box<dyn Error>> {
-    // des::tracing::Subscriber::default().init().unwrap();
-    type Alice = AliceFailure;
+fn v2_icmpv6_ping_failure() -> Result<(), RuntimeError> {
+    // des::tracing::init();
 
-    let app = Sim::new(()).with_stack(inet::init).with_ndl(
-        "tests/icmpv6_ping.yml",
-        registry![Bob, Alice, Router, Switch, else _],
-    )?;
-    let rt = Builder::seeded(123)
-        .max_time(100.0.into())
-        .build(app.freeze());
-    let _res = rt.run();
+    let mut sim = SimpleSim::default();
+    sim.raw("alice", alice_failure);
+    sim.raw("bob", bob);
+    sim.raw("router", router);
 
-    Ok(())
+    sim.run()
 }

@@ -27,8 +27,12 @@ pub fn add_routing_interface(
     ioctx().ipv6_add_routing_interface(name, device, addrs, adv)
 }
 
-pub fn add_routing_entry(prefix: Ipv6Prefix, next_hop: Ipv6Addr, via: Ipv6Addr) -> io::Result<()> {
-    ioctx().ipv6_add_routing_entry(prefix, next_hop, via)
+pub fn add_routing_entry(
+    prefix: Ipv6Prefix,
+    next_hop: Ipv6Addr,
+    local_addr: Ipv6Addr,
+) -> io::Result<()> {
+    ioctx().ipv6_add_routing_entry(prefix, next_hop, local_addr)
 }
 
 pub fn add_routing_prefix(name: impl AsRef<str>, prefix: Ipv6Prefix) -> io::Result<()> {
@@ -148,9 +152,9 @@ impl IOContext {
         &mut self,
         prefix: Ipv6Prefix,
         next_hop: Ipv6Addr,
-        via: Ipv6Addr,
+        local_addr: Ipv6Addr,
     ) -> io::Result<()> {
-        let ifid = self.ipv6_ifid_for_src_addr(via);
+        let ifid = self.ipv6_ifid_for_src_addr(local_addr);
         self.ipv6.neighbors.add_static(next_hop, ifid, true);
         self.ipv6.router.add(
             prefix,

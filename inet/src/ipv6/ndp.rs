@@ -486,6 +486,7 @@ impl DefaultRouterList {
 
             match entry.state {
                 NeighborCacheEntryState::Reachable => return Some(router.addr),
+                NeighborCacheEntryState::Incomplete => return Some(router.addr),
                 NeighborCacheEntryState::Stale => return Some(router.addr),
                 _ => {}
             }

@@ -134,6 +134,16 @@ impl IcmpV6Packet {
         )
     }
 
+    pub fn as_error_string(&self) -> &'static str {
+        match self {
+            Self::DestinationUnreachable(_) => "destination unreachable",
+            Self::PacketToBig(_) => "packet to big",
+            Self::TimeExceeded(_) => "time exceeded",
+            Self::ParameterProblem(_) => "parameter poblem",
+            _ => unreachable!("should only ever be called on errors"),
+        }
+    }
+
     pub fn contained_bytes(&self) -> Option<Bytes> {
         match self {
             Self::DestinationUnreachable(inner) => Some(inner.packet.clone()),

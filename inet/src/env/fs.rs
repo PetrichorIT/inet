@@ -2,7 +2,7 @@
 
 use crate::{IOContext, ioctx};
 use des::runtime::rng;
-use fxhash::{FxBuildHasher, FxHashMap};
+use fxhash::FxHashMap;
 use rand::{Rng, distr::Alphanumeric};
 use std::{
     io::{Error, ErrorKind, Result},
@@ -26,18 +26,6 @@ struct Dir {
 }
 
 impl Fs {
-    pub(crate) fn new() -> Self {
-        let mut nodes = FxHashMap::with_hasher(FxBuildHasher::default());
-        nodes.insert(
-            PathBuf::from("/"),
-            FsNode::Dir(Dir {
-                contents: Vec::new(),
-            }),
-        );
-
-        Self { nodes }
-    }
-
     fn create_file(&mut self, path: PathBuf) -> Result<()> {
         let mut cur = PathBuf::from("/");
         let comps = path.components().collect::<Vec<_>>();
@@ -91,6 +79,19 @@ impl Fs {
         self.nodes.insert(path, FsNode::File());
 
         Ok(())
+    }
+}
+
+impl Default for Fs {
+    fn default() -> Self {
+        let mut nodes = FxHashMap::default();
+        nodes.insert(
+            PathBuf::from("/"),
+            FsNode::Dir(Dir {
+                contents: Vec::new(),
+            }),
+        );
+        Self { nodes }
     }
 }
 
@@ -153,7 +154,7 @@ mod tests {
 
     #[test]
     fn fs_setup() -> Result<()> {
-        let mut fs = Fs::new();
+        let mut fs = Fs::default();
 
         fs.create_file(PathBuf::from("/tmp/myfilexyz"))?;
         fs.create_file(PathBuf::from("/tmp/a"))?;

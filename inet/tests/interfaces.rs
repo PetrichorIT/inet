@@ -409,6 +409,7 @@ fn interface_does_not_use_busy_channel() -> Result<(), RuntimeError> {
             set_node_cfg(HostConfiguration {
                 dup_addr_detect_for_link_local: false,
                 dup_addr_detect_transmits: 0,
+                ..Default::default()
             })?;
             ioctx().add_interface(InterfaceDef::new("en0", NetworkDevice::eth()).v6())?;
 
@@ -445,6 +446,7 @@ fn interface_does_not_use_busy_channel() -> Result<(), RuntimeError> {
             set_node_cfg(HostConfiguration {
                 dup_addr_detect_for_link_local: false,
                 dup_addr_detect_transmits: 0,
+                ..Default::default()
             })?;
             ioctx().add_interface(InterfaceDef::new("en0", NetworkDevice::eth()).v6())?;
 
@@ -455,7 +457,7 @@ fn interface_does_not_use_busy_channel() -> Result<(), RuntimeError> {
                 tokio::select! {
                     frame = sock.recv() => {
                         let (_, pkt) = frame.unwrap();
-                        if pkt.tos() != 58 {
+                        if pkt.proto() != 58 {
                             assert_eq!(count, 64);
                             DONE.store(true, std::sync::atomic::Ordering::SeqCst);
                             break;
@@ -503,6 +505,7 @@ fn interface_will_use_idle_channel_fcfs() -> Result<(), RuntimeError> {
             set_node_cfg(HostConfiguration {
                 dup_addr_detect_for_link_local: false,
                 dup_addr_detect_transmits: 0,
+                ..Default::default()
             })?;
             ioctx().add_interface(InterfaceDef::new("en0", NetworkDevice::eth()).v6())?;
 
@@ -535,6 +538,7 @@ fn interface_will_use_idle_channel_fcfs() -> Result<(), RuntimeError> {
             set_node_cfg(HostConfiguration {
                 dup_addr_detect_for_link_local: false,
                 dup_addr_detect_transmits: 0,
+                ..Default::default()
             })?;
             ioctx().add_interface(InterfaceDef::new("en0", NetworkDevice::eth()).v6())?;
 
@@ -545,7 +549,7 @@ fn interface_will_use_idle_channel_fcfs() -> Result<(), RuntimeError> {
                 tokio::select! {
                     frame = sock.recv() => {
                         let (_, pkt) = frame.unwrap();
-                        if pkt.tos() != 58 {
+                        if pkt.proto() != 58 {
                             assert_eq!(count, 0);
 
                         }

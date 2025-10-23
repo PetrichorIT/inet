@@ -13,13 +13,15 @@ pub(crate) struct FwdV4 {
     tables: Vec<FwdTableV4>,
 }
 
-impl FwdV4 {
-    pub(crate) fn new() -> Self {
+impl Default for FwdV4 {
+    fn default() -> Self {
         Self {
             tables: vec![FwdTableV4::new()],
         }
     }
+}
 
+impl FwdV4 {
     pub fn len(&self) -> usize {
         self.tables.len()
     }

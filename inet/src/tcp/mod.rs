@@ -64,16 +64,6 @@ pub struct Quad {
 }
 
 impl Tcp {
-    pub fn new() -> Self {
-        Tcp {
-            config: Config::default(),
-            timers: Timers::default(),
-            listeners: FxHashMap::default(),
-            streams: FxHashMap::default(),
-            active: Vec::default(),
-        }
-    }
-
     fn set_error(&mut self, fd: Fd, error: Error) {
         if let Some(stream) = self.streams.get_mut(&fd) {
             tracing::error!(%fd, ?error, "connection failed with error");
@@ -250,7 +240,7 @@ impl IOContext {
         // (0) All sockets that are bound to the correct destination (local) address
         let mut valid_sockets = self
             .sockets
-            .iter_mut()
+            .iter()
             .filter(|(_, sock)| {
                 sock.typ == SocketType::SOCK_STREAM && is_valid_dst_for(&sock.addr, &dest)
             })
@@ -264,7 +254,7 @@ impl IOContext {
                 return false;
             }
 
-            sock.recv_q += pkt.content.len();
+            sock.add_recv_q(pkt.content.len());
 
             let fd = **fd;
             return self.tcp_connection_on_packet(fd, pkt);
@@ -466,7 +456,7 @@ impl IOContext {
             } else {
                 SocketDomain::AF_INET6
             };
-            let fd = self.socket(domain, SocketType::SOCK_STREAM, 0)?;
+            let fd = self.socket_create(domain, SocketType::SOCK_STREAM, 0)?;
 
             addr = self.socket_bind(fd, addr).inspect_err(|_| {
                 self.socket_close(fd).expect("cannot handle error");
@@ -597,7 +587,7 @@ impl IOContext {
                 cfg.expect("illegal state: existing fd implies existing cfg"),
             )
         } else {
-            let fd = self.socket(domain, SocketType::SOCK_STREAM, 0)?;
+            let fd = self.socket_create(domain, SocketType::SOCK_STREAM, 0)?;
             let addr = self.socket_bind(fd, local)?;
 
             let config = cfg.unwrap_or(self.tcp.config.for_listener(addr));

@@ -27,7 +27,7 @@ impl TcpSocket {
             Ok(TcpSocket {
                 addr: Cell::new(SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0))),
                 config: RefCell::new(ctx.tcp.config.clone()),
-                fd: ctx.socket(SocketDomain::AF_INET, SocketType::SOCK_STREAM, 0)?,
+                fd: ctx.socket_create(SocketDomain::AF_INET, SocketType::SOCK_STREAM, 0)?,
                 handle,
             })
         })
@@ -45,7 +45,7 @@ impl TcpSocket {
                     0,
                 ))),
                 config: RefCell::new(ctx.tcp.config.clone()),
-                fd: ctx.socket(SocketDomain::AF_INET6, SocketType::SOCK_STREAM, 0)?,
+                fd: ctx.socket_create(SocketDomain::AF_INET6, SocketType::SOCK_STREAM, 0)?,
                 handle,
             })
         })

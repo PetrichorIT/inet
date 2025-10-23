@@ -111,7 +111,7 @@ impl IpPacket {
     }
 
     #[must_use]
-    pub fn tos(&self) -> u8 {
+    pub fn proto(&self) -> u8 {
         match self {
             Self::V4(v4) => v4.proto,
             Self::V6(v6) => v6.proto,

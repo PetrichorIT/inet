@@ -1,10 +1,7 @@
 use crate::{IOHandle, ioctx};
 
 use super::{Fd, Socket, SocketDomain, SocketType};
-use std::{
-    io::{Error, ErrorKind, Result},
-    net::SocketAddr,
-};
+use std::{io::Result, net::SocketAddr};
 
 /// socket - create an endpoint for communication.
 ///
@@ -65,7 +62,7 @@ pub fn bsd_socket_info(fd: Fd) -> Result<Socket> {
 
 impl IOHandle {
     pub fn socket(&self, domain: SocketDomain, typ: SocketType, protocol: i32) -> Result<Fd> {
-        self.do_failable(|ctx| ctx.socket(domain, typ, protocol))
+        self.do_failable(|ctx| ctx.socket_create(domain, typ, protocol))
     }
 
     pub fn bind(&self, sockfd: Fd, addr: SocketAddr) -> Result<()> {
@@ -79,11 +76,6 @@ impl IOHandle {
 
     #[doc(hidden)]
     pub fn bsd_socket_info(&self, fd: Fd) -> Result<Socket> {
-        self.do_failable(|ctx| {
-            ctx.sockets
-                .get(&fd)
-                .cloned()
-                .ok_or(Error::new(ErrorKind::NotFound, "no socket for fd"))
-        })
+        self.do_failable(|ctx| ctx.sockets.get(fd).cloned())
     }
 }

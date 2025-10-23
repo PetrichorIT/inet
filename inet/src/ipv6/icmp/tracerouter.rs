@@ -1,8 +1,14 @@
+use bytes_io::FromBytes;
 use des::{
     runtime::random,
     time::{SimTime, sleep},
 };
-use std::{io, net::Ipv6Addr, time::Duration};
+use std::{
+    io::{self, ErrorKind},
+    net::Ipv6Addr,
+    time::Duration,
+};
+use types::{ip::Ipv6Packet, udp::UdpPacket};
 
 use crate::{
     IOHandle, UdpSocket,
@@ -11,12 +17,19 @@ use crate::{
     socket::{AsRawFd, Fd},
 };
 
+#[derive(Debug)]
 #[allow(dead_code)]
 pub struct TracerouteCB {
-    pub fd: Fd,
-    pub target: Ipv6Addr,
-    pub last_send: SimTime,
-    pub recent_err: Option<(Ipv6Addr, Duration)>,
+    fd: Fd,
+    target: Ipv6Addr,
+    segments: Vec<Segment>,
+}
+
+#[derive(Debug)]
+struct Segment {
+    target_port: u16,
+    send_time: SimTime,
+    bounceback: Option<(Ipv6Addr, SimTime)>,
 }
 
 /// The result of a call to `traceroute`.
@@ -34,7 +47,10 @@ pub struct Traceroute {
 pub enum Trace {
     /// A node that responded to ICMP Echo Request,
     /// allowing for the computation of a RTT.
-    Found { addr: Ipv6Addr, rtt: Duration },
+    Found {
+        addr: Ipv6Addr,
+        rtt: (Duration, Duration, Duration),
+    },
     /// A non-responding node on the route.
     NotFound,
 }
@@ -56,51 +72,89 @@ impl IOHandle {
             nodes: Vec::new(),
         };
 
-        'outer: loop {
+        let mut failures = 0;
+
+        loop {
             socket.set_ttl(distance)?;
-            socket.connect((addr, port)).await?;
-            socket.send(&[0; 8]).await?;
 
-            self.do_failable(|ctx| Ok(ctx.ipv6_icmp_register_sendtime_traceroute(addr)))?;
-            sleep(last_rtt * 2).await;
+            let mut last_err = None;
 
-            // let last_err = None;
-            for _ in 0..4 {
-                if let Some(e) = socket.take_error()? {
-                    if e.kind() == io::ErrorKind::ConnectionRefused {
-                        // reached end port;
-                        match &format!("{e}")[..] {
-                            "PortUnreachable" => return Ok(traceroute),
-                            _ => return Err(e),
-                        }
-                    }
+            // (1) Each distance 3 packets
+            for _round in 0..3 {
+                socket.connect((addr, port)).await?;
+                last_err = last_err.or(socket.take_error()?); // < This is a dirty trick i do not like
+                socket
+                    .send(&[0; 12])
+                    .await
+                    .inspect_err(|e| tracing::error!("1:{e}"))?;
 
-                    if let Some(trace) =
-                        self.do_failable(|ctx| Ok(ctx.ipv6_icmp_get_error_traceroute(addr)))?
-                    {
-                        traceroute.nodes.push(Trace::Found {
-                            addr: trace.0,
-                            rtt: trace.1,
-                        });
-                        last_rtt = trace.1;
+                self.do_failable(|ctx| Ok(ctx.ipv6_icmp_traceroute_register_segment(addr, port)))?;
+                sleep(last_rtt / 4).await;
 
-                        port = port.wrapping_add(1);
-                        distance += 1;
-                        continue 'outer;
-                    } else {
-                        // OTHER ERR
-                        todo!()
-                    }
-                } else {
-                    // TTL TO SHORT
-                    sleep(last_rtt * 2).await;
-                    continue;
-                }
+                port += 1;
             }
 
-            return Err(socket
-                .take_error()?
-                .unwrap_or(io::Error::other("traceroute failed")));
+            // (2) Then wait for the response
+            sleep(last_rtt * 4).await;
+
+            // (3) Get segments back
+            let segments =
+                self.do_failable(|ctx| Ok(ctx.ipv6_icmp_traceroute_take_segments(addr)))?;
+
+            let successes = segments
+                .into_iter()
+                .filter_map(|seg| {
+                    let (reporter, recv_time) = seg.bounceback?;
+                    Some((reporter, recv_time - seg.send_time))
+                })
+                .collect::<Vec<_>>();
+
+            if successes.is_empty() {
+                // (4a) Either no ICMP resonse at all or another error code
+                match socket.take_error()? {
+                    // Some other ICMP error was observed -> report it
+                    Some(err) => {
+                        if err.kind() == ErrorKind::ConnectionRefused
+                            && err.to_string() == "destination unreachable"
+                        {
+                            return Ok(traceroute);
+                        } else {
+                            return Err(err);
+                        }
+                    }
+                    // No ICMP error -> someone is not responding
+                    None => {
+                        failures += 1;
+                        if failures == 3 {
+                            traceroute.nodes.push(Trace::NotFound);
+                            failures = 0;
+                            distance += 1;
+                        }
+                    }
+                }
+            } else {
+                let _ = socket.take_error()?;
+
+                let reporter = successes[0].0;
+                if !successes.iter().skip(1).all(|(addr, _)| *addr == reporter) {
+                    // Asymetric path -> make no assumpttions
+                    traceroute.nodes.push(Trace::NotFound);
+                    distance += 1;
+                    continue;
+                }
+
+                let min = *successes.iter().map(|(_, rtt)| rtt).min().unwrap();
+                let max = *successes.iter().map(|(_, rtt)| rtt).max().unwrap();
+                let sum = *successes.iter().map(|(_, rtt)| rtt).max().unwrap();
+                let avg = sum / successes.len() as u32;
+
+                last_rtt = avg;
+                traceroute.nodes.push(Trace::Found {
+                    addr: reporter,
+                    rtt: (min, avg, max),
+                });
+                distance += 1;
+            }
         }
     }
 }
@@ -112,23 +166,49 @@ impl IOContext {
             TracerouteCB {
                 fd,
                 target: addr,
-                last_send: SimTime::MIN,
-                recent_err: None,
+                segments: Vec::new(),
             },
         );
     }
 
-    fn ipv6_icmp_register_sendtime_traceroute(&mut self, addr: Ipv6Addr) {
-        let Some(trace) = self.ipv6.traceroute_ctrl.get_mut(&addr) else {
+    fn ipv6_icmp_traceroute_register_segment(&mut self, target: Ipv6Addr, target_port: u16) {
+        let Some(trace) = self.ipv6.traceroute_ctrl.get_mut(&target) else {
             todo!()
         };
-        trace.last_send = SimTime::now();
+        trace.segments.push(Segment {
+            target_port,
+            send_time: SimTime::now(),
+            bounceback: None,
+        });
     }
 
-    fn ipv6_icmp_get_error_traceroute(&mut self, addr: Ipv6Addr) -> Option<(Ipv6Addr, Duration)> {
-        let Some(trace) = self.ipv6.traceroute_ctrl.get_mut(&addr) else {
+    fn ipv6_icmp_traceroute_take_segments(&mut self, target: Ipv6Addr) -> Vec<Segment> {
+        let Some(trace) = self.ipv6.traceroute_ctrl.get_mut(&target) else {
             todo!()
         };
-        trace.recent_err.take()
+        trace.segments.drain(..).collect()
+    }
+
+    pub(super) fn ipv6_icmp_traceroute_register_time_exceeded(
+        &mut self,
+        reporter: Ipv6Addr,
+        original: &Ipv6Packet,
+    ) {
+        if let Some(trace) = self.ipv6.traceroute_ctrl.get_mut(&original.dst) {
+            let Ok(udp_payload) = UdpPacket::peek_from(&original.content[..]) else {
+                return;
+            };
+            if udp_payload.content[..] != [0; 12] {
+                return;
+            }
+
+            if let Some(seg) = trace
+                .segments
+                .iter_mut()
+                .find(|seg| seg.target_port == udp_payload.dst_port)
+            {
+                seg.bounceback = Some((reporter, SimTime::now()));
+            }
+        }
     }
 }

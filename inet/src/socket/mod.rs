@@ -1,6 +1,6 @@
 //! Networking sockets - endpoint for communication.
 
-use fxhash::{FxBuildHasher, FxHashMap};
+use fxhash::FxHashMap;
 use tokio::sync::mpsc::Sender;
 use types::ip::IpPacket;
 
@@ -13,10 +13,7 @@ use std::{
     io::{self, Error, ErrorKind, Result},
     net::IpAddr,
 };
-use std::{
-    net::SocketAddr,
-    ops::{Deref, DerefMut},
-};
+use std::{net::SocketAddr, ops::Deref};
 
 mod api;
 pub use self::api::*;
@@ -43,14 +40,28 @@ pub(super) struct Sockets {
 
 pub type SocketHandler = (Fd, Sender<(IfId, IpPacket)>);
 
-impl Sockets {
-    pub(super) fn new() -> Sockets {
+impl Default for Sockets {
+    fn default() -> Sockets {
         Sockets {
             next_fd: 100,
             next_port: Cell::new(1024),
-            sockets: FxHashMap::with_hasher(FxBuildHasher::default()),
-            handlers: FxHashMap::with_hasher(FxBuildHasher::default()),
+            sockets: FxHashMap::default(),
+            handlers: FxHashMap::default(),
         }
+    }
+}
+
+impl Sockets {
+    pub fn get(&self, fd: Fd) -> io::Result<&Socket> {
+        self.sockets
+            .get(&fd)
+            .ok_or_else(|| Error::new(ErrorKind::InvalidInput, "invalid file descriptor"))
+    }
+
+    pub fn get_mut(&mut self, fd: Fd) -> io::Result<&mut Socket> {
+        self.sockets
+            .get_mut(&fd)
+            .ok_or_else(|| Error::new(ErrorKind::InvalidInput, "invalid file descriptor"))
     }
 }
 
@@ -61,15 +72,15 @@ impl Deref for Sockets {
     }
 }
 
-impl DerefMut for Sockets {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.sockets
-    }
-}
+// impl DerefMut for Sockets {
+//     fn deref_mut(&mut self) -> &mut Self::Target {
+//         &mut self.sockets
+//     }
+// }
 
 #[doc(hidden)]
 /// A communications socket.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Socket {
     /// The local (unique) address of the socket.
     pub addr: SocketAddr,
@@ -92,9 +103,19 @@ pub struct Socket {
     pub ttl: u8,
 
     /// The total number of bytes received by this socket.
-    pub recv_q: usize,
+    pub recv_q: Cell<usize>,
     /// The total number of bytes sent by this socket.
-    pub send_q: usize,
+    pub send_q: Cell<usize>,
+}
+
+impl Socket {
+    pub fn add_recv_q(&self, bytes: usize) {
+        self.recv_q.update(|v| v + bytes);
+    }
+
+    pub fn add_send_q(&self, bytes: usize) {
+        self.send_q.update(|v| v + bytes);
+    }
 }
 
 /// The kind of binding that connects a socket to the NIC.
@@ -150,10 +171,7 @@ impl IOContext {
     ];
 
     pub(super) fn iface_for_write_intention(&mut self, fd: Fd) -> io::Result<IfId> {
-        let socket = self
-            .sockets
-            .get(&fd)
-            .ok_or_else(|| Error::new(ErrorKind::InvalidInput, "invalid fd - socket dropped"))?;
+        let socket = self.sockets.get(fd)?;
 
         match &socket.interface {
             SocketIfaceBinding::Bound(id) => Ok(*id),
@@ -176,17 +194,17 @@ impl IOContext {
         }
     }
 
-    pub(super) fn fd_generate(&mut self) -> Fd {
+    pub(super) fn socket_generate_fd(&mut self) -> Fd {
         loop {
             self.sockets.next_fd = self.sockets.next_fd.wrapping_add(1);
-            if self.sockets.get(&self.sockets.next_fd).is_some() {
+            if self.sockets.get(self.sockets.next_fd).is_ok() {
                 continue;
             }
             return self.sockets.next_fd;
         }
     }
 
-    pub(super) fn socket(
+    pub(super) fn socket_create(
         &mut self,
         domain: SocketDomain,
         typ: SocketType,
@@ -199,7 +217,7 @@ impl IOContext {
             ));
         }
 
-        let fd = self.fd_generate();
+        let fd = self.socket_generate_fd();
         let socket = Socket {
             addr: domain.addr_unspecified(),
             peer: domain.addr_unspecified(),
@@ -210,24 +228,18 @@ impl IOContext {
             interface: SocketIfaceBinding::NotBound,
             ttl: 128,
 
-            recv_q: 0,
-            send_q: 0,
+            recv_q: Cell::new(0),
+            send_q: Cell::new(0),
         };
         tracing::trace!("creating '0x{:x} {:?}/{:?}/{}", fd, domain, typ, protocol);
-        self.sockets.insert(fd, socket);
+        self.sockets.sockets.insert(fd, socket);
         Ok(fd)
     }
 
     pub(super) fn socket_duplicate(&mut self, fd: Fd) -> Result<Fd> {
-        let Some(socket) = self.sockets.get(&fd) else {
-            return Err(Error::new(
-                ErrorKind::InvalidInput,
-                "invalid fd - socket dropped",
-            ));
-        };
-
+        let socket = self.sockets.get(fd)?;
         let mut new = socket.clone();
-        let new_fd = self.fd_generate();
+        let new_fd = self.socket_generate_fd();
         new.fd = new_fd;
         tracing::trace!(
             "created '0x{:x} {:?}/{:?}/{} from '0x{:x}",
@@ -238,14 +250,14 @@ impl IOContext {
             fd
         );
 
-        self.sockets.insert(new_fd, new);
+        self.sockets.sockets.insert(new_fd, new);
 
         Ok(new_fd)
     }
 
     pub(super) fn socket_close(&mut self, fd: Fd) -> Result<()> {
         tracing::trace!("closing '0x{:x}", fd);
-        if self.sockets.remove(&fd).is_some() {
+        if self.sockets.sockets.remove(&fd).is_some() {
             Ok(())
         } else {
             Err(Error::new(ErrorKind::InvalidInput, "invalid fd"))
@@ -266,9 +278,7 @@ impl IOContext {
     }
 
     fn socket_bind_unspecified(&mut self, fd: Fd, addr: SocketAddr) -> Result<SocketAddr> {
-        let Some(socket) = self.sockets.get(&fd) else {
-            return Err(Error::new(ErrorKind::InvalidInput, "invalid fd"));
-        };
+        let socket = self.sockets.get(fd)?;
 
         let mut available_ifaces = self.ifaces.values().collect::<Vec<_>>();
         available_ifaces.sort_by_key(|iface| iface.state.prio);
@@ -316,7 +326,7 @@ impl IOContext {
             return Err(Error::new(ErrorKind::AddrInUse, "port already in use"));
         }
 
-        let socket = self.sockets.get_mut(&fd).expect("unreachable");
+        let socket = self.sockets.get_mut(fd).expect("unreachable");
         socket.addr = SocketAddr::new(addr.ip(), port);
         socket.interface = SocketIfaceBinding::Any(valid_ifaces);
 
@@ -331,9 +341,7 @@ impl IOContext {
     }
 
     fn socket_bind_specified(&mut self, fd: Fd, addr: SocketAddr) -> Result<SocketAddr> {
-        let Some(socket) = self.sockets.get(&fd) else {
-            return Err(Error::new(ErrorKind::InvalidInput, "invalid fd"));
-        };
+        let socket = self.sockets.get(fd)?;
 
         if self
             .sockets
@@ -385,7 +393,7 @@ impl IOContext {
             }
 
             // Successful bind
-            let socket = self.sockets.get_mut(&fd).expect("illegal state");
+            let socket = self.sockets.get_mut(fd).expect("illegal state");
             socket.addr = SocketAddr::new(next, port);
             socket.interface = SocketIfaceBinding::Bound(interface.id());
 
@@ -406,13 +414,7 @@ impl IOContext {
     }
 
     pub(super) fn socket_set_peer(&mut self, fd: Fd, peer: SocketAddr) -> Result<()> {
-        let Some(socket) = self.sockets.get_mut(&fd) else {
-            return Err(Error::new(
-                ErrorKind::InvalidInput,
-                "invalid fd - socket dropped",
-            ));
-        };
-
+        let socket = self.sockets.get_mut(fd)?;
         if socket.addr.is_ipv4() != peer.is_ipv4() {
             return Err(Error::new(
                 ErrorKind::AddrNotAvailable,
@@ -425,22 +427,12 @@ impl IOContext {
     }
 
     pub(super) fn socket_get_addr(&self, fd: Fd) -> Result<SocketAddr> {
-        let Some(socket) = self.sockets.get(&fd) else {
-            return Err(Error::new(
-                ErrorKind::InvalidInput,
-                "invalid fd - socket dropped",
-            ));
-        };
+        let socket = self.sockets.get(fd)?;
         Ok(socket.addr)
     }
 
     pub(super) fn socket_get_peer(&self, fd: Fd) -> Result<SocketAddr> {
-        let Some(socket) = self.sockets.get(&fd) else {
-            return Err(Error::new(
-                ErrorKind::InvalidInput,
-                "invalid fd - socket dropped",
-            ));
-        };
+        let socket = self.sockets.get(fd)?;
         if socket.peer.ip().is_unspecified() {
             Err(Error::new(
                 ErrorKind::NotConnected,
@@ -452,7 +444,7 @@ impl IOContext {
     }
 
     pub(super) fn socket_link_update(&mut self, fd: Fd, _ifid: IfId) {
-        let Some(socket) = self.sockets.get(&fd) else {
+        let Ok(socket) = self.sockets.get(fd) else {
             return;
         };
 
@@ -472,12 +464,7 @@ impl IOContext {
     }
 
     pub(super) fn socket_device(&mut self, fd: Fd) -> Result<Option<InterfaceName>> {
-        let Some(socket) = self.sockets.get(&fd) else {
-            return Err(Error::new(
-                ErrorKind::InvalidInput,
-                "invalid fd - socket dropped",
-            ));
-        };
+        let socket = self.sockets.get(fd)?;
 
         match &socket.interface {
             SocketIfaceBinding::NotBound => Ok(None),
@@ -513,7 +500,7 @@ mod tests {
     fn create_supported() {
         let mut ctx = IOContext::new(ModuleId::NULL);
         for (domain, typ) in IOContext::POSIX_ALLOWED_COMBI {
-            let sock = ctx.socket(domain, typ, 0);
+            let sock = ctx.socket_create(domain, typ, 0);
             assert!(sock.is_ok());
         }
     }
@@ -522,7 +509,7 @@ mod tests {
     fn create_not_supported() {
         let mut ctx = IOContext::new(ModuleId::NULL);
         assert_eq!(
-            ctx.socket(AF_UNIX, SOCK_RDM, 0)
+            ctx.socket_create(AF_UNIX, SOCK_RDM, 0)
                 .expect_err("must fail")
                 .kind(),
             ErrorKind::Unsupported
@@ -532,12 +519,12 @@ mod tests {
     #[test]
     fn duplicate() -> Result<()> {
         let mut ctx = IOContext::new(ModuleId::NULL);
-        let fd = ctx.socket(AF_INET, SOCK_DGRAM, 0)?;
+        let fd = ctx.socket_create(AF_INET, SOCK_DGRAM, 0)?;
         let dup = ctx.socket_duplicate(fd)?;
 
         assert_ne!(fd, dup);
-        let mut sock = ctx.sockets.get(&fd).unwrap().clone();
-        let mut dup_sock = ctx.sockets.get(&dup).unwrap().clone();
+        let mut sock = ctx.sockets.get(fd).unwrap().clone();
+        let mut dup_sock = ctx.sockets.get(dup).unwrap().clone();
         sock.fd = 0;
         dup_sock.fd = 0;
 
@@ -549,7 +536,7 @@ mod tests {
     #[test]
     fn duplicate_socket_does_not_exist() -> Result<()> {
         let mut ctx = IOContext::new(ModuleId::NULL);
-        let fd = ctx.socket(AF_INET, SOCK_DGRAM, 0)?;
+        let fd = ctx.socket_create(AF_INET, SOCK_DGRAM, 0)?;
         let dup = ctx.socket_duplicate(fd + 1);
         assert_eq!(dup.unwrap_err().kind(), ErrorKind::InvalidInput);
 
@@ -559,21 +546,21 @@ mod tests {
     #[test]
     fn close() -> Result<()> {
         let mut ctx = IOContext::new(ModuleId::NULL);
-        let fd = ctx.socket(AF_INET, SOCK_DGRAM, 0)?;
-        assert!(ctx.sockets.get(&fd).is_some());
+        let fd = ctx.socket_create(AF_INET, SOCK_DGRAM, 0)?;
+        assert!(ctx.sockets.get(fd).is_ok());
         ctx.socket_close(fd)?;
-        assert!(ctx.sockets.get(&fd).is_none());
+        assert!(ctx.sockets.get(fd).is_err());
         Ok(())
     }
 
     #[test]
     fn close_socket_does_not_exist() -> Result<()> {
         let mut ctx = IOContext::new(ModuleId::NULL);
-        let fd = ctx.socket(AF_INET, SOCK_DGRAM, 0)?;
-        assert!(ctx.sockets.get(&fd).is_some());
+        let fd = ctx.socket_create(AF_INET, SOCK_DGRAM, 0)?;
+        assert!(ctx.sockets.get(fd).is_ok());
         let error = ctx.socket_close(fd + 1).expect_err("must be an error");
         assert_eq!(error.kind(), ErrorKind::InvalidInput);
-        assert!(ctx.sockets.get(&fd).is_some());
+        assert!(ctx.sockets.get(fd).is_ok());
         Ok(())
     }
 
@@ -597,20 +584,20 @@ mod tests {
         )?;
 
         // port0 bind
-        let fd = ctx.socket(AF_INET, SOCK_DGRAM, 0)?;
+        let fd = ctx.socket_create(AF_INET, SOCK_DGRAM, 0)?;
         let addr = SocketAddr::new(Ipv4Addr::new(192, 168, 2, 101).into(), 0);
         ctx.socket_bind(fd, addr)?;
 
-        let fd = ctx.socket(AF_INET, SOCK_DGRAM, 0)?;
+        let fd = ctx.socket_create(AF_INET, SOCK_DGRAM, 0)?;
         let addr = SocketAddr::new(Ipv4Addr::new(10, 100, 28, 101).into(), 0);
         ctx.socket_bind(fd, addr)?;
 
         // portx bind
-        let fd = ctx.socket(AF_INET, SOCK_DGRAM, 0)?;
+        let fd = ctx.socket_create(AF_INET, SOCK_DGRAM, 0)?;
         let addr = SocketAddr::new(Ipv4Addr::new(192, 168, 2, 101).into(), 9314);
         ctx.socket_bind(fd, addr)?;
 
-        let fd = ctx.socket(AF_INET, SOCK_DGRAM, 0)?;
+        let fd = ctx.socket_create(AF_INET, SOCK_DGRAM, 0)?;
         let addr = SocketAddr::new(Ipv4Addr::new(10, 100, 28, 101).into(), 8351);
         ctx.socket_bind(fd, addr)?;
 
@@ -625,7 +612,7 @@ mod tests {
                 .ip(Ipv4Addr::new(192, 168, 2, 101).into()),
         )?;
 
-        let fd = ctx.socket(AF_INET, SOCK_DGRAM, 0)?;
+        let fd = ctx.socket_create(AF_INET, SOCK_DGRAM, 0)?;
         let addr = SocketAddr::new(Ipv4Addr::new(192, 168, 2, 101).into(), 2000);
         let error = ctx.socket_bind(fd + 1, addr).expect_err("must be an error");
         assert_eq!(error.kind(), ErrorKind::InvalidInput);
@@ -641,11 +628,11 @@ mod tests {
                 .ip(Ipv4Addr::new(192, 168, 2, 101).into()),
         )?;
 
-        let fd = ctx.socket(AF_INET, SOCK_DGRAM, 0)?;
+        let fd = ctx.socket_create(AF_INET, SOCK_DGRAM, 0)?;
         let addr = SocketAddr::new(Ipv4Addr::new(192, 168, 2, 101).into(), 2000);
         ctx.socket_bind(fd, addr)?;
 
-        let fd = ctx.socket(AF_INET, SOCK_DGRAM, 0)?;
+        let fd = ctx.socket_create(AF_INET, SOCK_DGRAM, 0)?;
         let error = ctx.socket_bind(fd, addr).expect_err("must fail");
         assert_eq!(error.kind(), ErrorKind::AddrInUse);
 
@@ -660,7 +647,7 @@ mod tests {
                 .ip(Ipv4Addr::new(192, 168, 2, 101).into()),
         )?;
 
-        let fd = ctx.socket(AF_INET, SOCK_DGRAM, 0)?;
+        let fd = ctx.socket_create(AF_INET, SOCK_DGRAM, 0)?;
         let addr = SocketAddr::new(Ipv4Addr::new(10, 1, 1, 2).into(), 2000);
         let error = ctx.socket_bind(fd, addr).expect_err("must be an error");
         assert_eq!(error.kind(), ErrorKind::AddrNotAvailable);
@@ -676,7 +663,7 @@ mod tests {
                 .ip(Ipv4Addr::new(192, 168, 2, 101).into()),
         )?;
 
-        let fd = ctx.socket(AF_INET, SOCK_DGRAM, 0)?;
+        let fd = ctx.socket_create(AF_INET, SOCK_DGRAM, 0)?;
         let addr = SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), 2000);
         ctx.socket_bind(fd, addr)?;
 
@@ -698,7 +685,7 @@ mod tests {
                 .ip(Ipv4Addr::new(192, 168, 2, 101).into()),
         )?;
 
-        let fd = ctx.socket(AF_INET, SOCK_DGRAM, 0)?;
+        let fd = ctx.socket_create(AF_INET, SOCK_DGRAM, 0)?;
         let addr = SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), 2000);
         let error = ctx.socket_bind(fd + 1, addr).expect_err("must be an error");
         assert_eq!(error.kind(), ErrorKind::InvalidInput);
@@ -711,7 +698,7 @@ mod tests {
         let mut ctx = IOContext::new(ModuleId::NULL);
         ctx.mock_add_interface(InterfaceDef::ethv6_autocfg(NetworkDevice::loopback()))?;
 
-        let fd = ctx.socket(AF_INET, SOCK_DGRAM, 0)?;
+        let fd = ctx.socket_create(AF_INET, SOCK_DGRAM, 0)?;
         let addr = SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), 2000);
         let error = ctx.socket_bind(fd, addr).expect_err("must be an error");
         assert_eq!(error.kind(), ErrorKind::AddrNotAvailable);
@@ -726,11 +713,11 @@ mod tests {
             InterfaceDef::new("en0", NetworkDevice::loopback())
                 .ip(Ipv4Addr::new(192, 168, 2, 101).into()),
         )?;
-        let fd = ctx.socket(AF_INET, SOCK_DGRAM, 0)?;
+        let fd = ctx.socket_create(AF_INET, SOCK_DGRAM, 0)?;
         let addr = SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), 2000);
         ctx.socket_bind(fd, addr)?;
 
-        let fd = ctx.socket(AF_INET, SOCK_DGRAM, 0)?;
+        let fd = ctx.socket_create(AF_INET, SOCK_DGRAM, 0)?;
         let error = ctx.socket_bind(fd, addr).expect_err("must be an error");
         assert_eq!(error.kind(), ErrorKind::AddrInUse);
 
@@ -747,10 +734,10 @@ mod tests {
 
         let addr = SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), 2000);
 
-        let fd = ctx.socket(AF_INET, SOCK_STREAM, 0)?;
+        let fd = ctx.socket_create(AF_INET, SOCK_STREAM, 0)?;
         let bind1 = ctx.socket_bind(fd, addr)?;
 
-        let fd = ctx.socket(AF_INET, SOCK_DGRAM, 0)?;
+        let fd = ctx.socket_create(AF_INET, SOCK_DGRAM, 0)?;
         let bind2 = ctx.socket_bind(fd, addr)?;
 
         assert_eq!(bind1, bind2);
@@ -768,7 +755,7 @@ mod tests {
 
         let addr = SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), 2000);
 
-        let fd = ctx.socket(AF_INET, SOCK_STREAM, 0)?;
+        let fd = ctx.socket_create(AF_INET, SOCK_STREAM, 0)?;
         ctx.socket_bind(fd, addr)?;
 
         let peer = SocketAddr::new(Ipv4Addr::new(10, 1, 1, 10).into(), 9713);
@@ -790,7 +777,7 @@ mod tests {
 
         let addr = SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), 2000);
 
-        let fd = ctx.socket(AF_INET, SOCK_STREAM, 0)?;
+        let fd = ctx.socket_create(AF_INET, SOCK_STREAM, 0)?;
         ctx.socket_bind(fd, addr)?;
 
         let peer = SocketAddr::new(Ipv6Addr::new(0xfe80, 0, 0, 3, 3, 31, 73, 1).into(), 9713);
@@ -810,7 +797,7 @@ mod tests {
 
         let addr = SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), 2000);
 
-        let fd = ctx.socket(AF_INET, SOCK_STREAM, 0)?;
+        let fd = ctx.socket_create(AF_INET, SOCK_STREAM, 0)?;
         ctx.socket_bind(fd, addr)?;
 
         let error = ctx.socket_get_peer(fd).expect_err("must be an error");

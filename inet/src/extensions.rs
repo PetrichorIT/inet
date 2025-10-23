@@ -1,4 +1,4 @@
-use fxhash::{FxBuildHasher, FxHashMap};
+use fxhash::FxHashMap;
 use std::{
     any::{Any, TypeId},
     fmt::Debug,
@@ -59,12 +59,6 @@ pub struct Extensions {
 }
 
 impl Extensions {
-    pub fn new() -> Self {
-        Self {
-            mapping: FxHashMap::with_hasher(FxBuildHasher::default()),
-        }
-    }
-
     pub fn with_ext<E: Default + Any, R>(&mut self, f: impl FnOnce(&mut E) -> R) -> R {
         let ext = self
             .mapping

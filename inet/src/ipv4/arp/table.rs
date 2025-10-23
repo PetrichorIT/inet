@@ -1,11 +1,11 @@
 use des::time::SimTime;
-use fxhash::{FxBuildHasher, FxHashMap};
+use fxhash::FxHashMap;
 use std::{hash::Hash, net::Ipv4Addr, time::Duration};
 
 use crate::interface::{IfId, IfSpec};
 use types::{iface::MacAddress, ip::Ipv4Packet};
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub(crate) struct ArpTable {
     pub(super) map: FxHashMap<Ipv4Addr, ArpEntryInternal>,
     pub(super) config: ArpConfig,
@@ -58,19 +58,6 @@ impl ArpTable {
 
     pub fn entries(&self) -> impl Iterator<Item = &ArpEntryInternal> {
         self.map.values()
-    }
-
-    pub fn new() -> Self {
-        Self::new_with(ArpConfig::default())
-    }
-
-    pub fn new_with(config: ArpConfig) -> Self {
-        Self {
-            map: FxHashMap::with_hasher(FxBuildHasher::default()),
-            config,
-            requests: FxHashMap::with_hasher(FxBuildHasher::default()),
-            active_wakeup: false,
-        }
     }
 
     pub fn lookup(&self, ip: &Ipv4Addr) -> Option<&ArpEntryInternal> {

@@ -23,21 +23,11 @@ pub mod arp;
 pub mod icmp;
 pub mod router;
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub(super) struct Ipv4 {
     pub arp: ArpTable,
     pub icmp: Icmp,
     pub fwd: FwdV4,
-}
-
-impl Default for Ipv4 {
-    fn default() -> Self {
-        Self {
-            arp: ArpTable::new(),
-            icmp: Icmp::new(),
-            fwd: FwdV4::new(),
-        }
-    }
 }
 
 impl IOContext {
@@ -61,7 +51,7 @@ impl IOContext {
 
             if pkt.ttl == 0 {
                 tracing::warn!("dropped ipv4-packet with ttl 0");
-                self.icmp_ttl_expired(ifid, &pkt);
+                self.ipv4_icmp_ttl_expired(ifid, &pkt);
                 return NetworkLayerResult::Consumed();
             }
 
@@ -72,7 +62,7 @@ impl IOContext {
                 pkt.clone(), // TODO: to not copy, use a result Err(Packet)
             ) {
                 tracing::error!("failed to forward ip-packet {error}");
-                self.icmp_routing_failed(error, &pkt);
+                self.ipv4_icmp_routing_failed(error, &pkt);
             }
 
             return NetworkLayerResult::Consumed();
@@ -80,7 +70,7 @@ impl IOContext {
 
         match pkt.proto {
             PROTO_ICMPV4 => {
-                let _consumed = self.recv_icmpv4_packet(&pkt, ifid);
+                let _consumed = self.ipv4_icmp_recv(&pkt, ifid);
                 NetworkLayerResult::Consumed()
             }
             0 => NetworkLayerResult::PassThrough(Message::from_parts(header, Some(pkt))),

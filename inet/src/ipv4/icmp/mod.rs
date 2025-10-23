@@ -8,7 +8,7 @@
 //!
 //! This module provides some ICMP associated
 //! utility function for network debugging.
-use fxhash::{FxBuildHasher, FxHashMap};
+use fxhash::FxHashMap;
 use std::{
     io::{Error, ErrorKind},
     net::{IpAddr, Ipv4Addr},
@@ -21,7 +21,7 @@ use types::{
         IcmpV4DestinationUnreachableCode, IcmpV4Packet, IcmpV4TimeExceededCode, IcmpV4Type,
         PROTO_ICMPV4,
     },
-    ip::{IpPacket, IpPacketRef, Ipv4Flags, Ipv4Packet},
+    ip::{IpPacket, Ipv4Flags, Ipv4Packet},
     tcp::PROTO_TCP,
     udp::PROTO_UDP,
 };
@@ -38,23 +38,14 @@ pub use self::ping::*;
 mod traceroute;
 pub use self::traceroute::*;
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub(crate) struct Icmp {
-    pings: FxHashMap<u16, PingCB>,
+    pub pings: FxHashMap<u16, PingCB>,
     pub traceroutes: FxHashMap<Ipv4Addr, TracerouteCB>,
 }
 
-impl Icmp {
-    pub fn new() -> Self {
-        Self {
-            pings: FxHashMap::with_hasher(FxBuildHasher::default()),
-            traceroutes: FxHashMap::with_hasher(FxBuildHasher::default()),
-        }
-    }
-}
-
 impl IOContext {
-    pub fn recv_icmpv4_packet(&mut self, ip_icmp: &Ipv4Packet, ifid: IfId) -> bool {
+    pub fn ipv4_icmp_recv(&mut self, ip_icmp: &Ipv4Packet, ifid: IfId) -> bool {
         assert_eq!(ip_icmp.proto, PROTO_ICMPV4);
 
         let Ok(pkt) = IcmpV4Packet::peek_from(&ip_icmp.content[..]) else {
@@ -208,7 +199,7 @@ impl IOContext {
         true
     }
 
-    pub fn icmp_routing_failed(&mut self, e: Error, pkt: &Ipv4Packet) {
+    pub fn ipv4_icmp_routing_failed(&mut self, e: Error, pkt: &Ipv4Packet) {
         match e.kind() {
             ErrorKind::ConnectionRefused => {
                 // Gateway error
@@ -248,7 +239,7 @@ impl IOContext {
         }
     }
 
-    pub fn icmp_ttl_expired(&mut self, ifid: IfId, pkt: &Ipv4Packet) {
+    pub fn ipv4_icmp_ttl_expired(&mut self, ifid: IfId, pkt: &Ipv4Packet) {
         let icmp = IcmpV4Packet::new(
             IcmpV4Type::TimeExceeded {
                 code: IcmpV4TimeExceededCode::TimeToLifeInTransit,
@@ -262,20 +253,18 @@ impl IOContext {
         self.ipv4_send(Some(ifid), ip).unwrap();
     }
 
-    pub fn icmp_port_unreachable(&mut self, ifid: IfId, pkt: IpPacketRef) {
-        if let IpPacketRef::V4(pkt) = pkt {
-            let icmp = IcmpV4Packet::new(
-                IcmpV4Type::DestinationUnreachable {
-                    next_hop_mtu: 0,
-                    code: IcmpV4DestinationUnreachableCode::PortUnreachable,
-                },
-                pkt,
-            );
-            let mut ip = pkt.reverse();
-            ip.src = Ipv4Addr::UNSPECIFIED;
-            ip.proto = PROTO_ICMPV4;
-            ip.content = icmp.write_to_bytes().expect("Failed to parse ICMP");
-            self.ipv4_send(Some(ifid), ip).unwrap();
-        }
+    pub fn ipv4_icmp_port_unreachable(&mut self, ifid: IfId, pkt: &Ipv4Packet) {
+        let icmp = IcmpV4Packet::new(
+            IcmpV4Type::DestinationUnreachable {
+                next_hop_mtu: 0,
+                code: IcmpV4DestinationUnreachableCode::PortUnreachable,
+            },
+            pkt,
+        );
+        let mut ip = pkt.reverse();
+        ip.src = Ipv4Addr::UNSPECIFIED;
+        ip.proto = PROTO_ICMPV4;
+        ip.content = icmp.write_to_bytes().expect("Failed to parse ICMP");
+        self.ipv4_send(Some(ifid), ip).unwrap();
     }
 }

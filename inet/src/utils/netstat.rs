@@ -77,8 +77,8 @@ impl IOContext {
                 (AF_INET, SOCK_DGRAM) | (AF_INET6, SOCK_DGRAM) => {
                     active_connections.push(NetstatConnection {
                         proto,
-                        recv_q: socket.recv_q,
-                        send_q: socket.send_q,
+                        recv_q: socket.recv_q.get(),
+                        send_q: socket.send_q.get(),
                         local_addr: socket.addr,
                         foreign_addr: socket.peer,
                         state: None,
@@ -90,8 +90,8 @@ impl IOContext {
                     };
                     active_connections.push(NetstatConnection {
                         proto,
-                        recv_q: socket.recv_q,
-                        send_q: socket.send_q,
+                        recv_q: socket.recv_q.get(),
+                        send_q: socket.send_q.get(),
                         local_addr: socket.addr,
                         foreign_addr: socket.peer,
                         state: Some(format!("{:?}", mng.state)),

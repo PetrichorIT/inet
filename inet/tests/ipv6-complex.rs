@@ -47,7 +47,7 @@ const WAN: DatarateChannelMetrics = DatarateChannelMetrics::new(
 ///
 #[test]
 fn run() -> Result<(), RuntimeError> {
-    des::tracing::init();
+    // des::tracing::init();
 
     if cfg!(not(feature = "props")) {
         return Ok(());

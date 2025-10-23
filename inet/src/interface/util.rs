@@ -1,10 +1,10 @@
 use des::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::hash_map,
     ffi::CStr,
     fmt,
-    hash::{Hash, Hasher},
+    hash::{DefaultHasher, Hash, Hasher},
+    num::NonZeroU64,
     ops::Deref,
     str::from_utf8,
 };
@@ -28,31 +28,46 @@ impl From<LinkUpdate> for Message {
     }
 }
 
+/// An interface specifcation (either a concrete interface or none at all)
 pub type IfSpec = Option<IfId>;
 
+/// An interface identifer (unique per IO context).
 #[derive(Clone, Copy, PartialEq, Eq, Hash, MessageBody, Valuable, Serialize, Deserialize)]
 pub struct IfId {
-    // byte 0..6 prefix
-    // byte 7 hash
-    bytes: [u8; 8],
+    /// Encoded identifer for an interface
+    /// -> 7 bytes encode the prefix of the interface name
+    /// -> 1 bytes encodes a hash code for the entire name
+    /// Stored as NonZeroU64 since [0; 8] is not possible exepct with name "" which is invalid
+    /// -> allows memory optimizations for Option<T>
+    bytes: NonZeroU64,
 }
 
 impl IfId {
-    pub const UNKNOWN: Self = Self { bytes: [0xff; 8] };
+    pub const UNKNOWN: Self = Self {
+        bytes: NonZeroU64::MAX,
+    };
 
+    #[track_caller]
     pub fn new(name: &str) -> Self {
+        assert!(!name.is_empty(), "does not allow empty names");
+        assert!(name.is_ascii(), "can only encode assci values");
+
         let mut bytes = [0u8; 8];
         let len = name.len().min(7);
         bytes[..len].copy_from_slice(&name.as_bytes()[..len]);
 
-        let mut hasher = hash_map::DefaultHasher::new();
+        let mut hasher = DefaultHasher::new();
         name.hash(&mut hasher);
-        let result = hasher.finish();
+        bytes[7] = hasher.finish().to_be_bytes()[0];
 
-        // Subtract 48 to ensure that Id::new("") is [0; 8]
-        bytes[7] = result.to_be_bytes()[0].wrapping_sub(48);
+        let bytes = NonZeroU64::new(u64::from_be_bytes(bytes)).expect("illegal state");
 
         Self { bytes }
+    }
+
+    #[inline]
+    fn bytes(&self) -> [u8; 8] {
+        self.bytes.get().to_be_bytes()
     }
 
     pub fn matches(&self, name: &str) -> bool {
@@ -60,15 +75,16 @@ impl IfId {
     }
 }
 
-// impl Borrow<IfSpec> for IfId {
-//     fn borrow(&self) -> &IfSpec {
-//         todo!()
-//     }
-// }
-
 impl PartialEq<IfSpec> for IfId {
     fn eq(&self, other: &IfSpec) -> bool {
         Some(self) == other.as_ref()
+    }
+}
+
+impl PartialEq<&str> for IfId {
+    fn eq(&self, other: &&str) -> bool {
+        // do not call IfId::new with invalid string
+        !other.is_empty() && other.is_ascii() && *self == IfId::new(other)
     }
 }
 
@@ -80,14 +96,15 @@ impl fmt::Display for IfId {
 
 impl fmt::Debug for IfId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let bytes = &self.bytes[..7];
+        let bytes = &self.bytes()[..7];
         let cstr = CStr::from_bytes_until_nul(bytes);
-        let str = match cstr {
-            Ok(cstr) => cstr.to_str().unwrap(),
-            Err(_) => from_utf8(bytes).unwrap(),
-        };
-
-        write!(f, "{str}")
+        match cstr {
+            Ok(cstr) => write!(f, "{}", cstr.to_string_lossy()),
+            Err(_) => {
+                let utf8 = from_utf8(bytes).expect("illegal state: str must be ascii");
+                write!(f, "{utf8}")
+            }
+        }
     }
 }
 
@@ -173,11 +190,10 @@ mod tests {
 
     #[test]
     fn iface_id_encoding() {
-        assert_eq!(IfId::new("en0").bytes[..7], b"en0\0\0\0\0"[..]);
-        assert_eq!(IfId::new("eth0").bytes[..7], b"eth0\0\0\0"[..]);
-        assert_eq!(IfId::new("abcdefg").bytes[..7], b"abcdefg"[..]);
-        assert_eq!(IfId::new("interface-delta").bytes[..7], b"interfa"[..]);
-        assert_eq!(IfId::new("").bytes[..7], b"\0\0\0\0\0\0\0"[..]);
+        assert_eq!(IfId::new("en0").bytes()[..7], b"en0\0\0\0\0"[..]);
+        assert_eq!(IfId::new("eth0").bytes()[..7], b"eth0\0\0\0"[..]);
+        assert_eq!(IfId::new("abcdefg").bytes()[..7], b"abcdefg"[..]);
+        assert_eq!(IfId::new("interface-delta").bytes()[..7], b"interfa"[..]);
     }
 
     #[test]
@@ -190,7 +206,6 @@ mod tests {
     fn iface_debug() {
         assert_eq!(IfId::new("en0").to_string(), "en0");
         assert_eq!(IfId::new("eth0").to_string(), "eth0");
-        assert_eq!(IfId::new("").to_string(), "");
         assert_eq!(IfId::new("exactly").to_string(), "exactly");
         assert_eq!(IfId::new("overflow").to_string(), "overflo");
     }

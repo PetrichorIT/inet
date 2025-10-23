@@ -70,7 +70,7 @@ impl IOContext {
                     (SOCK_STREAM, PROTO_TCP) => self.tcp_on_icmpv6(fd, &msg, contained),
                     (SOCK_DGRAM, PROTO_UDP) => self.udp_icmp_error(
                         fd,
-                        Error::new(ErrorKind::ConnectionRefused, format!("{msg:?}")),
+                        Error::new(ErrorKind::ConnectionRefused, msg.as_error_string()),
                         IpPacket::V6(contained.clone()),
                     ),
                     _ => {}
@@ -205,7 +205,7 @@ impl IOContext {
 
     fn ipv6_icmp_recv_time_exceeded(
         &mut self,
-        _ip: &Ipv6Packet,
+        ip: &Ipv6Packet,
         msg: IcmpV6TimeExceeded,
         original: &Ipv6Packet,
     ) -> io::Result<bool> {
@@ -224,18 +224,28 @@ impl IOContext {
             }
         });
 
+        // (1) Check for traceroute
+
+        self.ipv6_icmp_traceroute_register_time_exceeded(ip.src, original);
+
         Ok(true)
     }
 
-    pub fn ipv6_icmp_send_ttl_expired(&mut self, pkt: &Ipv6Packet, ifid: IfId) -> io::Result<()> {
-        // TODO: prevent loops
+    pub fn ipv6_icmp_send_hop_limit_exceeded(
+        &mut self,
+        pkt: &Ipv6Packet,
+        ifid: IfId,
+    ) -> io::Result<()> {
+        if !self.ipv6.cfg.icmp_send_time_exceeded {
+            return Ok(());
+        }
 
         let err = IcmpV6TimeExceeded {
             code: IcmpV6TimeExceededCode::HopLimitExceeded,
             packet: encode_contained_packet(pkt)?,
         };
         let msg = IcmpV6Packet::TimeExceeded(err);
-        let pkt = Ipv6Packet {
+        let icmp = Ipv6Packet {
             traffic_class: 0,
             flow_label: 0,
             proto: PROTO_ICMPV6,
@@ -245,7 +255,13 @@ impl IOContext {
             dst: pkt.src,
             content: msg.write_to_bytes()?,
         };
-        self.ipv6_send(pkt, Some(ifid))?;
+
+        tracing::warn!(
+            "send (TimeExceeded) for packet {}->{} on <{ifid}>",
+            pkt.src,
+            pkt.dst
+        );
+        self.ipv6_send(icmp, Some(ifid))?;
         Ok(())
     }
 
@@ -278,6 +294,30 @@ impl IOContext {
 
         self.ipv6_send(wrapped, Some(self.current.ifid))?;
         Ok(())
+    }
+
+    pub fn ipv6_icmp_send_port_unreachable(
+        &mut self,
+        ifid: IfId,
+        pkt: &Ipv6Packet,
+    ) -> io::Result<()> {
+        let icmp = IcmpV6Packet::DestinationUnreachable(IcmpV6DestinationUnreachable {
+            code: IcmpV6DestinationUnreachableCode::PortUnreachable,
+            packet: encode_contained_packet(pkt)?,
+        });
+
+        let pkt = Ipv6Packet {
+            traffic_class: 0,
+            flow_label: 0,
+            proto: PROTO_ICMPV6,
+            hop_limit: 32,
+            extension_headers: Vec::new(),
+            src: Ipv6Addr::UNSPECIFIED,
+            dst: pkt.src,
+            content: icmp.write_to_bytes()?,
+        };
+
+        self.ipv6_send(pkt, Some(ifid))
     }
 
     //

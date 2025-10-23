@@ -76,8 +76,8 @@ pub struct Ipv6 {
     pub traceroute_ctrl: FxHashMap<Ipv6Addr, TracerouteCB>,
 }
 
-impl Ipv6 {
-    pub fn new() -> Self {
+impl Default for Ipv6 {
+    fn default() -> Self {
         Ipv6 {
             timer: TimerCtrl::new(),
 
@@ -104,12 +104,6 @@ impl Ipv6 {
             ping_ctrl: FxHashMap::with_hasher(FxBuildHasher::default()),
             traceroute_ctrl: FxHashMap::with_hasher(FxBuildHasher::default()),
         }
-    }
-}
-
-impl Default for Ipv6 {
-    fn default() -> Self {
-        Self::new()
     }
 }
 
@@ -142,8 +136,7 @@ impl IOContext {
             let mut pkt = pkt;
 
             if pkt.hop_limit == 0 {
-                tracing::warn!("dropped ipv6-packet with ttl 0");
-                self.ipv6_icmp_send_ttl_expired(&pkt, ifid)
+                self.ipv6_icmp_send_hop_limit_exceeded(&pkt, ifid)
                     .expect("ttl expired failed");
                 return NetworkLayerResult::Consumed();
             }
@@ -453,7 +446,7 @@ impl IOContext {
                     tracing::debug!("{:#?}", self.ipv6.router)
                 };
             }
-            tracing::debug!("> default routers {:?}", self.ipv6.default_routers);
+            // tracing::debug!("> default routers {:?}", self.ipv6.default_routers);
 
             self.ipv6
                 .default_routers
