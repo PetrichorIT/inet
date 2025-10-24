@@ -8,6 +8,7 @@
 use bytes_io::FromBytes;
 
 pub mod arp;
+pub mod eth;
 pub mod icmpv4;
 pub mod icmpv6;
 pub mod iface;

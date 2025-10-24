@@ -1,11 +1,12 @@
 use std::{
     collections::HashMap,
-    io,
+    io::{self, ErrorKind},
     net::{Ipv4Addr, Ipv6Addr, SocketAddr},
     str::FromStr,
     time::Duration,
 };
 
+use bytes_io::BytesMut;
 use des::{
     runtime::{RuntimeError, random},
     time::sleep,
@@ -138,6 +139,26 @@ fn ipv6() -> Result<(), RuntimeError> {
             }
         });
     }
+
+    sim.run()
+}
+
+#[test]
+#[serial]
+fn try_send_blocks() -> Result<(), RuntimeError> {
+    let mut sim = SimpleSim::default();
+    sim.node_require_join("192.168.2.101", || async move {
+        let sock = UdpSocket::bind("0.0.0.0:80").await?;
+        sock.connect("192.168.2.102:102").await?;
+
+        sock.try_send(&[1, 2, 3])?;
+        sock.try_send(&[4, 5, 6])?;
+        // ^ TODO: this should block, but udp send packet does not check interface state
+
+        let err = sock.try_recv_buf(&mut BytesMut::new()).unwrap_err();
+        assert_eq!(err.kind(), ErrorKind::WouldBlock);
+        Ok(())
+    });
 
     sim.run()
 }

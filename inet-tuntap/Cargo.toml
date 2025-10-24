@@ -1,0 +1,13 @@
+[package]
+name = "inet-tuntap"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+des = "*"
+inet = { path = "../inet", features = ["libpcap"] }
+bytes-io = { path = "../util/bytes-io" }
+types = { path = "../util/types" }
+pcapng = { path = "../util/pcapng", features = ["test-util"] }
+tun-rs = "*"
+tokio = "*"

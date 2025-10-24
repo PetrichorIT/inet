@@ -19,7 +19,9 @@ mod bind;
 mod broadcast;
 mod cancel;
 mod connect;
+mod peek;
 mod recv;
+mod send;
 
 #[test]
 #[serial]
@@ -117,6 +119,19 @@ fn inspect_foreign_io_object() -> Result<(), RuntimeError> {
 
         assert_eq!(foreign.map(|sock| sock.local_addr())?.port(), 1024);
 
+        Ok(())
+    });
+
+    sim.run()
+}
+
+#[test]
+#[serial]
+fn default_ttl() -> Result<(), RuntimeError> {
+    let mut sim = SimpleSim::default();
+    sim.node("alice", || async move {
+        let sock = UdpSocket::bind("0.0.0.0:0").await?;
+        assert_eq!(sock.ttl()?, 32);
         Ok(())
     });
 

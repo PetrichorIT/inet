@@ -4,14 +4,9 @@ debug = true
 [workspace]
 members = [
     "inet",
-    "inet-bgp",
-    "inet-rip",
-    "inet-pcap",
-    "inet-dns",
-    "inet-uds",
+    "inet-*",
     "util/*",
     "examples/*",
-    "inet-ospf",
 ]
 resolver = "3"
 

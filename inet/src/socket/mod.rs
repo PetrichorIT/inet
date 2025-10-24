@@ -450,7 +450,7 @@ impl IOContext {
 
         match (socket.domain, socket.typ) {
             (AF_INET, SOCK_DGRAM) | (AF_INET6, SOCK_DGRAM) => {
-                let Some(udp) = self.udp.binds.get_mut(&fd) else {
+                let Ok(udp) = self.udp.get_mut(fd) else {
                     return;
                 };
 

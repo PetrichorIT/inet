@@ -33,6 +33,20 @@ fn deny_broadcast_without_option() -> Result<(), RuntimeError> {
 
 #[test]
 #[serial]
+fn default_no_broadcast() -> Result<(), RuntimeError> {
+    let mut sim = SimpleSim::default();
+    sim.node_require_join("alice", || async move {
+        let udp = UdpSocket::bind("0.0.0.0:0").await?;
+        assert_eq!(udp.broadcast()?, false);
+
+        Ok(())
+    });
+
+    sim.run()
+}
+
+#[test]
+#[serial]
 fn broadcast_no_loopback() -> Result<(), RuntimeError> {
     let mut sim = SimpleSim::default();
 
@@ -64,6 +78,8 @@ fn broadcast_no_loopback() -> Result<(), RuntimeError> {
                 let sender = tokio::spawn(async move {
                     let udp = UdpSocket::bind("0.0.0.0:0").await?;
                     udp.set_broadcast(true)?;
+
+                    assert_eq!(udp.broadcast()?, true);
 
                     for pkt in packets {
                         sleep(Duration::from_secs_f64(random())).await;

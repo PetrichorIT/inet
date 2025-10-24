@@ -71,3 +71,38 @@ impl IOContext {
         info
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use des::runtime::RuntimeError;
+    use serial_test::serial;
+    use types::iface::MacAddress;
+
+    use crate::{
+        interface::{InterfaceDef, NetworkDevice},
+        ioctx,
+        test_util::SimpleSim,
+    };
+
+    use super::get_mac_address;
+
+    #[test]
+    #[serial]
+    fn get_mac_addr() -> Result<(), RuntimeError> {
+        let mut sim = SimpleSim::default();
+        sim.raw("alice", |_| async move {
+            assert_eq!(None, get_mac_address()?);
+
+            let addr = MacAddress::generate();
+            ioctx().add_interface(InterfaceDef::ethv6_autocfg(
+                NetworkDevice::eth().with_addr(addr),
+            ))?;
+
+            assert_eq!(Some(addr), get_mac_address()?);
+
+            Ok(())
+        });
+
+        sim.run()
+    }
+}

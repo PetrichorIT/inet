@@ -66,6 +66,8 @@ pub fn netstat() -> io::Result<Netstat> {
     ioctx().do_failable(|ctx| Ok(ctx.netstat()))
 }
 
+// TODO: netstat does not show listeners apparently
+
 impl IOContext {
     pub(crate) fn netstat(&mut self) -> Netstat {
         let mut active_connections = Vec::new();
@@ -108,14 +110,68 @@ impl IOContext {
 #[cfg(test)]
 mod tests {
     use des::runtime::RuntimeError;
+    use serial_test::serial;
 
-    use crate::{test_util::SimpleSim, utils::netstat};
+    use crate::{
+        UdpSocket,
+        tcp::{TcpListener, TcpStream},
+        test_util::SimpleSim,
+        utils::{NetstatConnection, netstat},
+    };
 
     #[test]
+    #[serial]
     fn test_netstat() -> Result<(), RuntimeError> {
         let mut sim = SimpleSim::default();
         sim.node("192.168.2.1", || async move {
-            let _stat = netstat()?;
+            let udp_sock1 = UdpSocket::bind("0.0.0.0:80").await?;
+            let udp_sock2 = UdpSocket::bind("0.0.0.0:440").await?;
+            udp_sock2.connect("101.1.34.1:9000").await?;
+
+            let tcp_lis = TcpListener::bind("0.0.0.0:40").await?;
+            let tcp_str = TcpStream::connect("192.168.2.2:8000").await?;
+
+            let stat = netstat()?;
+            assert_eq!(
+                stat.active_connections[0],
+                NetstatConnection {
+                    proto: netstat::NetstatConnectionProto::Tcp4,
+                    local_addr: "192.168.2.1:1024".parse().unwrap(),
+                    foreign_addr: "192.168.2.2:8000".parse().unwrap(),
+                    state: Some("Estab".to_string()),
+                    recv_q: 0,
+                    send_q: 0,
+                }
+            );
+            assert_eq!(
+                stat.active_connections[1],
+                NetstatConnection {
+                    proto: netstat::NetstatConnectionProto::Udp4,
+                    local_addr: "0.0.0.0:80".parse().unwrap(),
+                    foreign_addr: "0.0.0.0:0".parse().unwrap(),
+                    state: None,
+                    recv_q: 0,
+                    send_q: 0,
+                }
+            );
+            assert_eq!(
+                stat.active_connections[2],
+                NetstatConnection {
+                    proto: netstat::NetstatConnectionProto::Udp4,
+                    local_addr: "0.0.0.0:440".parse().unwrap(),
+                    foreign_addr: "101.1.34.1:9000".parse().unwrap(),
+                    state: None,
+                    recv_q: 0,
+                    send_q: 0,
+                }
+            );
+
+            drop((udp_sock1, udp_sock2, tcp_lis, tcp_str));
+            Ok(())
+        });
+
+        sim.node("192.168.2.2", || async move {
+            let _ = TcpListener::bind("0.0.0.0:8000").await?.accept().await?;
             Ok(())
         });
 

@@ -159,6 +159,11 @@ impl NetworkDevice {
         self
     }
 
+    pub fn with_addr(mut self, addr: MacAddress) -> Self {
+        self.addr = addr;
+        self
+    }
+
     pub(crate) fn mtu(&self) -> usize {
         let t_mtu = self.inner.mtu();
         self.mtu.map_or(t_mtu, |limit| limit.min(t_mtu))

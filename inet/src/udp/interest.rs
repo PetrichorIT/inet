@@ -14,7 +14,6 @@ pub struct UdpInterest {
     pub(crate) handle: IOHandle,
     pub(crate) fd: Fd,
     pub(crate) io_interest: Interest,
-    pub(crate) resolved: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -30,20 +29,10 @@ impl UdpInterestGuard {
 
 impl Future for UdpInterest {
     type Output = Result<Ready>;
-    fn poll(
-        mut self: std::pin::Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
-    ) -> Poll<Self::Output> {
+    fn poll(self: std::pin::Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> Poll<Self::Output> {
         if self.io_interest.is_readable() {
             return self.handle.clone().do_io(|ctx| {
-                let Some(socket) = ctx.udp.binds.get_mut(&self.fd) else {
-                    self.resolved = true;
-                    return Poll::Ready(Err(Error::new(
-                        ErrorKind::InvalidInput,
-                        "invalid fd - socket dropped",
-                    )));
-                };
-
+                let socket = ctx.udp.get_mut(self.fd)?;
                 if socket.incoming.is_empty() {
                     socket.read_interest.push(UdpInterestGuard {
                         waker: cx.waker().clone(),
@@ -51,7 +40,6 @@ impl Future for UdpInterest {
 
                     Poll::Pending
                 } else {
-                    self.resolved = true;
                     Poll::Ready(Ok(Ready::READABLE))
                 }
             });
@@ -61,32 +49,22 @@ impl Future for UdpInterest {
             return self.handle.clone().do_io(|ctx| {
                 // assert(fd is valid UDP socket)
 
-                let id = ctx
-                    .iface_for_write_intention(self.fd)
-                    .inspect_err(|_| self.resolved = true)?;
+                let id = ctx.iface_for_write_intention(self.fd)?;
                 let interface = ctx.ifaces.get_mut(&id).unwrap();
 
                 if interface.is_busy() {
                     interface.add_write_interest(self.fd);
-                    let Some(udp) = ctx.udp.binds.get_mut(&self.fd) else {
-                        self.resolved = true;
-                        return Poll::Ready(Err(Error::new(
-                            ErrorKind::InvalidInput,
-                            "invalid fd - socket dropped",
-                        )));
-                    };
-                    udp.write_interest.push(UdpInterestGuard {
+                    let socket = ctx.udp.get_mut(self.fd)?;
+                    socket.write_interest.push(UdpInterestGuard {
                         waker: cx.waker().clone(),
                     });
                     return Poll::Pending;
                 }
 
-                self.resolved = true;
                 Poll::Ready(Ok(Ready::WRITABLE))
             });
         }
 
-        self.resolved = true;
         Poll::Ready(Err(Error::new(
             ErrorKind::InvalidInput,
             "invalid interest without read or write components",

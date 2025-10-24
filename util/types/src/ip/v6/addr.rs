@@ -303,6 +303,7 @@ impl Ord for Ipv6Prefix {
     }
 }
 
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub struct Ipv6LongestPrefixTable<E> {
     keys: Vec<Ipv6Prefix>,
     values: Vec<E>,

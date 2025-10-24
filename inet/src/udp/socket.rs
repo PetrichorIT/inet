@@ -85,7 +85,6 @@ impl UdpSocket {
         let io = UdpInterest {
             fd: self.fd,
             io_interest: interest,
-            resolved: false,
             handle: self.handle.clone(),
         };
 
@@ -431,24 +430,18 @@ impl UdpSocket {
     ///
     /// For more information about this option, see [set_broadcast](UdpSocket::set_broadcast)
     pub fn broadcast(&self) -> Result<bool> {
-        self.handle.do_io(|ctx| match ctx.udp.binds.get(&self.fd) {
-            Some(sock) => Ok(sock.broadcast),
-            None => Err(Error::other("SimContext lost socket handle")),
-        })
+        self.handle
+            .do_io(|ctx| Ok(ctx.udp.get_mut(self.fd)?.broadcast))
     }
 
     /// Sets the value of the SO_BROADCAST option for this socket.
     ///
     /// When enabled, this socket is allowed to send packets to a broadcast address.
     pub fn set_broadcast(&self, on: bool) -> Result<()> {
-        self.handle
-            .do_io(|ctx| match ctx.udp.binds.get_mut(&self.fd) {
-                Some(sock) => {
-                    sock.broadcast = on;
-                    Ok(())
-                }
-                None => Err(Error::other("SimContext lost socket handle")),
-            })
+        self.handle.do_io(|ctx| {
+            ctx.udp.get_mut(self.fd)?.broadcast = on;
+            Ok(())
+        })
     }
 
     pub fn join_multicast_v6(&self, addr: Ipv6Addr, interface: Option<IfId>) -> Result<()> {
@@ -466,24 +459,17 @@ impl UdpSocket {
     /// For more information about this option, see [set_ttl](UdpSocket::set_ttl).
     ///
     pub fn ttl(&self) -> Result<u8> {
-        self.handle.do_io(|ctx| match ctx.udp.binds.get(&self.fd) {
-            Some(sock) => Ok(sock.ttl),
-            None => Err(Error::other("SimContext lost socket handle")),
-        })
+        self.handle.do_io(|ctx| Ok(ctx.udp.get_mut(self.fd)?.ttl))
     }
 
     /// Sets the value for the IP_TTL option on this socket.
     ///
     /// This value sets the time-to-live field that is used in every packet sent from this socket.
     pub fn set_ttl(&self, ttl: u8) -> Result<()> {
-        self.handle
-            .do_io(|ctx| match ctx.udp.binds.get_mut(&self.fd) {
-                Some(sock) => {
-                    sock.ttl = ttl;
-                    Ok(())
-                }
-                None => Err(Error::other("SimContext lost socket handle")),
-            })
+        self.handle.do_io(|ctx| {
+            ctx.udp.get_mut(self.fd)?.ttl = ttl;
+            Ok(())
+        })
     }
 
     pub fn device(&self) -> Result<Option<InterfaceName>> {
