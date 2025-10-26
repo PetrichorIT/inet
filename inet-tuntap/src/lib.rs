@@ -12,10 +12,7 @@ use inet::{
     libpcap::{PcapCapturePoint, PcapEnvelope, PcapSubscriber, set_pcap_deamon},
 };
 
-use types::{
-    arp::{ArpPacket, KIND_ARP},
-    ip::{Ipv4Packet, Ipv6Packet, KIND_IPV4, KIND_IPV6},
-};
+use types::ip::{Ipv4Packet, Ipv6Packet, KIND_IPV4, KIND_IPV6};
 
 /// Applies a new configuration to PCAP, starting a new
 /// capturing epoch.
@@ -86,14 +83,6 @@ impl TunDevice {
                     "Packet of kind {KIND_ARP} did not contain Arp Packet",
                 ))?
                 .write_to_vec(),
-            KIND_ARP => msg
-                .body
-                .try_content::<ArpPacket>()
-                .ok_or(Error::new(
-                    ErrorKind::InvalidInput,
-                    "Packet of kind {KIND_ARP} did not contain Arp Packet",
-                ))?
-                .write_to_vec(),
             _ => Err(Error::new(ErrorKind::Unsupported, "unsupported ethertyp")),
         }
     }
@@ -107,5 +96,16 @@ impl PcapSubscriber for TunDevice {
     fn capture(&mut self, pkt: PcapEnvelope<'_>) -> Result<()> {
         let ifid = pkt.iface.name.id();
         self.write_packet(ifid, pkt.message)
+    }
+}
+
+impl Drop for TunDevice {
+    fn drop(&mut self) {
+        eprintln!(
+            "** closing tun device {}",
+            self.writer.name().unwrap_or(String::new())
+        );
+        thread::sleep(Duration::from_secs(1));
+        let _ = self.writer.send(&[]);
     }
 }

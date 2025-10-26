@@ -1,0 +1,13 @@
+[package]
+name = "inet-dhcp"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+inet = { path = "../inet"}
+des = "*"
+bytes-io = { path = "../util/bytes-io"}
+macros = { path = "../util/macros"}
+inet-tuntap = {path = "../inet-tuntap"}
+bitflags = "2.9.0"
+rand = "*"
