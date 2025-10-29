@@ -14,9 +14,10 @@ use types::{
 };
 
 use crate::{
-    IOContext,
+    IOContext, IOHandle,
     ctx::NetworkLayerResult,
     interface::{IfId, IfSpec},
+    ioctx,
 };
 
 pub mod arp;
@@ -28,6 +29,25 @@ pub(super) struct Ipv4 {
     pub arp: ArpTable,
     pub icmp: Icmp,
     pub fwd: FwdV4,
+    pub cfg: HostConfiguration,
+}
+
+#[derive(Debug, Default)]
+pub struct HostConfiguration {
+    pub no_icmp_responses: bool,
+}
+
+pub fn set_host_config(cfg: HostConfiguration) -> io::Result<()> {
+    ioctx().ipv4_set_host_config(cfg)
+}
+
+impl IOHandle {
+    pub fn ipv4_set_host_config(&self, cfg: HostConfiguration) -> io::Result<()> {
+        self.do_failable(|ctx| {
+            ctx.ipv4.cfg = cfg;
+            Ok(())
+        })
+    }
 }
 
 impl IOContext {
@@ -51,11 +71,13 @@ impl IOContext {
 
             if pkt.ttl == 0 {
                 tracing::warn!("dropped ipv4-packet with ttl 0");
-                self.ipv4_icmp_ttl_expired(ifid, &pkt);
+                let _ = self
+                    .ipv4_icmp_send_ttl_expired(ifid, &pkt)
+                    .inspect_err(|e| tracing::error!("icmp failed: {e}"));
                 return NetworkLayerResult::Consumed();
             }
 
-            tracing::debug!("fwd packet to {}", pkt.dst);
+            tracing::debug!("routing packet {}->{}", pkt.src, pkt.dst);
 
             if let Err(error) = self.ipv4_send(
                 None,
@@ -186,6 +208,8 @@ impl IOContext {
         if pkt.src.is_unspecified() {
             pkt.src = iface.ipv4_subnet().unwrap().0;
         }
+
+        tracing::info!("LL {pkt:?}");
         let msg = Message::default()
             .with_kind(KIND_IPV4)
             .with_src(iface.device.addr.into())

@@ -4,7 +4,7 @@ use std::{
 };
 
 use bytes_io::{
-    Bytes, BytesMut, BytesReader, BytesWriter, FromBytes, ReadBytesExt, ToBytes, WriteBytesExt, BE,
+    BE, Bytes, BytesMut, BytesReader, BytesWriter, FromBytes, ReadBytesExt, ToBytes, WriteBytesExt,
 };
 use macros::repr_enum;
 
@@ -125,6 +125,27 @@ pub enum IcmpV4Type {
     AddressMaskReply = 18,
     ExtendedEchoRequest = 42,
     ExtendedEchoReply = 43,
+}
+
+impl IcmpV4Type {
+    #[must_use]
+    pub const fn as_error_string(&self) -> &'static str {
+        use IcmpV4Type::DestinationUnreachable;
+
+        match self {
+            DestinationUnreachable { code, .. } => match code {
+                IcmpV4DestinationUnreachableCode::PortUnreachable => "port unreachable",
+                IcmpV4DestinationUnreachableCode::NetworkUnreachable => "network unreachable",
+                IcmpV4DestinationUnreachableCode::HostUnreachable => "host unreachable",
+                IcmpV4DestinationUnreachableCode::ProtocolUnreachable => "protocol unreachable",
+                IcmpV4DestinationUnreachableCode::DatagramToBig => "datagram to big",
+                IcmpV4DestinationUnreachableCode::SourceHostFailed => "src host failed",
+                _ => "not supported !",
+            },
+
+            _ => "<todo!> impl error string for icmp v4",
+        }
+    }
 }
 
 impl ToBytes for IcmpV4Type {

@@ -95,7 +95,7 @@ impl RipRoutingDeamon {
         cfg: RipConfig,
     ) -> Self {
         ioctx()
-            .add_interface(InterfaceDef::new("lan", port.clone().into()).ipv4(raddr, mask))
+            .add_interface(InterfaceDef::new("lan", port.clone().into()).ipv4_raw(raddr, mask))
             .unwrap();
 
         let ports = RoutingInformation::collect();
@@ -115,7 +115,7 @@ impl RipRoutingDeamon {
 
                 if chan {
                     let iface = InterfaceDef::new(&format!("en{c}"), new_port.into())
-                        .ipv4(raddr, Ipv4Addr::UNSPECIFIED);
+                        .ipv4_raw(raddr, Ipv4Addr::UNSPECIFIED);
                     ioctx().add_interface(iface).unwrap();
                     c += 1;
                 }

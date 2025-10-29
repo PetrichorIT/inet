@@ -7,8 +7,7 @@ use inet::{
     env::RoutingPort,
     interface::{InterfaceDef, NetworkDevice},
     ioctx,
-    ipv4::router::{Ipv6RouterConfig, declare_ipv6_router},
-    ipv6::util::setup_router,
+    ipv6::{router, util::setup_router},
     utils::{self, getaddrinfo},
 };
 use inet_pcap::pcap;
@@ -78,27 +77,20 @@ struct RouterWithoutAdv;
 impl Module for RouterWithoutAdv {
     fn at_sim_start(&mut self, _stage: usize) {
         pcap(File::create("out/ipv6_timeout_router.pcap").unwrap()).unwrap();
+        router::declare_router().unwrap();
 
         for port in RoutingPort::collect() {
-            let mut iface = InterfaceDef::new(
-                &format!("en-{}", port.output.str()),
+            router::add_routing_interface(
+                format!("en-{}", port.output.str()),
                 NetworkDevice::from(port),
+                &[
+                    "2003:c1:e719:8fff::1".parse().unwrap(),
+                    "2003:c1:e719:1234::1".parse().unwrap(),
+                ],
+                false,
             )
-            .ipv6_link_local();
-
-            iface.flags.router = true;
-            ioctx().add_interface(iface).unwrap();
+            .unwrap();
         }
-
-        declare_ipv6_router(Ipv6RouterConfig {
-            adv: false,
-            prefixes: vec![
-                "2003:c1:e719:8fff::/64".parse().unwrap(),
-                "2003:c1:e719:1234::/64".parse().unwrap(),
-            ],
-            ..Default::default()
-        })
-        .unwrap();
     }
 }
 

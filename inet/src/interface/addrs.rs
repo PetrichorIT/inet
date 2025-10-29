@@ -76,6 +76,12 @@ impl InterfaceAddrsV4 {
     pub fn matches(&self, dst: Ipv4Addr) -> bool {
         self.unicast.iter().any(|binding| binding.matches(dst))
     }
+
+    pub fn matches_subnet(&self, dst: Ipv4Addr) -> bool {
+        self.unicast
+            .iter()
+            .any(|binding| binding.matches_subnet(dst))
+    }
 }
 
 impl InterfaceAddrsV6 {

@@ -35,9 +35,8 @@ impl IOHandle {
     pub(super) fn swap_in(ingoing: Option<IOHandle>) -> Option<IOHandle> {
         let mut lock = NCURRENT.lock().expect("could not aquire io context lock");
         let ret = lock.take();
-        *lock = ingoing.map(|ctx| {
+        *lock = ingoing.inspect(|ctx| {
             ctx.0.lock().expect("failed to lock").id = current().id();
-            ctx
         });
         ret
     }
@@ -58,7 +57,7 @@ impl IOHandle {
         if try_current().is_some_and(|m| m.id() != ctx.id) {
             return Err(Error::other("Drop chain"));
         }
-        f(&mut *ctx)
+        f(&mut ctx)
     }
 }
 

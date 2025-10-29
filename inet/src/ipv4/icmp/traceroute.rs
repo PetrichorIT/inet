@@ -7,7 +7,7 @@ use des::{
     time::{SimTime, sleep},
 };
 use std::{
-    io::{Error, ErrorKind, Result},
+    io::{ErrorKind, Result},
     net::Ipv4Addr,
     time::Duration,
 };
@@ -76,8 +76,8 @@ impl IOHandle {
                 if let Some(e) = socket.take_error()? {
                     if e.kind() == ErrorKind::ConnectionRefused {
                         // reached end port;
-                        match &format!("{e}")[..] {
-                            "PortUnreachable" => return Ok(traceroute),
+                        match &e.to_string()[..] {
+                            "port unreachable" => return Ok(traceroute),
                             _ => return Err(e),
                         }
                     }
@@ -105,10 +105,9 @@ impl IOHandle {
                 }
             }
 
-            return Err(socket
-                .take_error()?
-                .unwrap_or(Error::other("traceroute failed")));
-            // return Err()
+            // no response -> ICMP deny
+            traceroute.nodes.push(Trace::NotFound);
+            distance += 1;
         }
     }
 }

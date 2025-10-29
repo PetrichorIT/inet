@@ -1,4 +1,4 @@
-use std::{io, net::Ipv6Addr, time::Duration};
+use std::{io, net::Ipv4Addr, time::Duration};
 
 use des::{
     net::{Sim, handlers::AsyncHandler},
@@ -8,25 +8,23 @@ use des::{
 };
 use inet::{
     env::RoutingInformation,
-    interface::{InterfaceDef, NetworkDevice},
+    interface::{DEFAULT_V4_MASK, InterfaceDef, NetworkDevice},
     ioctx,
-    ipv6::{
-        api::{ipv6, set_node_cfg},
-        cfg::HostConfiguration,
-        icmp::tracerouter::{Trace, traceroute},
-        router,
+    ipv4::{
+        HostConfiguration,
+        icmp::{Trace, traceroute},
+        router::{self, set_default_gateway},
+        set_host_config,
     },
 };
 use serial_test::serial;
 use tokio::sync::mpsc::Receiver;
-use types::ip::{Ipv6AddrExt, Ipv6Prefix};
+use types::ip::Ipv4Prefix;
 
 async fn router(_: Receiver<Message>) -> io::Result<()> {
-    router::declare_router()?;
-
     if current().prop::<bool>("noicmp")?.get().is_some() {
-        set_node_cfg(HostConfiguration {
-            icmp_send_time_exceeded: false,
+        set_host_config(HostConfiguration {
+            no_icmp_responses: true,
             ..Default::default()
         })?;
     }
@@ -34,68 +32,54 @@ async fn router(_: Receiver<Message>) -> io::Result<()> {
     let ports = RoutingInformation::collect();
 
     if let Some(lan) = ports.port_by_name("lan") {
-        let prefix: Ipv6Prefix = current().prop("lan")?.get().unwrap();
-        router::add_routing_interface(
-            "lan",
-            NetworkDevice::from(lan),
-            &[
-                Ipv6Addr::from(u128::from(prefix.addr()) + 1),
-                Ipv6Addr::LINK_LOCAL,
-            ],
-            true,
+        let prefix: Ipv4Prefix = current().prop("lan")?.get().unwrap();
+        ioctx().add_interface(
+            InterfaceDef::new("lan", NetworkDevice::from(lan))
+                .ipv4(Ipv4Addr::from(u32::from(prefix.addr()) + 1)),
         )?;
-        router::add_routing_prefix("lan", prefix)?;
     }
 
     if let Some(fwd) = ports.port_by_name("fwd") {
-        let prefix: Ipv6Prefix = current().prop("fwd")?.get().unwrap();
-        router::add_routing_interface(
-            "fwd",
-            NetworkDevice::from(fwd),
-            &[
-                Ipv6Addr::from(u128::from(prefix.addr()) + 1),
-                Ipv6Addr::LINK_LOCAL,
-            ],
-            true,
+        let prefix: Ipv4Prefix = current().prop("fwd")?.get().unwrap();
+        ioctx().add_interface(
+            InterfaceDef::new("fwd", NetworkDevice::from(fwd))
+                .ipv4(Ipv4Addr::from(u32::from(prefix.addr()) + 1)),
         )?;
-        router::add_routing_prefix("fwd", prefix)?;
 
         router::add_routing_entry(
-            "2003:b:1::/64".parse().unwrap(),
-            Ipv6Addr::from(u128::from(prefix.addr()) + 2),
-            Ipv6Addr::from(u128::from(prefix.addr()) + 1), // < local addr
+            "100.6.6.0".parse().unwrap(),
+            DEFAULT_V4_MASK,
+            Ipv4Addr::from(u32::from(prefix.addr()) + 2), // < local addr
+            "fwd",
         )?;
     }
 
     if let Some(bwd) = ports.port_by_name("bwd") {
-        let prefix: Ipv6Prefix = current().prop("bwd")?.get().unwrap();
-        router::add_routing_interface(
-            "bwd",
-            NetworkDevice::from(bwd),
-            &[
-                Ipv6Addr::from(u128::from(prefix.addr()) + 2),
-                Ipv6Addr::LINK_LOCAL,
-            ],
-            true,
+        let prefix: Ipv4Prefix = current().prop("bwd")?.get().unwrap();
+        ioctx().add_interface(
+            InterfaceDef::new("bwd", NetworkDevice::from(bwd))
+                .ipv4(Ipv4Addr::from(u32::from(prefix.addr()) + 2)),
         )?;
-        router::add_routing_prefix("bwd", prefix)?;
 
         router::add_routing_entry(
-            "2003:a:1::/64".parse().unwrap(),
-            Ipv6Addr::from(u128::from(prefix.addr()) + 1),
-            Ipv6Addr::from(u128::from(prefix.addr()) + 2),
+            "100.1.1.0".parse().unwrap(),
+            DEFAULT_V4_MASK,
+            Ipv4Addr::from(u32::from(prefix.addr()) + 1), // < local addr
+            "bwd",
         )?;
     }
 
     Ok(())
 }
 
+const CLIENT: Ipv4Addr = Ipv4Addr::new(100, 1, 1, 50);
+
 async fn client(_: Receiver<Message>) -> io::Result<()> {
-    let mut handle = ioctx().add_interface(InterfaceDef::ethv6_autocfg(NetworkDevice::eth()))?;
-    handle.wait_for_global().await;
+    ioctx().add_interface(InterfaceDef::new("en0", NetworkDevice::eth()).ip(CLIENT.into()))?;
+    set_default_gateway("100.1.1.1".parse().unwrap())?;
     sleep_until(5.0.into()).await;
 
-    let tr = traceroute("2003:b:1::abcd".parse().unwrap()).await?;
+    let tr = traceroute(TARGET).await?;
     tracing::info!("\n{tr:#?}");
 
     assert!(matches!(tr.nodes[0], Trace::Found { .. }));
@@ -104,14 +88,15 @@ async fn client(_: Receiver<Message>) -> io::Result<()> {
     assert!(matches!(tr.nodes[3], Trace::NotFound));
     assert!(matches!(tr.nodes[4], Trace::Found { .. }));
 
-    ipv6();
-
     Ok(())
 }
 
+const TARGET: Ipv4Addr = Ipv4Addr::new(100, 6, 6, 50);
+
 async fn server(_: Receiver<Message>) -> io::Result<()> {
-    let handle = ioctx().add_interface(InterfaceDef::ethv6_autocfg(NetworkDevice::eth()))?;
-    handle.add_addr("2003:b:1::abcd".parse().unwrap())?;
+    ioctx().add_interface(InterfaceDef::new("en0", NetworkDevice::eth()).ip(TARGET.into()))?;
+    set_default_gateway("100.6.6.1".parse().unwrap())?;
+
     Ok(())
 }
 
@@ -125,17 +110,17 @@ fn lan() -> Option<DatarateChannel> {
 }
 
 const CFG: &str = "
-src-router.lan: 2003:a:1::/64
-src-router.fwd: 2004:a:1::/64
-router-a.bwd: 2004:a:1::/64
-router-a.fwd: 2004:b:1::/64
-router-b.bwd: 2004:b:1::/64
-router-b.fwd: 2004:c:1::/64
-router-c.bwd: 2004:c:1::/64
-router-c.fwd: 2004:d:1::/64
+src-router.lan: 100.1.1.0/24
+src-router.fwd: 100.2.2.0/24
+router-a.bwd: 100.2.2.0/24
+router-a.fwd: 100.3.3.0/24
+router-b.bwd: 100.3.3.0/24
+router-b.fwd: 100.4.4.0/24
+router-c.bwd: 100.4.4.0/24
+router-c.fwd: 100.5.5.0/24
 router-c.noicmp: true
-dst-router.bwd: 2004:d:1::/64
-dst-router.lan: 2003:b:1::/64
+dst-router.bwd: 100.5.5.0/24
+dst-router.lan: 100.6.6.0/24
 ";
 
 #[test]

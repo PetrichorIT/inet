@@ -12,7 +12,7 @@
 //! used to configure the ARP table.
 //!
 
-use std::io::{self, Error, ErrorKind};
+use std::io;
 use std::net::Ipv4Addr;
 
 use crate::ctx::LinkLayerResult;
@@ -20,6 +20,7 @@ use crate::{IOContext, interface::*};
 use des::prelude::{Message, schedule_in};
 use des::time::SimTime;
 use types::arp::{ARPOperation, ArpPacket, KIND_ARP};
+use types::icmpv4::IcmpV4DestinationUnreachableCode;
 use types::iface::MacAddress;
 use types::ip::Ipv4Packet;
 
@@ -133,14 +134,13 @@ impl IOContext {
 
     pub fn recv_arp_wakeup(&mut self) {
         self.ipv4.arp.active_wakeup = false;
-
         // (0) Collect retry info
         for addr in self.ipv4.arp.requests.keys().copied().collect::<Vec<_>>() {
             let req = self.ipv4.arp.requests.get_mut(&addr).unwrap();
             if req.deadline <= SimTime::now() {
                 // retry
                 if req.itr >= 1 {
-                    let rem = self
+                    let (target, packets) = self
                         .ipv4
                         .arp
                         .update(ArpEntryInternal {
@@ -153,21 +153,37 @@ impl IOContext {
                         })
                         .unwrap_or((addr, Vec::new()));
 
-                    for pkt in rem.1 {
-                        self.ipv4_icmp_routing_failed(
-                            Error::new(ErrorKind::NotConnected, "Host unreachable"),
-                            &pkt,
-                        );
+                    tracing::error!(
+                        "could not resolve for {target} dropping {} packets",
+                        packets.len()
+                    );
+
+                    for pkt in packets {
+                        // src may be 0.0.0.0 since not yet arped if local thus set to appropriate addr
+                        if pkt.src.is_unspecified() {
+                            self.ipv4_icmp_recv_destination_unreachable(
+                                0,
+                                IcmpV4DestinationUnreachableCode::HostUnreachable,
+                                &pkt,
+                            );
+                        } else {
+                            let _ = self
+                                .ipv4_icmp_send_destionation_unreachable(
+                                    IcmpV4DestinationUnreachableCode::HostUnreachable,
+                                    None,
+                                    &pkt,
+                                )
+                                .inspect_err(|e| tracing::error!("{e}"));
+                        }
                     }
 
-                    tracing::error!("could not resolve for {addr} dropping packets");
-                    self.ipv4.arp.requests.remove(&addr);
+                    let _ = self.ipv4.arp.requests.remove(&addr);
                 } else {
+                    tracing::trace!("timeout on (req) {addr} -> retrying");
                     req.deadline = SimTime::now() + self.ipv4.arp.config.timeout;
                     req.itr += 1;
-                    let dst = req.buffer[0].dst;
                     let id = req.iface;
-                    self.arp_send_request(id, dst).unwrap();
+                    self.arp_send_request(id, addr).unwrap();
                 }
             }
         }

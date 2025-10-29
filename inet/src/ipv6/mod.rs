@@ -134,13 +134,13 @@ impl IOContext {
         let is_local_dest = iface.bindings.v6.matches_recv(pkt.dst) || pkt.dst.is_multicast();
         if !is_local_dest {
             let mut pkt = pkt;
+            pkt.hop_limit = pkt.hop_limit.saturating_sub(1);
 
             if pkt.hop_limit == 0 {
                 self.ipv6_icmp_send_hop_limit_exceeded(&pkt, ifid)
                     .expect("ttl expired failed");
                 return NetworkLayerResult::Consumed();
             }
-            pkt.hop_limit = pkt.hop_limit.saturating_sub(1);
 
             if let Err(error) = self.ipv6_send_with_flags(
                 pkt, // TODO: to not copy, use a result Err(Packet)

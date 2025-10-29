@@ -496,14 +496,13 @@ impl AddrSelection {
 
                 Ordering::Equal
             })
-            .map(|(dst, src, _)| {
+            .and_then(|(dst, src, _)| {
                 (src != CanidateAddr::UNSPECIFED).then_some(Selection {
                     src: src.addr,
                     src_ifid: src.ifid,
                     dst,
                 })
             })
-            .flatten()
     }
 }
 

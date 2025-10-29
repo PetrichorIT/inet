@@ -10,7 +10,7 @@
 //! utility function for network debugging.
 use fxhash::FxHashMap;
 use std::{
-    io::{Error, ErrorKind},
+    io::{self, Error, ErrorKind},
     net::{IpAddr, Ipv4Addr},
 };
 
@@ -28,7 +28,7 @@ use types::{
 
 use crate::{
     IOContext,
-    interface::IfId,
+    interface::{IfId, IfSpec},
     socket::{SocketDomain, SocketType},
 };
 
@@ -75,7 +75,7 @@ impl IOContext {
                 (SOCK_STREAM, PROTO_TCP) => self.tcp_on_icmpv4(fd, &pkt, &contained),
                 (SOCK_DGRAM, PROTO_UDP) => self.udp_icmp_error(
                     fd,
-                    Error::new(ErrorKind::ConnectionRefused, format!("{pkt:?}")),
+                    Error::new(ErrorKind::ConnectionRefused, pkt.typ.as_error_string()),
                     IpPacket::V4(contained.clone()),
                 ),
                 _ => {}
@@ -132,30 +132,8 @@ impl IOContext {
                 }
             }
             IcmpV4Type::DestinationUnreachable { next_hop_mtu, code } => {
-                let ip = pkt.contained().unwrap();
-                let unreachable = ip.dst;
-
-                // (0) check for recent pings
-                if let Some((ident, ping)) = self
-                    .ipv4
-                    .icmp
-                    .pings
-                    .iter_mut()
-                    .find(|p| p.1.addr == unreachable)
-                {
-                    ping.publish.take().map(|s| {
-                        s.send(Err(Error::new(
-                            ErrorKind::ConnectionRefused,
-                            format!("{code:?}"),
-                        )))
-                    });
-
-                    let ident = *ident;
-                    self.ipv4.icmp.pings.remove(&ident);
-                    return true;
-                };
-
-                let _ = next_hop_mtu;
+                self.ipv4_icmp_recv_destination_unreachable(next_hop_mtu, code, &contained);
+                return true;
             }
             IcmpV4Type::TimeExceeded { code } => {
                 let ip = pkt.contained().unwrap();
@@ -199,6 +177,34 @@ impl IOContext {
         true
     }
 
+    pub fn ipv4_icmp_recv_destination_unreachable(
+        &mut self,
+        next_hop_mtu: u16,
+        code: IcmpV4DestinationUnreachableCode,
+        contained: &Ipv4Packet,
+    ) {
+        let unreachable = contained.dst;
+        if let Some((ident, ping)) = self
+            .ipv4
+            .icmp
+            .pings
+            .iter_mut()
+            .find(|p| p.1.addr == unreachable)
+        {
+            ping.publish.take().map(|s| {
+                s.send(Err(Error::new(
+                    ErrorKind::ConnectionRefused,
+                    format!("{code:?}"),
+                )))
+            });
+
+            let ident = *ident;
+            self.ipv4.icmp.pings.remove(&ident);
+            return;
+        };
+        let _ = next_hop_mtu;
+    }
+
     pub fn ipv4_icmp_routing_failed(&mut self, e: Error, pkt: &Ipv4Packet) {
         match e.kind() {
             ErrorKind::ConnectionRefused => {
@@ -218,28 +224,44 @@ impl IOContext {
 
                 self.ipv4_send(None, ip).unwrap()
             }
-            ErrorKind::NotConnected => {
-                // Gateway error
-                let icmp = IcmpV4Packet::new(
-                    IcmpV4Type::DestinationUnreachable {
-                        next_hop_mtu: 0,
-                        code: IcmpV4DestinationUnreachableCode::HostUnreachable,
-                    },
+            ErrorKind::NotConnected => self
+                .ipv4_icmp_send_destionation_unreachable(
+                    IcmpV4DestinationUnreachableCode::HostUnreachable,
+                    None,
                     pkt,
-                );
-
-                let mut ip = pkt.reverse();
-                ip.src = Ipv4Addr::UNSPECIFIED;
-                ip.proto = PROTO_ICMPV4;
-                ip.content = icmp.write_to_bytes().expect("Failed to parse ICMP");
-
-                let _ = self.ipv4_send(None, ip);
-            }
+                )
+                .expect("failed to send"),
             _ => {}
         }
     }
 
-    pub fn ipv4_icmp_ttl_expired(&mut self, ifid: IfId, pkt: &Ipv4Packet) {
+    pub fn ipv4_icmp_send_destionation_unreachable(
+        &mut self,
+        code: IcmpV4DestinationUnreachableCode,
+        ifspec: IfSpec,
+        pkt: &Ipv4Packet,
+    ) -> io::Result<()> {
+        let icmp = IcmpV4Packet::new(
+            IcmpV4Type::DestinationUnreachable {
+                next_hop_mtu: 0,
+                code,
+            },
+            pkt,
+        );
+
+        let mut ip = pkt.reverse();
+        ip.src = Ipv4Addr::UNSPECIFIED;
+        ip.proto = PROTO_ICMPV4;
+        ip.content = icmp.write_to_bytes()?;
+
+        self.ipv4_send(ifspec, ip)
+    }
+
+    pub fn ipv4_icmp_send_ttl_expired(&mut self, ifid: IfId, pkt: &Ipv4Packet) -> io::Result<()> {
+        if self.ipv4.cfg.no_icmp_responses {
+            return Ok(());
+        }
+
         let icmp = IcmpV4Packet::new(
             IcmpV4Type::TimeExceeded {
                 code: IcmpV4TimeExceededCode::TimeToLifeInTransit,
@@ -249,8 +271,8 @@ impl IOContext {
         let mut ip = pkt.reverse();
         ip.src = Ipv4Addr::UNSPECIFIED;
         ip.proto = PROTO_ICMPV4;
-        ip.content = icmp.write_to_bytes().expect("Failed to parse ICMP");
-        self.ipv4_send(Some(ifid), ip).unwrap();
+        ip.content = icmp.write_to_bytes()?;
+        self.ipv4_send(Some(ifid), ip)
     }
 
     pub fn ipv4_icmp_port_unreachable(&mut self, ifid: IfId, pkt: &Ipv4Packet) {

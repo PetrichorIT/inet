@@ -127,7 +127,7 @@ impl IOContext {
         };
 
         let consumed = match pkt.proto() {
-            PROTO_UDP => self.capture_udp_packet(pkt.as_ref(), ifid),
+            PROTO_UDP => self.udp_on_packet(pkt.as_ref(), ifid),
             PROTO_TCP => self.tcp_on_packet(pkt.as_ref(), ifid),
             proto => {
                 let domain = if pkt.is_v4() {

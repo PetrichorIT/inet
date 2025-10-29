@@ -5,11 +5,7 @@ use std::{
 
 use crate::{IOContext, IOHandle, ioctx};
 
-use super::{FwdEntryV4, Ipv4Gateway, Ipv6RouterConfig, RoutingTableId};
-
-pub fn declare_ipv6_router(cfg: Ipv6RouterConfig) -> io::Result<()> {
-    ioctx().declare_ipv6_router(cfg)
-}
+use super::{FwdEntryV4, Ipv4Gateway, RoutingTableId};
 
 /// Sets the default routing gateway for the entire node.
 pub fn set_default_gateway(ip: Ipv4Addr) -> io::Result<()> {
@@ -45,10 +41,6 @@ pub fn route() -> io::Result<Vec<FwdEntryV4>> {
 }
 
 impl IOHandle {
-    pub fn declare_ipv6_router(&self, cfg: Ipv6RouterConfig) -> io::Result<()> {
-        self.do_failable(|ctx| ctx.declare_ipv6_router(cfg))
-    }
-
     pub fn set_default_gateway(&self, ip: Ipv4Addr) -> io::Result<()> {
         self.do_failable(|ctx| ctx.set_default_gateway(ip))
     }
@@ -78,7 +70,7 @@ impl IOContext {
         let Some(iface) = self
             .ifaces
             .values()
-            .find(|iface| iface.bindings.v4.matches(ip))
+            .find(|iface| iface.bindings.v4.matches_subnet(ip))
         else {
             return Err(Error::other("gateway not found on any local subnet"));
         };

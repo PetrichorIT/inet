@@ -218,11 +218,11 @@ mod tests {
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Ipv4Prefix {
     addr: Ipv4Addr,
-    len: u8,
+    len: u8, // the number of bits in the network part
 }
 
 impl Ipv4Prefix {
-    /// Creates a new `Ipv6Perfix`
+    /// Creates a new `Ipv4Prefix`
     ///
     /// # Panics
     ///
@@ -266,6 +266,7 @@ impl Ipv4Prefix {
     }
 
     #[inline]
+    #[must_use]
     pub const fn mask(&self) -> u32 {
         if self.len == 0 {
             0

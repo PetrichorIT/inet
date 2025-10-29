@@ -159,7 +159,7 @@ fn is_valid_dst_for(socket_addr: &SocketAddr, packet_addr: &SocketAddr) -> bool 
 
 impl IOContext {
     // returns consumed
-    pub(super) fn capture_udp_packet(&mut self, packet: IpPacketRef, ifid: IfId) -> bool {
+    pub(super) fn udp_on_packet(&mut self, packet: IpPacketRef, ifid: IfId) -> bool {
         assert_eq!(packet.tos(), PROTO_UDP);
 
         let is_multi_target = is_multi_target(packet.dst());
@@ -365,9 +365,7 @@ impl IOContext {
                 // TODO: this should not work for '::
                 self.ipv6_send(
                     ip,
-                    if local.is_unspecified() {
-                        None
-                    } else if target.is_multicast() {
+                    if local.is_unspecified() || target.is_multicast() {
                         None
                     } else {
                         ifid.into_ifspec()

@@ -91,14 +91,19 @@ impl InterfaceDef {
 
     pub fn ip(self, addr: IpAddr) -> Self {
         match addr {
-            IpAddr::V4(addr) => self.ipv4(addr, DEFAULT_V4_MASK),
+            IpAddr::V4(addr) => self.ipv4_raw(addr, DEFAULT_V4_MASK),
             IpAddr::V6(addr) => self.ipv6(addr, DEFAULT_V6_MASK),
         }
     }
 
     #[must_use]
-    pub fn ipv4(mut self, addr: Ipv4Addr, mask: Ipv4Addr) -> Self {
+    pub fn ipv4_raw(mut self, addr: Ipv4Addr, mask: Ipv4Addr) -> Self {
         self.addrs.ipv4.push((addr, mask));
+        self
+    }
+
+    pub fn ipv4(mut self, addr: Ipv4Addr) -> Self {
+        self.addrs.ipv4.push((addr, DEFAULT_V4_MASK));
         self
     }
 

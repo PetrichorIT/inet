@@ -145,7 +145,7 @@ impl PingCB {
 
             false
         } else {
-            // MOre
+            // more
             true
         }
     }
