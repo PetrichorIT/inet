@@ -6,7 +6,7 @@ use std::{
 
 use bitflags::bitflags;
 use des::net::message::{Message, schedule_in};
-use fxhash::{FxBuildHasher, FxHashMap};
+use fxhash::FxHashMap;
 use multicast::{GroupEvent, MulticastListenerDiscoveryCtrl, NodeEvent, RouterEvent};
 use tracing::Level;
 use types::{
@@ -18,13 +18,13 @@ use types::{
 use crate::{
     ctx::{IOContext, NetworkLayerResult},
     interface::{IfId, IfSpec, InterfaceError},
-    ipv6::addrs::CanidateAddr,
+    ipv6::{addrs::CanidateAddr, socket::RawV6SocketHandle},
+    socket::Fd,
 };
 
 use self::{
     addrs::PolicyTable,
     cfg::{HostConfiguration, RouterInterfaceConfiguration},
-    icmp::{ping::PingCtrl, tracerouter::TracerouteCB},
     ndp::{
         DefaultRouterList, DestinationCache, NeighborCache, PrefixList, QueryType, Solicitations,
     },
@@ -42,6 +42,7 @@ pub mod multicast;
 pub mod ndp;
 pub mod path;
 pub mod router;
+pub mod socket;
 pub mod state;
 pub mod timer;
 pub mod util;
@@ -72,8 +73,7 @@ pub struct Ipv6 {
     pub policies: PolicyTable,
 
     // ICMP utils
-    pub ping_ctrl: FxHashMap<u16, PingCtrl>,
-    pub traceroute_ctrl: FxHashMap<Ipv6Addr, TracerouteCB>,
+    pub sockets: FxHashMap<Fd, RawV6SocketHandle>,
 }
 
 impl Default for Ipv6 {
@@ -89,20 +89,19 @@ impl Default for Ipv6 {
 
             path_mtu: PathMtuStore::default(),
 
-            iface_state: FxHashMap::with_hasher(FxBuildHasher::default()),
-            mld: FxHashMap::with_hasher(FxBuildHasher::default()),
+            iface_state: FxHashMap::default(),
+            mld: FxHashMap::default(),
 
             cfg: HostConfiguration::default(),
             is_router: false,
             router: Router::new(),
-            router_cfg: FxHashMap::with_hasher(FxBuildHasher::default()),
+            router_cfg: FxHashMap::default(),
             router_cfg_default: None,
             router_state: RouterState::new(),
 
             policies: PolicyTable::default(),
 
-            ping_ctrl: FxHashMap::with_hasher(FxBuildHasher::default()),
-            traceroute_ctrl: FxHashMap::with_hasher(FxBuildHasher::default()),
+            sockets: FxHashMap::default(),
         }
     }
 }
@@ -152,6 +151,16 @@ impl IOContext {
             }
 
             return NetworkLayerResult::Consumed();
+        }
+
+        // Recv raw sockets
+        for socket in self
+            .ipv6
+            .sockets
+            .values_mut()
+            .filter(|sock| sock.proto == pkt.proto)
+        {
+            socket.recv(ifid, pkt.clone());
         }
 
         match pkt.proto {

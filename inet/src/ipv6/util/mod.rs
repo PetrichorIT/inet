@@ -10,6 +10,9 @@ use crate::{
 
 use super::cfg::{RouterInterfaceConfiguration, RouterPrefix};
 
+pub mod ping;
+pub mod traceroute;
+
 pub fn setup_router(
     addr: Ipv6Addr,
     ports: Vec<RoutingPort>,

@@ -32,7 +32,7 @@ async fn alice_success(_rx: Receiver<Message>) -> io::Result<()> {
         .v6
         .unicast[0]
         .addr;
-    let pinger = ipv6::icmp::ping::ping(addr).await?;
+    let pinger = ipv6::util::ping::ping(addr).await?;
     tracing::info!("pinger done {pinger:?}");
 
     Ok(())
@@ -43,7 +43,7 @@ async fn alice_failure(_rx: Receiver<Message>) -> io::Result<()> {
 
     sleep(Duration::from_secs(10)).await;
 
-    let err = ipv6::icmp::ping::ping(
+    let err = ipv6::util::ping::ping(
         "2003:c1:e719:1234:88d5:1cff:0000:0000"
             .parse::<Ipv6Addr>()
             .unwrap(),

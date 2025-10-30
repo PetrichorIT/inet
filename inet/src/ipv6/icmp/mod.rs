@@ -33,9 +33,6 @@ use types::{
 
 use super::{multicast::NodeEvent, ndp::QueryType};
 
-pub mod ping;
-pub mod tracerouter;
-
 impl IOContext {
     pub(crate) fn ipv6_icmp_recv(&mut self, ip: &Ipv6Packet, ifid: IfId) -> io::Result<bool> {
         assert_eq!(ip.proto, PROTO_ICMPV6);
@@ -73,6 +70,7 @@ impl IOContext {
                         Error::new(ErrorKind::ConnectionRefused, msg.as_error_string()),
                         IpPacket::V6(contained.clone()),
                     ),
+                    (SOCK_RAW, _) => self.ipv6_raw_socket_on_icmp(ifid, fd, &msg, contained),
                     _ => {}
                 }
             }
@@ -109,24 +107,8 @@ impl IOContext {
                 self.ipv6_send(pkt, Some(ifid))?;
                 return Ok(true);
             }
-            IcmpV6Packet::EchoReply(msg) => {
-                let Some(ping_ctrl) = self.ipv6.ping_ctrl.get_mut(&msg.identifier) else {
-                    tracing::warn!(IFACE=%ifid, "received missguided ICMPv6 echo reply id={} seq_no={}", msg.identifier, msg.sequence_no);
-                    return Ok(true);
-                };
-                if let Some(msg) = ping_ctrl.process(msg) {
-                    let pkt = Ipv6Packet {
-                        traffic_class: 0,
-                        flow_label: 0,
-                        proto: PROTO_ICMPV6,
-                        hop_limit: 64,
-                        extension_headers: Vec::new(),
-                        src: ip.dst,
-                        dst: ip.src,
-                        content: msg.write_to_bytes()?,
-                    };
-                    self.ipv6_send(pkt, Some(ifid))?;
-                }
+            IcmpV6Packet::EchoReply(_) => {
+                // Pinging managed by raw sockets
                 return Ok(true);
             }
 
@@ -182,52 +164,18 @@ impl IOContext {
     fn ipv6_icmp_recv_destination_unreachable(
         &mut self,
         _ip: &Ipv6Packet,
-        msg: IcmpV6DestinationUnreachable,
-        original: &Ipv6Packet,
+        _msg: IcmpV6DestinationUnreachable,
+        _original: &Ipv6Packet,
     ) -> io::Result<bool> {
-        let dst = original.dst;
-
-        // (0) Check active ICMP handlers
-        self.ipv6.ping_ctrl.retain(|_, ping| {
-            if ping.addr == dst {
-                ping.fail_with_error(io::Error::new(
-                    io::ErrorKind::ConnectionRefused,
-                    format!("destination unreachable: {:?}", msg.code),
-                ));
-                false
-            } else {
-                true
-            }
-        });
-
         Ok(true)
     }
 
     fn ipv6_icmp_recv_time_exceeded(
         &mut self,
-        ip: &Ipv6Packet,
-        msg: IcmpV6TimeExceeded,
-        original: &Ipv6Packet,
+        _ip: &Ipv6Packet,
+        _msg: IcmpV6TimeExceeded,
+        _original: &Ipv6Packet,
     ) -> io::Result<bool> {
-        let dst = original.dst;
-
-        // (0) Check active ICMP handlers
-        self.ipv6.ping_ctrl.retain(|_, ping| {
-            if ping.addr == dst {
-                ping.fail_with_error(io::Error::new(
-                    io::ErrorKind::ConnectionRefused,
-                    format!("time exceeded: {:?}", msg.code),
-                ));
-                false
-            } else {
-                true
-            }
-        });
-
-        // (1) Check for traceroute
-
-        self.ipv6_icmp_traceroute_register_time_exceeded(ip.src, original);
-
         Ok(true)
     }
 
@@ -445,7 +393,7 @@ impl IOContext {
             content: msg.write_to_bytes()?,
         };
 
-        tracing::info!("send router adv {dst:?}");
+        tracing::debug!("send router adv {dst:?} on <{ifid}>");
 
         self.ipv6_send(pkt, Some(ifid))?;
         Ok(())
@@ -648,7 +596,7 @@ impl IOContext {
         let query_is_dedup = ip.src.is_unspecified();
         let tentative = !iface.bindings.v6.matches_recv(req.target);
 
-        tracing::trace!(IFACE=%ifid, tentative, "recv (sol) for {} from {}->{}", req.target, ip.src, ip.dst);
+        tracing::trace!(IFACE=%ifid, tentative, "recv (sol) for {} from {}->{} on <{}>", req.target, ip.src, ip.dst, ifid);
 
         if tentative {
             // Do not response, if the address id tentative
@@ -835,8 +783,6 @@ impl IOContext {
         };
 
         tracing::trace!("send (sol) from {} for {target} on <{ifid}>", pkt.src);
-
-        // tracing::trace!(IFACE=%ifid, "send (sol) for {target} from {}->{}", pkt.src, pkt.dst);
 
         let mut flags = Ipv6SendFlags::ALLOW_SRC_UNSPECIFIED;
         if is_dedup {

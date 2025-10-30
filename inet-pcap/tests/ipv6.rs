@@ -11,7 +11,7 @@ use inet::{
     env::RoutingPort,
     interface::{InterfaceDef, NetworkDevice},
     ioctx,
-    ipv6::{icmp::ping::ping, util::setup_router},
+    ipv6::{util::ping::ping, util::setup_router},
     socket::RawIpSocket,
     utils,
 };

@@ -459,6 +459,9 @@ impl IOContext {
             (AF_INET, SOCK_STREAM) | (AF_INET6, SOCK_STREAM) => {
                 self.tcp_socket_link_update(fd);
             }
+            (AF_INET6, SOCK_RAW) => {
+                self.ipv6_raw_socket_link_update(fd);
+            }
             _ => {}
         }
     }

@@ -13,8 +13,8 @@ use inet::{
     ipv6::{
         api::{ipv6, set_node_cfg},
         cfg::HostConfiguration,
-        icmp::tracerouter::{Trace, traceroute},
         router,
+        util::traceroute::Trace,
     },
 };
 use serial_test::serial;
@@ -95,7 +95,7 @@ async fn client(_: Receiver<Message>) -> io::Result<()> {
     handle.wait_for_global().await;
     sleep_until(5.0.into()).await;
 
-    let tr = traceroute("2003:b:1::abcd".parse().unwrap()).await?;
+    let tr = inet::ipv6::util::traceroute::traceroute("2003:b:1::abcd".parse().unwrap()).await?;
     tracing::info!("\n{tr:#?}");
 
     assert!(matches!(tr.nodes[0], Trace::Found { .. }));
