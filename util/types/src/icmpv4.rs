@@ -11,7 +11,7 @@ use macros::repr_enum;
 use crate::ip::Ipv4Packet;
 
 /// An ICMP packet
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IcmpV4Packet {
     pub typ: IcmpV4Type, // icmp info
     pub content: Bytes,  // ip header + first 8 byte payload or padding

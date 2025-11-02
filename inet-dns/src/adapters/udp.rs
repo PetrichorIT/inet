@@ -340,6 +340,8 @@ mod tests {
     #[test]
     #[serial]
     fn truncated_execssive_response() -> Result<(), des::prelude::RuntimeError> {
+        // des::tracing::init();
+
         let mut sim = SimpleSim::new(inet::init);
         sim.node_require_join("alice", || async move {
             let recv = UdpSocket::bind("0.0.0.0:2000").await?;

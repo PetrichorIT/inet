@@ -3,7 +3,9 @@ use std::io::{Error, ErrorKind, Result};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
 use std::pin::Pin;
 
-use crate::IOHandle;
+use des::net::globals;
+
+use crate::{IOHandle, IOPlugin};
 
 impl IOHandle {
     #[inline]
@@ -27,6 +29,29 @@ pub(crate) fn default_dns_resolve(
             ErrorKind::NotFound,
             "name could not be resolved - no dns",
         ))
+    })
+}
+
+pub fn sim_internal_dns_resolve(
+    host: &str,
+    port: u16,
+) -> Pin<Box<dyn Future<Output = Result<Vec<SocketAddr>>> + Send + 'static>> {
+    let host: des::prelude::ObjectPath = host.into();
+    Box::pin(async move {
+        let Some(node) = globals().get(&host) else {
+            return Err(Error::new(ErrorKind::NotFound, "no such hostname"));
+        };
+
+        let Some(handle) = node.try_as_ref::<IOPlugin>() else {
+            return Err(Error::new(ErrorKind::NotFound, "no such hostname"));
+        };
+
+        Ok(handle
+            .handle()
+            .getaddrinfo()?
+            .into_iter()
+            .map(|ip| SocketAddr::new(ip, port))
+            .collect())
     })
 }
 
@@ -246,8 +271,24 @@ mod tests {
             match lookup_host("www.test.org:80").await {
                 Ok(_) => panic!("should fail"),
                 Err(e) => {
-                    assert_eq!(e.to_string(), "name could not be resolved - no dns");
+                    assert_eq!(e.to_string(), "no such hostname");
                     Ok(())
+                }
+            }
+        });
+        sim.run()
+    }
+
+    #[test]
+    #[serial]
+    fn node_name_based_resolution() -> Result<(), RuntimeError> {
+        let mut sim = SimpleSim::default();
+        sim.node_require_join("bob", || async move { Ok(()) });
+        sim.node_require_join("alice", || async move {
+            match lookup_host("bob:80").await {
+                Ok(_) => Ok(()),
+                Err(e) => {
+                    panic!("should not fail {e}")
                 }
             }
         });

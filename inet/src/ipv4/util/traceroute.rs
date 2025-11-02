@@ -1,19 +1,20 @@
-use std::{io, net::Ipv6Addr, time::Duration};
+use std::net::Ipv4Addr;
+use std::{io, time::Duration};
 
 use bytes_io::{Bytes, FromBytes, ToBytes};
 use des::runtime::random;
 use des::time::{SimTime, sleep_until};
-use types::icmpv6::{IcmpV6Packet, IcmpV6TimeExceededCode, PROTO_ICMPV6};
+use types::icmpv4::{IcmpV4Packet, IcmpV4TimeExceededCode, IcmpV4Type, PROTO_ICMPV4};
 use types::udp::UdpPacket;
 
 use crate::UdpSocket;
-use crate::ipv6::socket::RawV6Socket;
+use crate::ipv4::socket::RawV4Socket;
 
 /// The result of a call to `traceroute`.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Traceroute {
     /// The target of the traced route.
-    pub target: Ipv6Addr,
+    pub target: Ipv4Addr,
     /// A set of nodes identified allong the route to the
     /// target
     pub nodes: Vec<Trace>,
@@ -25,7 +26,7 @@ pub enum Trace {
     /// A node that responded to ICMP Echo Request,
     /// allowing for the computation of a RTT.
     Found {
-        addr: Ipv6Addr,
+        addr: Ipv4Addr,
         rtt: (Duration, Duration, Duration),
     },
     /// A non-responding node on the route.
@@ -34,9 +35,9 @@ pub enum Trace {
 
 const TRACEROUTE_MAX: u8 = 32;
 
-pub async fn traceroute(target: Ipv6Addr) -> io::Result<Traceroute> {
-    let udp_socket = UdpSocket::bind("[::]:0").await?;
-    let mut icmp_socket = RawV6Socket::new(PROTO_ICMPV6)?;
+pub async fn traceroute(target: Ipv4Addr) -> io::Result<Traceroute> {
+    let udp_socket = UdpSocket::bind("0.0.0.0:0").await?;
+    let mut icmp_socket = RawV4Socket::new(PROTO_ICMPV4)?;
 
     let local_addr = udp_socket.local_addr()?;
 
@@ -78,11 +79,11 @@ pub async fn traceroute(target: Ipv6Addr) -> io::Result<Traceroute> {
                 };
 
                 let pkt = res?;
-                let icmp = IcmpV6Packet::peek_from(pkt.content)?;
-                match icmp {
-                    IcmpV6Packet::DestinationUnreachable(_) => break 'distance,
-                    IcmpV6Packet::TimeExceeded(err) => match err.code {
-                        IcmpV6TimeExceededCode::HopLimitExceeded => {
+                let icmp = IcmpV4Packet::peek_from(pkt.content)?;
+                match icmp.typ {
+                    IcmpV4Type::DestinationUnreachable { .. } => break 'distance,
+                    IcmpV4Type::TimeExceeded { code } => match code {
+                        IcmpV4TimeExceededCode::TimeToLifeInTransit => {
                             let rtt = send_time.elapsed();
                             tracing::info!("probe with rtt {rtt:?}");
                             results.push(Some((pkt.src, rtt)));

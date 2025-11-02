@@ -132,7 +132,7 @@ impl Module for Main {
 
 #[test]
 fn tcp_lan_v4() -> Result<(), RuntimeError> {
-    // des::tracing::init();
+    des::tracing::init();
 
     let app = Sim::new(())
         .with_stack(inet::init)

@@ -31,7 +31,7 @@ async fn alice_success(_rx: Receiver<Message>) -> io::Result<()> {
         .v4
         .unicast[0]
         .addr;
-    let pinger = ipv4::icmp::ping(addr).await?;
+    let pinger = ipv4::util::ping::ping(addr).await?;
     tracing::info!("pinger done {pinger:?}");
 
     Ok(())
@@ -43,7 +43,7 @@ async fn alice_failure(_rx: Receiver<Message>) -> io::Result<()> {
     )?;
     sleep(Duration::from_secs(10)).await;
 
-    let err = ipv4::icmp::ping("192.168.2.103".parse::<Ipv4Addr>().unwrap())
+    let err = ipv4::util::ping::ping("192.168.2.103".parse::<Ipv4Addr>().unwrap())
         .await
         .unwrap_err();
 

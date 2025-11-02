@@ -834,8 +834,6 @@ impl IOContext {
         if should_retry {
             self.ipv6_icmp_send_neighbor_solicitation_raw(target, ifid, false)
         } else {
-            tracing::warn!(IFACE=%ifid, "could no resolve address for {target}");
-
             // TODO:
             // Make routing capable
             // ICMP errors may not only be emitted to the current node, but previous nodes on the path
@@ -846,7 +844,10 @@ impl IOContext {
                 .unwrap_or(CanidateAddr::UNSPECIFED);
 
             let queue = self.ipv6.neighbors.dequeue(target);
+
+            tracing::warn!(IFACE=%ifid, "could not resolve address for {target} (affecting {} packets)", queue.len());
             for pkt in queue {
+                tracing::debug!("> {pkt:?}");
                 let error_msg = IcmpV6DestinationUnreachable {
                     code: IcmpV6DestinationUnreachableCode::AddressUnreachable,
                     packet: pkt.write_to_bytes_mut()?.freeze(),

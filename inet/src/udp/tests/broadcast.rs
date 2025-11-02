@@ -175,6 +175,8 @@ fn broadcast_with_loopback() -> Result<(), RuntimeError> {
 #[test]
 #[serial]
 fn broadcast_loopback_assigns_lo_addr() -> Result<(), RuntimeError> {
+    // des::tracing::init();
+
     let mut sim = SimpleSim::default();
     sim.node_require_join("192.168.2.100", || async move {
         ioctx().add_interface(InterfaceDef::loopback())?;

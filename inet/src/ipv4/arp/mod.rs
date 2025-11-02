@@ -159,22 +159,14 @@ impl IOContext {
                     );
 
                     for pkt in packets {
-                        // src may be 0.0.0.0 since not yet arped if local thus set to appropriate addr
-                        if pkt.src.is_unspecified() {
-                            self.ipv4_icmp_recv_destination_unreachable(
-                                0,
+                        assert!(!pkt.src.is_unspecified());
+                        let _ = self
+                            .ipv4_icmp_send_destionation_unreachable(
                                 IcmpV4DestinationUnreachableCode::HostUnreachable,
+                                None,
                                 &pkt,
-                            );
-                        } else {
-                            let _ = self
-                                .ipv4_icmp_send_destionation_unreachable(
-                                    IcmpV4DestinationUnreachableCode::HostUnreachable,
-                                    None,
-                                    &pkt,
-                                )
-                                .inspect_err(|e| tracing::error!("{e}"));
-                        }
+                            )
+                            .inspect_err(|e| tracing::error!("{e}"));
                     }
 
                     let _ = self.ipv4.arp.requests.remove(&addr);
@@ -225,7 +217,7 @@ impl IOContext {
         self.ipv4
             .arp
             .lookup(&dst)
-            .map(|e| (e.negated, e.mac, e.iface.unwrap()))
+            .and_then(|e| Some((e.negated, e.mac, e.iface?)))
             .or_else(|| {
                 let iface = self.ifaces.get(&preferred_iface)?;
                 let looback = iface.flags.loopback && dst.is_loopback();
@@ -243,16 +235,16 @@ impl IOContext {
         &mut self,
         ifid: IfId,
         pkt: Ipv4Packet,
-        dst: Ipv4Addr,
+        next_hop: Ipv4Addr,
     ) -> io::Result<()> {
-        let active_lookup = self.ipv4.arp.active_lookup(&dst);
-        self.ipv4.arp.enqueue(pkt, dst, ifid);
+        let active_lookup = self.ipv4.arp.active_lookup(&next_hop);
+        self.ipv4.arp.enqueue(pkt, next_hop, ifid);
 
         if active_lookup {
             return Ok(());
         }
 
-        self.arp_send_request(ifid, dst)
+        self.arp_send_request(ifid, next_hop)
     }
 
     pub fn arp_send_request(&mut self, ifid: IfId, dst: Ipv4Addr) -> io::Result<()> {

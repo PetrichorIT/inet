@@ -82,10 +82,14 @@ impl ArpTable {
         self.requests.remove(&ip).map(|msgs| (ip, msgs.buffer))
     }
 
-    pub fn enqueue(&mut self, ip: Ipv4Packet, dst: Ipv4Addr, ifid: IfId) {
+    pub fn enqueue(&mut self, packet: Ipv4Packet, next_hop: Ipv4Addr, ifid: IfId) {
+        assert!(
+            !packet.src.is_unspecified(),
+            "cannot perform arp operations without src addr"
+        );
         self.tick();
         self.requests
-            .entry(dst)
+            .entry(next_hop)
             .or_insert(ActiveRequest {
                 deadline: SimTime::now() + self.config.timeout,
                 buffer: Vec::with_capacity(4),
@@ -93,7 +97,7 @@ impl ArpTable {
                 iface: ifid,
             })
             .buffer
-            .push(ip);
+            .push(packet);
     }
 
     pub fn active_lookup(&mut self, ip: &Ipv4Addr) -> bool {

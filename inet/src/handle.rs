@@ -1,10 +1,10 @@
 use std::{
     fmt::Debug,
-    io::{Error, Result},
+    io::Result,
     sync::{Arc, LazyLock, Mutex, Weak},
 };
 
-use des::prelude::{current, try_current};
+use des::prelude::current;
 
 use crate::ctx::IOContext;
 
@@ -54,9 +54,9 @@ impl IOHandle {
     #[track_caller]
     pub(super) fn do_failable<T>(&self, f: impl FnOnce(&mut IOContext) -> Result<T>) -> Result<T> {
         let mut ctx = self.0.lock().expect("failed to get inner io context");
-        if try_current().is_some_and(|m| m.id() != ctx.id) {
-            return Err(Error::other("Drop chain"));
-        }
+        // if try_current().is_some_and(|m| m.id() != ctx.id) {
+        //     return Err(Error::other("module is not currently active"));
+        // }
         f(&mut ctx)
     }
 }

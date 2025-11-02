@@ -1,11 +1,12 @@
 use std::{
     io::{self, Error, ErrorKind},
     net::Ipv4Addr,
+    time::Duration,
 };
 
 use arp::ArpTable;
-use des::prelude::Message;
-use icmp::Icmp;
+use des::prelude::{Message, schedule_in};
+use fxhash::FxHashMap;
 use router::{FwdV4, Ipv4Gateway};
 use types::{
     icmpv4::PROTO_ICMPV4,
@@ -18,18 +19,22 @@ use crate::{
     ctx::NetworkLayerResult,
     interface::{IfId, IfSpec},
     ioctx,
+    ipv4::socket::RawV4SocketHandle,
+    socket::Fd,
 };
 
 pub mod arp;
 pub mod icmp;
 pub mod router;
+pub mod socket;
+pub mod util;
 
 #[derive(Debug, Default)]
 pub(super) struct Ipv4 {
     pub arp: ArpTable,
-    pub icmp: Icmp,
     pub fwd: FwdV4,
     pub cfg: HostConfiguration,
+    pub sockets: FxHashMap<Fd, RawV4SocketHandle>,
 }
 
 #[derive(Debug, Default)]
@@ -90,6 +95,17 @@ impl IOContext {
             return NetworkLayerResult::Consumed();
         }
 
+        // Recv raw sockets
+        for socket in self
+            .ipv4
+            .sockets
+            .values_mut()
+            .filter(|sock| sock.proto == pkt.proto)
+        {
+            println!("-> fwd to raw socket {}", pkt.proto);
+            socket.recv(ifid, pkt.clone());
+        }
+
         match pkt.proto {
             PROTO_ICMPV4 => {
                 let _consumed = self.ipv4_icmp_recv(&pkt, ifid);
@@ -137,15 +153,46 @@ impl IOContext {
         Ok(subnet)
     }
 
-    pub fn ipv4_send(&mut self, ifspec: IfSpec, pkt: Ipv4Packet) -> io::Result<()> {
-        // (0) Routing table destintation lookup
+    pub fn ipv4_send(&mut self, ifspec: IfSpec, mut pkt: Ipv4Packet) -> io::Result<()> {
+        // tracing::info!("ipv4_send({}->{} on <{:?}>)", pkt.src, pkt.dst, ifspec);
 
+        // (0) Routing table destintation lookup
         let Some((route, rifid)) = self.ipv4.fwd.lookup(pkt.dst) else {
             return Err(Error::new(
                 ErrorKind::ConnectionRefused,
                 "no gateway network reachable",
             ));
         };
+
+        // Set src addr
+        if !matches!(route, Ipv4Gateway::Broadcast) && pkt.src.is_unspecified() {
+            let iface = self.ifaces.get(&rifid.id()).expect("illegal state");
+            pkt.src = iface.ipv4_subnet().expect("illegal state").0;
+            // tracing::info!("-> set pkt.src = {}", pkt.src);
+        }
+
+        // Self-Send
+        if pkt.src == pkt.dst {
+            // tracing::info!("-> self-send");
+            let loopback = self.ifaces.values_mut().find(|iface| iface.flags.loopback);
+            if let Some(loopback) = loopback {
+                loopback
+                    .send_buffered(Message::default().with_kind(KIND_IPV4).with_content(pkt))?;
+            } else {
+                // FIXME: dangerous since this execut4e directly
+                let iface = self.ifaces.get(&rifid.id()).unwrap();
+                schedule_in(
+                    Message::default()
+                        .with_last_gate(iface.device.input().unwrap())
+                        .with_kind(KIND_IPV4)
+                        .with_src(iface.device.addr.into())
+                        .with_dst(iface.device.addr.into())
+                        .with_content(pkt),
+                    Duration::ZERO,
+                );
+            }
+            return Ok(());
+        }
 
         match route {
             Ipv4Gateway::Local => self.ipv4_send_lan_local(rifid.id(), pkt.dst, pkt),
@@ -184,6 +231,8 @@ impl IOContext {
         next_hop: Ipv4Addr,
         pkt: Ipv4Packet,
     ) -> io::Result<()> {
+        assert!(!pkt.src.is_unspecified());
+
         let Some((negated, mac, ifid)) = self.arp_lookup(next_hop, ifid) else {
             self.arp_missing_addr_mapping(ifid, pkt, next_hop)?;
             return Ok(());
@@ -209,7 +258,6 @@ impl IOContext {
             pkt.src = iface.ipv4_subnet().unwrap().0;
         }
 
-        tracing::info!("LL {pkt:?}");
         let msg = Message::default()
             .with_kind(KIND_IPV4)
             .with_src(iface.device.addr.into())

@@ -14,7 +14,7 @@ use crate::{UdpSocket, test_util::SimpleSim};
 #[serial]
 fn recv_truncates_packets() -> Result<(), RuntimeError> {
     let mut sim = SimpleSim::default();
-    sim.node_require_join("192.168.2.100", || async move {
+    sim.node_require_join("receiver", || async move {
         let sock = UdpSocket::bind("0.0.0.0:100").await?;
         let mut buf = [0u8; 100];
 
@@ -36,7 +36,7 @@ fn recv_truncates_packets() -> Result<(), RuntimeError> {
     sim.node_require_join("sender", || async move {
         UdpSocket::bind("0.0.0.0:201")
             .await?
-            .send_to(&[2; 200], "192.168.2.100:100")
+            .send_to(&[2; 200], "receiver:100")
             .await?;
         Ok(())
     });
@@ -48,9 +48,9 @@ fn recv_truncates_packets() -> Result<(), RuntimeError> {
 #[serial]
 fn recv_from_ignores_other_packets() -> Result<(), RuntimeError> {
     let mut sim = SimpleSim::default();
-    sim.node_require_join("192.168.2.100", || async move {
+    sim.node_require_join("receiver", || async move {
         let sock = UdpSocket::bind("0.0.0.0:100").await?;
-        sock.connect("192.168.2.101:100").await?;
+        sock.connect("sender-a:100").await?;
         let mut buf = [0u8; 100];
 
         let n = sock.recv(&mut buf).await?;
@@ -66,18 +66,18 @@ fn recv_from_ignores_other_packets() -> Result<(), RuntimeError> {
         Ok(())
     });
 
-    sim.node_require_join("192.168.2.101", || async move {
+    sim.node_require_join("sender-a", || async move {
         UdpSocket::bind("0.0.0.0:100")
             .await?
-            .send_to(&[2; 200], "192.168.2.100:100")
+            .send_to(&[2; 200], "receiver:100")
             .await?;
         Ok(())
     });
 
-    sim.node_require_join("other", || async move {
+    sim.node_require_join("sender-b", || async move {
         UdpSocket::bind("0.0.0.0:201")
             .await?
-            .send_to(&[5; 200], "192.168.2.100:100")
+            .send_to(&[5; 200], "receiver:100")
             .await?;
         Ok(())
     });

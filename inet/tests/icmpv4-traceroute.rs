@@ -12,9 +12,9 @@ use inet::{
     ioctx,
     ipv4::{
         HostConfiguration,
-        icmp::{Trace, traceroute},
         router::{self, set_default_gateway},
         set_host_config,
+        util::traceroute::{Trace, traceroute},
     },
 };
 use serial_test::serial;
@@ -126,7 +126,7 @@ dst-router.lan: 100.6.6.0/24
 #[test]
 #[serial]
 fn run() -> Result<(), RuntimeError> {
-    // des::tracing::init();
+    des::tracing::init();
 
     let mut sim = Sim::new(()).with_stack(inet::init);
     sim.include_cfg(CFG);

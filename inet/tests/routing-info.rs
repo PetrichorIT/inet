@@ -83,7 +83,7 @@ fn routing_info() {
         .max_time(100.0.into())
         .build(app.freeze());
     match rt.run() {
-        Ok((_, _, p)) if p.event_count == 0 => {}
+        Ok((_, _, p)) if p.event_count == 4 => {} // 4 signal event
         _ => panic!("unexpected runtime result"),
     }
 }

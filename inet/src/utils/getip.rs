@@ -2,7 +2,7 @@ use std::{io::Result, net::IpAddr};
 
 use types::iface::MacAddress;
 
-use crate::{IOContext, ioctx};
+use crate::{IOContext, IOHandle, ioctx};
 
 /// Returns the first MAC address of the current node.
 ///
@@ -28,10 +28,16 @@ pub fn get_ip() -> Option<IpAddr> {
 }
 
 pub fn getaddrinfo() -> Result<AddrInfo> {
-    ioctx().do_failable(|ctx| Ok(ctx.getaddrinfo()))
+    ioctx().getaddrinfo()
 }
 
 pub type AddrInfo = Vec<IpAddr>;
+
+impl IOHandle {
+    pub fn getaddrinfo(&self) -> Result<AddrInfo> {
+        self.do_failable(|ctx| Ok(ctx.getaddrinfo()))
+    }
+}
 
 impl IOContext {
     /// Returns ethernet mac address for a given IOContext

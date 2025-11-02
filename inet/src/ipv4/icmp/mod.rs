@@ -8,14 +8,12 @@
 //!
 //! This module provides some ICMP associated
 //! utility function for network debugging.
-use fxhash::FxHashMap;
 use std::{
     io::{self, Error, ErrorKind},
     net::{IpAddr, Ipv4Addr},
 };
 
 use bytes_io::{FromBytes, ToBytes};
-use des::time::SimTime;
 use types::{
     icmpv4::{
         IcmpV4DestinationUnreachableCode, IcmpV4Packet, IcmpV4TimeExceededCode, IcmpV4Type,
@@ -31,18 +29,6 @@ use crate::{
     interface::{IfId, IfSpec},
     socket::{SocketDomain, SocketType},
 };
-
-mod ping;
-pub use self::ping::*;
-
-mod traceroute;
-pub use self::traceroute::*;
-
-#[derive(Debug, Default)]
-pub(crate) struct Icmp {
-    pub pings: FxHashMap<u16, PingCB>,
-    pub traceroutes: FxHashMap<Ipv4Addr, TracerouteCB>,
-}
 
 impl IOContext {
     pub fn ipv4_icmp_recv(&mut self, ip_icmp: &Ipv4Packet, ifid: IfId) -> bool {
@@ -78,6 +64,7 @@ impl IOContext {
                     Error::new(ErrorKind::ConnectionRefused, pkt.typ.as_error_string()),
                     IpPacket::V4(contained.clone()),
                 ),
+                (SOCK_RAW, _) => self.ipv4_raw_socket_on_icmp(ifid, fd, &pkt, &contained),
                 _ => {}
             }
         }
@@ -112,38 +99,13 @@ impl IOContext {
                 };
                 self.ipv4_send(Some(ifid), ip).expect("Failed to send");
             }
-            IcmpV4Type::EchoReply {
-                identifier,
-                sequence,
-            } => {
-                let Some(ping) = self.ipv4.icmp.pings.get_mut(&identifier) else {
-                    tracing::warn!("missguided icmp echo reply");
-                    return false;
-                };
-
-                assert_eq!(ping.addr, ip_icmp.src);
-
-                let more = ping.recv_echo_reply(identifier, sequence);
-                if more {
-                    ping.current_seq_no += 1;
-                    self.icmp_send_ping(ip_icmp.src, identifier, sequence + 1)
-                } else {
-                    self.ipv4.icmp.pings.remove(&identifier);
-                }
-            }
-            IcmpV4Type::DestinationUnreachable { next_hop_mtu, code } => {
-                self.ipv4_icmp_recv_destination_unreachable(next_hop_mtu, code, &contained);
+            IcmpV4Type::EchoReply { .. } => {}
+            IcmpV4Type::DestinationUnreachable { .. } => {
                 return true;
             }
             IcmpV4Type::TimeExceeded { code } => {
                 let ip = pkt.contained().unwrap();
                 let unreachable = ip.dst;
-
-                if let Some(trace) = self.ipv4.icmp.traceroutes.get_mut(&unreachable) {
-                    let dur = SimTime::now() - trace.last_send;
-                    let _ = trace.recent_err.replace((ip_icmp.src, dur));
-                    // Contimue to let UDP socket handlers forward the error
-                }
 
                 // (0) Check sockets
                 if let Some((fd, socket)) = self
@@ -175,34 +137,6 @@ impl IOContext {
         }
 
         true
-    }
-
-    pub fn ipv4_icmp_recv_destination_unreachable(
-        &mut self,
-        next_hop_mtu: u16,
-        code: IcmpV4DestinationUnreachableCode,
-        contained: &Ipv4Packet,
-    ) {
-        let unreachable = contained.dst;
-        if let Some((ident, ping)) = self
-            .ipv4
-            .icmp
-            .pings
-            .iter_mut()
-            .find(|p| p.1.addr == unreachable)
-        {
-            ping.publish.take().map(|s| {
-                s.send(Err(Error::new(
-                    ErrorKind::ConnectionRefused,
-                    format!("{code:?}"),
-                )))
-            });
-
-            let ident = *ident;
-            self.ipv4.icmp.pings.remove(&ident);
-            return;
-        };
-        let _ = next_hop_mtu;
     }
 
     pub fn ipv4_icmp_routing_failed(&mut self, e: Error, pkt: &Ipv4Packet) {

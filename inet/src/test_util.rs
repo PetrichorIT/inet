@@ -7,7 +7,7 @@ use std::{
 
 use des::{
     net::{Sim, SimBuilder, handlers::AsyncHandler, processing::ProcessingStack},
-    prelude::{ChannelDropBehaviour, DatarateChannel, DatarateChannelMetrics, Message},
+    prelude::{ChannelDropBehaviour, DatarateChannel, DatarateChannelMetrics, Message, current},
     runtime::{Builder, RuntimeError},
 };
 use tokio::sync::mpsc::Receiver;
@@ -115,6 +115,7 @@ impl SimpleSim {
                 async move {
                     ioctx()
                         .add_interface(InterfaceDef::new("en0", NetworkDevice::eth()).ip(addr))?;
+                    current().wait_for_start().await;
                     f.await
                 }
             }),
@@ -142,6 +143,7 @@ impl SimpleSim {
                 async move {
                     ioctx()
                         .add_interface(InterfaceDef::new("en0", NetworkDevice::eth()).ip(addr))?;
+                    current().wait_for_start().await;
                     f.await
                 }
             })
@@ -174,7 +176,7 @@ impl SimpleSim {
 
 impl Default for SimpleSim {
     fn default() -> Self {
-        Self::new(crate::init)
+        Self::new(crate::stack(crate::dns::sim_internal_dns_resolve))
     }
 }
 
