@@ -146,9 +146,14 @@ impl RawV6Socket {
     }
 
     pub async fn send(&mut self, buf: &[u8]) -> io::Result<usize> {
+        let peer = self.peer_addr()?;
+        self.send_to(buf, as_ipv6(peer.ip())).await
+    }
+
+    pub async fn send_to(&mut self, buf: &[u8], dst: Ipv6Addr) -> io::Result<usize> {
         loop {
             self.writeable().await?;
-            match self.try_send(buf) {
+            match self.try_send_to(buf, dst) {
                 Ok(n) => return Ok(n),
                 Err(e) if e.kind() == ErrorKind::WouldBlock => continue,
                 Err(e) => return Err(e),
@@ -158,6 +163,10 @@ impl RawV6Socket {
 
     pub fn try_send(&mut self, buf: &[u8]) -> io::Result<usize> {
         let peer = self.peer_addr()?;
+        self.try_send_to(buf, as_ipv6(peer.ip()))
+    }
+
+    pub fn try_send_to(&mut self, buf: &[u8], dst: Ipv6Addr) -> io::Result<usize> {
         let pkt = Ipv6Packet {
             traffic_class: 0,
             flow_label: 0,
@@ -169,10 +178,9 @@ impl RawV6Socket {
                     .map(|v| v.ip())
                     .unwrap_or(Ipv6Addr::UNSPECIFIED.into()),
             ),
-            dst: as_ipv6(peer.ip()),
+            dst,
             content: Bytes::copy_from_slice(buf),
         };
-
         self.handle.do_failable(|ctx| ctx.ipv6_send(pkt, None))?;
         Ok(buf.len())
     }

@@ -1,34 +1,32 @@
-use bytes_io::Bytes;
 use des::{net::globals, prelude::*, registry, time::sleep};
 use inet::{
     interface::{InterfaceDef, NetworkDevice},
     ioctx,
-    ipv4::arp::arpa,
-    socket::RawIpSocket,
+    ipv4::{arp::arpa, socket::RawV4Socket},
 };
 use serial_test::serial;
 use tokio::spawn;
-use types::ip::{IpPacket, Ipv4Packet, Ipv6Packet};
+use types::ip::Ipv4Packet;
 
 type Switch = inet::utils::LinkLayerSwitch;
 
 struct Node {
-    ip: IpAddr,
+    ip: Ipv4Addr,
 }
 
 impl Default for Node {
     fn default() -> Self {
         Self {
-            ip: IpAddr::V4(Ipv4Addr::UNSPECIFIED),
+            ip: Ipv4Addr::UNSPECIFIED,
         }
     }
 }
 
 impl Module for Node {
     fn at_sim_start(&mut self, _stage: usize) {
-        let ip = current().prop::<IpAddr>("addr").unwrap().get().unwrap();
+        let ip = current().prop::<Ipv4Addr>("addr").unwrap().get().unwrap();
         ioctx()
-            .add_interface(InterfaceDef::new("en0", NetworkDevice::eth()).ip(ip))
+            .add_interface(InterfaceDef::new("en0", NetworkDevice::eth()).ipv4(ip))
             .unwrap();
 
         self.ip = ip;
@@ -38,7 +36,7 @@ impl Module for Node {
             let ip = globals()
                 .get(&format!("node[{i}]").into())
                 .unwrap()
-                .prop::<IpAddr>("addr")
+                .prop::<Ipv4Addr>("addr")
                 .unwrap()
                 .get()
                 .unwrap();
@@ -46,11 +44,7 @@ impl Module for Node {
         }
 
         spawn(async move {
-            let sock = if ip.is_ipv4() {
-                RawIpSocket::new_v4().unwrap()
-            } else {
-                RawIpSocket::new_v6().unwrap()
-            };
+            let mut sock = RawV4Socket::new(0).unwrap();
 
             let mut index = random::<u64>() as usize % 5;
             loop {
@@ -63,8 +57,8 @@ impl Module for Node {
                 }
 
                 tracing::info!("sending packet to {}", target);
-                sock.try_send(IpPacket::new(ip, target, Bytes::from_static(&[42, 42])))
-                    .unwrap();
+                sock.bind((ip, 0)).await.unwrap();
+                sock.try_send_to(&[42, 42], target).unwrap();
             }
         });
     }
@@ -72,12 +66,6 @@ impl Module for Node {
     fn handle_message(&mut self, msg: Message) {
         if msg.body.is::<Ipv4Packet>() {
             let msg = msg.body.content::<Ipv4Packet>();
-            assert_eq!(msg.dst, self.ip);
-            tracing::info!("received message from {}", msg.src);
-        }
-
-        if msg.body.is::<Ipv6Packet>() {
-            let msg = msg.body.content::<Ipv6Packet>();
             assert_eq!(msg.dst, self.ip);
             tracing::info!("received message from {}", msg.src);
         }

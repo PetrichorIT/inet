@@ -8,19 +8,14 @@ use std::{
     },
 };
 
-use bytes_io::Bytes;
 use des::{net::handlers::AsyncHandler, prelude::*, time::sleep};
 use inet::{
     interface::*,
-    ipv6::{api::set_node_cfg, cfg::HostConfiguration},
-    socket::RawIpSocket,
+    ipv6::{api::set_node_cfg, cfg::HostConfiguration, socket::RawV6Socket},
     *,
 };
 use serial_test::serial;
-use types::{
-    ip::{IpPacket, Ipv6AddrExt, Ipv6Packet},
-    udp::PROTO_UDP,
-};
+use types::{ip::Ipv6AddrExt, udp::PROTO_UDP};
 
 #[derive(Default)]
 struct SocketBind {
@@ -420,17 +415,8 @@ fn interface_does_not_use_busy_channel() -> Result<(), RuntimeError> {
                 send(Message::default().with_id(i), "port").unwrap();
             }
 
-            let sock = RawIpSocket::new_v6()?;
-            sock.try_send(IpPacket::V6(Ipv6Packet {
-                traffic_class: 0,
-                flow_label: 0,
-                proto: 42,
-                hop_limit: 32,
-                extension_headers: Vec::new(),
-                src: Ipv6Addr::UNSPECIFIED,
-                dst: Ipv6Addr::MULTICAST_ALL_NODES,
-                content: Bytes::new(),
-            }))?;
+            let mut sock = RawV6Socket::new(42)?;
+            sock.try_send_to(&[], Ipv6Addr::MULTICAST_ALL_NODES)?;
 
             for i in 0..32 {
                 send(Message::default().with_id(32 + i), "port").unwrap();
@@ -451,19 +437,19 @@ fn interface_does_not_use_busy_channel() -> Result<(), RuntimeError> {
             ioctx().add_interface(InterfaceDef::new("en0", NetworkDevice::eth()).v6())?;
 
             let mut count = 0;
-            let mut sock = RawIpSocket::new_v6()?;
-            sock.bind_proto(42)?;
+            let mut sock = RawV6Socket::new(42)?;
             loop {
                 tokio::select! {
                     frame = sock.recv() => {
-                        let (_, pkt) = frame.unwrap();
-                        if pkt.proto() != 58 {
+                        let pkt = frame.unwrap();
+                        if pkt.proto != 58 {
                             assert_eq!(count, 64);
                             DONE.store(true, std::sync::atomic::Ordering::SeqCst);
                             break;
                         }
                     }
-                    _ = rx.recv() => {
+                    val = rx.recv() => {
+                        tracing::info!("> {:?}", val.unwrap().body);
                         count += 1;
                     }
                 };
@@ -512,18 +498,8 @@ fn interface_will_use_idle_channel_fcfs() -> Result<(), RuntimeError> {
             // Sleep to prevent MLD messags from blocking the sender
             des::time::sleep(Duration::from_secs(1)).await;
 
-            let sock = RawIpSocket::new_v6()?;
-            sock.try_send(IpPacket::V6(Ipv6Packet {
-                traffic_class: 0,
-                flow_label: 0,
-                proto: 42,
-                hop_limit: 32,
-                extension_headers: Vec::new(),
-                src: Ipv6Addr::UNSPECIFIED,
-                dst: Ipv6Addr::MULTICAST_ALL_NODES,
-                content: Bytes::new(),
-            }))?;
-
+            let mut sock = RawV6Socket::new(42)?;
+            sock.try_send_to(&[], Ipv6Addr::MULTICAST_ALL_NODES)?;
             for i in 0..32 {
                 send(Message::default().with_id(32 + i), "port").unwrap();
             }
@@ -543,15 +519,13 @@ fn interface_will_use_idle_channel_fcfs() -> Result<(), RuntimeError> {
             ioctx().add_interface(InterfaceDef::new("en0", NetworkDevice::eth()).v6())?;
 
             let mut count = 0;
-            let mut sock = RawIpSocket::new_v6()?;
-            sock.bind_proto(42)?;
+            let mut sock = RawV6Socket::new(42)?;
             loop {
                 tokio::select! {
                     frame = sock.recv() => {
-                        let (_, pkt) = frame.unwrap();
-                        if pkt.proto() != 58 {
+                        let pkt = frame.unwrap();
+                        if pkt.proto != 58 {
                             assert_eq!(count, 0);
-
                         }
                     }
                     _ = rx.recv() => {
@@ -627,17 +601,8 @@ fn eth_device_on_nodelay_link() -> Result<(), RuntimeError> {
                 .wait_for_link_local()
                 .await;
 
-            let v6 = RawIpSocket::new_v6()?;
-            v6.try_send(IpPacket::V6(Ipv6Packet {
-                traffic_class: 0,
-                flow_label: 0,
-                proto: PROTO_UDP,
-                src: "::".parse().unwrap(),
-                dst: "fe80::2".parse().unwrap(),
-                hop_limit: 64,
-                extension_headers: Vec::new(),
-                content: Bytes::from_static(b"12312312312"),
-            }))?;
+            let mut v6 = RawV6Socket::new(PROTO_UDP)?;
+            v6.try_send_to(b"12312312312", "fe80::2".parse().unwrap())?;
 
             Ok(())
         })

@@ -16,7 +16,7 @@ use crate::{
     ioctx,
     ipv4::Ipv4,
     ipv6::Ipv6,
-    socket::{Fd, SocketDomain, Sockets},
+    socket::{Fd, Sockets},
     tcp::Tcp,
 };
 
@@ -129,19 +129,9 @@ impl IOContext {
         let consumed = match pkt.proto() {
             PROTO_UDP => self.udp_on_packet(pkt.as_ref(), ifid),
             PROTO_TCP => self.tcp_on_packet(pkt.as_ref(), ifid),
-            proto => {
-                let domain = if pkt.is_v4() {
-                    SocketDomain::AF_INET
-                } else {
-                    SocketDomain::AF_INET6
-                };
-                if let Some(handle) = self.sockets.handlers.get(&(proto, domain)) {
-                    let _ = handle.1.try_send((ifid, pkt));
-                    return None;
-                }
-                tracing::error!("internal error: unreachable code :: proto = {proto}");
-
-                false
+            _ => {
+                // Transport layer packets that directed at valid addrs are allways consumed
+                true
             }
         };
 

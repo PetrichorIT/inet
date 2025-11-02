@@ -146,9 +146,14 @@ impl RawV4Socket {
     }
 
     pub async fn send(&mut self, buf: &[u8]) -> io::Result<usize> {
+        let peer = self.peer_addr()?;
+        self.send_to(buf, as_ipv4(peer.ip())).await
+    }
+
+    pub async fn send_to(&mut self, buf: &[u8], dst: Ipv4Addr) -> io::Result<usize> {
         loop {
             self.writeable().await?;
-            match self.try_send(buf) {
+            match self.try_send_to(buf, dst) {
                 Ok(n) => return Ok(n),
                 Err(e) if e.kind() == ErrorKind::WouldBlock => continue,
                 Err(e) => return Err(e),
@@ -158,26 +163,29 @@ impl RawV4Socket {
 
     pub fn try_send(&mut self, buf: &[u8]) -> io::Result<usize> {
         let peer = self.peer_addr()?;
+        self.try_send_to(buf, as_ipv4(peer.ip()))
+    }
+
+    pub fn try_send_to(&mut self, buf: &[u8], dst: Ipv4Addr) -> io::Result<usize> {
         let pkt = Ipv4Packet {
             identification: 0,
-            dscp: 0,
             enc: 0,
-            fragment_offset: 0,
+            dscp: 0,
+            proto: self.cfg.proto,
+            ttl: self.cfg.ttl,
             flags: Ipv4Flags {
                 df: false,
                 mf: false,
             },
-            proto: self.cfg.proto,
-            ttl: self.cfg.ttl,
+            fragment_offset: 0,
             src: as_ipv4(
                 self.local_addr()
                     .map(|v| v.ip())
                     .unwrap_or(Ipv4Addr::UNSPECIFIED.into()),
             ),
-            dst: as_ipv4(peer.ip()),
+            dst,
             content: Bytes::copy_from_slice(buf),
         };
-
         self.handle.do_failable(|ctx| ctx.ipv4_send(None, pkt))?;
         Ok(buf.len())
     }

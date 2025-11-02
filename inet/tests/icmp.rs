@@ -1,15 +1,13 @@
-use bytes_io::Bytes;
 use des::{net::handlers::AsyncHandler, prelude::*, time::sleep};
 use inet::{
     interface::{IfId, InterfaceDef, NetworkDevice},
     ioctx,
-    ipv6::router,
-    socket::RawIpSocket,
+    ipv6::{router, socket::RawV6Socket},
 };
 use serial_test::serial;
 use types::{
     iface::MacAddress,
-    ip::{IPV6_MINIMUM_MTU, IpPacket, Ipv6AddrExt, Ipv6Packet},
+    ip::{IPV6_MINIMUM_MTU, Ipv6AddrExt, Ipv6Packet},
     udp::PROTO_UDP,
 };
 
@@ -25,29 +23,11 @@ fn icmp_drop_packet_too_big() -> Result<(), RuntimeError> {
             ioctx().add_interface(InterfaceDef::ethv6_autocfg(NetworkDevice::eth()))?;
             sleep(Duration::from_secs(2)).await;
 
-            let raw = RawIpSocket::new_v6()?;
-            raw.try_send(IpPacket::V6(Ipv6Packet {
-                src: Ipv6Addr::UNSPECIFIED,
-                dst: "2003:b:1::abcd:1234".parse().unwrap(),
-                traffic_class: 0,
-                flow_label: 0,
-                proto: PROTO_UDP,
-                hop_limit: 64,
-                extension_headers: Vec::new(),
-                content: Bytes::from(vec![12; 800]),
-            }))?;
+            let mut raw = RawV6Socket::new(PROTO_UDP)?;
+            raw.try_send_to(&[12; 800], "2003:b:1::abcd:1234".parse().unwrap())?;
 
             sleep(Duration::from_secs(2)).await;
-            raw.try_send(IpPacket::V6(Ipv6Packet {
-                src: Ipv6Addr::UNSPECIFIED,
-                dst: "2003:b:1::abcd:1234".parse().unwrap(),
-                traffic_class: 0,
-                flow_label: 0,
-                proto: PROTO_UDP,
-                hop_limit: 64,
-                extension_headers: Vec::new(),
-                content: Bytes::from(vec![12; 1300]),
-            }))?;
+            raw.try_send_to(&[12; 1300], "2003:b:1::abcd:1234".parse().unwrap())?;
 
             Ok(())
         }),

@@ -1,4 +1,4 @@
-use std::{fs::File, net::Ipv6Addr, time::Duration};
+use std::{fs::File, io::Error, net::Ipv6Addr, time::Duration};
 
 use bytes_io::ToBytes;
 use des::{
@@ -11,14 +11,16 @@ use inet::{
     env::RoutingPort,
     interface::{InterfaceDef, NetworkDevice},
     ioctx,
-    ipv6::{util::ping::ping, util::setup_router},
-    socket::RawIpSocket,
+    ipv6::{
+        socket::RawV6Socket,
+        util::{ping::ping, setup_router},
+    },
     utils,
 };
 use inet_pcap::pcap;
 use types::{
-    icmpv6::{IcmpV6MulticastListenerMessage, IcmpV6Packet},
-    ip::{IpPacket, Ipv6AddrExt, Ipv6Packet},
+    icmpv6::{IcmpV6MulticastListenerMessage, IcmpV6Packet, PROTO_ICMPV6},
+    ip::Ipv6AddrExt,
 };
 
 #[derive(Default)]
@@ -73,35 +75,25 @@ impl Module for HostBob {
             .unwrap();
 
         tokio::spawn(async move {
-            let udp = UdpSocket::bind(":::4000").await.unwrap();
+            let udp = UdpSocket::bind(":::4000").await?;
             let mut buf = [0; 1024];
-            let (n, from) = udp.recv_from(&mut buf).await.unwrap();
+            let (n, from) = udp.recv_from(&mut buf).await?;
             tracing::info!(
                 "response {:?} from {from:?}",
                 String::from_utf8_lossy(&buf[..n]),
             );
-            udp.send_to(b"Hello back", from).await.unwrap();
+            udp.send_to(b"Hello back", from).await?;
 
-            let ipsock = RawIpSocket::new_v6().unwrap();
-            ipsock
-                .try_send(IpPacket::V6(Ipv6Packet {
-                    traffic_class: 0,
-                    flow_label: 0,
-                    proto: 58,
-                    hop_limit: 255,
-                    extension_headers: Vec::new(),
-                    src: Ipv6Addr::UNSPECIFIED,
-                    dst: Ipv6Addr::MULTICAST_ALL_NODES,
-                    content: {
-                        let msg =
-                            IcmpV6Packet::MulticastListenerQuery(IcmpV6MulticastListenerMessage {
-                                maximum_response_delay: Duration::from_secs(1),
-                                multicast_addr: Ipv6Addr::UNSPECIFIED,
-                            });
-                        msg.write_to_bytes().unwrap()
-                    },
-                }))
-                .unwrap();
+            let mut ipsock = RawV6Socket::new(PROTO_ICMPV6)?;
+            ipsock.connect((Ipv6Addr::MULTICAST_ALL_NODES, 0)).await?;
+            // Ipv6Addr::MULTICAST_ALL_NODES
+            let msg = IcmpV6Packet::MulticastListenerQuery(IcmpV6MulticastListenerMessage {
+                maximum_response_delay: Duration::from_secs(1),
+                multicast_addr: Ipv6Addr::UNSPECIFIED,
+            });
+            ipsock.try_send(&msg.write_to_bytes()?)?;
+
+            Ok::<_, Error>(())
         });
     }
 }

@@ -1,10 +1,7 @@
 //! Networking sockets - endpoint for communication.
 
-use fxhash::FxHashMap;
-use tokio::sync::mpsc::Sender;
-use types::ip::IpPacket;
-
 use crate::interface::{IfId, IfSpec};
+use fxhash::FxHashMap;
 
 use super::{IOContext, interface::InterfaceName};
 use std::{
@@ -24,9 +21,6 @@ pub use self::util::*;
 mod fd;
 pub use self::fd::*;
 
-mod raw;
-pub use self::raw::*;
-
 use SocketDomain::*;
 use SocketType::*;
 
@@ -35,10 +29,7 @@ pub(super) struct Sockets {
     pub next_fd: Fd,
     pub next_port: Cell<u16>,
     pub sockets: FxHashMap<Fd, Socket>,
-    pub handlers: FxHashMap<(u8, SocketDomain), SocketHandler>,
 }
-
-pub type SocketHandler = (Fd, Sender<(IfId, IpPacket)>);
 
 impl Default for Sockets {
     fn default() -> Sockets {
@@ -46,7 +37,6 @@ impl Default for Sockets {
             next_fd: 100,
             next_port: Cell::new(1024),
             sockets: FxHashMap::default(),
-            handlers: FxHashMap::default(),
         }
     }
 }
