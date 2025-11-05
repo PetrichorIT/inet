@@ -11,10 +11,9 @@ use types::{icmpv6::IcmpV6Packet, ip::Ipv6Packet};
 use crate::{
     IOHandle,
     ctx::IOContext,
-    dns::{ToSocketAddrs, lookup_host},
     interface::IfId,
     ioctx,
-    socket::{Fd, SocketDomain, SocketType},
+    socket::{AsRawFd, Fd, SocketDomain, SocketType},
 };
 
 #[cfg(test)]
@@ -51,6 +50,7 @@ pub struct WriteInterest {
 pub struct RawV6SocketHandle {
     pub(super) proto: u8,
     pub(super) all_icmp: bool,
+    local_addr: Ipv6Addr,
     tx: Sender<Envelope>,
     write_interests: Vec<Waker>,
 }
@@ -70,50 +70,35 @@ impl RawV6Socket {
         })
     }
 
-    pub async fn bind<A: ToSocketAddrs>(&self, addrs: A) -> io::Result<()> {
-        let addrs = lookup_host(addrs).await?;
-        let mut last_err = None;
-        for addr in addrs {
-            match self
-                .handle
-                .do_failable(|ctx| ctx.socket_bind(self.fd, addr))
-            {
-                Ok(_) => return Ok(()),
-                Err(err) => last_err = Some(err),
-            }
-        }
-
-        Err(last_err.unwrap_or_else(|| {
-            Error::new(ErrorKind::InvalidInput, "could not resolve to any address")
-        }))
+    pub fn bind(&self, addr: Ipv6Addr) -> io::Result<()> {
+        self.handle.do_failable(|ctx| {
+            ctx.socket_bind(self.fd, SocketAddr::new(addr.into(), 0))?;
+            ctx.ipv6
+                .sockets
+                .get_mut(&self.fd)
+                .expect("illegal state")
+                .local_addr = addr;
+            Ok(())
+        })
     }
 
-    pub async fn connect<A: ToSocketAddrs>(&self, addrs: A) -> io::Result<()> {
-        let addrs = lookup_host(addrs).await?;
-        let mut last_err = None;
-        for addr in addrs {
-            match self
-                .handle
-                .do_failable(|ctx| ctx.socket_set_peer(self.fd, addr))
-            {
-                Ok(_) => return Ok(()),
-                Err(err) => last_err = Some(err),
-            }
-        }
-
-        Err(last_err.unwrap_or_else(|| {
-            Error::new(ErrorKind::InvalidInput, "could not resolve to any address")
-        }))
+    pub fn connect(&self, addr: Ipv6Addr) -> io::Result<()> {
+        self.handle
+            .do_failable(|ctx| ctx.socket_set_peer(self.fd, SocketAddr::new(addr.into(), 0)))
     }
 
     /// Returns the local address that this socket is bound to.
-    pub fn local_addr(&self) -> io::Result<SocketAddr> {
-        self.handle.do_io(|ctx| ctx.socket_get_addr(self.fd))
+    pub fn local_addr(&self) -> io::Result<Ipv6Addr> {
+        self.handle
+            .do_io(|ctx| ctx.socket_get_addr(self.fd))
+            .map(|sock| as_ipv6(sock.ip()))
     }
 
     /// Returns the peer address that this socket is bound to.
-    pub fn peer_addr(&self) -> io::Result<SocketAddr> {
-        self.handle.do_io(|ctx| ctx.socket_get_peer(self.fd))
+    pub fn peer_addr(&self) -> io::Result<Ipv6Addr> {
+        self.handle
+            .do_io(|ctx| ctx.socket_get_peer(self.fd))
+            .map(|sock| as_ipv6(sock.ip()))
     }
 
     pub fn set_all_icmp(&mut self) -> io::Result<()> {
@@ -147,7 +132,7 @@ impl RawV6Socket {
 
     pub async fn send(&mut self, buf: &[u8]) -> io::Result<usize> {
         let peer = self.peer_addr()?;
-        self.send_to(buf, as_ipv6(peer.ip())).await
+        self.send_to(buf, peer).await
     }
 
     pub async fn send_to(&mut self, buf: &[u8], dst: Ipv6Addr) -> io::Result<usize> {
@@ -163,7 +148,7 @@ impl RawV6Socket {
 
     pub fn try_send(&mut self, buf: &[u8]) -> io::Result<usize> {
         let peer = self.peer_addr()?;
-        self.try_send_to(buf, as_ipv6(peer.ip()))
+        self.try_send_to(buf, peer)
     }
 
     pub fn try_send_to(&mut self, buf: &[u8], dst: Ipv6Addr) -> io::Result<usize> {
@@ -173,11 +158,7 @@ impl RawV6Socket {
             proto: self.cfg.proto,
             hop_limit: self.cfg.hop_limit,
             extension_headers: Vec::new(),
-            src: as_ipv6(
-                self.local_addr()
-                    .map(|v| v.ip())
-                    .unwrap_or(Ipv6Addr::UNSPECIFIED.into()),
-            ),
+            src: self.local_addr().unwrap_or(Ipv6Addr::UNSPECIFIED),
             dst,
             content: Bytes::copy_from_slice(buf),
         };
@@ -206,8 +187,15 @@ impl RawV6Socket {
     }
 }
 
+impl AsRawFd for RawV6Socket {
+    fn as_raw_fd(&self) -> Fd {
+        self.fd
+    }
+}
+
 impl Drop for RawV6Socket {
     fn drop(&mut self) {
+        println!("-> drop fd");
         self.handle.try_do_io(|ctx| {
             let _ = ctx.socket_close(self.fd);
             let _ = ctx.ipv6.sockets.remove(&self.fd);
@@ -239,6 +227,11 @@ impl Future for WriteInterest {
 
 impl RawV6SocketHandle {
     pub(super) fn recv(&mut self, ifid: IfId, pkt: Ipv6Packet) {
+        let is_valid = self.local_addr.is_unspecified() || self.local_addr == pkt.dst;
+        if !is_valid {
+            return;
+        }
+
         if let Err(err) = self.tx.try_send(Envelope {
             ifid,
             pkt_or_error: Ok(pkt),
@@ -305,6 +298,7 @@ impl IOContext {
                 all_icmp: false,
                 proto,
                 tx,
+                local_addr: Ipv6Addr::UNSPECIFIED,
                 write_interests: Vec::new(),
             },
         );

@@ -57,7 +57,7 @@ impl Module for Node {
                 }
 
                 tracing::info!("sending packet to {}", target);
-                sock.bind((ip, 0)).await.unwrap();
+                sock.bind(ip).unwrap();
                 sock.try_send_to(&[42, 42], target).unwrap();
             }
         });
@@ -81,6 +81,8 @@ impl Module for Node {
 #[test]
 #[serial]
 fn v4() -> Result<(), RuntimeError> {
+    // des::tracing::init();
+
     let app = Sim::new(())
         .with_stack(inet::init)
         .with_cfg(include_str!("arp/v4.par.yml"))

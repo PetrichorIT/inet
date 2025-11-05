@@ -85,7 +85,7 @@ impl Module for HostBob {
             udp.send_to(b"Hello back", from).await?;
 
             let mut ipsock = RawV6Socket::new(PROTO_ICMPV6)?;
-            ipsock.connect((Ipv6Addr::MULTICAST_ALL_NODES, 0)).await?;
+            ipsock.connect(Ipv6Addr::MULTICAST_ALL_NODES)?;
             // Ipv6Addr::MULTICAST_ALL_NODES
             let msg = IcmpV6Packet::MulticastListenerQuery(IcmpV6MulticastListenerMessage {
                 maximum_response_delay: Duration::from_secs(1),

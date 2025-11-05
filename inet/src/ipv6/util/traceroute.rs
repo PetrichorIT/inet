@@ -56,7 +56,7 @@ pub async fn traceroute(target: Ipv6Addr) -> io::Result<Traceroute> {
         'repeater: for i in 0..N {
             let cur_port = port.wrapping_add(i);
             udp_socket.connect((target, cur_port)).await?;
-            icmp_socket.connect((target, cur_port)).await?;
+            icmp_socket.connect(target)?;
 
             let pkt = UdpPacket::new(local_addr.port(), port, Bytes::from_static(&[0; 12]));
             tracing::info!("send distance={distance} round={i} to {target}");

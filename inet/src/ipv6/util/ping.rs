@@ -4,7 +4,7 @@ use bytes_io::{Bytes, FromBytes, ToBytes};
 use des::time::{SimTime, sleep_until};
 use types::icmpv6::{IcmpV6Echo, IcmpV6Packet, PROTO_ICMPV6};
 
-use crate::ipv6::socket::RawV6Socket;
+use crate::{ipv6::socket::RawV6Socket, socket::AsRawFd};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Ping {
@@ -31,15 +31,15 @@ pub async fn ping(addr: Ipv6Addr) -> io::Result<Ping> {
 
 pub async fn ping_with(addr: Ipv6Addr, n: usize) -> io::Result<Ping> {
     let mut sock = RawV6Socket::new(PROTO_ICMPV6)?;
-    sock.bind("[::]:0").await?;
-    sock.connect((addr, 0)).await?;
+    sock.bind(Ipv6Addr::UNSPECIFIED)?;
+    sock.connect(addr)?;
 
-    let local_addr = sock.local_addr()?;
+    let my_identifier = sock.as_raw_fd() as u16;
     let mut results = Vec::new();
 
     'outer: for i in 0..n {
         let echo = IcmpV6Echo {
-            identifier: local_addr.port(),
+            identifier: my_identifier,
             sequence_no: i as u16,
             data: random_bytes(52),
         };

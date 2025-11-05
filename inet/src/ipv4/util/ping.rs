@@ -12,7 +12,7 @@ use types::{
     ip::{Ipv4Flags, Ipv4Packet},
 };
 
-use crate::ipv4::socket::RawV4Socket;
+use crate::{ipv4::socket::RawV4Socket, socket::AsRawFd};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Ping {
@@ -39,15 +39,15 @@ pub async fn ping(addr: Ipv4Addr) -> io::Result<Ping> {
 
 pub async fn ping_with(addr: Ipv4Addr, n: usize) -> io::Result<Ping> {
     let mut sock = RawV4Socket::new(PROTO_ICMPV4)?;
-    sock.bind("0.0.0.0:0").await?;
-    sock.connect((addr, 0)).await?;
+    sock.bind(Ipv4Addr::UNSPECIFIED)?;
+    sock.connect(addr)?;
 
-    let local_addr = sock.local_addr()?;
     let mut results = Vec::new();
+    let my_identifier = sock.as_raw_fd() as u16;
 
     'outer: for i in 0..n {
         let echo = IcmpV4Type::EchoRequest {
-            identifier: local_addr.port(),
+            identifier: my_identifier,
             sequence: i as u16,
         };
         let echo_pkt = IcmpV4Packet::new(
@@ -90,7 +90,7 @@ pub async fn ping_with(addr: Ipv4Addr, n: usize) -> io::Result<Ping> {
                     identifier,
                     sequence,
                 } => {
-                    let is_valid = identifier == local_addr.port() && sequence == i as u16;
+                    let is_valid = identifier == my_identifier && sequence == i as u16;
                     if !is_valid {
                         continue;
                     }

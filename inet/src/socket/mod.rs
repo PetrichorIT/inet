@@ -180,7 +180,10 @@ impl IOContext {
                     }
                 }
             }
-            SocketIfaceBinding::NotBound => Err(Error::new(ErrorKind::InvalidInput, "not bound")),
+            SocketIfaceBinding::NotBound => Err(Error::new(
+                ErrorKind::NotFound,
+                "not bound cannot determine send iface",
+            )),
         }
     }
 
@@ -297,6 +300,14 @@ impl IOContext {
             ));
         }
 
+        if socket.typ == SOCK_RAW {
+            assert_eq!(addr.port(), 0, "no ports allowed in raw ip sockets");
+            let socket = self.sockets.get_mut(fd)?;
+            socket.addr = SocketAddr::new(addr.ip(), 0);
+            socket.interface = SocketIfaceBinding::Any(valid_ifaces);
+            return Ok(socket.addr);
+        }
+
         let mut port = addr.port();
         if port == 0 {
             port = self.sockets.next_port.get();
@@ -316,7 +327,7 @@ impl IOContext {
             return Err(Error::new(ErrorKind::AddrInUse, "port already in use"));
         }
 
-        let socket = self.sockets.get_mut(fd).expect("unreachable");
+        let socket = self.sockets.get_mut(fd)?;
         socket.addr = SocketAddr::new(addr.ip(), port);
         socket.interface = SocketIfaceBinding::Any(valid_ifaces);
 
@@ -333,10 +344,13 @@ impl IOContext {
     fn socket_bind_specified(&mut self, fd: Fd, addr: SocketAddr) -> Result<SocketAddr> {
         let socket = self.sockets.get(fd)?;
 
-        if self
-            .sockets
-            .values()
-            .any(|other| other.addr == addr && other.typ == socket.typ && other.peer == socket.peer)
+        if self.sockets.values().any(|other| {
+            other.addr == addr
+                && other.typ == socket.typ
+                && other.peer == socket.peer
+                && other.protocol == socket.protocol
+        }) && socket.typ != SocketType::SOCK_RAW
+        // ^ ignore raw socket collisions
         {
             return Err(Error::new(ErrorKind::AddrInUse, "address already in use"));
         }
@@ -349,6 +363,14 @@ impl IOContext {
         {
             if !interface.flags.up {
                 continue;
+            }
+
+            if socket.typ == SOCK_RAW {
+                assert_eq!(addr.port(), 0, "no ports allowed in raw ip sockets");
+                let socket = self.sockets.get_mut(fd)?;
+                socket.addr = SocketAddr::new(addr.ip(), 0);
+                socket.interface = SocketIfaceBinding::Bound(interface.id());
+                return Ok(socket.addr);
             }
 
             let next = addr.ip();

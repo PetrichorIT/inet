@@ -38,6 +38,8 @@ pub enum NetstatConnectionProto {
     Tcp6,
     Udp4,
     Udp6,
+    Raw4,
+    Raw6,
 }
 
 impl NetstatConnectionProto {
@@ -48,6 +50,8 @@ impl NetstatConnectionProto {
             (AF_INET6, SOCK_DGRAM) => Self::Udp6,
             (AF_INET, SOCK_STREAM) => Self::Tcp4,
             (AF_INET6, SOCK_STREAM) => Self::Tcp6,
+            (AF_INET, SOCK_RAW) => Self::Raw4,
+            (AF_INET6, SOCK_RAW) => Self::Raw6,
             _ => unreachable!(),
         }
     }
@@ -84,7 +88,7 @@ impl IOContext {
                         local_addr: socket.addr,
                         foreign_addr: socket.peer,
                         state: None,
-                    })
+                    });
                 }
                 (AF_INET, SOCK_STREAM) | (AF_INET6, SOCK_STREAM) => {
                     let Some(mng) = self.tcp.streams.get(fd) else {
@@ -97,7 +101,17 @@ impl IOContext {
                         local_addr: socket.addr,
                         foreign_addr: socket.peer,
                         state: Some(format!("{:?}", mng.state)),
-                    })
+                    });
+                }
+                (AF_INET, SOCK_RAW) | (AF_INET6, SOCK_RAW) => {
+                    active_connections.push(NetstatConnection {
+                        proto,
+                        recv_q: socket.recv_q.get(),
+                        send_q: socket.send_q.get(),
+                        local_addr: socket.addr,
+                        foreign_addr: socket.peer,
+                        state: None,
+                    });
                 }
                 _ => unreachable!(),
             }

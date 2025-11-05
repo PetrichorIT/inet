@@ -14,10 +14,9 @@ use types::{
 use crate::{
     IOHandle,
     ctx::IOContext,
-    dns::{ToSocketAddrs, lookup_host},
     interface::IfId,
     ioctx,
-    socket::{Fd, SocketDomain, SocketType},
+    socket::{AsRawFd, Fd, SocketDomain, SocketType},
 };
 
 #[cfg(test)]
@@ -70,50 +69,29 @@ impl RawV4Socket {
         })
     }
 
-    pub async fn bind<A: ToSocketAddrs>(&self, addrs: A) -> io::Result<()> {
-        let addrs = lookup_host(addrs).await?;
-        let mut last_err = None;
-        for addr in addrs {
-            match self
-                .handle
-                .do_failable(|ctx| ctx.socket_bind(self.fd, addr))
-            {
-                Ok(_) => return Ok(()),
-                Err(err) => last_err = Some(err),
-            }
-        }
-
-        Err(last_err.unwrap_or_else(|| {
-            Error::new(ErrorKind::InvalidInput, "could not resolve to any address")
-        }))
+    pub fn bind(&self, addr: Ipv4Addr) -> io::Result<()> {
+        self.handle
+            .do_failable(|ctx| ctx.socket_bind(self.fd, SocketAddr::new(addr.into(), 0)))?;
+        Ok(())
     }
 
-    pub async fn connect<A: ToSocketAddrs>(&self, addrs: A) -> io::Result<()> {
-        let addrs = lookup_host(addrs).await?;
-        let mut last_err = None;
-        for addr in addrs {
-            match self
-                .handle
-                .do_failable(|ctx| ctx.socket_set_peer(self.fd, addr))
-            {
-                Ok(_) => return Ok(()),
-                Err(err) => last_err = Some(err),
-            }
-        }
-
-        Err(last_err.unwrap_or_else(|| {
-            Error::new(ErrorKind::InvalidInput, "could not resolve to any address")
-        }))
+    pub fn connect(&self, addr: Ipv4Addr) -> io::Result<()> {
+        self.handle
+            .do_failable(|ctx| ctx.socket_set_peer(self.fd, SocketAddr::new(addr.into(), 0)))
     }
 
     /// Returns the local address that this socket is bound to.
-    pub fn local_addr(&self) -> io::Result<SocketAddr> {
-        self.handle.do_io(|ctx| ctx.socket_get_addr(self.fd))
+    pub fn local_addr(&self) -> io::Result<Ipv4Addr> {
+        self.handle
+            .do_io(|ctx| ctx.socket_get_addr(self.fd))
+            .map(|sock| as_ipv4(sock.ip()))
     }
 
     /// Returns the peer address that this socket is bound to.
-    pub fn peer_addr(&self) -> io::Result<SocketAddr> {
-        self.handle.do_io(|ctx| ctx.socket_get_peer(self.fd))
+    pub fn peer_addr(&self) -> io::Result<Ipv4Addr> {
+        self.handle
+            .do_io(|ctx| ctx.socket_get_peer(self.fd))
+            .map(|sock| as_ipv4(sock.ip()))
     }
 
     pub fn set_all_icmp(&mut self) -> io::Result<()> {
@@ -147,7 +125,7 @@ impl RawV4Socket {
 
     pub async fn send(&mut self, buf: &[u8]) -> io::Result<usize> {
         let peer = self.peer_addr()?;
-        self.send_to(buf, as_ipv4(peer.ip())).await
+        self.send_to(buf, peer).await
     }
 
     pub async fn send_to(&mut self, buf: &[u8], dst: Ipv4Addr) -> io::Result<usize> {
@@ -163,7 +141,7 @@ impl RawV4Socket {
 
     pub fn try_send(&mut self, buf: &[u8]) -> io::Result<usize> {
         let peer = self.peer_addr()?;
-        self.try_send_to(buf, as_ipv4(peer.ip()))
+        self.try_send_to(buf, peer)
     }
 
     pub fn try_send_to(&mut self, buf: &[u8], dst: Ipv4Addr) -> io::Result<usize> {
@@ -178,11 +156,7 @@ impl RawV4Socket {
                 mf: false,
             },
             fragment_offset: 0,
-            src: as_ipv4(
-                self.local_addr()
-                    .map(|v| v.ip())
-                    .unwrap_or(Ipv4Addr::UNSPECIFIED.into()),
-            ),
+            src: self.local_addr().unwrap_or(Ipv4Addr::UNSPECIFIED),
             dst,
             content: Bytes::copy_from_slice(buf),
         };
@@ -215,7 +189,7 @@ impl Drop for RawV4Socket {
     fn drop(&mut self) {
         self.handle.try_do_io(|ctx| {
             let _ = ctx.socket_close(self.fd);
-            let _ = ctx.ipv6.sockets.remove(&self.fd);
+            let _ = ctx.ipv4.sockets.remove(&self.fd);
         });
     }
 }
@@ -239,6 +213,12 @@ impl Future for WriteInterest {
                 Poll::Ready(Ok(()))
             }
         })
+    }
+}
+
+impl AsRawFd for RawV4Socket {
+    fn as_raw_fd(&self) -> Fd {
+        self.fd
     }
 }
 

@@ -95,7 +95,7 @@ fn icmpv6_ping_success() -> Result<(), RuntimeError> {
 #[test]
 #[serial]
 fn icmpv6_ping_failure() -> Result<(), RuntimeError> {
-    des::tracing::init();
+    // des::tracing::init();
 
     let mut sim = SimpleSim::default();
     sim.raw("alice", alice_failure);

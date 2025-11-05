@@ -1,6 +1,6 @@
 use std::{any::Any, fmt::Debug, time::Duration};
 
-use des::prelude::{ChannelRef, GateRef, Header, Message, schedule_in, send};
+use des::prelude::{ChannelRef, GateRef, Message, schedule_in, send};
 
 use crate::interface::NetworkDeviceReadiness;
 
@@ -8,7 +8,7 @@ pub trait MediumDeviceDriver: Any + Debug {
     fn mtu(&self) -> usize;
     fn ready(&self) -> NetworkDeviceReadiness;
     fn send(&mut self, msg: Message) -> NetworkDeviceReadiness;
-    fn matches(&self, header: &Header) -> bool;
+    fn matches(&self, header: &Message) -> bool;
 }
 
 #[derive(Debug)]
@@ -65,13 +65,16 @@ impl MediumDeviceDriver for EthernetDeviceDriver {
         }
     }
 
-    fn matches(&self, header: &Header) -> bool {
+    fn matches(&self, header: &Message) -> bool {
         Some(&self.receiving) == header.last_gate.as_ref()
     }
 }
 
 #[derive(Debug)]
 pub struct LoopbackDeviceDriver {}
+
+#[derive(Debug)]
+pub struct LoopbackFrame;
 
 const LOOPBACK_MTU: usize = 16384;
 
@@ -85,11 +88,11 @@ impl MediumDeviceDriver for LoopbackDeviceDriver {
     }
 
     fn send(&mut self, msg: Message) -> NetworkDeviceReadiness {
-        schedule_in(msg, Duration::ZERO);
+        schedule_in(msg.with_extension(LoopbackFrame), Duration::ZERO);
         NetworkDeviceReadiness::Ready
     }
 
-    fn matches(&self, header: &Header) -> bool {
-        header.last_gate.is_none()
+    fn matches(&self, header: &Message) -> bool {
+        header.last_gate.is_none() && header.extensions.has::<LoopbackFrame>()
     }
 }

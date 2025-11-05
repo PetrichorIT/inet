@@ -6,7 +6,7 @@ use crate::{
 };
 use des::{
     net::module::current,
-    prelude::{GateRef, Header, Message},
+    prelude::{GateRef, Message},
     time::SimTime,
 };
 
@@ -178,8 +178,8 @@ impl NetworkDevice {
         self.inner.send(msg)
     }
 
-    pub(super) fn matches(&self, last_gate: &Header) -> bool {
-        self.inner.matches(last_gate)
+    pub(super) fn matches(&self, msg: &Message) -> bool {
+        self.inner.matches(msg)
     }
 }
 
