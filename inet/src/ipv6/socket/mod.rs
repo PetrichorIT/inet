@@ -195,7 +195,6 @@ impl AsRawFd for RawV6Socket {
 
 impl Drop for RawV6Socket {
     fn drop(&mut self) {
-        println!("-> drop fd");
         self.handle.try_do_io(|ctx| {
             let _ = ctx.socket_close(self.fd);
             let _ = ctx.ipv6.sockets.remove(&self.fd);

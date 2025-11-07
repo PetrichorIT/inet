@@ -21,6 +21,10 @@ impl MacAddress {
     pub const IPV4_MULTICAST: MacAddress = MacAddress([0x01, 0, 0x5e, 0, 0, 0]);
     pub const IPV4_MULTICAST_MASK: MacAddress = MacAddress([0xff, 0xff, 0xff, 0x80, 0, 0]);
 
+    pub const fn new(bytes: [u8; 6]) -> Self {
+        Self(bytes)
+    }
+
     #[must_use]
     pub fn ipv6_multicast(ip: Ipv6Addr) -> MacAddress {
         let mut mac = MacAddress::IPV6_MULTICAST;

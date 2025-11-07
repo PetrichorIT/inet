@@ -1,6 +1,9 @@
-use std::net::{IpAddr, Ipv6Addr};
+use std::{
+    net::{IpAddr, Ipv6Addr},
+    time::Duration,
+};
 
-use des::runtime::RuntimeError;
+use des::{runtime::RuntimeError, time::sleep};
 use serial_test::serial;
 
 use crate::{
@@ -68,6 +71,8 @@ fn repr_as_bsd_sockets() -> Result<(), RuntimeError> {
 #[test]
 #[serial]
 fn bound_socket_is_selective() -> Result<(), RuntimeError> {
+    // des::tracing::init();
+
     let mut sim = SimpleSim::default();
     sim.v6 = true;
     sim.node_require_join("receiver", || async move {
@@ -85,6 +90,9 @@ fn bound_socket_is_selective() -> Result<(), RuntimeError> {
 
     sim.node_require_join("sender", || async move {
         ioctx().get_interface("en0")?.wait_for_global().await;
+
+        // prevent races
+        sleep(Duration::from_secs(1)).await;
 
         let addrs = lookup_host(("receiver", 0)).await?.collect::<Vec<_>>();
         assert_eq!(addrs.len(), 2);

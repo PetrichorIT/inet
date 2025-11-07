@@ -21,6 +21,7 @@ use crate::{
 };
 
 use types::{
+    arp::KIND_ARP,
     ip::{IpPacket, IpPacketRef, KIND_IPV4, KIND_IPV6},
     tcp::PROTO_TCP,
     udp::PROTO_UDP,
@@ -109,21 +110,33 @@ impl IOContext {
         // Packets that are passed to the networking layer, are
         // not nessecarily addressed to any valid ip addr, but are valid for
         // the local MAC addr
+        let l1 = self.recv_physlayer(msg);
+        let msg = match l1 {
+            LayerResult::PassThrough(msg) => {
+                return Some(msg.with_extension(PassThrough));
+            }
+            LayerResult::Consumed => return None,
+            LayerResult::Forward(msg) => msg,
+        };
+
         let l2 = self.recv_linklayer(msg);
         let (msg, ifid) = match l2 {
-            LinkLayerResult::PassThrough(msg) => return Some(msg.with_extension(PassThrough)),
-            LinkLayerResult::Consumed() => return None,
-            LinkLayerResult::NetworkingPacket(msg, ifid) => (msg, ifid),
-            LinkLayerResult::Timeout(timeout) => return self.networking_layer_io_timeout(timeout),
+            LinkLayerResult::PassThrough(msg) => {
+                return Some(msg.with_extension(PassThrough));
+            }
+            LinkLayerResult::Consumed => return None,
+            LinkLayerResult::Forward((msg, ifid)) => (msg, ifid),
         };
 
         self.current.ifid = ifid;
 
         let l3 = self.recv_network_layer(msg, ifid);
         let (pkt, header) = match l3 {
-            NetworkLayerResult::PassThrough(msg) => return Some(msg.with_extension(PassThrough)),
-            NetworkLayerResult::Consumed() => return None,
-            NetworkLayerResult::TransportLayerPacket(msg, header) => (msg, header),
+            NetworkLayerResult::PassThrough(msg) => {
+                return Some(msg.with_extension(PassThrough));
+            }
+            NetworkLayerResult::Consumed => return None,
+            NetworkLayerResult::Forward((msg, header)) => (msg, header),
         };
 
         let consumed = match pkt.proto() {
@@ -155,7 +168,12 @@ impl IOContext {
         self.tcp_tick();
     }
 
-    fn networking_layer_io_timeout(&mut self, msg: Message) -> Option<Message> {
+    pub fn general_io_timeout(&mut self, msg: Message) -> Option<Message> {
+        if msg.header.id == KIND_ARP {
+            self.recv_arp_wakeup();
+            return None;
+        }
+
         if msg.header.id == ID_IPV6_TIMEOUT {
             if let Err(e) = self.ipv6_handle_timer(msg) {
                 tracing::error!("an error occured in the timer block: {e}");
@@ -201,17 +219,13 @@ impl Drop for IOContext {
     }
 }
 
-#[derive(Debug)]
-pub enum LinkLayerResult {
+#[derive(Debug, Clone)]
+pub enum LayerResult<T> {
     PassThrough(Message),
-    Consumed(),
-    NetworkingPacket(Message, IfId),
-    Timeout(Message),
+    Consumed,
+    Forward(T),
 }
 
-#[derive(Debug)]
-pub enum NetworkLayerResult {
-    PassThrough(Message),
-    TransportLayerPacket(IpPacket, Header),
-    Consumed(),
-}
+pub type PhysLayerResult = LayerResult<Message>;
+pub type LinkLayerResult = LayerResult<(Message, IfId)>;
+pub type NetworkLayerResult = LayerResult<(IpPacket, Header)>;

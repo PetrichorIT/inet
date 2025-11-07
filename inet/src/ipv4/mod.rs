@@ -61,7 +61,7 @@ impl IOContext {
             tracing::error!(
                 "received eth-packet with kind=0x0800 (ip) but content was no ipv4-packet"
             );
-            return NetworkLayerResult::Consumed();
+            return NetworkLayerResult::Consumed;
         };
 
         let iface = self
@@ -79,7 +79,7 @@ impl IOContext {
                 let _ = self
                     .ipv4_icmp_send_ttl_expired(ifid, &pkt)
                     .inspect_err(|e| tracing::error!("icmp failed: {e}"));
-                return NetworkLayerResult::Consumed();
+                return NetworkLayerResult::Consumed;
             }
 
             tracing::debug!("routing packet {}->{}", pkt.src, pkt.dst);
@@ -92,7 +92,7 @@ impl IOContext {
                 self.ipv4_icmp_routing_failed(error, &pkt);
             }
 
-            return NetworkLayerResult::Consumed();
+            return NetworkLayerResult::Consumed;
         }
 
         // Recv raw sockets
@@ -109,10 +109,10 @@ impl IOContext {
         match pkt.proto {
             PROTO_ICMPV4 => {
                 let _consumed = self.ipv4_icmp_recv(&pkt, ifid);
-                NetworkLayerResult::Consumed()
+                NetworkLayerResult::Consumed
             }
             0 => NetworkLayerResult::PassThrough(Message::from_parts(header, Some(pkt))),
-            _ => NetworkLayerResult::TransportLayerPacket(IpPacket::V4(pkt), header),
+            _ => NetworkLayerResult::Forward((IpPacket::V4(pkt), header)),
         }
     }
 }

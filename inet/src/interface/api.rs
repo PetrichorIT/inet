@@ -1,7 +1,11 @@
 use super::{IfId, InterfaceAddrsV6, MacAddress, def::InterfaceDef};
 use crate::{
     IOContext, IOHandle,
-    interface::{InterfaceAddrV4, InterfaceAddrV6, InterfaceEvent, InterfaceHandle},
+    interface::{
+        InterfaceAddrBindings, InterfaceAddrV4, InterfaceAddrV6, InterfaceController,
+        InterfaceEvent, InterfaceFlags, InterfaceHandle, InterfaceName, InterfaceState,
+        NetworkBridge, NetworkDevice,
+    },
     ipv4::{
         arp::ArpEntryInternal,
         router::{FwdEntryV4, Ipv4Gateway, RoutingTableId},
@@ -28,7 +32,7 @@ impl IOHandle {
     /// - a misconfiguration is present
     ///
     pub fn add_interface(&self, iface: InterfaceDef) -> io::Result<InterfaceHandle> {
-        self.do_failable(|ctx| ctx.add_interface(iface))
+        self.do_failable(|ctx| ctx.add_interface(iface.into_legacy()))
     }
 
     /// Retrieves a handle to an existing interface, based on its name.
@@ -56,11 +60,25 @@ impl IOHandle {
             rx,
         })
     }
+
+    /// Creates a new network bridge with no members.
+    pub fn add_bridge_interface(&self, name: &str, mac: Option<MacAddress>) -> io::Result<IfId> {
+        self.do_failable(|ctx| ctx.add_bridge_interface(name, mac))
+    }
+
+    /// Creates a new interface for bridging purposes
+    pub fn bridge_add_port(
+        &self,
+        bridge: IfId,
+        name: &str,
+        device: NetworkDevice,
+    ) -> io::Result<InterfaceHandle> {
+        self.do_failable(|ctx| ctx.bridge_add_interface(bridge, name, device))
+    }
 }
 
 impl IOContext {
-    pub fn add_interface(&mut self, def: InterfaceDef) -> io::Result<InterfaceHandle> {
-        let iface = def.into_legacy();
+    pub fn add_interface(&mut self, iface: InterfaceController) -> io::Result<InterfaceHandle> {
         let ifid = iface.name.id();
 
         if self.ifaces.contains_key(&iface.name.id()) {
@@ -253,5 +271,61 @@ impl IOContext {
             }
             Ok(())
         }
+    }
+
+    pub fn add_bridge_interface(
+        &mut self,
+        name: &str,
+        mac: Option<MacAddress>,
+    ) -> io::Result<IfId> {
+        let name = InterfaceName::new(name);
+        let id = name.id();
+        if self.ifaces.bridges.contains_key(&id) {
+            return Err(Error::new(
+                ErrorKind::AlreadyExists,
+                "a bridge with the given name already exists",
+            ));
+        }
+        self.ifaces.bridges.insert(
+            id,
+            NetworkBridge::new(name, mac.unwrap_or_else(MacAddress::generate)),
+        );
+        Ok(id)
+    }
+
+    pub fn bridge_add_interface(
+        &mut self,
+        id: IfId,
+        name: &str,
+        device: NetworkDevice,
+    ) -> io::Result<InterfaceHandle> {
+        let name = InterfaceName::new(name);
+        let bridge = self.ifaces.bridges.get_mut(&id).expect("illegal state");
+
+        let mac = bridge.addr();
+        bridge.add(name.id());
+
+        let handle = self.add_interface(InterfaceController {
+            name,
+            flags: InterfaceFlags {
+                up: true,
+                loopback: false,
+                simplex: false,
+                running: true,
+                router: false,
+                multicast: true,
+                p2p: false,
+                broadcast: true,
+                smart: true,
+                promisc: true,
+                v6: false,
+            },
+            bindings: InterfaceAddrBindings::default(),
+            device: device.with_addr(mac),
+            bridge: Some(id),
+            state: InterfaceState::default(),
+        })?;
+
+        Ok(handle)
     }
 }

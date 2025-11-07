@@ -143,7 +143,7 @@ impl IOContext {
 
         cfg.adv_send_advertisments = adv;
 
-        self.add_interface(interface)?;
+        self.add_interface(interface.into_legacy())?;
         self.ipv6.router_cfg.insert(ifid, cfg);
         Ok(())
     }

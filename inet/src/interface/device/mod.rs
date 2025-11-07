@@ -72,7 +72,7 @@ impl NetworkDevice {
 
     /// Creates a local, loopback device.
     pub fn loopback() -> Self {
-        Self::from_raw(MacAddress::NULL, LoopbackDeviceDriver {})
+        Self::from_raw(MacAddress::NULL, LoopbackDeviceDriver)
     }
 
     pub fn gate(name: &str, pos: usize) -> Option<Self> {

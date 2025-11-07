@@ -8,6 +8,7 @@ use std::io;
 use std::{collections::VecDeque, result};
 
 use crate::IOContext;
+use crate::ctx::{LayerResult, PhysLayerResult};
 use crate::{ctx::LinkLayerResult, socket::Fd};
 use des::prelude::*;
 use fxhash::FxHashMap;
@@ -36,9 +37,13 @@ pub use self::addrs::*;
 mod handle;
 pub use self::handle::*;
 
+mod bridge;
+use bridge::*;
+
 #[derive(Debug, Default)]
 pub struct Interfaces {
     map: FxHashMap<IfId, InterfaceController>,
+    bridges: FxHashMap<IfId, NetworkBridge>, // < bridging device
 }
 
 impl Interfaces {
@@ -95,6 +100,7 @@ pub struct InterfaceController {
     pub device: NetworkDevice,
     pub flags: InterfaceFlags,
     pub bindings: InterfaceAddrBindings,
+    pub bridge: Option<IfId>,
     pub state: InterfaceState,
 }
 
@@ -151,6 +157,7 @@ impl InterfaceController {
             device,
             flags: InterfaceFlags::en0(true),
             bindings: InterfaceAddrBindings::default(),
+            bridge: None,
             state: InterfaceState::default(),
         }
     }
@@ -254,18 +261,12 @@ impl InterfaceController {
         matches!(self.state.busy, InterfaceBusyState::Busy { .. })
     }
 
-    pub fn is_valid_recv_addr(&self, addr: MacAddress) -> bool {
-        if addr.is_broadcast() {
-            return true;
-        }
-        if addr == self.device.addr {
-            return true;
-        }
-        // Check multicast scopes
-        if self.bindings.v6.valid_src_mac(addr) {
-            return true;
-        }
-        false
+    pub fn is_mutlicast_valid_target(&self, addr: MacAddress) -> bool {
+        addr.is_broadcast() || self.bindings.v6.valid_src_mac(addr)
+    }
+
+    pub fn is_unicast_valid_target_for(&self, addr: MacAddress) -> bool {
+        self.device.addr == addr
     }
 }
 
@@ -281,35 +282,35 @@ impl From<InterfaceError> for io::Error {
 }
 
 impl IOContext {
-    pub fn recv_linklayer(&mut self, msg: Message) -> LinkLayerResult {
-        use LinkLayerResult::*;
+    pub fn recv_physlayer(&mut self, msg: Message) -> PhysLayerResult {
+        match msg.header.kind {
+            KIND_LINK_UPDATE => {
+                let Some(update) = msg.body.try_content::<LinkUpdate>() else {
+                    tracing::error!(
+                        "found message with kind KIND_LINK_UPDATE, did not contain link updates"
+                    );
+                    return LayerResult::PassThrough(msg);
+                };
+                self.recv_linklayer_update(update);
 
-        let dst = MacAddress::from(msg.dst);
-
-        // Precheck for link layer updates
-        if msg.header.kind == KIND_LINK_UPDATE {
-            let Some(update) = msg.body.try_content::<LinkUpdate>() else {
-                tracing::error!(
-                    "found message with kind KIND_LINK_UPDATE, did not contain link updates"
-                );
-                return PassThrough(msg);
-            };
-            self.recv_linklayer_update(update);
-            return Consumed();
-        }
-
-        if msg.header.kind == KIND_IO_TIMEOUT {
-            // TODO: check ARP Timeout
-            if msg.header.id == KIND_ARP {
-                self.recv_arp_wakeup();
-                return Consumed();
+                LayerResult::Consumed
             }
-            return Timeout(msg);
+            KIND_IO_TIMEOUT => {
+                let _ = self.general_io_timeout(msg);
+                LayerResult::Consumed
+            }
+            _ => LayerResult::Forward(msg),
         }
+    }
+
+    pub fn recv_linklayer(&mut self, msg: Message) -> LinkLayerResult {
+        // The assumption can be made that this packet contains valid packet fragements,
+        // no timeouts or other meta-packets
+        let dst = MacAddress::from(msg.dst);
 
         // Define the physical device the packet arrived.
         let Some(iface) = self.device_for_message(&msg) else {
-            return PassThrough(msg);
+            return LayerResult::PassThrough(msg);
         };
 
         // Capture all packets that can be addressed to a interface, event not targeted
@@ -322,14 +323,28 @@ impl IOContext {
             iface,
         });
 
-        // Check that packet is addressed correctly.
+        // A packet was captured by an interface -> what to do?
+        // -> if bridging active => fwd if not addressed at self
+        // -> if no bridging -> valid if MAC is valid
+        //                   -> invalid pass through (or consume multicast)
+        let unicast_valid = iface.is_unicast_valid_target_for(dst);
+        let multicast_valid = iface.is_mutlicast_valid_target(dst);
+        if let Some(bridge) = iface.bridge
+            && !unicast_valid
+        {
+            self.interface_forward_over_bridge(bridge, ifid, &msg);
+            if !multicast_valid {
+                return LayerResult::Consumed;
+            }
+        }
 
-        if !iface.is_valid_recv_addr(dst) {
+        let general_valid = unicast_valid || multicast_valid;
+        if !general_valid {
             if dst.is_multicast() {
-                return Consumed();
+                return LayerResult::Consumed;
             } else {
                 tracing::warn!(IFACE=%ifid, "recieved invalid LL packet {{ dst: {dst} }}");
-                return PassThrough(msg);
+                return LayerResult::PassThrough(msg);
             }
         }
 
@@ -338,13 +353,13 @@ impl IOContext {
                 tracing::error!(
                     "found message with kind 0x0806 (arp), but did not contain ARP packet"
                 );
-                return PassThrough(msg);
+                return LayerResult::PassThrough(msg);
             };
 
             return self.recv_arp(ifid, &msg, arp);
         }
 
-        NetworkingPacket(msg, ifid)
+        LayerResult::Forward((msg, ifid))
     }
 
     fn recv_linklayer_update(&mut self, update: &LinkUpdate) {

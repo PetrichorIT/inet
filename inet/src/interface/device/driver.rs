@@ -71,7 +71,7 @@ impl MediumDeviceDriver for EthernetDeviceDriver {
 }
 
 #[derive(Debug)]
-pub struct LoopbackDeviceDriver {}
+pub struct LoopbackDeviceDriver;
 
 #[derive(Debug)]
 pub struct LoopbackFrame;

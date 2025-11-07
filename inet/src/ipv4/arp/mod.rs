@@ -15,7 +15,7 @@
 use std::io;
 use std::net::Ipv4Addr;
 
-use crate::ctx::LinkLayerResult;
+use crate::ctx::{LayerResult, LinkLayerResult};
 use crate::{IOContext, interface::*};
 use des::prelude::{Message, schedule_in};
 use des::time::SimTime;
@@ -32,7 +32,6 @@ pub use self::api::*;
 
 impl IOContext {
     pub fn recv_arp(&mut self, ifid: IfId, msg: &Message, arp: &ArpPacket) -> LinkLayerResult {
-        use LinkLayerResult::*;
         // assert_eq!(arp.ptype, 0x0800);
         assert_eq!(arp.htype, 1);
 
@@ -98,7 +97,7 @@ impl IOContext {
                     iface.send_buffered(msg).unwrap();
                 }
 
-                Consumed()
+                LayerResult::Consumed
             }
             ARPOperation::Response => {
                 // (0) Add response data to ARP table (not requester, was allready added)
@@ -120,14 +119,14 @@ impl IOContext {
                     );
 
                     let Some((trg, sendable)) = sendable else {
-                        return Consumed();
+                        return LayerResult::Consumed;
                     };
 
                     for pkt in sendable {
                         self.ipv4_send_lan_local(ifid, trg, pkt).unwrap();
                     }
                 }
-                Consumed()
+                LayerResult::Consumed
             }
         }
     }

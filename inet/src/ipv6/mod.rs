@@ -122,7 +122,7 @@ impl IOContext {
             tracing::error!(
                 "received eth-packet with kind=0x86DD (ip) but content was no ipv6-packet"
             );
-            return NetworkLayerResult::Consumed();
+            return NetworkLayerResult::Consumed;
         };
 
         let iface = self
@@ -138,7 +138,7 @@ impl IOContext {
             if pkt.hop_limit == 0 {
                 self.ipv6_icmp_send_hop_limit_exceeded(&pkt, ifid)
                     .expect("ttl expired failed");
-                return NetworkLayerResult::Consumed();
+                return NetworkLayerResult::Consumed;
             }
 
             if let Err(error) = self.ipv6_send_with_flags(
@@ -150,7 +150,7 @@ impl IOContext {
                 panic!("TODO: cannot send ipv6 packet")
             }
 
-            return NetworkLayerResult::Consumed();
+            return NetworkLayerResult::Consumed;
         }
 
         // Recv raw sockets
@@ -166,10 +166,10 @@ impl IOContext {
         match pkt.proto {
             PROTO_ICMPV6 => {
                 let _consumed = self.ipv6_icmp_recv(&pkt, ifid);
-                NetworkLayerResult::Consumed()
+                NetworkLayerResult::Consumed
             }
             0 => NetworkLayerResult::PassThrough(Message::from_parts(header, Some(pkt))),
-            _ => NetworkLayerResult::TransportLayerPacket(IpPacket::V6(pkt), header),
+            _ => NetworkLayerResult::Forward((IpPacket::V6(pkt), header)),
         }
     }
 }
