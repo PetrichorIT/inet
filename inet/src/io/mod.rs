@@ -5,6 +5,11 @@
 //! tokio-des-inet stack should not make use of this feature, these implementations
 //! replace the tokio-interal ones.
 
+pub use std::io::Error;
+pub use std::io::ErrorKind;
+pub use std::io::Result;
+pub use std::io::SeekFrom;
+
 mod interest;
 mod ready;
 

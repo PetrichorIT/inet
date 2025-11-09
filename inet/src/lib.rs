@@ -23,8 +23,6 @@ cfg_dhcp! {
     pub mod dhcp;
 }
 
-pub mod test_util;
-
 use des::net::{
     module::ModuleId,
     processing::{ProcessingStack, TimeDriver, TokioRuntime},

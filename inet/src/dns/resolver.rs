@@ -220,7 +220,7 @@ mod tests {
     use des::runtime::RuntimeError;
     use serial_test::serial;
 
-    use crate::{dns::lookup_host, test_util::SimpleSim};
+    use crate::{dns::lookup_host, utils::SimpleSim};
 
     #[test]
     #[serial]

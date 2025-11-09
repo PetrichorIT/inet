@@ -6,7 +6,7 @@ use serial_test::serial;
 use crate::{
     socket::{AsRawFd, bsd_socket_info},
     tcp::{Config, TcpSocket},
-    test_util::SimpleSim,
+    utils::SimpleSim,
 };
 
 #[test]

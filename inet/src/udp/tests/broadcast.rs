@@ -1,7 +1,7 @@
 use serial_test::serial;
 use std::io;
 
-use crate::{UdpSocket, interface::InterfaceDef, ioctx, test_util::SimpleSim};
+use crate::{UdpSocket, interface::InterfaceDef, ioctx, utils::SimpleSim};
 use des::{prelude::*, time::sleep};
 
 //

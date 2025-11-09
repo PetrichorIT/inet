@@ -5,12 +5,15 @@ use std::{
 };
 
 use bitflags::bitflags;
-use des::net::message::{Message, schedule_in};
-use fxhash::FxHashMap;
+use des::{
+    net::message::{Message, schedule_in},
+    prelude::Header,
+};
+use fxhash::{FxHashMap, hash};
 use multicast::{GroupEvent, MulticastListenerDiscoveryCtrl, NodeEvent, RouterEvent};
 use tracing::Level;
 use types::{
-    icmpv6::PROTO_ICMPV6,
+    icmpv6::{IcmpV6TimeExceededCode, PROTO_ICMPV6},
     iface::MacAddress,
     ip::{IpPacket, Ipv6AddrExt, Ipv6Packet, Ipv6Prefix, KIND_IPV6},
 };
@@ -18,7 +21,7 @@ use types::{
 use crate::{
     ctx::{IOContext, NetworkLayerResult},
     interface::{IfId, IfSpec, InterfaceError},
-    ipv6::{addrs::CanidateAddr, socket::RawV6SocketHandle},
+    ipv6::{addrs::CanidateAddr, frag::FragmentStore, socket::RawV6SocketHandle},
     socket::Fd,
 };
 
@@ -37,6 +40,7 @@ use self::{
 pub mod addrs;
 pub mod api;
 pub mod cfg;
+pub mod frag;
 pub mod icmp;
 pub mod multicast;
 pub mod ndp;
@@ -58,6 +62,7 @@ pub struct Ipv6 {
     pub default_routers: DefaultRouterList,
 
     pub path_mtu: PathMtuStore,
+    pub fragments: FragmentStore,
 
     // Multicast management
     pub iface_state: FxHashMap<IfId, InterfaceState>,
@@ -88,6 +93,7 @@ impl Default for Ipv6 {
             default_routers: DefaultRouterList::new(),
 
             path_mtu: PathMtuStore::default(),
+            fragments: FragmentStore::default(),
 
             iface_state: FxHashMap::default(),
             mld: FxHashMap::default(),
@@ -107,12 +113,13 @@ impl Default for Ipv6 {
 }
 
 bitflags! {
-    #[derive(Debug)]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
     pub struct Ipv6SendFlags: u8 {
-        const DEFAULT = 0b0000_0000;
-        const ALLOW_SRC_UNSPECIFIED = 0b0000_0001;
-        const REQUIRED_SRC_UNSPECIFIED = 0b0000_0010;
-        const FOREIGN_PACKET = 0b0000_0100;
+        const DEFAULT = 0;
+        const ALLOW_SRC_UNSPECIFIED = 0b1 << 0;
+        const REQUIRED_SRC_UNSPECIFIED = 0b1 << 1;
+        const FOREIGN_PACKET = 0b1 << 2;
+        const ALLOW_FRAGMENTATION = 0b1 << 3;
     }
 }
 
@@ -136,8 +143,12 @@ impl IOContext {
             pkt.hop_limit = pkt.hop_limit.saturating_sub(1);
 
             if pkt.hop_limit == 0 {
-                self.ipv6_icmp_send_hop_limit_exceeded(&pkt, ifid)
-                    .expect("ttl expired failed");
+                self.ipv6_icmp_send_time_exceeded(
+                    &pkt,
+                    ifid,
+                    IcmpV6TimeExceededCode::HopLimitExceeded,
+                )
+                .expect("ttl expired failed");
                 return NetworkLayerResult::Consumed;
             }
 
@@ -153,6 +164,25 @@ impl IOContext {
             return NetworkLayerResult::Consumed;
         }
 
+        let Some(pkt) = self
+            .ipv6
+            .fragments
+            .on_packet(pkt, ifid, &mut self.ipv6.timer)
+        else {
+            return NetworkLayerResult::Consumed;
+        };
+
+        self.ipv6_recv_valid(ifid, pkt, header)
+    }
+
+    // (3) Valid packet received
+    // < from here onwards a packet should be considered valid and received by the node
+    fn ipv6_recv_valid(
+        &mut self,
+        ifid: IfId,
+        pkt: Ipv6Packet,
+        header: Header,
+    ) -> NetworkLayerResult {
         // Recv raw sockets
         for socket in self
             .ipv6
@@ -185,7 +215,7 @@ impl IOContext {
         ifid: IfSpec,
         flags: Ipv6SendFlags,
     ) -> io::Result<()> {
-        // tracing::trace!(src = ?pkt.src, dst = ?pkt.dst, ?ifid, "ipv6_send({flags:?})");
+        // tracing::info!(src = ?pkt.src, dst = ?pkt.dst, ?ifid, bytes=?pkt.content.len(), "ipv6_send({flags:?})");
 
         // Check that dst is not unspecified, this should have been handled allready
         if pkt.dst.is_unspecified() {
@@ -218,7 +248,7 @@ impl IOContext {
     ) -> io::Result<()> {
         debug_assert!(!pkt.dst.is_unspecified());
 
-        // (1)
+        // (1) Set src addr if unspecified
         if pkt.src.is_unspecified() && !flags.contains(Ipv6SendFlags::REQUIRED_SRC_UNSPECIFIED) {
             let canidates = self.ipv6_src_addr_canidate_set(pkt.dst, ifspec);
             if let Some(src) = canidates.select(&self.ipv6.policies) {
@@ -238,7 +268,7 @@ impl IOContext {
 
         // `ifid` may be NULL, `pkt.src` is set expect ALLOW_SRC_UNSPECIFIED
 
-        // (2) Self-Send bypass
+        // (2) Self-Send bypass (ignore fragmentation)
         if pkt.src == pkt.dst {
             debug_assert!(!pkt.src.is_unspecified());
 
@@ -319,7 +349,7 @@ impl IOContext {
                 ifid,
                 QueryType::NeighborSolicitation,
             )?;
-            self.ipv6.neighbors.enqueue(next_hop, pkt);
+            self.ipv6.neighbors.enqueue(next_hop, pkt, flags);
             return Ok(());
         };
 
@@ -329,7 +359,33 @@ impl IOContext {
 
         let ifid = ifspec.expect("illegal state");
 
-        // (6) Message assembly
+        // (6) Fragment since we now have a good path mtu guess
+        if flags.contains(Ipv6SendFlags::ALLOW_FRAGMENTATION) {
+            assert!(!flags.contains(Ipv6SendFlags::FOREIGN_PACKET));
+            // We know pkt.src is next_hop-src since we are the send
+            let guessed_mtu = self.ipv6_get_path_mtu(pkt.src, pkt.dst); // < maybe just do local min?
+            let packet_to_big = pkt.content.len() > guessed_mtu - Ipv6Packet::MIN_HEADER_SIZE;
+
+            if packet_to_big {
+                tracing::trace!(
+                    "fragmenting packet of payload size {} into {} byte chunks",
+                    pkt.content.len(),
+                    guessed_mtu
+                );
+
+                let identification = hash(&(&pkt, flags)) as u32;
+                let fragmented = pkt.fragment_to_mtu(guessed_mtu, identification);
+                // FIXME: should we just send again or direct to 7? buffering might be a concern
+                let mut new_flags = flags;
+                new_flags.remove(Ipv6SendFlags::ALLOW_FRAGMENTATION);
+                for pkt in fragmented {
+                    self.ipv6_send_with_flags(pkt, Some(ifid), new_flags)?;
+                }
+                return Ok(());
+            }
+        }
+
+        // (7) Message assembly
         let iface = self.ifaces.get_mut(&ifid).expect("illegal state");
         let msg = Message::default()
             .with_src(iface.device.addr.into())
@@ -337,7 +393,7 @@ impl IOContext {
             .with_kind(KIND_IPV6)
             .with_content(pkt);
 
-        // (7) Send packet
+        // (8) Send packet
         if let Err(err) = iface.send_buffered(msg) {
             match err {
                 InterfaceError::PacketToBig(pkt, allowed_mtu) => {
@@ -434,7 +490,8 @@ impl IOContext {
             }
         }
 
-        panic!("Could not specifed src interface for addr {src}")
+        tracing::error!("panic: Could not specifed src interface for src-addr {src}");
+        panic!("Could not specifed src interface for src-addr {src}")
     }
 
     fn ipv6_next_hop_determination(
@@ -521,6 +578,12 @@ impl IOContext {
                         ifid,
                         RouterEvent::GroupEvent(addr, GroupEvent::RetransmitTimerExpired),
                     )?;
+                }
+                FragmentReassembly {
+                    identification,
+                    ifid,
+                } => {
+                    self.ipv6_fragment_reassembly_timeout(ifid, identification)?;
                 }
             }
         }

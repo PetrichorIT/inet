@@ -14,7 +14,7 @@ use types::{
 use crate::{
     interface::IfId,
     ipv6::multicast::{QUERY_RESPONSE_INTERVAL, designate_mdl, undesignate_mdl},
-    test_util::SimpleSim,
+    utils::SimpleSim,
 };
 
 use super::*;

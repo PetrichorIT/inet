@@ -160,7 +160,7 @@ impl Default for UdpAdapter {
 
 #[cfg(test)]
 mod tests {
-    use inet::{test_util::SimpleSim, utils::get_ip};
+    use inet::{utils::SimpleSim, utils::get_ip};
     use serial_test::serial;
     use std::net::Ipv6Addr;
     use tokio::sync::mpsc;

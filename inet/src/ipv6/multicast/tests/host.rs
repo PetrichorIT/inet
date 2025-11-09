@@ -6,7 +6,7 @@ use serial_test::serial;
 use crate::{
     interface::IfId,
     ipv6::multicast::{GroupState, designate_mdl, join_multicast_group, leave_multicast_group},
-    test_util::SimpleSim,
+    utils::SimpleSim,
 };
 
 use super::*;

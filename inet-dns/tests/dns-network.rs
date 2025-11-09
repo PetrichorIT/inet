@@ -8,7 +8,7 @@ use std::{
 use des::{prelude::*, time::sleep};
 use inet::{
     tcp::{TcpListener, TcpStream},
-    test_util::SimpleSim,
+    utils::SimpleSim,
 };
 use inet_dns::{
     adapters::{Base, UdpAdapter},

@@ -5,7 +5,7 @@ use serial_test::serial;
 
 use crate::{
     tcp::{self, Config, TcpListener, TcpStream},
-    test_util::SimpleSim,
+    utils::SimpleSim,
 };
 
 #[test]

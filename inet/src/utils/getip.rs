@@ -87,7 +87,7 @@ mod tests {
     use crate::{
         interface::{InterfaceDef, NetworkDevice},
         ioctx,
-        test_util::SimpleSim,
+        utils::SimpleSim,
     };
 
     use super::get_mac_address;

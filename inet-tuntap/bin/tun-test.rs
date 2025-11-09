@@ -6,7 +6,7 @@ use inet::{
     interface::{InterfaceDef, NetworkDevice},
     ioctx,
     ipv6::util::setup_router,
-    test_util::SimpleSim,
+    utils::SimpleSim,
 };
 use inet_tuntap::ptun;
 use tokio::sync::mpsc::Receiver;

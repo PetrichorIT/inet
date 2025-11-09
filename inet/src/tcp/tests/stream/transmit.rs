@@ -20,7 +20,7 @@ use crate::{
         Config, TcpListener, TcpStream, set_config,
         tests::stream::consume_any_data_echo_if_possible,
     },
-    test_util::SimpleSim,
+    utils::SimpleSim,
 };
 
 #[serial]

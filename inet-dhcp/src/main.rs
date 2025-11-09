@@ -1,7 +1,7 @@
 use std::net::Ipv4Addr;
 
 use bytes_io::ToBytes;
-use inet::{UdpSocket, test_util::SimpleSim, types::iface::MacAddress};
+use inet::{UdpSocket, types::iface::MacAddress, utils::SimpleSim};
 use inet_dhcp::{DhcpOption, DhcpPacket};
 use inet_tuntap::ptun;
 

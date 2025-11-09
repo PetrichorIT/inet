@@ -3,7 +3,7 @@ use std::io::ErrorKind;
 use des::runtime::RuntimeError;
 use serial_test::serial;
 
-use crate::{UdpSocket, test_util::SimpleSim};
+use crate::{UdpSocket, utils::SimpleSim};
 
 #[test]
 #[serial]

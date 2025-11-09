@@ -10,7 +10,7 @@ use tokio::io::ReadBuf;
 
 use crate::{
     tcp::{OwnedReadHalf, TcpStream, tests::stream::accpet_any_incoming_and_echo_if_possible},
-    test_util::SimpleSim,
+    utils::SimpleSim,
 };
 
 #[test]

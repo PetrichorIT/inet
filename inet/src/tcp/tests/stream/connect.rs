@@ -16,7 +16,7 @@ use crate::{
     ioctx,
     socket::AsRawFd,
     tcp::{Config, TcpListener, TcpStream, set_config},
-    test_util::SimpleSim,
+    utils::SimpleSim,
 };
 
 use super::run_default_sim;

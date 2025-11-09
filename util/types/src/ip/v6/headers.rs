@@ -170,9 +170,9 @@ impl FromBytes for Ipv6RoutingHeader {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Ipv6FragmentHeader {
-    fragment_offset: u16, // u13
-    more_fragments: bool,
-    identification: u32,
+    pub fragment_offset: u16, // u13
+    pub more_fragments: bool,
+    pub identification: u32,
 }
 
 impl ToBytes for Ipv6FragmentHeader {

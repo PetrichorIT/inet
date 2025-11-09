@@ -1,5 +1,6 @@
 use bytes_io::{BytesReader, BytesWriter, FromBytes, ToBytes};
 use des::runtime::random;
+use serde::{Deserialize, Serialize};
 
 use std::{
     fmt::{Debug, Display},
@@ -8,7 +9,7 @@ use std::{
     ops::{BitAnd, BitOr, BitXor, Not},
 };
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct MacAddress([u8; 6]);
 
 impl MacAddress {

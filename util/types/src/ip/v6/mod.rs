@@ -1,9 +1,10 @@
 use bytes_io::{
-    BE, BufMut, Bytes, BytesReader, BytesWriter, FromBytes, ReadBytesExt, ToBytes, WriteBytesExt,
+    BE, BufMut, Bytes, BytesMut, BytesReader, BytesWriter, FromBytes, ReadBytesExt, ToBytes,
+    WriteBytesExt,
 };
 use des::net::message::MessageBody;
 use std::{
-    io::{Error, ErrorKind, Write},
+    io::{self, Error, ErrorKind, Write},
     iter::once,
     net::Ipv6Addr,
 };
@@ -34,6 +35,203 @@ pub struct Ipv6Packet {
 
 impl Ipv6Packet {
     pub const MIN_HEADER_SIZE: usize = 40;
+
+    /// Assume all same identification
+    pub fn from_fragments(fragments: &mut [Ipv6Packet]) -> io::Result<Ipv6Packet> {
+        fragments.sort_by_key(|pkt| pkt.if_fragment_header(|h| h.fragment_offset).unwrap_or(0));
+
+        let mut pkt = fragments[0].clone();
+
+        // (1) Check first packet requirements
+        let (frag_index, header) = pkt
+            .extension_headers
+            .iter()
+            .enumerate()
+            .find_map(|(i, h)| match h {
+                Ipv6ExtensionHeader::Fragment(farg) => Some((i, farg)),
+                _ => None,
+            })
+            .expect("packets without fragmentation headers should not be passed to this function");
+        let header = header.clone();
+        if header.fragment_offset != 0 {
+            return Err(Error::new(
+                ErrorKind::InvalidData,
+                "initial fragment header had non zero offset",
+            ));
+        }
+        pkt.extension_headers.remove(frag_index);
+
+        let mut slices = vec![pkt.content.clone()];
+        let mut offset = pkt.content.len();
+        let mut finalized = false;
+
+        for additional in &fragments[1..] {
+            // (2.1) Header identical
+            let meta_valid = additional.flow_label == pkt.flow_label
+                && additional.traffic_class == pkt.traffic_class
+                && additional.proto == pkt.proto;
+            let addr_valid = additional.src == pkt.src && additional.dst == pkt.dst;
+            let valid = meta_valid && addr_valid;
+            if !valid {
+                return Err(Error::new(ErrorKind::InvalidData, "unrelated packets"));
+            }
+
+            // (2.1) Fragment extension is correct
+            let header = additional
+                .extension_headers
+                .iter()
+                .find_map(|h| match h {
+                    Ipv6ExtensionHeader::Fragment(farg) => Some(farg),
+                    _ => None,
+                })
+                .expect(
+                    "packets without fragmentation headers should not be passed to this function",
+                );
+
+            if header.fragment_offset as usize != offset / 8 {
+                return Err(Error::new(ErrorKind::InvalidData, "invalid offset point"));
+            }
+
+            // (2.3) Add fragment
+            slices.push(additional.content.clone());
+            offset += additional.content.len();
+
+            if !header.more_fragments {
+                finalized = true;
+                break;
+            }
+        }
+
+        if !finalized {
+            return Err(Error::new(ErrorKind::InvalidData, "not yet final"));
+        }
+
+        let mut buf = BytesMut::with_capacity(offset);
+        for slice in slices {
+            buf.extend_from_slice(&slice[..]);
+        }
+
+        pkt.content = buf.freeze();
+
+        // When reassembling node detects a fragment that overlaps with another fragment, the reassembly of the original packet
+        // is aborted and all fragments are dropped. A node may optionally ignore the exact duplicates of a fragment instead
+        // of treating exact duplicates as overlapping each other.
+
+        Ok(pkt)
+    }
+
+    fn if_fragment_header<R>(&self, mut f: impl FnMut(&Ipv6FragmentHeader) -> R) -> Option<R> {
+        self.extension_headers
+            .iter()
+            .find_map(|header| match header {
+                Ipv6ExtensionHeader::Fragment(frag) => Some(f(frag)),
+                _ => None,
+            })
+    }
+
+    pub fn fragment_to_mtu(&self, mtu: usize, identification: u32) -> Vec<Ipv6Packet> {
+        assert!(mtu >= IPV6_MINIMUM_MTU);
+        let mtu = mtu - (mtu % 8); // < enforces that all encoding belong to a 8 octet boundary
+
+        let mut fragments = Vec::new();
+        let mut content = self.content.clone();
+        let mut offset_in_bytes = 0;
+
+        // The per-fragment headers are determined based on whether the original contains Routing or Hop-by-Hop extension header.
+        // a) If neither exists, the per-fragment part is just the fixed header.
+        // b) If the Routing extension header exists, the per-fragment headers include the fixed header and all the extension headers up to and including the Routing one.
+        // c) If the Hop-by-Hop extension header exists, the per-fragment headers consist of only the fixed header and the Hop-by-Hop extension header.
+
+        let (per_fragment_extension_headers, mut other_extension_headers) = {
+            let r_header = self
+                .extension_headers
+                .iter()
+                .position(|h| matches!(h, Ipv6ExtensionHeader::Routing(_)));
+            let hbh_header = self
+                .extension_headers
+                .iter()
+                .position(|h| matches!(h, Ipv6ExtensionHeader::HopByHopOptions(_)));
+            match (r_header, hbh_header) {
+                (None, None) => (Vec::new(), self.extension_headers.clone()),
+                (Some(i), None) => (
+                    self.extension_headers[..=i].to_vec(),
+                    self.extension_headers[(i + 1)..].to_vec(),
+                ),
+                (None, Some(i)) => (vec![self.extension_headers[i].clone()], {
+                    let mut buf = self.extension_headers.clone().to_vec();
+                    buf.remove(i);
+                    buf
+                }),
+                (Some(_), Some(_)) => (Vec::new(), self.extension_headers.clone()), // FIXME: is that even allowed
+            }
+        };
+
+        let per_fragment_header = Ipv6Packet {
+            traffic_class: self.traffic_class,
+            flow_label: self.flow_label,
+            proto: self.proto,
+            hop_limit: self.hop_limit,
+            src: self.src,
+            dst: self.dst,
+            extension_headers: per_fragment_extension_headers,
+            content: Bytes::new(),
+        };
+
+        // A packet holding the first part of an original overlarge packet contains 5 parts:
+        // 1) pre-fragment header
+        // 2) fragment-extension header with offset 0
+        // 3) original extension headers
+        // 4) upper layer header
+        // 5) first part of the original payload
+
+        let mut first = per_fragment_header.clone();
+        first
+            .extension_headers
+            .push(Ipv6ExtensionHeader::Fragment(Ipv6FragmentHeader {
+                fragment_offset: 0,
+                more_fragments: true,
+                identification,
+            }));
+        first.extension_headers.append(&mut other_extension_headers);
+
+        let mut extension_header_len = 0;
+        for header in &first.extension_headers {
+            extension_header_len += 2 + header.write_to_bytes().expect("failed to encode").len();
+        }
+        assert_eq!(extension_header_len % 8, 0);
+        let eff_header_size = Self::MIN_HEADER_SIZE + extension_header_len;
+        let s1 = (mtu - eff_header_size).min(self.content.len()); // either dividable by 8 or content-len
+
+        first.content = content.split_to(s1);
+
+        fragments.push(first);
+        offset_in_bytes += s1;
+
+        assert!(!self.content.is_empty(), "no fragmentation needed");
+
+        // Each subsequenct packet contains the following
+        // 1) pre-fragment header
+        // 2) fragment-extension header with offset > 0
+        // 3) payload part
+
+        while !content.is_empty() {
+            let s2 = (mtu - eff_header_size - 8).min(content.len()); // either dividable by 8 or content-len
+            let mut fragment = per_fragment_header.clone();
+            fragment
+                .extension_headers
+                .push(Ipv6ExtensionHeader::Fragment(Ipv6FragmentHeader {
+                    more_fragments: s2 < content.len(),
+                    identification,
+                    fragment_offset: (offset_in_bytes / 8) as u16,
+                }));
+            fragment.content = content.split_to(s2);
+
+            fragments.push(fragment);
+            offset_in_bytes += s2;
+        }
+
+        fragments
+    }
 }
 
 impl ToBytes for Ipv6Packet {
@@ -189,5 +387,38 @@ mod tests {
         .collect::<Vec<_>>();
 
         assert_encoding_e2e(&fuzzed);
+    }
+
+    #[test]
+    fn fragment_generation() -> io::Result<()> {
+        let fuzzed = std::iter::repeat_with(|| {
+            let mut pkt = Ipv6Packet::random(
+                std::iter::repeat_with(|| rng().random())
+                    .take((1600 + rng().random::<u64>() % 60_000) as usize)
+                    .collect(),
+            );
+            pkt.extension_headers
+                .retain(|v| !matches!(v, Ipv6ExtensionHeader::Fragment(_)));
+            pkt
+        })
+        .take(100)
+        .collect::<Vec<_>>();
+
+        for pkt in fuzzed {
+            let mut fragmented = pkt.fragment_to_mtu(1500, rng().random());
+            for (i, frag) in fragmented.iter().enumerate() {
+                let encoded = frag.write_to_bytes()?;
+                assert!(
+                    encoded.len() <= 1500,
+                    "invalid packet with {} bytes on index {}",
+                    encoded.len(),
+                    i
+                );
+            }
+
+            let reassembled = Ipv6Packet::from_fragments(&mut fragmented)?;
+            assert_eq!(pkt, reassembled);
+        }
+        Ok(())
     }
 }

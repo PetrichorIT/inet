@@ -3,7 +3,7 @@ use std::{net::Ipv6Addr, time::Duration};
 use des::{runtime::RuntimeError, time::sleep};
 use serial_test::serial;
 
-use crate::{UdpSocket, ipv6::multicast::tests::assert_memberships_are, test_util::SimpleSim};
+use crate::{UdpSocket, ipv6::multicast::tests::assert_memberships_are, utils::SimpleSim};
 
 #[test]
 #[serial]

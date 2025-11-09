@@ -47,6 +47,10 @@ pub enum TimerToken {
         ifid: IfId,
         addr: Ipv6Addr,
     },
+    FragmentReassembly {
+        ifid: IfId,
+        identification: u32,
+    },
 }
 
 #[derive(Debug)]

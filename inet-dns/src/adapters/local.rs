@@ -111,7 +111,7 @@ impl TransportAdapter for LocalAdapter {
 
 #[cfg(test)]
 mod tests {
-    use inet::test_util::SimpleSim;
+    use inet::utils::SimpleSim;
     use serial_test::serial;
     use tokio::sync::mpsc::channel;
 

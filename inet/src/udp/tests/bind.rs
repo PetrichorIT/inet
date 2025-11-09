@@ -5,7 +5,7 @@ use crate::{
     UdpSocket,
     interface::{InterfaceDef, NetworkDevice},
     ioctx,
-    test_util::SimpleSim,
+    utils::SimpleSim,
 };
 
 const CHANNEL: DatarateChannelMetrics = DatarateChannelMetrics::new(

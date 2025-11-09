@@ -13,6 +13,7 @@ use crate::{
     ctx::IOContext,
     interface::IfId,
     ioctx,
+    ipv6::Ipv6SendFlags,
     socket::{AsRawFd, Fd, SocketDomain, SocketType},
 };
 
@@ -162,7 +163,9 @@ impl RawV6Socket {
             dst,
             content: Bytes::copy_from_slice(buf),
         };
-        self.handle.do_failable(|ctx| ctx.ipv6_send(pkt, None))?;
+        self.handle.do_failable(|ctx| {
+            ctx.ipv6_send_with_flags(pkt, None, Ipv6SendFlags::ALLOW_FRAGMENTATION)
+        })?;
         Ok(buf.len())
     }
 

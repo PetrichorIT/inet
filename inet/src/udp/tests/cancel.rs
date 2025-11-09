@@ -3,7 +3,7 @@ use std::time::Duration;
 use des::{runtime::RuntimeError, time::sleep};
 use serial_test::serial;
 
-use crate::{UdpSocket, test_util::SimpleSim};
+use crate::{UdpSocket, utils::SimpleSim};
 
 #[test]
 #[serial]

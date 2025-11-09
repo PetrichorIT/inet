@@ -76,7 +76,7 @@ mod tests {
     use des::time::SimTime;
     use inet::{
         dns::{lookup_host, set_dns_resolver},
-        test_util::SimpleSim,
+        utils::SimpleSim,
     };
     use serial_test::serial;
 

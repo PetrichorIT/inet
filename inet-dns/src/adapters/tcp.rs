@@ -199,7 +199,7 @@ async fn dispatch_incoming_events_from<R: AsyncRead + Unpin>(
 mod tests {
     use std::str::FromStr;
 
-    use inet::test_util::SimpleSim;
+    use inet::utils::SimpleSim;
     use serial_test::serial;
 
     use crate::{

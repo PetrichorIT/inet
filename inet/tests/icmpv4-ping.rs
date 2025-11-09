@@ -9,7 +9,7 @@ use inet::{
     IOPlugin,
     interface::{InterfaceDef, NetworkDevice},
     ioctx, ipv4,
-    test_util::SimpleSim,
+    utils::SimpleSim,
 };
 use serial_test::serial;
 use tokio::sync::mpsc::Receiver;

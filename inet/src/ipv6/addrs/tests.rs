@@ -1,7 +1,7 @@
 use des::runtime::RuntimeError;
 use serial_test::serial;
 
-use crate::{ioctx, test_util::SimpleSim};
+use crate::{ioctx, utils::SimpleSim};
 
 use super::*;
 use std::net::Ipv4Addr;

@@ -296,7 +296,7 @@ mod tests {
 
     use bytes_io::{FromBytes, ToBytes};
     use des::time::sleep;
-    use inet::{UdpSocket, dns::ToSocketAddrs, test_util::SimpleSim};
+    use inet::{UdpSocket, dns::ToSocketAddrs, utils::SimpleSim};
     use serial_test::serial;
 
     use super::*;

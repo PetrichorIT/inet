@@ -11,7 +11,7 @@ use crate::{
     interface::NetworkDevice,
     ioctx,
     ipv6::{router, socket::RawV6Socket},
-    test_util::SimpleSim,
+    utils::SimpleSim,
     utils::{NetstatConnection, NetstatConnectionProto},
 };
 

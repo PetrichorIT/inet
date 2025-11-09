@@ -2,7 +2,7 @@ use des::{runtime::RuntimeError, time::sleep};
 use inet::{
     interface::IfId,
     ipv6::multicast::{designate_mdl, join_multicast_group},
-    test_util::SimpleSim,
+    utils::SimpleSim,
 };
 use std::{net::Ipv6Addr, time::Duration};
 

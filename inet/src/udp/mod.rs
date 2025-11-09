@@ -1,6 +1,6 @@
 //! The User Datagram Protocol (UDP)
 use super::{IOContext, socket::*};
-use crate::interface::IfId;
+use crate::{interface::IfId, ipv6::Ipv6SendFlags};
 use bytes_io::{BufMut, FromBytes, ToBytes};
 use des::net::module::try_current;
 use fxhash::{FxHashMap, FxHashSet};
@@ -363,13 +363,14 @@ impl IOContext {
                 let ifid = socket_info.interface.clone();
 
                 // TODO: this should not work for '::
-                self.ipv6_send(
+                self.ipv6_send_with_flags(
                     ip,
                     if local.is_unspecified() || target.is_multicast() {
                         None
                     } else {
                         ifid.into_ifspec()
                     },
+                    Ipv6SendFlags::ALLOW_FRAGMENTATION,
                 )?;
                 Ok(buf.len())
             }

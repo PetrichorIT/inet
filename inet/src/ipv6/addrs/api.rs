@@ -8,26 +8,17 @@ use super::PolicyTable;
 
 /// Adds a polciy to the policy table.
 pub fn policy_add(prefix: Ipv6Prefix, precedence: usize, label: usize) -> io::Result<()> {
-    ioctx().do_failable(|ctx| {
-        ctx.ipv6.policies.add(prefix, precedence, label);
-        Ok(())
-    })
+    ioctx().policy_add(prefix, precedence, label)
 }
 
 /// Removes a polciy from the table.
 pub fn policy_remove(prefix: Ipv6Prefix) -> io::Result<()> {
-    ioctx().do_failable(|ctx| {
-        ctx.ipv6.policies.remove(prefix);
-        Ok(())
-    })
+    ioctx().policy_remove(prefix)
 }
 
 /// Retrusn to the default table state.
 pub fn policy_reset() -> io::Result<()> {
-    ioctx().do_failable(|ctx| {
-        ctx.ipv6.policies = PolicyTable::default();
-        Ok(())
-    })
+    ioctx().policy_reset()
 }
 
 impl IOHandle {

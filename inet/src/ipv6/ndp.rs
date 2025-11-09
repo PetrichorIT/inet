@@ -10,7 +10,10 @@ use types::{
 };
 use valuable::Valuable;
 
-use crate::interface::{IfId, IfSpec, InterfaceAddrV6};
+use crate::{
+    interface::{IfId, IfSpec, InterfaceAddrV6},
+    ipv6::Ipv6SendFlags,
+};
 
 #[derive(Debug, Default)]
 pub struct Solicitations {
@@ -71,7 +74,7 @@ pub struct NeighborCacheEntry {
     ifid: IfId,
     expires: SimTime,
     state: NeighborCacheEntryState,
-    resolution_buffer: FixedBuffer<Ipv6Packet>,
+    resolution_buffer: FixedBuffer<(Ipv6Packet, Ipv6SendFlags)>,
     pub number_of_sent_solicitations: usize,
 }
 
@@ -114,12 +117,12 @@ impl NeighborCache {
         }
     }
 
-    pub fn enqueue(&mut self, ip: Ipv6Addr, pkt: Ipv6Packet) {
+    pub fn enqueue(&mut self, ip: Ipv6Addr, pkt: Ipv6Packet, flags: Ipv6SendFlags) {
         let entry = self.mapping.get_mut(&ip).unwrap();
-        entry.resolution_buffer.enqueue(pkt);
+        entry.resolution_buffer.enqueue((pkt, flags));
     }
 
-    pub fn dequeue(&mut self, ip: Ipv6Addr) -> VecDeque<Ipv6Packet> {
+    pub fn dequeue(&mut self, ip: Ipv6Addr) -> VecDeque<(Ipv6Packet, Ipv6SendFlags)> {
         let entry = self.mapping.get_mut(&ip).unwrap();
         entry.resolution_buffer.extract()
     }

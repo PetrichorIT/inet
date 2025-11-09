@@ -11,7 +11,7 @@ use des::{
 };
 use serial_test::serial;
 
-use crate::test_util::SimpleSim;
+use crate::utils::SimpleSim;
 
 use super::UdpSocket;
 

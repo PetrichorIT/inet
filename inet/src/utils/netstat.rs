@@ -129,7 +129,7 @@ mod tests {
     use crate::{
         UdpSocket,
         tcp::{TcpListener, TcpStream},
-        test_util::SimpleSim,
+        utils::SimpleSim,
         utils::{NetstatConnection, netstat},
     };
 

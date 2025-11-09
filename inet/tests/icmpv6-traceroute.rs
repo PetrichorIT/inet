@@ -141,7 +141,7 @@ dst-router.lan: 2003:b:1::/64
 #[test]
 #[serial]
 fn run() -> Result<(), RuntimeError> {
-    // des::tracing::init();
+    des::tracing::init();
 
     let mut sim = Sim::new(()).with_stack(inet::init);
     sim.include_cfg(CFG);

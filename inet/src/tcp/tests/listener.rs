@@ -8,7 +8,7 @@ use crate::{
     ioctx,
     socket::AsRawFd,
     tcp::{self, Config, TcpListener, TcpStream},
-    test_util::SimpleSim,
+    utils::SimpleSim,
 };
 
 #[test]

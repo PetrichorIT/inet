@@ -179,17 +179,18 @@ impl IOContext {
         Ok(true)
     }
 
-    pub fn ipv6_icmp_send_hop_limit_exceeded(
+    pub fn ipv6_icmp_send_time_exceeded(
         &mut self,
         pkt: &Ipv6Packet,
         ifid: IfId,
+        code: IcmpV6TimeExceededCode,
     ) -> io::Result<()> {
         if !self.ipv6.cfg.icmp_send_time_exceeded {
             return Ok(());
         }
 
         let err = IcmpV6TimeExceeded {
-            code: IcmpV6TimeExceededCode::HopLimitExceeded,
+            code,
             packet: encode_contained_packet(pkt)?,
         };
         let msg = IcmpV6Packet::TimeExceeded(err);
@@ -205,7 +206,7 @@ impl IOContext {
         };
 
         tracing::warn!(
-            "send (TimeExceeded) for packet {}->{} on <{ifid}>",
+            "send (TimeExceeded | {code:?}) for packet {}->{} on <{ifid}>",
             pkt.src,
             pkt.dst
         );
@@ -633,8 +634,8 @@ impl IOContext {
 
             self.ipv6.neighbors.set_reachable(ip.src);
             let pkts = self.ipv6.neighbors.dequeue(ip.src);
-            for pkt in pkts {
-                self.ipv6_send(pkt, Some(ifid))?;
+            for (pkt, flags) in pkts {
+                self.ipv6_send_with_flags(pkt, Some(ifid), flags)?;
             }
         }
 
@@ -846,7 +847,7 @@ impl IOContext {
             let queue = self.ipv6.neighbors.dequeue(target);
 
             tracing::warn!(IFACE=%ifid, "could not resolve address for {target} (affecting {} packets)", queue.len());
-            for pkt in queue {
+            for (pkt, _) in queue {
                 tracing::debug!("> {pkt:?}");
                 let error_msg = IcmpV6DestinationUnreachable {
                     code: IcmpV6DestinationUnreachableCode::AddressUnreachable,
@@ -903,33 +904,32 @@ impl IOContext {
         }
     }
 
-    #[allow(unused)]
-    pub fn ipv6_icmp_send_unsolicited_adv(&mut self, ifid: IfId, addr: Ipv6Addr) -> io::Result<()> {
-        let iface = self.ifaces.get(&ifid).unwrap();
+    // pub fn ipv6_icmp_send_unsolicited_adv(&mut self, ifid: IfId, addr: Ipv6Addr) -> io::Result<()> {
+    //     let iface = self.ifaces.get(&ifid).unwrap();
 
-        let adv = IcmpV6NeighborAdvertisment {
-            target: addr,
-            router: self.ipv6.is_router,
-            solicited: false,
-            overide: true,
-            options: vec![IcmpV6NDPOption::TargetLinkLayerAddress(iface.device.addr)],
-        };
+    //     let adv = IcmpV6NeighborAdvertisment {
+    //         target: addr,
+    //         router: self.ipv6.is_router,
+    //         solicited: false,
+    //         overide: true,
+    //         options: vec![IcmpV6NDPOption::TargetLinkLayerAddress(iface.device.addr)],
+    //     };
 
-        let msg = IcmpV6Packet::NeighborAdvertisment(adv);
-        let pkt = Ipv6Packet {
-            traffic_class: 0,
-            flow_label: 0,
-            proto: PROTO_ICMPV6,
-            hop_limit: 255,
-            extension_headers: Vec::new(),
-            src: addr,
-            dst: Ipv6Addr::MULTICAST_ALL_NODES,
-            content: msg.write_to_bytes()?,
-        };
-        self.ipv6_send(pkt, Some(ifid))?;
+    //     let msg = IcmpV6Packet::NeighborAdvertisment(adv);
+    //     let pkt = Ipv6Packet {
+    //         traffic_class: 0,
+    //         flow_label: 0,
+    //         proto: PROTO_ICMPV6,
+    //         hop_limit: 255,
+    //         extension_headers: Vec::new(),
+    //         src: addr,
+    //         dst: Ipv6Addr::MULTICAST_ALL_NODES,
+    //         content: msg.write_to_bytes()?,
+    //     };
+    //     self.ipv6_send(pkt, Some(ifid))?;
 
-        Ok(())
-    }
+    //     Ok(())
+    // }
 
     fn ipv6_icmp_recv_neighbor_advertisment(
         &mut self,
@@ -965,8 +965,8 @@ impl IOContext {
         self.ipv6.solicitations.remove(adv.target);
 
         if fwd_pkts {
-            for pkt in self.ipv6.neighbors.dequeue(adv.target) {
-                self.ipv6_send(pkt, Some(ifid))?;
+            for (pkt, flags) in self.ipv6.neighbors.dequeue(adv.target) {
+                self.ipv6_send_with_flags(pkt, Some(ifid), flags)?;
             }
         }
 

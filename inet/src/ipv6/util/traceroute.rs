@@ -37,6 +37,7 @@ const TRACEROUTE_MAX: u8 = 32;
 pub async fn traceroute(target: Ipv6Addr) -> io::Result<Traceroute> {
     let udp_socket = UdpSocket::bind("[::]:0").await?;
     let mut icmp_socket = RawV6Socket::new(PROTO_ICMPV6)?;
+    icmp_socket.bind(Ipv6Addr::UNSPECIFIED)?;
 
     let local_addr = udp_socket.local_addr()?;
 
