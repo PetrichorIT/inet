@@ -6,7 +6,7 @@ use des::{
         module::{Prop, PropType},
     },
     prelude::current,
-    runtime::{RuntimeError, random},
+    runtime::random,
     time::sleep,
 };
 use serial_test::serial;
@@ -25,7 +25,7 @@ mod send;
 
 #[test]
 #[serial]
-fn ping_pong() -> Result<(), RuntimeError> {
+fn ping_pong() -> Result<(), des::net::Failure> {
     let mut sim = SimpleSim::default();
     sim.node("192.168.2.100", || async move {
         let out = std::iter::repeat_with(|| random())
@@ -84,21 +84,14 @@ fn ping_pong() -> Result<(), RuntimeError> {
 }
 
 impl PropType for UdpSocket {
-    fn as_value(&self) -> serde_yml::Value {
-        serde_yml::Value::Null
-    }
-
-    fn from_value(_: serde_yml::Value) -> Result<Self, des::net::Error>
-    where
-        Self: Sized,
-    {
-        Err(des::net::Error::new_current(des::net::ErrorKind::Other))
+    fn as_value(&self) -> serde_norway::Value {
+        serde_norway::Value::Null
     }
 }
 
 #[test]
 #[serial]
-fn inspect_foreign_io_object() -> Result<(), RuntimeError> {
+fn inspect_foreign_io_object() -> Result<(), des::net::Failure> {
     let mut sim = SimpleSim::default();
     sim.node("192.168.2.100", || async move {
         let sock = UdpSocket::bind("0.0.0.0:0").await?;
@@ -111,7 +104,7 @@ fn inspect_foreign_io_object() -> Result<(), RuntimeError> {
         sleep(Duration::from_secs(1)).await;
 
         let foreign: Prop<UdpSocket, true> = globals()
-            .get(&"192_168_2_100".into())
+            .get(&"192_168_2_100")
             .unwrap()
             .prop("sock")
             .unwrap()
@@ -127,7 +120,7 @@ fn inspect_foreign_io_object() -> Result<(), RuntimeError> {
 
 #[test]
 #[serial]
-fn default_ttl() -> Result<(), RuntimeError> {
+fn default_ttl() -> Result<(), des::net::Failure> {
     let mut sim = SimpleSim::default();
     sim.node("alice", || async move {
         let sock = UdpSocket::bind("0.0.0.0:0").await?;

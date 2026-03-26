@@ -32,7 +32,7 @@ impl IOHandle {
     /// - a misconfiguration is present
     ///
     pub fn add_interface(&self, iface: InterfaceDef) -> io::Result<InterfaceHandle> {
-        self.do_failable(|ctx| ctx.add_interface(iface.into_legacy()))
+        self.do_mutating_on_active_module(|ctx| ctx.add_interface(iface.into_legacy()))
     }
 
     /// Retrieves a handle to an existing interface, based on its name.
@@ -51,7 +51,7 @@ impl IOHandle {
     /// This function may fail if no interface with the given id exists.
     pub fn get_interface_by_ifid(&self, id: IfId) -> io::Result<InterfaceHandle> {
         let rx = self
-            .do_io(|ctx| ctx.ifaces.get(&id).map(|v| v.state.events.subscribe()))
+            .do_mutating(|ctx| ctx.ifaces.get(&id).map(|v| v.state.events.subscribe()))
             .ok_or_else(|| Error::new(ErrorKind::NotFound, "no such interface exists"))?;
 
         Ok(InterfaceHandle {
@@ -63,7 +63,7 @@ impl IOHandle {
 
     /// Creates a new network bridge with no members.
     pub fn add_bridge_interface(&self, name: &str, mac: Option<MacAddress>) -> io::Result<IfId> {
-        self.do_failable(|ctx| ctx.add_bridge_interface(name, mac))
+        self.do_mutating_on_active_module(|ctx| ctx.add_bridge_interface(name, mac))
     }
 
     /// Creates a new interface for bridging purposes
@@ -73,7 +73,7 @@ impl IOHandle {
         name: &str,
         device: NetworkDevice,
     ) -> io::Result<InterfaceHandle> {
-        self.do_failable(|ctx| ctx.bridge_add_interface(bridge, name, device))
+        self.do_mutating_on_active_module(|ctx| ctx.bridge_add_interface(bridge, name, device))
     }
 }
 

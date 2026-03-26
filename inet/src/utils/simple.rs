@@ -6,9 +6,12 @@ use std::{
 };
 
 use des::{
-    net::{Sim, SimBuilder, handlers::AsyncHandler, processing::ProcessingStack},
+    net::{
+        Failure, IntoModuleTree, Sim, SimBuilder, handlers::AsyncHandler,
+        processing::ProcessingStack,
+    },
     prelude::{ChannelDropBehaviour, DatarateChannel, DatarateChannelMetrics, Message, current},
-    runtime::{Builder, RuntimeError},
+    runtime::Builder,
 };
 use tokio::sync::mpsc::Receiver;
 
@@ -33,7 +36,7 @@ pub struct SimpleSim {
 }
 
 impl SimpleSim {
-    pub fn new(stack: impl FnMut() -> ProcessingStack + 'static) -> Self {
+    pub fn new(stack: impl Fn() -> ProcessingStack + 'static) -> Self {
         let mut sim = Sim::new(()).with_stack(stack);
         sim.node("switch", LinkLayerSwitch::default());
 
@@ -82,7 +85,11 @@ impl SimpleSim {
         Fut: Future<Output = io::Result<()>> + Send,
         Fut: 'static,
     {
-        self.sim.node(name, AsyncHandler::io(f).require_join());
+        self.module(name, AsyncHandler::io(f).require_join());
+    }
+
+    pub fn module<M: IntoModuleTree>(&mut self, name: &str, module: M) {
+        self.sim.node(name, module);
         self.sim.gate(name, "port").connect_with(
             self.sim.gate("switch", &format!("port-${name}")),
             Some(DatarateChannel::new(self.metrics)),
@@ -155,22 +162,30 @@ impl SimpleSim {
         );
     }
 
+    pub fn inner(&self) -> &SimBuilder<()> {
+        &self.sim
+    }
+
+    pub fn inner_mut(&mut self) -> &mut SimBuilder<()> {
+        &mut self.sim
+    }
+
     pub fn into_inner(self) -> Sim<()> {
         self.sim.freeze()
     }
 
-    pub fn run(self) -> Result<(), RuntimeError> {
+    pub fn run(self) -> Result<(), Failure> {
         let rt = Builder::seeded(123)
             .max_time(100.0.into())
             .build(self.into_inner());
-        rt.run().map(|_| ())
+        rt.run().as_result().map(|_| ())
     }
 
-    pub fn run_max_time(self, f: f64) -> Result<(), RuntimeError> {
+    pub fn run_max_time(self, f: f64) -> Result<(), Failure> {
         let rt = Builder::seeded(123)
             .max_time(f.into())
             .build(self.into_inner());
-        rt.run().map(|_| ())
+        rt.run().as_result().map(|_| ())
     }
 }
 

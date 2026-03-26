@@ -105,7 +105,7 @@ pub struct TempDir {
 
 impl TempDir {
     pub fn new() -> Result<TempDir> {
-        ioctx().do_failable(|ctx| ctx.tempdir_create())
+        ioctx().do_mutating_on_active_module(|ctx| ctx.tempdir_create())
     }
 
     pub fn path(&self) -> &Path {

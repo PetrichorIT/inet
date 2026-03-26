@@ -2,13 +2,13 @@ use std::time::Duration;
 
 use des::{
     net::{Sim, handlers::AsyncHandler},
-    runtime::{Builder, RuntimeError},
+    runtime::Builder,
     time::sleep,
 };
 use inet::{extensions::ExtensionHandle, ioctx};
 
 #[test]
-fn basic_extension() -> Result<(), RuntimeError> {
+fn basic_extension() -> Result<(), des::net::Failure> {
     #[derive(Default)]
     struct MyExt {
         value: usize,
@@ -33,5 +33,5 @@ fn basic_extension() -> Result<(), RuntimeError> {
     );
 
     let rt = Builder::new().build(sim.freeze());
-    rt.run().map(|_| ())
+    rt.run().as_result().map(|_| ())
 }

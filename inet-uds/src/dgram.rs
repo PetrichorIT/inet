@@ -314,7 +314,7 @@ mod tests {
 
     use des::{
         net::{Sim, handlers::AsyncHandler},
-        runtime::{Builder, RuntimeError, random},
+        runtime::{Builder, random},
         time::sleep,
     };
     use serial_test::serial;
@@ -366,7 +366,7 @@ mod tests {
 
     #[serial]
     #[test]
-    fn unamed_pair_connectivity() -> Result<(), RuntimeError> {
+    fn unamed_pair_connectivity() -> Result<(), des::net::Failure> {
         let mut app = Sim::new(()).with_stack(inet::init);
         app.node(
             "main",
@@ -406,12 +406,13 @@ mod tests {
             .max_time(100.0.into())
             .build(app.freeze())
             .run()
+            .as_result()
             .map(|_| ())
     }
 
     #[serial]
     #[test]
-    fn connected_can_transmit_datagrams() -> Result<(), RuntimeError> {
+    fn connected_can_transmit_datagrams() -> Result<(), des::net::Failure> {
         let mut sim = Sim::new(()).with_stack(inet::init);
 
         sim.node(
@@ -438,12 +439,13 @@ mod tests {
             .max_time(100.0.into())
             .build(sim.freeze())
             .run()
+            .as_result()
             .map(|_| ())
     }
 
     #[serial]
     #[test]
-    fn named_connectivity() -> Result<(), RuntimeError> {
+    fn named_connectivity() -> Result<(), des::net::Failure> {
         let mut app = Sim::new(()).with_stack(inet::init);
         app.node(
             "main",
@@ -507,7 +509,7 @@ mod tests {
         let rt = Builder::seeded(123)
             .max_time(100.0.into())
             .build(app.freeze());
-        rt.run().map(|_| ())
+        rt.run().as_result().map(|_| ())
     }
 
     #[serial]

@@ -23,7 +23,7 @@ impl TcpSocket {
     /// Creates a new socket configured for IPv4.
     pub fn new_v4() -> Result<TcpSocket> {
         let handle = IOHandle::current();
-        handle.clone().do_io(|ctx| {
+        handle.clone().do_mutating(|ctx| {
             Ok(TcpSocket {
                 addr: Cell::new(SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0))),
                 config: RefCell::new(ctx.tcp.config.clone()),
@@ -36,7 +36,7 @@ impl TcpSocket {
     /// Creates a new socket configured for IPv6.
     pub fn new_v6() -> Result<TcpSocket> {
         let handle = IOHandle::current();
-        handle.clone().do_io(|ctx| {
+        handle.clone().do_mutating(|ctx| {
             Ok(TcpSocket {
                 addr: Cell::new(SocketAddr::V6(SocketAddrV6::new(
                     Ipv6Addr::UNSPECIFIED,
@@ -158,7 +158,7 @@ impl TcpSocket {
     ///
     /// Will fail on windows if called before bind
     pub fn local_addr(&self) -> Result<SocketAddr> {
-        self.handle.do_io(|ctx| ctx.socket_get_addr(self.fd))
+        self.handle.do_mutating(|ctx| ctx.socket_get_addr(self.fd))
     }
 
     /// Binds the socket to the given address.
@@ -170,7 +170,7 @@ impl TcpSocket {
             return Err(Error::other("invalid address family"));
         }
 
-        let addr = self.handle.do_io(|ctx| ctx.socket_bind(self.fd, addr))?;
+        let addr = self.handle.do_mutating(|ctx| ctx.socket_bind(self.fd, addr))?;
         self.addr.set(addr);
         Ok(())
     }
@@ -189,17 +189,17 @@ impl TcpSocket {
         self.fd = 0;
         let fd = self
             .handle
-            .do_io(|ctx| ctx.tcp_connect(peer, Some(self.config.borrow().clone()), Some(fd)))?;
+            .do_mutating(|ctx| ctx.tcp_connect(peer, Some(self.config.borrow().clone()), Some(fd)))?;
 
         if self
             .handle
-            .do_io(|ctx| ctx.tcp_connection(fd, |c| c.state != State::Estab))?
+            .do_mutating(|ctx| ctx.tcp_connection(fd, |c| c.state != State::Estab))?
         {
             let interest = TcpInterest::write(fd, self.handle.clone());
             return interest
                 .await
                 .inspect_err(|_| {
-                    let _ = self.handle.do_io(|ctx| ctx.tcp_drop(fd));
+                    let _ = self.handle.do_mutating(|ctx| ctx.tcp_drop(fd));
                 })
                 .map(|_| TcpStream {
                     inner: Arc::new(Inner {
@@ -229,7 +229,7 @@ impl TcpSocket {
         self.fd = 0;
         let cfg = self.config.borrow().clone();
         self.handle
-            .do_io(|ctx| ctx.tcp_bind(local_addr, Some(cfg), fd, Some(backlog as usize)))
+            .do_mutating(|ctx| ctx.tcp_bind(local_addr, Some(cfg), fd, Some(backlog as usize)))
     }
 }
 

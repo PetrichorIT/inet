@@ -45,7 +45,7 @@ impl<E: Default + Any> ExtensionHandle<E> {
     }
 
     pub fn with<R>(&self, f: impl FnOnce(&mut E) -> R) -> R {
-        self.handle.do_io(|ctx| ctx.extensions.with_ext(f))
+        self.handle.do_mutating(|ctx| ctx.extensions.with_ext(f))
     }
 
     pub fn try_with<R>(&self, f: impl FnOnce(&mut E) -> R) -> Option<R> {

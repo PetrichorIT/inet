@@ -6,7 +6,7 @@ use des::{
         handlers::{AsyncHandler, HandlerFn},
     },
     prelude::{ChannelDropBehaviour, DatarateChannel, DatarateChannelMetrics, send},
-    runtime::{Builder, RuntimeError, random},
+    runtime::{Builder, random},
     time::SimTime,
 };
 use rand::{RngCore, rng};
@@ -25,7 +25,7 @@ use crate::{
 
 #[serial]
 #[test]
-fn peeking_stream() -> Result<(), RuntimeError> {
+fn peeking_stream() -> Result<(), des::net::Failure> {
     let mut sim = SimpleSim::default();
     sim.node_require_join("192.168.2.101", || async move {
         let (mut accepted, _) = TcpListener::bind("0.0.0.0:80").await?.accept().await?;
@@ -54,7 +54,7 @@ fn peeking_stream() -> Result<(), RuntimeError> {
 
 #[test]
 #[serial]
-fn interest_based_writing() -> Result<(), RuntimeError> {
+fn interest_based_writing() -> Result<(), des::net::Failure> {
     let mut sim = SimpleSim::default();
     sim.node("192.168.2.101", || async move {
         let (accepted, _) = TcpListener::bind("0.0.0.0:80").await?.accept().await?;

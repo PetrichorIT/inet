@@ -9,6 +9,7 @@ edition = "2021"
 inet = { path = "../../inet" }
 inet-pcap = { path = "../../inet-pcap" }
 des = { version = "*", features = ["unstable-tokio-enable-time"] }
+des-ndl = "*"
 async-trait = "*"
 tracing = "*"
 tokio = "*"

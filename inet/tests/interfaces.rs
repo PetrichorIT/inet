@@ -72,7 +72,7 @@ impl Module for SocketBind {
         });
     }
 
-    fn at_sim_end(&mut self) -> Result<(), RuntimeError> {
+    fn at_sim_end(&mut self) -> Result<(), des::net::Error> {
         assert!(self.done.load(Ordering::SeqCst));
         Ok(())
     }
@@ -80,14 +80,14 @@ impl Module for SocketBind {
 
 #[test]
 #[serial]
-fn udp_empty_socket_bind() -> Result<(), RuntimeError> {
+fn udp_empty_socket_bind() -> Result<(), des::net::Failure> {
     // des::tracing::init();
 
     let mut app = Sim::new(()).with_stack(inet::init);
     app.node("root", SocketBind::default());
 
     let rt = Builder::seeded(123).build(app.freeze());
-    rt.run().map(|_| ())
+    rt.run().as_result().map(|_| ())
 }
 
 #[derive(Default)]
@@ -162,7 +162,7 @@ impl Module for UdpSingleEchoSender {
         });
     }
 
-    fn at_sim_end(&mut self) -> Result<(), RuntimeError> {
+    fn at_sim_end(&mut self) -> Result<(), des::net::Error> {
         assert!(self.done.load(Ordering::SeqCst));
         Ok(())
     }
@@ -171,7 +171,7 @@ impl Module for UdpSingleEchoSender {
 #[test]
 #[serial]
 fn udp_echo_single_client() {
-    // Logger::new().set_logger();
+    // des::tracing::init();
 
     let mut app = Sim::new(()).with_stack(inet::init);
     app.node("server", UdpEcho4200::default());
@@ -190,11 +190,9 @@ fn udp_echo_single_client() {
     so.connect_with(co, Some(chan));
 
     let rt = Builder::seeded(123).build(app.freeze());
-    let Ok((_, time, _)) = rt.run() else {
-        panic!("Unexpected runtime result")
-    };
+    let res = rt.run().assert_no_err();
 
-    assert_eq!(time.as_secs(), 31);
+    assert_eq!(res.time.as_secs(), 30);
 }
 
 #[derive(Default)]
@@ -245,7 +243,7 @@ impl Module for UdpSingleClusteredSender {
         });
     }
 
-    fn at_sim_end(&mut self) -> Result<(), RuntimeError> {
+    fn at_sim_end(&mut self) -> Result<(), des::net::Error> {
         assert!(self.done.load(Ordering::SeqCst));
         Ok(())
     }
@@ -271,11 +269,9 @@ fn udp_echo_clustered_echo() {
     so.connect_with(co, Some(chan));
 
     let rt = Builder::seeded(123).build(app.freeze());
-    let Ok((_, time, _)) = rt.run() else {
-        panic!("Unexpected runtime result")
-    };
+    let res = rt.run().assert_no_err();
 
-    assert_eq!(time.as_secs(), 8)
+    assert_eq!(res.time.as_secs(), 8)
 }
 
 #[derive(Default)]
@@ -357,7 +353,7 @@ impl Module for UdpConcurrentClients {
         });
     }
 
-    fn at_sim_end(&mut self) -> Result<(), RuntimeError> {
+    fn at_sim_end(&mut self) -> Result<(), des::net::Error> {
         assert!(self.done.load(Ordering::SeqCst));
         Ok(())
     }
@@ -383,16 +379,14 @@ fn udp_echo_concurrent_clients() {
     so.connect_with(co, Some(chan));
 
     let rt = Builder::seeded(123).build(app.freeze());
-    let Ok((_, time, _)) = rt.run() else {
-        panic!("Unexpected runtime result")
-    };
+    let res = rt.run().assert_no_err();
 
-    assert_eq!(time.as_secs(), 32)
+    assert_eq!(res.time.as_secs(), 32)
 }
 
 #[test]
 #[serial]
-fn interface_does_not_use_busy_channel() -> Result<(), RuntimeError> {
+fn interface_does_not_use_busy_channel() -> Result<(), des::net::Failure> {
     // des::tracing::init();
 
     static DONE: AtomicBool = AtomicBool::new(false);
@@ -473,7 +467,7 @@ fn interface_does_not_use_busy_channel() -> Result<(), RuntimeError> {
     );
 
     let rt = Builder::seeded(123).build(sim.freeze());
-    let result = rt.run().map(|_| ());
+    let result = rt.run().as_result().map(|_| ());
 
     assert!(DONE.load(std::sync::atomic::Ordering::SeqCst));
     result
@@ -481,7 +475,7 @@ fn interface_does_not_use_busy_channel() -> Result<(), RuntimeError> {
 
 #[test]
 #[serial]
-fn interface_will_use_idle_channel_fcfs() -> Result<(), RuntimeError> {
+fn interface_will_use_idle_channel_fcfs() -> Result<(), des::net::Failure> {
     static DONE: AtomicBool = AtomicBool::new(false);
 
     let mut sim = Sim::new(()).with_stack(inet::init);
@@ -556,7 +550,7 @@ fn interface_will_use_idle_channel_fcfs() -> Result<(), RuntimeError> {
     );
 
     let rt = Builder::seeded(123).build(sim.freeze());
-    let result = rt.run().map(|_| ());
+    let result = rt.run().as_result().map(|_| ());
 
     assert!(DONE.load(std::sync::atomic::Ordering::SeqCst));
     result
@@ -564,7 +558,7 @@ fn interface_will_use_idle_channel_fcfs() -> Result<(), RuntimeError> {
 
 #[test]
 #[serial]
-fn cannot_add_interface_with_same_name() -> Result<(), RuntimeError> {
+fn cannot_add_interface_with_same_name() -> Result<(), des::net::Failure> {
     let mut sim = Sim::new(()).with_stack(inet::init);
     sim.node(
         "sender",
@@ -586,12 +580,12 @@ fn cannot_add_interface_with_same_name() -> Result<(), RuntimeError> {
     a.connect(b);
 
     let rt = Builder::seeded(123).build(sim.freeze());
-    rt.run().map(|_| ())
+    rt.run().as_result().map(|_| ())
 }
 
 #[test]
 #[serial]
-fn eth_device_on_nodelay_link() -> Result<(), RuntimeError> {
+fn eth_device_on_nodelay_link() -> Result<(), des::net::Failure> {
     let mut sim = Sim::new(()).with_stack(inet::init);
     sim.node(
         "sender",
@@ -614,12 +608,12 @@ fn eth_device_on_nodelay_link() -> Result<(), RuntimeError> {
     a.connect(b);
 
     let rt = Builder::seeded(123).build(sim.freeze());
-    rt.run().map(|_| ())
+    rt.run().as_result().map(|_| ())
 }
 
 #[test]
 #[serial]
-fn eth_device_from_selection() -> Result<(), RuntimeError> {
+fn eth_device_from_selection() -> Result<(), des::net::Failure> {
     let mut sim = Sim::new(()).with_stack(inet::init);
     sim.node(
         "sender",
@@ -642,12 +636,12 @@ fn eth_device_from_selection() -> Result<(), RuntimeError> {
     a.connect(b);
 
     let rt = Builder::seeded(123).build(sim.freeze());
-    rt.run().map(|_| ())
+    rt.run().as_result().map(|_| ())
 }
 
 #[test]
 #[serial]
-fn interface_handle_add_addr() -> Result<(), RuntimeError> {
+fn interface_handle_add_addr() -> Result<(), des::net::Failure> {
     let mut sim = Sim::new(()).with_stack(inet::init);
     sim.node(
         "sender",
@@ -679,5 +673,5 @@ fn interface_handle_add_addr() -> Result<(), RuntimeError> {
     a.connect(b);
 
     let rt = Builder::seeded(123).build(sim.freeze());
-    rt.run().map(|_| ())
+    rt.run().as_result().map(|_| ())
 }

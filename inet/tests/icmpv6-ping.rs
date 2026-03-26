@@ -4,7 +4,7 @@ use std::{
     time::Duration,
 };
 
-use des::{net::globals, prelude::Message, runtime::RuntimeError, time::sleep};
+use des::{net::globals, prelude::Message, time::sleep};
 use inet::{
     IOPlugin,
     env::RoutingPort,
@@ -22,7 +22,7 @@ async fn alice_success(_rx: Receiver<Message>) -> io::Result<()> {
     sleep(Duration::from_secs(10)).await;
 
     let addr = globals()
-        .get(&"bob".into())
+        .get(&"bob")
         .unwrap()
         .as_ref::<IOPlugin>()
         .handle()
@@ -81,7 +81,7 @@ async fn router(_rx: Receiver<Message>) -> io::Result<()> {
 
 #[test]
 #[serial]
-fn icmpv6_ping_success() -> Result<(), RuntimeError> {
+fn icmpv6_ping_success() -> Result<(), des::net::Failure> {
     // des::tracing::init();
 
     let mut sim = SimpleSim::default();
@@ -94,11 +94,11 @@ fn icmpv6_ping_success() -> Result<(), RuntimeError> {
 
 #[test]
 #[serial]
-fn icmpv6_ping_failure() -> Result<(), RuntimeError> {
+fn icmpv6_ping_failure() -> Result<(), des::net::Failure> {
     // des::tracing::init();
 
     let mut sim = SimpleSim::default();
-    sim.raw("alice", alice_failure);
+    sim.raw("clice", alice_failure);
     sim.raw("bob", bob);
     sim.raw("router", router);
 

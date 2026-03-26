@@ -3,7 +3,8 @@ use std::sync::{
     atomic::{AtomicUsize, Ordering},
 };
 
-use des::{net::globals, prelude::*, registry, time::sleep};
+use des::{net::globals, prelude::*, time::sleep};
+use des_ndl::{Ndl, registry};
 use inet::{
     interface::{InterfaceDef, NetworkDevice},
     ioctx,
@@ -81,7 +82,7 @@ impl Module for Node {
         2
     }
 
-    fn at_sim_end(&mut self) -> Result<(), RuntimeError> {
+    fn at_sim_end(&mut self) -> Result<(), des::net::Error> {
         assert_eq!(self.done.load(Ordering::SeqCst), 2);
         Ok(())
     }
@@ -99,7 +100,7 @@ impl Module for Main {
         let mut targets = Vec::new();
         for i in 0..5 {
             let s = globals()
-                .get(&format!("node[{i}]").into())
+                .get(&format!("node[{i}]"))
                 .unwrap()
                 .prop::<Vec<u8>>("targets")
                 .unwrap()
@@ -111,7 +112,7 @@ impl Module for Main {
         for i in 0..5 {
             let c = targets.iter().filter(|e| **e == i).count();
             globals()
-                .get(&format!("node[{i}]").into())
+                .get(&format!("node[{i}]"))
                 .unwrap()
                 .prop::<usize>("expected")
                 .unwrap()
@@ -121,15 +122,16 @@ impl Module for Main {
 }
 
 #[test]
-fn tcp_lan_v6() -> Result<(), RuntimeError> {
+fn tcp_lan_v6() -> Result<(), Box<dyn std::error::Error>> {
     // des::tracing::init();
 
-    let app = Sim::new(())
+    let mut app = Sim::new(())
         .with_stack(inet::init)
-        .with_cfg(include_str!("tcp-lan/v6.par.yml"))
-        .with_ndl("tests/tcp-lan/main.yml", registry![Node, Switch, Main])
-        .map_err(|e| println!("{e}"))
-        .unwrap();
+        .with_cfg(include_str!("tcp-lan/v6.par.yml"));
+    let def = serde_norway::from_str(include_str!("tcp-lan/main.yml"))?;
+    app.node("", Ndl::new(&mut registry![Node, Switch, Main], &def)?)?;
+
     let rt = Builder::seeded(123).build(app.freeze());
-    rt.run().map(|_| ())
+    rt.run().as_result().map(|_| ())?;
+    Ok(())
 }

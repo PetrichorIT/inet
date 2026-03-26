@@ -62,20 +62,20 @@ pub fn bsd_socket_info(fd: Fd) -> Result<Socket> {
 
 impl IOHandle {
     pub fn socket(&self, domain: SocketDomain, typ: SocketType, protocol: i32) -> Result<Fd> {
-        self.do_failable(|ctx| ctx.socket_create(domain, typ, protocol))
+        self.do_mutating_on_active_module(|ctx| ctx.socket_create(domain, typ, protocol))
     }
 
     pub fn bind(&self, sockfd: Fd, addr: SocketAddr) -> Result<()> {
-        self.do_failable(|ctx| ctx.socket_bind(sockfd, addr))?;
+        self.do_mutating_on_active_module(|ctx| ctx.socket_bind(sockfd, addr))?;
         Ok(())
     }
 
     pub fn close(&self, fd: Fd) -> Result<()> {
-        self.do_failable(|ctx| ctx.socket_close(fd))
+        self.do_mutating_on_active_module(|ctx| ctx.socket_close(fd))
     }
 
     #[doc(hidden)]
     pub fn bsd_socket_info(&self, fd: Fd) -> Result<Socket> {
-        self.do_failable(|ctx| ctx.sockets.get(fd).cloned())
+        self.do_readonly(|ctx| ctx.sockets.get(fd).cloned())
     }
 }

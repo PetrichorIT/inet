@@ -42,7 +42,7 @@ pub fn route() -> io::Result<Vec<FwdEntryV4>> {
 
 impl IOHandle {
     pub fn set_default_gateway(&self, ip: Ipv4Addr) -> io::Result<()> {
-        self.do_failable(|ctx| ctx.set_default_gateway(ip))
+        self.do_mutating_on_active_module(|ctx| ctx.set_default_gateway(ip))
     }
 
     pub fn add_routing_entry_to(
@@ -53,15 +53,17 @@ impl IOHandle {
         interface: &str,
         table: RoutingTableId,
     ) -> io::Result<()> {
-        self.do_failable(|ctx| ctx.add_routing_entry(addr, mask, gw, interface, table))
+        self.do_mutating_on_active_module(|ctx| {
+            ctx.add_routing_entry(addr, mask, gw, interface, table)
+        })
     }
 
     pub fn add_routing_table(&self) -> io::Result<RoutingTableId> {
-        self.do_failable(|ctx| ctx.add_routing_table())
+        self.do_mutating_on_active_module(|ctx| ctx.add_routing_table())
     }
 
     pub fn route(&self) -> io::Result<Vec<FwdEntryV4>> {
-        self.do_failable(|ctx| Ok(ctx.route()))
+        self.do_readonly(|ctx| Ok(ctx.route()))
     }
 }
 
@@ -115,7 +117,7 @@ impl IOContext {
         Ok(())
     }
 
-    fn route(&mut self) -> Vec<FwdEntryV4> {
+    fn route(&self) -> Vec<FwdEntryV4> {
         self.ipv4.fwd.entries()
     }
 

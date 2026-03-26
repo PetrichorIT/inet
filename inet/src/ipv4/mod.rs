@@ -48,7 +48,7 @@ pub fn set_host_config(cfg: HostConfiguration) -> io::Result<()> {
 
 impl IOHandle {
     pub fn ipv4_set_host_config(&self, cfg: HostConfiguration) -> io::Result<()> {
-        self.do_failable(|ctx| {
+        self.do_mutating_on_active_module(|ctx| {
             ctx.ipv4.cfg = cfg;
             Ok(())
         })

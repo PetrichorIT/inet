@@ -1,13 +1,13 @@
 use std::{net::Ipv6Addr, time::Duration};
 
-use des::{runtime::RuntimeError, time::sleep};
+use des::time::sleep;
 use serial_test::serial;
 
 use crate::{UdpSocket, ipv6::multicast::tests::assert_memberships_are, utils::SimpleSim};
 
 #[test]
 #[serial]
-fn udp_can_receive_site_local_multicast() -> Result<(), RuntimeError> {
+fn udp_can_receive_site_local_multicast() -> Result<(), des::net::Failure> {
     let mut sim = SimpleSim::default();
     sim.v6 = true;
     let group = "ff15::1234".parse().unwrap();
@@ -36,7 +36,7 @@ fn udp_can_receive_site_local_multicast() -> Result<(), RuntimeError> {
 
 #[test]
 #[serial]
-fn udp_leaves_group_at_drop() -> Result<(), RuntimeError> {
+fn udp_leaves_group_at_drop() -> Result<(), des::net::Failure> {
     let mut sim = SimpleSim::default();
     sim.v6 = true;
     let group = "ff15::1234".parse().unwrap();

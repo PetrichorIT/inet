@@ -339,7 +339,7 @@ mod tests {
 
     #[test]
     #[serial]
-    fn truncated_execssive_response() -> Result<(), des::prelude::RuntimeError> {
+    fn truncated_execssive_response() -> Result<(), des::net::Failure> {
         // des::tracing::init();
 
         let mut sim = SimpleSim::new(inet::init);
@@ -406,7 +406,7 @@ mod tests {
 
     #[test]
     #[serial]
-    fn truncated_higher_limit_with_edns() -> Result<(), des::prelude::RuntimeError> {
+    fn truncated_higher_limit_with_edns() -> Result<(), des::net::Failure> {
         let mut sim = SimpleSim::new(inet::init);
         sim.node_require_join("alice", || async move {
             let recv = UdpSocket::bind("0.0.0.0:2000").await?;

@@ -77,7 +77,7 @@ pub fn set_arp_config(cfg: ArpConfig) -> Result<()> {
 
 impl IOHandle {
     pub fn arpa(&self) -> Result<Vec<ArpEntry>> {
-        self.do_failable(|ctx| Ok(ctx.arpa()))
+        self.do_readonly(|ctx| Ok(ctx.arpa()))
     }
 
     pub fn set_arp_entry(
@@ -86,16 +86,16 @@ impl IOHandle {
         mac: MacAddress,
         if_name: InterfaceName,
     ) -> Result<()> {
-        self.do_failable(|ctx| ctx.set_arp_entry(ip, mac, if_name))
+        self.do_mutating_on_active_module(|ctx| ctx.set_arp_entry(ip, mac, if_name))
     }
 
     pub fn set_arp_config(&self, cfg: ArpConfig) -> Result<()> {
-        self.do_failable(|ctx| ctx.set_arp_config(cfg))
+        self.do_mutating_on_active_module(|ctx| ctx.set_arp_config(cfg))
     }
 }
 
 impl IOContext {
-    fn arpa(&mut self) -> Vec<ArpEntry> {
+    fn arpa(&self) -> Vec<ArpEntry> {
         let mut results = Vec::with_capacity(self.ipv4.arp.len());
         let now = SimTime::now();
         for entry in self.ipv4.arp.entries() {
@@ -104,7 +104,7 @@ impl IOContext {
             }
 
             let permanent = entry.expires == SimTime::MAX;
-            let iface = if let Some(iface) = self.ifaces.get_mut_spec(&entry.iface) {
+            let iface = if let Some(iface) = entry.iface.and_then(|k| self.ifaces.get(&k)) {
                 iface.name.clone()
             } else {
                 InterfaceName::new("?")

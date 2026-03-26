@@ -8,7 +8,7 @@ use des::{
         handlers::AsyncHandler,
         module::Module,
     },
-    runtime::{Builder, RuntimeError},
+    runtime::Builder,
     time::SimTime,
 };
 use inet::{
@@ -33,7 +33,7 @@ impl Module for WithChecks {
         assert_eq!(state.addrs.multicast_scopes().len(), 1); // sol-multicast (delayed) + all nodes multicast
     }
 
-    fn at_sim_end(&mut self) -> Result<(), RuntimeError> {
+    fn at_sim_end(&mut self) -> Result<(), des::net::Error> {
         let state = ioctx().get_interface("en0").unwrap().status();
         assert_eq!(state.addrs.addrs().count(), 1);
         assert_eq!(state.addrs.multicast_scopes().len(), 2); // sol-multicast (delayed) + all nodes multicast
@@ -60,7 +60,7 @@ impl Module for WithoutChecks {
         assert_eq!(state.addrs.multicast_scopes().len(), 2); // sol-multicast + all nodes multicast
     }
 
-    fn at_sim_end(&mut self) -> Result<(), RuntimeError> {
+    fn at_sim_end(&mut self) -> Result<(), des::net::Error> {
         let state = ioctx().get_interface("en0").unwrap().status();
         assert_eq!(state.addrs.addrs().count(), 1);
         assert_eq!(state.addrs.multicast_scopes().len(), 2); // sol-multicast + all nodes multicast
@@ -82,7 +82,7 @@ impl Module for ManualAssignWithoutDedup {
         assert_eq!(state.addrs.multicast_scopes().len(), 2); // sol-multicast + all nodes multicast
     }
 
-    fn at_sim_end(&mut self) -> Result<(), RuntimeError> {
+    fn at_sim_end(&mut self) -> Result<(), des::net::Error> {
         let state = ioctx().get_interface("en0").unwrap().status();
         assert_eq!(state.addrs.addrs().count(), 1);
         assert_eq!(state.addrs.multicast_scopes().len(), 2); // sol-multicast + all nodes multicast
@@ -118,7 +118,7 @@ impl Module for AssignSameAddr {
             .unwrap();
     }
 
-    fn at_sim_end(&mut self) -> Result<(), RuntimeError> {
+    fn at_sim_end(&mut self) -> Result<(), des::net::Error> {
         assert_ne!(
             ioctx()
                 .get_interface("en0")
@@ -150,7 +150,7 @@ impl Module for Router {
 
 #[test]
 #[serial]
-fn tentative_addr_with_checks() -> Result<(), RuntimeError> {
+fn tentative_addr_with_checks() -> Result<(), des::net::Failure> {
     // des::tracing::init();
 
     let mut app = Sim::new(()).with_stack(inet::init);
@@ -169,12 +169,12 @@ fn tentative_addr_with_checks() -> Result<(), RuntimeError> {
     ag.connect_with(bg, Some(chan));
 
     let rt = Builder::seeded(123).build(app.freeze());
-    rt.run().map(|_| ())
+    rt.run().as_result().map(|_| ())
 }
 
 #[test]
 #[serial]
-fn tentative_addr_without_checks() -> Result<(), RuntimeError> {
+fn tentative_addr_without_checks() -> Result<(), des::net::Failure> {
     // des::tracing::init();
 
     let mut app = Sim::new(()).with_stack(inet::init);
@@ -193,12 +193,12 @@ fn tentative_addr_without_checks() -> Result<(), RuntimeError> {
     ag.connect_with(bg, Some(chan));
 
     let rt = Builder::seeded(123).build(app.freeze());
-    rt.run().map(|_| ())
+    rt.run().as_result().map(|_| ())
 }
 
 #[test]
 #[serial]
-fn tentative_addr_no_checks_on_manual_no_dedup() -> Result<(), RuntimeError> {
+fn tentative_addr_no_checks_on_manual_no_dedup() -> Result<(), des::net::Failure> {
     // des::tracing::init();
 
     let mut app = Sim::new(()).with_stack(inet::init);
@@ -217,12 +217,12 @@ fn tentative_addr_no_checks_on_manual_no_dedup() -> Result<(), RuntimeError> {
     ag.connect_with(bg, Some(chan));
 
     let rt = Builder::seeded(123).build(app.freeze());
-    rt.run().map(|_| ())
+    rt.run().as_result().map(|_| ())
 }
 
 #[test]
 #[serial]
-fn tentative_addr_collision() -> Result<(), RuntimeError> {
+fn tentative_addr_collision() -> Result<(), des::net::Failure> {
     // des::tracing::init();
 
     let mut app = Sim::new(()).with_stack(inet::init);
@@ -241,12 +241,12 @@ fn tentative_addr_collision() -> Result<(), RuntimeError> {
     ag.connect_with(bg, Some(chan));
 
     let rt = Builder::seeded(123).build(app.freeze());
-    rt.run().map(|_| ())
+    rt.run().as_result().map(|_| ())
 }
 
 #[test]
 #[serial]
-fn interface_handle_wait_for_link_local() -> Result<(), RuntimeError> {
+fn interface_handle_wait_for_link_local() -> Result<(), des::net::Failure> {
     // des::tracing::init();
 
     let mut sim = Sim::new(()).with_stack(inet::init);
@@ -286,14 +286,14 @@ fn interface_handle_wait_for_link_local() -> Result<(), RuntimeError> {
     );
 
     let rt = Builder::seeded(123).build(sim.freeze());
-    let result = rt.run().map(|_| ());
+    let result = rt.run().as_result().map(|_| ());
 
     result
 }
 
 #[test]
 #[serial]
-fn interface_handle_wait_for_global() -> Result<(), RuntimeError> {
+fn interface_handle_wait_for_global() -> Result<(), des::net::Failure> {
     // des::tracing::init();
 
     let mut sim = Sim::new(()).with_stack(inet::init);
@@ -326,7 +326,7 @@ fn interface_handle_wait_for_global() -> Result<(), RuntimeError> {
     let rt = Builder::seeded(123)
         .max_time(10.0.into())
         .build(sim.freeze());
-    let result = rt.run().map(|_| ());
+    let result = rt.run().as_result().map(|_| ());
 
     result
 }

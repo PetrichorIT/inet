@@ -3,7 +3,7 @@ use std::{io, net::Ipv4Addr, time::Duration};
 use des::{
     net::{Sim, handlers::AsyncHandler},
     prelude::{ChannelDropBehaviour, DatarateChannel, DatarateChannelMetrics, Message, current},
-    runtime::{Builder, RuntimeError},
+    runtime::Builder,
     time::sleep_until,
 };
 use inet::{
@@ -125,7 +125,7 @@ dst-router.lan: 100.6.6.0/24
 
 #[test]
 #[serial]
-fn run() -> Result<(), RuntimeError> {
+fn run() -> Result<(), des::net::Failure> {
     des::tracing::init();
 
     let mut sim = Sim::new(()).with_stack(inet::init);
@@ -159,5 +159,6 @@ fn run() -> Result<(), RuntimeError> {
         .max_time(100.0.into())
         .build(sim.freeze())
         .run()
+        .as_result()
         .map(|_| ())
 }

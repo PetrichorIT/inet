@@ -1,4 +1,4 @@
-use des::registry;
+use des_ndl::{Ndl, registry};
 use std::{
     str::FromStr,
     sync::{
@@ -95,7 +95,7 @@ impl Module for TcpServer {
         tracing::error!("All packet should have been caught by the plugins");
     }
 
-    fn at_sim_end(&mut self) -> Result<(), RuntimeError> {
+    fn at_sim_end(&mut self) -> Result<(), des::net::Error> {
         assert!(self.done.load(SeqCst));
 
         let fd: Fd = self.fd.load(SeqCst);
@@ -150,7 +150,7 @@ impl Module for TcpClient {
         panic!("All packet should have been caught by the plugins")
     }
 
-    fn at_sim_end(&mut self) -> Result<(), RuntimeError> {
+    fn at_sim_end(&mut self) -> Result<(), des::net::Error> {
         assert!(self.done.load(SeqCst));
 
         let fd: Fd = self.fd.load(SeqCst);
@@ -162,21 +162,22 @@ impl Module for TcpClient {
 
 #[test]
 #[serial]
-fn tcp_close_data_complete() {
+fn tcp_close_data_complete() -> Result<(), Box<dyn std::error::Error>> {
     // des::tracing::init();
 
-    let app = Sim::new(())
-        .with_stack(inet::init)
-        .with_ndl(
-            "tests/tcp.yml",
-            registry![Link, TcpServer, TcpClient, else _],
-        )
-        .map_err(|e| println!("{e}"))
-        .unwrap();
+    let mut app = Sim::new(()).with_stack(inet::init);
+    let def = serde_norway::from_str(include_str!("tcp.yml"))?;
+    app.node(
+        "",
+        Ndl::new(&mut registry![Link, TcpServer, TcpClient, else _], &def)?,
+    )?;
+
     let rt = Builder::seeded(123)
         .max_time(3.0.into())
         .build(app.freeze());
-    let (_, time, profiler) = rt.run().unwrap();
-    assert_eq!(time.as_secs(), 3);
-    assert!(profiler.event_count < 200);
+    let r = rt.run().assert_no_err();
+    assert_eq!(r.time.as_secs(), 3);
+    assert!(r.profiler.event_count < 200);
+
+    Ok(())
 }

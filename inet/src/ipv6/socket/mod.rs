@@ -59,7 +59,8 @@ pub struct RawV6SocketHandle {
 impl RawV6Socket {
     pub fn new(proto: u8) -> io::Result<Self> {
         let handle = ioctx();
-        let (fd, rx) = handle.do_failable(|ctx| ctx.ipv6_raw_socket_create(proto))?;
+        let (fd, rx) =
+            handle.do_mutating_on_active_module(|ctx| ctx.ipv6_raw_socket_create(proto))?;
         Ok(Self {
             handle,
             fd,
@@ -72,7 +73,7 @@ impl RawV6Socket {
     }
 
     pub fn bind(&self, addr: Ipv6Addr) -> io::Result<()> {
-        self.handle.do_failable(|ctx| {
+        self.handle.do_mutating_on_active_module(|ctx| {
             ctx.socket_bind(self.fd, SocketAddr::new(addr.into(), 0))?;
             ctx.ipv6
                 .sockets
@@ -84,26 +85,27 @@ impl RawV6Socket {
     }
 
     pub fn connect(&self, addr: Ipv6Addr) -> io::Result<()> {
-        self.handle
-            .do_failable(|ctx| ctx.socket_set_peer(self.fd, SocketAddr::new(addr.into(), 0)))
+        self.handle.do_mutating_on_active_module(|ctx| {
+            ctx.socket_set_peer(self.fd, SocketAddr::new(addr.into(), 0))
+        })
     }
 
     /// Returns the local address that this socket is bound to.
     pub fn local_addr(&self) -> io::Result<Ipv6Addr> {
         self.handle
-            .do_io(|ctx| ctx.socket_get_addr(self.fd))
+            .do_mutating(|ctx| ctx.socket_get_addr(self.fd))
             .map(|sock| as_ipv6(sock.ip()))
     }
 
     /// Returns the peer address that this socket is bound to.
     pub fn peer_addr(&self) -> io::Result<Ipv6Addr> {
         self.handle
-            .do_io(|ctx| ctx.socket_get_peer(self.fd))
+            .do_mutating(|ctx| ctx.socket_get_peer(self.fd))
             .map(|sock| as_ipv6(sock.ip()))
     }
 
     pub fn set_all_icmp(&mut self) -> io::Result<()> {
-        self.handle.do_failable(|ctx| {
+        self.handle.do_mutating_on_active_module(|ctx| {
             let handle = ctx
                 .ipv6
                 .sockets
@@ -163,7 +165,7 @@ impl RawV6Socket {
             dst,
             content: Bytes::copy_from_slice(buf),
         };
-        self.handle.do_failable(|ctx| {
+        self.handle.do_mutating_on_active_module(|ctx| {
             ctx.ipv6_send_with_flags(pkt, None, Ipv6SendFlags::ALLOW_FRAGMENTATION)
         })?;
         Ok(buf.len())
@@ -211,7 +213,7 @@ impl Future for WriteInterest {
         self: std::pin::Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
     ) -> std::task::Poll<Self::Output> {
-        self.handle.do_io(|ctx| {
+        self.handle.do_mutating(|ctx| {
             let ifid = ctx.iface_for_write_intention(self.fd)?;
             let iface = ctx.ifaces.get_mut(&ifid).unwrap();
             let socket = ctx.ipv6.sockets.get_mut(&self.fd).unwrap();

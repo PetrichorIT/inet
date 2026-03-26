@@ -1,4 +1,7 @@
-use des::prelude::{Header, Message, ModuleId};
+use des::{
+    net::ObjectPath,
+    prelude::{Header, Message},
+};
 use std::{
     fmt::Debug,
     net::IpAddr,
@@ -29,7 +32,7 @@ use types::{
 
 pub(crate) struct IOContext {
     // Link-Layer
-    pub(super) id: ModuleId,
+    pub(super) path: ObjectPath,
     pub(super) ifaces: Interfaces,
 
     // Networking Layer
@@ -61,14 +64,14 @@ pub struct Current {
 
 impl Current {
     pub fn fetch() -> Current {
-        ioctx().do_io(|ctx| ctx.current.clone())
+        ioctx().do_mutating(|ctx| ctx.current.clone())
     }
 }
 
 impl IOContext {
-    pub fn new(id: ModuleId) -> Self {
+    pub fn new(id: ObjectPath) -> Self {
         Self {
-            id,
+            path: id,
             ifaces: Interfaces::default(),
 
             ipv4: Ipv4::default(),
@@ -215,7 +218,7 @@ impl UnwindSafe for IOContext {}
 impl Drop for IOContext {
     fn drop(&mut self) {
         #[cfg(feature = "libpcap")]
-        crate::libpcap::close(self.id);
+        crate::libpcap::close(self.path.clone());
     }
 }
 

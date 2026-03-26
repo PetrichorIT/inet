@@ -52,7 +52,7 @@ impl NetstatConnectionProto {
             (AF_INET6, SOCK_STREAM) => Self::Tcp6,
             (AF_INET, SOCK_RAW) => Self::Raw4,
             (AF_INET6, SOCK_RAW) => Self::Raw6,
-            _ => unreachable!(),
+            _ => unreachable!("domain-typ not supported internally"),
         }
     }
 }
@@ -67,7 +67,7 @@ impl NetstatConnectionProto {
 ///
 /// This function may fail, if called from outside of a node context.
 pub fn netstat() -> io::Result<Netstat> {
-    ioctx().do_failable(|ctx| Ok(ctx.netstat()))
+    ioctx().do_mutating_on_active_module(|ctx| Ok(ctx.netstat()))
 }
 
 // TODO: netstat does not show listeners apparently
@@ -123,7 +123,6 @@ impl IOContext {
 
 #[cfg(test)]
 mod tests {
-    use des::runtime::RuntimeError;
     use serial_test::serial;
 
     use crate::{
@@ -135,7 +134,7 @@ mod tests {
 
     #[test]
     #[serial]
-    fn test_netstat() -> Result<(), RuntimeError> {
+    fn test_netstat() -> Result<(), des::net::Failure> {
         let mut sim = SimpleSim::default();
         sim.node("192.168.2.1", || async move {
             let udp_sock1 = UdpSocket::bind("0.0.0.0:80").await?;

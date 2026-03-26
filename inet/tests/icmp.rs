@@ -13,7 +13,7 @@ use types::{
 
 #[test]
 #[serial]
-fn icmp_drop_packet_too_big() -> Result<(), RuntimeError> {
+fn icmp_drop_packet_too_big() -> Result<(), des::net::Failure> {
     // des::tracing::init();
 
     let mut sim = Sim::new(()).with_stack(inet::init);
@@ -105,5 +105,6 @@ fn icmp_drop_packet_too_big() -> Result<(), RuntimeError> {
         .max_time(5.0.into())
         .build(sim.freeze())
         .run()
+        .as_result()
         .map(|_| ())
 }

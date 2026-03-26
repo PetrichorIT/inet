@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use des::{runtime::RuntimeError, time::sleep};
+use des::time::sleep;
 use serial_test::serial;
 
 use crate::{
@@ -13,7 +13,7 @@ use super::*;
 
 #[test]
 #[serial]
-fn host_unsolicited_report() -> Result<(), RuntimeError> {
+fn host_unsolicited_report() -> Result<(), des::net::Failure> {
     let mut sim = SimpleSim::default();
     sim.node_require_join("fe80::1", || async move {
         designate_mdl(IfId::new("en0"))?;
@@ -33,7 +33,7 @@ fn host_unsolicited_report() -> Result<(), RuntimeError> {
 
 #[test]
 #[serial]
-fn host_leave_scope_ends_group() -> Result<(), RuntimeError> {
+fn host_leave_scope_ends_group() -> Result<(), des::net::Failure> {
     let mut sim = SimpleSim::default();
     sim.node_require_join("fe80::1", || async move {
         designate_mdl(IfId::new("en0"))?;
@@ -62,7 +62,7 @@ fn host_leave_scope_ends_group() -> Result<(), RuntimeError> {
 
 #[test]
 #[serial]
-fn host_leave_scope_group_remains() -> Result<(), RuntimeError> {
+fn host_leave_scope_group_remains() -> Result<(), des::net::Failure> {
     let mut sim = SimpleSim::default();
     sim.node_require_join("fe80::1", || async move {
         designate_mdl(IfId::new("en0"))?;

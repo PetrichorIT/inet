@@ -31,7 +31,7 @@ impl Future for UdpInterest {
     type Output = Result<Ready>;
     fn poll(self: std::pin::Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> Poll<Self::Output> {
         if self.io_interest.is_readable() {
-            return self.handle.clone().do_io(|ctx| {
+            return self.handle.clone().do_mutating(|ctx| {
                 let socket = ctx.udp.get_mut(self.fd)?;
                 if socket.incoming.is_empty() {
                     socket.read_interest.push(UdpInterestGuard {
@@ -46,7 +46,7 @@ impl Future for UdpInterest {
         }
 
         if self.io_interest.is_writable() {
-            return self.handle.clone().do_io(|ctx| {
+            return self.handle.clone().do_mutating(|ctx| {
                 // assert(fd is valid UDP socket)
 
                 let id = ctx.iface_for_write_intention(self.fd)?;

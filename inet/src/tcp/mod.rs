@@ -721,5 +721,5 @@ fn is_valid_dst_for(socket_addr: &SocketAddr, packet_addr: &SocketAddr) -> bool 
 }
 
 pub fn set_config(config: Config) {
-    IOHandle::current().do_io(|ctx| ctx.tcp.config = config)
+    IOHandle::current().do_mutating(|ctx| ctx.tcp.config = config)
 }

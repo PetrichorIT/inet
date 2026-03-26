@@ -43,7 +43,7 @@ const DOMAINS: [&str; 15] = [
 ];
 
 #[test]
-fn run() -> Result<(), RuntimeError> {
+fn run() -> Result<(), des::net::Failure> {
     let zonefiles = read_dir("tests/zonefiles")?
         .flatten()
         .flat_map(|path| {

@@ -1,11 +1,10 @@
 use std::fs::File;
 
-use des::runtime::RuntimeError;
 use inet::{UdpSocket, utils::SimpleSim};
 use inet_pcap::pcap;
 
 #[test]
-fn run() -> Result<(), RuntimeError> {
+fn run() -> Result<(), des::net::Failure> {
     let mut sim = SimpleSim::default();
     sim.v6 = true;
     let large_bytes = rand::random::<[u8; 10_000]>();

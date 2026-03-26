@@ -120,7 +120,6 @@ mod tests {
     use des::{
         net::globals,
         prelude::{Message, current, send},
-        runtime::RuntimeError,
         time::sleep,
     };
     use rand::{Rng, rng};
@@ -140,7 +139,7 @@ mod tests {
 
     #[test]
     #[serial]
-    fn recv_very_large_fragment() -> Result<(), RuntimeError> {
+    fn recv_very_large_fragment() -> Result<(), des::net::Failure> {
         // des::tracing::init();
 
         let mut sim = SimpleSim::default();
@@ -169,7 +168,7 @@ mod tests {
 
     #[test]
     #[serial]
-    fn fragmentation_timeout_after_60s() -> Result<(), RuntimeError> {
+    fn fragmentation_timeout_after_60s() -> Result<(), des::net::Failure> {
         // des::tracing::init();
 
         let mut sim = SimpleSim::default();
@@ -180,7 +179,7 @@ mod tests {
             sleep(Duration::from_secs(1)).await;
 
             let mac: MacAddress = globals()
-                .get(&"fe80::abcd".into())
+                .get(&"fe80::abcd")
                 .unwrap()
                 .prop("mac")
                 .unwrap()

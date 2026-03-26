@@ -3,7 +3,8 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
 };
 
-use des::{prelude::*, registry, time::sleep};
+use des::{prelude::*, time::sleep};
+use des_ndl::{Ndl, registry};
 use inet::{
     interface::{InterfaceDef, NetworkDevice},
     ioctx,
@@ -34,7 +35,7 @@ impl Module for OneAttemptClient {
         });
     }
 
-    fn at_sim_end(&mut self) -> Result<(), RuntimeError> {
+    fn at_sim_end(&mut self) -> Result<(), des::net::Error> {
         assert!(self.done.load(Ordering::SeqCst));
         Ok(())
     }
@@ -68,7 +69,7 @@ impl<const EXPECT: bool> Module for MultipleAttemptClient<EXPECT> {
         });
     }
 
-    fn at_sim_end(&mut self) -> Result<(), RuntimeError> {
+    fn at_sim_end(&mut self) -> Result<(), des::net::Error> {
         assert!(self.done.load(Ordering::SeqCst));
         Ok(())
     }
@@ -113,54 +114,48 @@ impl Module for BoundServer {
 
 #[test]
 #[serial_test::serial]
-fn tcp_rst_for_closed_port() -> Result<(), RuntimeError> {
+fn tcp_rst_for_closed_port() -> Result<(), Box<dyn std::error::Error>> {
     type Server = EmptyServer;
     type Client = OneAttemptClient;
 
-    // Logger::new().set_logger();
+    let mut app = Sim::new(()).with_stack(inet::init);
+    let def = serde_norway::from_str(include_str!("tcp2.yml"))?;
+    app.node("", Ndl::new(&mut registry![Client, Server, else _], &def)?)?;
 
-    let app = Sim::new(())
-        .with_stack(inet::init)
-        .with_ndl("tests/tcp2.yml", registry![Client, Server, else _])
-        .map_err(|e| println!("{e}"))
-        .unwrap();
     let rt = Builder::seeded(233).build(app.freeze());
 
-    rt.run().map(|_| ())
+    rt.run().as_result().map(|_| ())?;
+    Ok(())
 }
 
 #[test]
 #[serial_test::serial]
-fn tcp_rst_on_multiple_tries() -> Result<(), RuntimeError> {
+fn tcp_rst_on_multiple_tries() -> Result<(), Box<dyn std::error::Error>> {
     type Server = EmptyServer;
     type Client = MultipleAttemptClient<false>;
 
-    // Logger::new().set_logger();
+    let mut app = Sim::new(()).with_stack(inet::init);
+    let def = serde_norway::from_str(include_str!("tcp2.yml"))?;
+    app.node("", Ndl::new(&mut registry![Client, Server, else _], &def)?)?;
 
-    let app = Sim::new(())
-        .with_stack(inet::init)
-        .with_ndl("tests/tcp2.yml", registry![Client, Server, else _])
-        .map_err(|e| println!("{e}"))
-        .unwrap();
     let rt = Builder::seeded(233).build(app.freeze());
 
-    rt.run().map(|_| ())
+    rt.run().as_result().map(|_| ())?;
+    Ok(())
 }
 
 #[test]
 #[serial_test::serial]
-fn tcp_rst_on_multiple_tries_with_success() -> Result<(), RuntimeError> {
+fn tcp_rst_on_multiple_tries_with_success() -> Result<(), Box<dyn std::error::Error>> {
     type Server = BoundServer;
     type Client = MultipleAttemptClient<true>;
 
-    // Logger::new().set_logger();
+    let mut app = Sim::new(()).with_stack(inet::init);
+    let def = serde_norway::from_str(include_str!("tcp2.yml"))?;
+    app.node("", Ndl::new(&mut registry![Client, Server, else _], &def)?)?;
 
-    let app = Sim::new(())
-        .with_stack(inet::init)
-        .with_ndl("tests/tcp2.yml", registry![Client, Server, else _])
-        .map_err(|e| println!("{e}"))
-        .unwrap();
     let rt = Builder::seeded(233).build(app.freeze());
 
-    rt.run().map(|_| ())
+    rt.run().as_result().map(|_| ())?;
+    Ok(())
 }

@@ -13,7 +13,7 @@ use crate::{IOContext, IOHandle, ioctx};
 ///
 /// This function fails, if called from outside of a node context.
 pub fn get_mac_address() -> Result<Option<MacAddress>> {
-    ioctx().do_failable(|ctx| ctx.get_mac_address())
+    ioctx().do_readonly(|ctx| ctx.get_mac_address())
 }
 
 /// Returns the first IP address of the current node.
@@ -24,7 +24,7 @@ pub fn get_mac_address() -> Result<Option<MacAddress>> {
 ///
 /// This function fails, if called from outside of a node context.
 pub fn get_ip() -> Option<IpAddr> {
-    ioctx().do_io(|ctx| ctx.get_ip())
+    ioctx().do_readonly(|ctx| ctx.get_ip())
 }
 
 pub fn getaddrinfo() -> Result<AddrInfo> {
@@ -35,7 +35,7 @@ pub type AddrInfo = Vec<IpAddr>;
 
 impl IOHandle {
     pub fn getaddrinfo(&self) -> Result<AddrInfo> {
-        self.do_failable(|ctx| Ok(ctx.getaddrinfo()))
+        self.do_readonly(|ctx| Ok(ctx.getaddrinfo()))
     }
 }
 
@@ -80,7 +80,6 @@ impl IOContext {
 
 #[cfg(test)]
 mod tests {
-    use des::runtime::RuntimeError;
     use serial_test::serial;
     use types::iface::MacAddress;
 
@@ -94,7 +93,7 @@ mod tests {
 
     #[test]
     #[serial]
-    fn get_mac_addr() -> Result<(), RuntimeError> {
+    fn get_mac_addr() -> Result<(), des::net::Failure> {
         let mut sim = SimpleSim::default();
         sim.raw("alice", |_| async move {
             assert_eq!(None, get_mac_address()?);

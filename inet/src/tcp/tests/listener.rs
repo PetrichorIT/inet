@@ -1,6 +1,5 @@
 use std::{io::ErrorKind, net::SocketAddr};
 
-use des::runtime::RuntimeError;
 use serial_test::serial;
 use tokio::io::AsyncWriteExt;
 
@@ -13,7 +12,7 @@ use crate::{
 
 #[test]
 #[serial]
-fn bind_fails_after_all_addrs() -> Result<(), RuntimeError> {
+fn bind_fails_after_all_addrs() -> Result<(), des::net::Failure> {
     let mut sim = SimpleSim::default();
     sim.node("192.168.2.101", || async move {
         let binding = TcpListener::bind(("2003:a:1::1", 80))
@@ -33,7 +32,7 @@ fn bind_fails_after_all_addrs() -> Result<(), RuntimeError> {
 
 #[test]
 #[serial]
-fn bind_fails_no_addrs() -> Result<(), RuntimeError> {
+fn bind_fails_no_addrs() -> Result<(), des::net::Failure> {
     let mut sim = SimpleSim::default();
     sim.node_require_join("192.168.2.101", || async move {
         let binding = TcpListener::bind::<&[SocketAddr]>(&[])
@@ -49,7 +48,7 @@ fn bind_fails_no_addrs() -> Result<(), RuntimeError> {
 
 #[test]
 #[serial]
-fn accept_incoming() -> Result<(), RuntimeError> {
+fn accept_incoming() -> Result<(), des::net::Failure> {
     let mut sim = SimpleSim::default();
     sim.node_require_join("192.168.2.101", || async move {
         let binding = TcpListener::bind("0.0.0.0:80").await?;
@@ -70,7 +69,7 @@ fn accept_incoming() -> Result<(), RuntimeError> {
 
 #[test]
 #[serial]
-fn accepted_socket_not_unspecified_v4() -> Result<(), RuntimeError> {
+fn accepted_socket_not_unspecified_v4() -> Result<(), des::net::Failure> {
     let mut sim = SimpleSim::default();
     sim.node_require_join("192.168.2.101", || async move {
         let binding = TcpListener::bind("0.0.0.0:80").await?;
@@ -94,7 +93,7 @@ fn accepted_socket_not_unspecified_v4() -> Result<(), RuntimeError> {
 
 #[test]
 #[serial]
-fn accepted_socket_not_unspecified_v6() -> Result<(), RuntimeError> {
+fn accepted_socket_not_unspecified_v6() -> Result<(), des::net::Failure> {
     let mut sim = SimpleSim::default();
     sim.node_require_join("fe80::1", || async move {
         let binding = TcpListener::bind("[::]:80").await?;
@@ -118,7 +117,7 @@ fn accepted_socket_not_unspecified_v6() -> Result<(), RuntimeError> {
 
 #[test]
 #[serial]
-fn socketopt_ttl() -> Result<(), RuntimeError> {
+fn socketopt_ttl() -> Result<(), des::net::Failure> {
     let mut sim = SimpleSim::default();
     sim.node_require_join("192.168.2.101", || async move {
         let binding = TcpListener::bind("0.0.0.0:0").await?;

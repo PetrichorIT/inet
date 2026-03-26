@@ -15,3 +15,7 @@ bytes-io = { path = "../util/bytes-io" }
 types = { path = "../util/types" }
 pcapng = { path = "../util/pcapng", features = ["test-util"] }
 rand = "*"
+
+[dev-dependencies]
+des-ndl = "*"
+serde_norway = "*"

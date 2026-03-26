@@ -7,17 +7,14 @@ use std::{
 };
 
 use bytes_io::BytesMut;
-use des::{
-    runtime::{RuntimeError, random},
-    time::sleep,
-};
+use des::{runtime::random, time::sleep};
 use serial_test::serial;
 
 use crate::{UdpSocket, utils::SimpleSim};
 
 #[test]
 #[serial]
-fn ipv4() -> Result<(), RuntimeError> {
+fn ipv4() -> Result<(), des::net::Failure> {
     let mut sim = SimpleSim::default();
 
     let nodes = vec![
@@ -81,7 +78,7 @@ fn ipv4() -> Result<(), RuntimeError> {
 
 #[test]
 #[serial]
-fn ipv6() -> Result<(), RuntimeError> {
+fn ipv6() -> Result<(), Box<dyn std::error::Error>> {
     let mut sim = SimpleSim::default();
 
     let nodes = vec![
@@ -140,12 +137,13 @@ fn ipv6() -> Result<(), RuntimeError> {
         });
     }
 
-    sim.run()
+    sim.run()?;
+    Ok(())
 }
 
 #[test]
 #[serial]
-fn try_send_blocks() -> Result<(), RuntimeError> {
+fn try_send_blocks() -> Result<(), des::net::Failure> {
     let mut sim = SimpleSim::default();
     sim.node_require_join("192.168.2.101", || async move {
         let sock = UdpSocket::bind("0.0.0.0:80").await?;
@@ -165,7 +163,7 @@ fn try_send_blocks() -> Result<(), RuntimeError> {
 
 #[test]
 #[serial]
-fn connect_failure() -> Result<(), RuntimeError> {
+fn connect_failure() -> Result<(), des::net::Failure> {
     let mut sim = SimpleSim::default();
     sim.node_require_join("192.168.2.101", || async move {
         let socket = UdpSocket::bind("0.0.0.0:0").await?;
@@ -181,7 +179,7 @@ fn connect_failure() -> Result<(), RuntimeError> {
 
 #[test]
 #[serial]
-fn connect_no_addrs() -> Result<(), RuntimeError> {
+fn connect_no_addrs() -> Result<(), des::net::Failure> {
     let mut sim = SimpleSim::default();
     sim.node_require_join("192.168.2.101", || async move {
         let set: &[SocketAddr] = &[];

@@ -9,7 +9,7 @@ mod querier;
 mod udp;
 
 fn assert_memberships_are(iface: &str, slice: &[&str]) {
-    ioctx().do_io(|ctx| {
+    ioctx().do_mutating(|ctx| {
         let ctrl = ctx.ipv6.mld.get(&IfId::new(iface)).unwrap();
         assert_eq!(
             ctrl.memberships
@@ -26,7 +26,7 @@ fn assert_memberships_are(iface: &str, slice: &[&str]) {
 }
 
 fn assert_multicast_groups_are(iface: &str, slice: &[&str]) {
-    ioctx().do_io(|ctx| {
+    ioctx().do_mutating(|ctx| {
         let ctrl = ctx.ipv6.mld.get(&IfId::new(iface)).unwrap();
         assert_eq!(
             ctrl.querier
@@ -41,14 +41,14 @@ fn assert_multicast_groups_are(iface: &str, slice: &[&str]) {
 }
 
 fn assert_multicast_role(iface: &str, role: Option<Role>) {
-    ioctx().do_io(|ctx| {
+    ioctx().do_mutating(|ctx| {
         let ctrl = ctx.ipv6.mld.get(&IfId::new(iface)).unwrap();
         assert_eq!(ctrl.querier.as_ref().map(|v| v.role), role);
     });
 }
 
 fn assert_multicast_group_state(iface: &str, addr: &str, state: GroupState) {
-    ioctx().do_io(|ctx| {
+    ioctx().do_mutating(|ctx| {
         let ctrl = ctx.ipv6.mld.get(&IfId::new(iface)).unwrap();
         let group = ctrl
             .querier

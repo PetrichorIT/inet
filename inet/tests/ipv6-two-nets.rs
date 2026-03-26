@@ -1,20 +1,17 @@
-use std::{
-    io,
-    net::{IpAddr, Ipv6Addr},
-    time::Duration,
-};
+#![cfg(feature = "props")]
+use std::{io, net::Ipv6Addr, time::Duration};
 
 use des::{
     net::{
         Sim, globals,
         module::{Module, current},
     },
-    registry,
-    runtime::{Builder, RuntimeError},
+    runtime::Builder,
 };
+use des_ndl::{Ndl, registry};
 use inet::{
     UdpSocket,
-    interface::{InterfaceDef, NetworkDevice},
+    interface::{InterfaceDef, InterfaceStatus, NetworkDevice},
     ioctx,
     ipv6::router,
     utils,
@@ -36,14 +33,22 @@ impl Module for Host {
             if current().path().as_str() == "net[0].host[0]" {
                 des::time::sleep(Duration::from_secs(1)).await;
 
+                println!(
+                    "{:?}",
+                    globals().get(&"net[1].host[1]").unwrap().props_keys()
+                );
+
                 let trg = globals()
-                    .get(&"net[1].host[1]".into())
+                    .get(&"net[1].host[1]")
                     .unwrap()
-                    .prop::<Vec<IpAddr>>("inet.en0.addrs")
+                    .prop::<InterfaceStatus>("inet.iface.en0")
                     .unwrap()
                     .get()
                     .unwrap()
-                    .remove(0);
+                    .addrs
+                    .addrs()
+                    .next()
+                    .unwrap();
 
                 tracing::info!("inital query to {trg}");
                 let conn = UdpSocket::bind(":::0").await?;
@@ -118,25 +123,27 @@ impl Module for Router {
             .unwrap();
 
         router::add_routing_entry(peers_prefix, peers_addr, peering_addr).unwrap();
-        // router::add_routing_prefix(prefix).unwrap();
     }
 }
 
 type Switch = utils::LinkLayerSwitch;
 
 #[test]
-fn ipv6_two_nets() -> Result<(), RuntimeError> {
-    // des::tracing::init();
+fn ipv6_two_nets() -> Result<(), Box<dyn std::error::Error>> {
+    des::tracing::init();
 
-    let app = Sim::new(())
+    let mut sim = Sim::new(())
         .with_stack(inet::init)
-        .with_cfg(include_str!("ipv6_two_nets.par.yml"))
-        .with_ndl(
-            "tests/ipv6_two_nets.yml",
-            registry![Host, Switch, Router, else _],
-        )?;
+        .with_cfg(include_str!("ipv6_two_nets.par.yml"));
+    let def = serde_norway::from_str(include_str!("ipv6_two_nets.yml"))?;
+    sim.node(
+        "",
+        Ndl::new(&mut registry![Host, Switch, Router, else _], &def)?,
+    )?;
+
     let rt = Builder::seeded(123)
         .max_time(10.0.into())
-        .build(app.freeze());
-    rt.run().map(|_| ())
+        .build(sim.freeze());
+    let _ = rt.run().as_result()?;
+    Ok(())
 }

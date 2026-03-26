@@ -17,7 +17,7 @@ const CHANNEL: DatarateChannelMetrics = DatarateChannelMetrics::new(
 
 #[test]
 #[serial]
-fn specific_bind_recv_restrictivly() -> Result<(), RuntimeError> {
+fn specific_bind_recv_restrictivly() -> Result<(), des::net::Failure> {
     let mut sim = Sim::new(()).with_stack(crate::init);
     sim.node(
         "receiver",
@@ -91,12 +91,13 @@ fn specific_bind_recv_restrictivly() -> Result<(), RuntimeError> {
         .max_time(100.0.into())
         .build(sim.freeze())
         .run()
+        .as_result()
         .map(|_| ())
 }
 
 #[test]
 #[serial]
-fn zero_bind_recv_all() -> Result<(), RuntimeError> {
+fn zero_bind_recv_all() -> Result<(), des::net::Failure> {
     let mut sim = Sim::new(()).with_stack(crate::init);
     sim.node(
         "receiver",
@@ -171,12 +172,13 @@ fn zero_bind_recv_all() -> Result<(), RuntimeError> {
         .max_time(100.0.into())
         .build(sim.freeze())
         .run()
+        .as_result()
         .map(|_| ())
 }
 
 #[test]
 #[serial]
-fn bind_no_addrs() -> Result<(), RuntimeError> {
+fn bind_no_addrs() -> Result<(), des::net::Failure> {
     let mut sim = SimpleSim::default();
     sim.node_require_join("192.168.2.101", || async move {
         let set: &[SocketAddr] = &[];

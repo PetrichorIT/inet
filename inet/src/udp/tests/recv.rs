@@ -5,14 +5,14 @@ use std::{
 };
 
 use bytes_io::BytesMut;
-use des::{runtime::RuntimeError, time::sleep};
+use des::time::sleep;
 use serial_test::serial;
 
 use crate::{UdpSocket, utils::SimpleSim};
 
 #[test]
 #[serial]
-fn recv_truncates_packets() -> Result<(), RuntimeError> {
+fn recv_truncates_packets() -> Result<(), des::net::Failure> {
     let mut sim = SimpleSim::default();
     sim.node_require_join("receiver", || async move {
         let sock = UdpSocket::bind("0.0.0.0:100").await?;
@@ -46,7 +46,7 @@ fn recv_truncates_packets() -> Result<(), RuntimeError> {
 
 #[test]
 #[serial]
-fn recv_from_ignores_other_packets() -> Result<(), RuntimeError> {
+fn recv_from_ignores_other_packets() -> Result<(), des::net::Failure> {
     let mut sim = SimpleSim::default();
     sim.node_require_join("receiver", || async move {
         let sock = UdpSocket::bind("0.0.0.0:100").await?;
@@ -87,7 +87,7 @@ fn recv_from_ignores_other_packets() -> Result<(), RuntimeError> {
 
 #[test]
 #[serial]
-fn recv_from_for_connected_socket_default_to_recv() -> Result<(), RuntimeError> {
+fn recv_from_for_connected_socket_default_to_recv() -> Result<(), des::net::Failure> {
     let mut sim = SimpleSim::default();
     sim.node_require_join("192.168.2.100", || async move {
         let sock = UdpSocket::bind("0.0.0.0:100").await?;
@@ -123,7 +123,7 @@ fn recv_from_for_connected_socket_default_to_recv() -> Result<(), RuntimeError> 
 
 #[test]
 #[serial]
-fn recv_from_default_to_recv_when_connected() -> Result<(), RuntimeError> {
+fn recv_from_default_to_recv_when_connected() -> Result<(), des::net::Failure> {
     let mut sim = SimpleSim::default();
 
     sim.node_require_join("192.168.2.100", || async move {
@@ -167,7 +167,7 @@ fn recv_from_default_to_recv_when_connected() -> Result<(), RuntimeError> {
 
 #[test]
 #[serial]
-fn try_recv_would_block() -> Result<(), RuntimeError> {
+fn try_recv_would_block() -> Result<(), des::net::Failure> {
     let mut sim = SimpleSim::default();
     sim.node("192.168.2.101", || async move {
         let sock = UdpSocket::bind("0.0.0.0:80").await?;

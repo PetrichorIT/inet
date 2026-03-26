@@ -1,11 +1,8 @@
 use std::{fs::File, io::Error, net::Ipv6Addr, time::Duration};
 
 use bytes_io::ToBytes;
-use des::{
-    net::{Sim, module::Module},
-    registry,
-    runtime::{Builder, RuntimeError},
-};
+use des::net::module::Module;
+
 use inet::{
     UdpSocket,
     env::RoutingPort,
@@ -15,7 +12,7 @@ use inet::{
         socket::RawV6Socket,
         util::{ping::ping, setup_router},
     },
-    utils,
+    utils::SimpleSim,
 };
 use inet_pcap::pcap;
 use types::{
@@ -127,23 +124,15 @@ impl Module for Router {
     }
 }
 
-type Switch = utils::LinkLayerSwitch;
-
 #[test]
-fn ipv6_autcfg() -> Result<(), RuntimeError> {
+fn ipv6_autcfg() -> Result<(), Box<dyn std::error::Error>> {
     // des::tracing::init();
 
-    let app = Sim::new(())
-        .with_stack(inet::init)
-        .with_ndl(
-            "tests/ipv6.yml",
-            registry![HostAlice, HostBob, Router, Switch, else _],
-        )
-        .unwrap();
+    let mut sim = SimpleSim::default();
+    sim.module("alice", HostAlice);
+    sim.module("bob", HostBob);
+    sim.module("router", Router);
 
-    let rt = Builder::seeded(123)
-        // .max_itr(30)
-        .max_time(10.0.into())
-        .build(app.freeze());
-    rt.run().map(|_| ())
+    sim.run_max_time(10.0)?;
+    Ok(())
 }

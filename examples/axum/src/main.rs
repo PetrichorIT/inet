@@ -1,6 +1,7 @@
 use axum::{extract::Path, response::Response, routing::get, Router};
 use connector::InetTcpStream;
-use des::{prelude::*, registry};
+use des::prelude::*;
+use des_ndl::{registry, Ndl};
 use hyper::{
     client,
     server::{self, accept::from_stream},
@@ -148,14 +149,17 @@ mod connector {
 
 const NDL: &str = include_str!("../main.yml");
 
-fn main() -> Result<(), RuntimeError> {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     des::tracing::init();
 
     let mut app = Sim::new(()).with_stack(inet::init);
     let ndl = serde_yml::from_str(NDL)?;
-    app.nodes_from_ndl(&ndl, registry![Client, Server, else _])?;
+
+    app.node("", Ndl::new(&mut registry![Client, Server, else _], &ndl)?)?;
+
     let rt = Builder::seeded(123)
         .max_time(50.0.into())
         .build(app.freeze());
-    rt.run().map(|_| ())
+    let _ = rt.run().as_result()?;
+    Ok(())
 }

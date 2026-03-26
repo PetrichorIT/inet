@@ -29,14 +29,14 @@ pub fn ipv6() {
 
 impl IOHandle {
     pub fn ipv6_set_node_cfg(&self, cfg: HostConfiguration) -> io::Result<()> {
-        self.do_failable(|ctx| {
+        self.do_mutating_on_active_module(|ctx| {
             ctx.ipv6.cfg = cfg;
             Ok(())
         })
     }
 
     pub fn ipv6_info(&self) -> Ipv6Status {
-        self.do_io(|ctx| Ipv6Status {
+        self.do_mutating(|ctx| Ipv6Status {
             prefixes: ctx.ipv6.prefixes.iter().cloned().collect(),
             destinations: ctx.ipv6.destinations.mapping.clone(),
             routers: ctx.ipv6.default_routers.list.clone(),

@@ -75,12 +75,12 @@ impl InterfaceHandle {
     /// This method may fail if the given interface does not support the address.
     pub fn add_addr(&self, addr: IpAddr) -> Result<()> {
         self.io
-            .do_failable(|ctx| ctx.interface_add_addr(&self.id.to_string(), addr))
+            .do_mutating_on_active_module(|ctx| ctx.interface_add_addr(&self.id.to_string(), addr))
     }
 
     /// Retrieves the status of the interface.
     pub fn status(&self) -> InterfaceStatus {
-        self.io.do_io(|ctx| {
+        self.io.do_mutating(|ctx| {
             let iface = ctx.ifaces.get(&self.id).expect("no such interface");
             iface.status()
         })

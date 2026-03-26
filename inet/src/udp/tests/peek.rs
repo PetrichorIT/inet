@@ -3,14 +3,14 @@ use std::{
     net::Ipv4Addr,
 };
 
-use des::{runtime::RuntimeError, time::sleep_until};
+use des::time::sleep_until;
 use serial_test::serial;
 
 use crate::{UdpSocket, utils::SimpleSim};
 
 #[test]
 #[serial]
-fn peek_from_preserves_packets() -> Result<(), RuntimeError> {
+fn peek_from_preserves_packets() -> Result<(), des::net::Failure> {
     let mut sim = SimpleSim::default();
 
     sim.node_require_join("192.168.2.100", || async move {
@@ -48,7 +48,7 @@ fn peek_from_preserves_packets() -> Result<(), RuntimeError> {
 
 #[test]
 #[serial]
-fn peek_on_connected() -> Result<(), RuntimeError> {
+fn peek_on_connected() -> Result<(), des::net::Failure> {
     let mut sim = SimpleSim::default();
     sim.node("192.168.2.101", || async move {
         let sock = UdpSocket::bind("0.0.0.0:80").await?;
@@ -76,7 +76,7 @@ fn peek_on_connected() -> Result<(), RuntimeError> {
 
 #[test]
 #[serial]
-fn peek_sender_on_connected() -> Result<(), RuntimeError> {
+fn peek_sender_on_connected() -> Result<(), des::net::Failure> {
     let mut sim = SimpleSim::default();
     sim.node("192.168.2.101", || async move {
         let sock = UdpSocket::bind("0.0.0.0:80").await?;

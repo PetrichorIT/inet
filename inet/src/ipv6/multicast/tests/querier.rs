@@ -1,10 +1,7 @@
 use std::time::Duration;
 
 use bytes_io::FromBytes;
-use des::{
-    runtime::RuntimeError,
-    time::{SimTime, sleep},
-};
+use des::time::{SimTime, sleep};
 use serial_test::serial;
 use types::{
     icmpv6::{IcmpV6MulticastListenerMessage, IcmpV6Packet},
@@ -21,7 +18,7 @@ use super::*;
 
 #[test]
 #[serial]
-fn detect_other_querier() -> Result<(), RuntimeError> {
+fn detect_other_querier() -> Result<(), des::net::Failure> {
     let mut sim = SimpleSim::default();
     sim.node_require_join("fe80::1", || async move {
         designate_mdl(IfId::new("en0"))?;
@@ -48,7 +45,7 @@ fn detect_other_querier() -> Result<(), RuntimeError> {
 
 #[test]
 #[serial]
-fn other_querier_remains_in_scope() -> Result<(), RuntimeError> {
+fn other_querier_remains_in_scope() -> Result<(), des::net::Failure> {
     let mut sim = SimpleSim::default();
     sim.node_require_join("fe80::1", || async move {
         designate_mdl(IfId::new("en0"))?;
@@ -83,7 +80,7 @@ fn other_querier_remains_in_scope() -> Result<(), RuntimeError> {
 
 #[test]
 #[serial]
-fn other_querier_goes_out_of_scope() -> Result<(), RuntimeError> {
+fn other_querier_goes_out_of_scope() -> Result<(), des::net::Failure> {
     let mut sim = SimpleSim::default();
     sim.node_require_join("fe80::1", || async move {
         designate_mdl(IfId::new("en0"))?;
@@ -120,7 +117,7 @@ fn other_querier_goes_out_of_scope() -> Result<(), RuntimeError> {
 
 #[test]
 #[serial]
-fn sends_regular_queries() -> Result<(), RuntimeError> {
+fn sends_regular_queries() -> Result<(), des::net::Failure> {
     let mut sim = SimpleSim::default();
     sim.node_require_join("fe80::1", || async move {
         designate_mdl(IfId::new("en0"))?;
@@ -206,7 +203,7 @@ fn sends_regular_queries() -> Result<(), RuntimeError> {
 
 #[test]
 #[serial]
-fn update_db_on_received_reports() -> Result<(), RuntimeError> {
+fn update_db_on_received_reports() -> Result<(), des::net::Failure> {
     let mut sim = SimpleSim::default();
     sim.node_require_join("fe80::1", || async move {
         designate_mdl(IfId::new("en0"))?;

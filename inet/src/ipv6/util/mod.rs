@@ -30,7 +30,7 @@ pub fn setup_router(
         ioctx().add_interface(iface)?;
     }
 
-    ioctx().do_failable(|ctx| {
+    ioctx().do_mutating_on_active_module(|ctx| {
         ctx.ipv6.is_router = true;
 
         let ifids = ctx.ifaces.keys().collect::<Vec<_>>();

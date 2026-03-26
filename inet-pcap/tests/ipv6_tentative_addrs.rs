@@ -1,16 +1,13 @@
 use std::fs::File;
 
-use des::{
-    net::{Sim, module::Module},
-    registry,
-    runtime::{Builder, RuntimeError},
-};
+use des::net::module::Module;
+
 use inet::{
     env::RoutingPort,
     interface::{InterfaceDef, NetworkDevice},
     ioctx,
     ipv6::util::setup_router,
-    utils::{self, getaddrinfo},
+    utils::{SimpleSim, getaddrinfo},
 };
 use inet_pcap::pcap;
 
@@ -26,7 +23,7 @@ impl Module for HostAlice {
             .unwrap();
     }
 
-    fn at_sim_end(&mut self) -> Result<(), RuntimeError> {
+    fn at_sim_end(&mut self) -> Result<(), des::net::Error> {
         let addrs = getaddrinfo().unwrap();
         assert_eq!(addrs.len(), 3);
         Ok(())
@@ -45,7 +42,7 @@ impl Module for HostBob {
             .unwrap();
     }
 
-    fn at_sim_end(&mut self) -> Result<(), RuntimeError> {
+    fn at_sim_end(&mut self) -> Result<(), des::net::Error> {
         let addrs = getaddrinfo().unwrap();
         assert_eq!(addrs.len(), 3);
         Ok(())
@@ -71,23 +68,15 @@ impl Module for Router {
     }
 }
 
-type Switch = utils::LinkLayerSwitch;
-
 #[test]
-fn ipv6_tentative_addrs() -> Result<(), RuntimeError> {
+fn ipv6_tentative_addrs() -> Result<(), des::net::Failure> {
     // des::tracing::init();
 
-    let app = Sim::new(())
-        .with_stack(inet::init)
-        .with_ndl(
-            "tests/ipv6.yml",
-            registry![HostAlice, HostBob, Router, Switch, else _],
-        )
-        .unwrap();
+    let mut sim = SimpleSim::default();
+    sim.module("alice", HostAlice);
+    sim.module("bob", HostBob);
+    sim.module("router", Router);
 
-    let rt = Builder::seeded(123)
-        // .max_itr(30)
-        .max_time(10.0.into())
-        .build(app.freeze());
-    rt.run().map(|_| ())
+    sim.run_max_time(10.0)?;
+    Ok(())
 }

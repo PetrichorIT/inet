@@ -19,3 +19,4 @@ serial_test = "*"
 serde_yml = "*"
 pcapng = { path = "../util/pcapng" }
 rand = "*"
+des-ndl = "*"

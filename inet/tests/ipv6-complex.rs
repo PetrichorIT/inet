@@ -46,7 +46,7 @@ const WAN: DatarateChannelMetrics = DatarateChannelMetrics::new(
 /// H6 -------+
 ///
 #[test]
-fn run() -> Result<(), RuntimeError> {
+fn run() -> Result<(), des::net::Failure> {
     // des::tracing::init();
 
     if cfg!(not(feature = "props")) {
@@ -266,10 +266,11 @@ fn run() -> Result<(), RuntimeError> {
         Some(DatarateChannel::new(LAN)),
     );
 
-    let (_, _, _) = Builder::seeded(213)
+    let _ = Builder::seeded(213)
         .max_time(100.0.into())
         .build(sim.freeze())
-        .run()?;
+        .run()
+        .as_result()?;
 
     Ok(())
 }
@@ -278,7 +279,7 @@ fn pick_target_addr(hosts: &[&str]) -> Ipv6Addr {
     let host = hosts.choose(&mut rng()).unwrap();
 
     let addr = globals()
-        .get(&(*host).into())
+        .get(&(*host))
         .expect("node must exists")
         .prop::<InterfaceStatus>("inet.iface.en0")
         .expect("prop failed")

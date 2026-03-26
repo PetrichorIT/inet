@@ -143,5 +143,5 @@ fn lossfull_stream() {
     let rt = Builder::seeded(123)
         .max_time(1000.0.into())
         .build(sim.freeze());
-    let (_, _, _) = rt.run().unwrap();
+    let _ = rt.run().assert_no_err();
 }

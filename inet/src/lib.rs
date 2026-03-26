@@ -24,7 +24,7 @@ cfg_dhcp! {
 }
 
 use des::net::{
-    module::ModuleId,
+    ObjectPath,
     processing::{ProcessingStack, TimeDriver, TokioRuntime},
 };
 use dns::DnsResolver;
@@ -52,7 +52,7 @@ pub use handle::{IOHandle, ioctx};
 pub fn init() -> ProcessingStack {
     (
         TimeDriver::default(),
-        IOPlugin::new(IOContext::new(ModuleId::NULL)),
+        IOPlugin::new(IOContext::new(ObjectPath::default())),
         TokioRuntime::default(),
     )
         .into()
@@ -61,10 +61,10 @@ pub fn init() -> ProcessingStack {
 pub fn stack(
     dns_hook: DnsResolver,
     // on_startup: impl Fn() -> () + 'static,
-) -> Box<dyn FnMut() -> ProcessingStack + 'static> {
+) -> Box<dyn Fn() -> ProcessingStack + 'static> {
     // let on_startup = Arc::new(on_startup);
     Box::new(move || {
-        let mut io = IOContext::new(ModuleId::NULL);
+        let mut io = IOContext::new(ObjectPath::default());
         io.dns = dns_hook;
         (
             TimeDriver::default(),

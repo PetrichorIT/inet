@@ -4,10 +4,10 @@ use bytes_io::{FromBytes, ToBytes};
 use des::{
     net::Sim,
     prelude::{Module, current},
-    registry,
-    runtime::{Builder, RuntimeError},
+    runtime::Builder,
     time::sleep,
 };
+use des_ndl::{Ndl, registry};
 use inet::{
     UdpSocket,
     interface::{InterfaceDef, NetworkDevice},
@@ -122,17 +122,21 @@ type Switch = LinkLayerSwitch;
 
 #[test]
 #[serial]
-fn run() -> Result<(), RuntimeError> {
+fn run() -> Result<(), Box<dyn std::error::Error>> {
     des::tracing::init();
 
     let mut sim = Sim::new(()).with_stack(inet::init);
     sim.include_cfg(PAR_V6);
     let ndl = serde_yml::from_str(NDL)?;
-    sim.nodes_from_ndl(&ndl, registry![Client, Server, Switch, Router,else _])?;
+    sim.node(
+        "",
+        Ndl::new(&mut registry![Client, Server, Switch, Router,else _], &ndl)?,
+    )?;
 
-    Builder::seeded(123)
+    let _ = Builder::seeded(123)
         .max_time(10.0.into())
         .build(sim.freeze())
         .run()
-        .map(|_| ())
+        .as_result()?;
+    Ok(())
 }

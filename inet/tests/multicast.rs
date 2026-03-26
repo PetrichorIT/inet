@@ -1,4 +1,4 @@
-use des::{runtime::RuntimeError, time::sleep};
+use des::time::sleep;
 use inet::{
     interface::IfId,
     ipv6::multicast::{designate_mdl, join_multicast_group},
@@ -7,7 +7,7 @@ use inet::{
 use std::{net::Ipv6Addr, time::Duration};
 
 #[test]
-fn run() -> Result<(), RuntimeError> {
+fn run() -> Result<(), des::net::Failure> {
     // des::tracing::init();
     let mut sim = SimpleSim::new(inet::init);
 

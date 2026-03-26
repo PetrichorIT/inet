@@ -85,5 +85,5 @@ fn test_tcp_removes_tcb() {
     );
 
     let rt = Builder::seeded(123).build(sim.freeze());
-    let (_, _, _) = rt.run().unwrap();
+    let _ = rt.run().assert_no_err();
 }

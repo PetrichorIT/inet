@@ -3,7 +3,6 @@ use std::{
     task::{Context, Poll},
 };
 
-use des::runtime::RuntimeError;
 use serial_test::serial;
 use tokio::io::{AsyncReadExt, AsyncWriteExt, ReadBuf};
 
@@ -14,7 +13,7 @@ use crate::{
 
 #[test]
 #[serial]
-fn as_ref() -> Result<(), RuntimeError> {
+fn as_ref() -> Result<(), des::net::Failure> {
     let mut sim = SimpleSim::default();
 
     fn req_actual_str(_s: &TcpStream) {}
@@ -36,7 +35,7 @@ fn as_ref() -> Result<(), RuntimeError> {
 
 #[test]
 #[serial]
-fn parallel_read_and_write() -> Result<(), RuntimeError> {
+fn parallel_read_and_write() -> Result<(), des::net::Failure> {
     let mut sim = SimpleSim::default();
 
     sim.node("192.168.2.111", || async move {
@@ -74,7 +73,7 @@ fn parallel_read_and_write() -> Result<(), RuntimeError> {
 
 #[test]
 #[serial]
-fn peeking() -> Result<(), RuntimeError> {
+fn peeking() -> Result<(), des::net::Failure> {
     let mut sim = SimpleSim::default();
 
     sim.node("192.168.2.111", || async move {

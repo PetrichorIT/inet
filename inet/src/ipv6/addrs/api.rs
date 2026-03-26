@@ -28,21 +28,21 @@ impl IOHandle {
         precedence: usize,
         label: usize,
     ) -> io::Result<()> {
-        self.do_failable(|ctx| {
+        self.do_mutating_on_active_module(|ctx| {
             ctx.ipv6.policies.add(prefix, precedence, label);
             Ok(())
         })
     }
 
     pub fn policy_remove(&self, prefix: Ipv6Prefix) -> io::Result<()> {
-        self.do_failable(|ctx| {
+        self.do_mutating_on_active_module(|ctx| {
             ctx.ipv6.policies.remove(prefix);
             Ok(())
         })
     }
 
     pub fn policy_reset(&self) -> io::Result<()> {
-        self.do_failable(|ctx| {
+        self.do_mutating_on_active_module(|ctx| {
             ctx.ipv6.policies = PolicyTable::default();
             Ok(())
         })

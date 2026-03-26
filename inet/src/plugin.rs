@@ -37,10 +37,10 @@ impl ProcessingElement for IOPlugin {
         let io = self.ctx.clone();
         self.prev = IOHandle::swap_in(Some(io.clone()));
 
-        let res = msg.and_then(|msg| io.do_io(|ctx| ctx.recv(msg)));
+        let res = msg.and_then(|msg| io.do_mutating(|ctx| ctx.recv(msg)));
         let res = inner(res);
 
-        io.do_io(|ctx| ctx.event_end());
+        io.do_mutating(|ctx| ctx.event_end());
 
         let received = IOHandle::swap_in(self.prev.take()).expect("illegal state");
         assert!(Arc::ptr_eq(&self.ctx.0, &received.0));

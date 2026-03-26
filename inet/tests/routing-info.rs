@@ -1,6 +1,7 @@
 use std::str::FromStr;
 
-use des::{prelude::*, registry};
+use des::prelude::*;
+use des_ndl::{Ndl, registry};
 use inet::{
     env::{RoutingInformation, RoutingPeer},
     interface::{InterfaceDef, NetworkDevice},
@@ -69,21 +70,18 @@ impl Module for Main {
 }
 
 #[test]
-fn routing_info() {
-    // Logger::new()
-    //     .interal_max_log_level(tracing::LevelFilter::Info)
-    //     .set_logger();
+fn routing_info() -> Result<(), Box<dyn std::error::Error>> {
+    // des::tracing::init();
 
-    let app = Sim::new(())
-        .with_stack(inet::init)
-        .with_ndl("tests/triangle.yml", registry![A, B, C, Main])
-        .map_err(|e| println!("{e}"))
-        .unwrap();
+    let mut app = Sim::new(()).with_stack(inet::init);
+    let def = serde_norway::from_str(include_str!("triangle.yml"))?;
+    app.node("", Ndl::new(&mut registry![A, B, C, Main], &def)?)?;
+
     let rt = Builder::seeded(123)
         .max_time(100.0.into())
         .build(app.freeze());
-    match rt.run() {
-        Ok((_, _, p)) if p.event_count == 4 => {} // 4 signal event
-        _ => panic!("unexpected runtime result"),
-    }
+    let res = rt.run().assert_no_err();
+    assert_eq!(res.profiler.event_count, 4);
+
+    Ok(())
 }

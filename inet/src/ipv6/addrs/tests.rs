@@ -1,4 +1,3 @@
-use des::runtime::RuntimeError;
 use serial_test::serial;
 
 use crate::{ioctx, utils::SimpleSim};
@@ -10,13 +9,13 @@ type ResultDyn = std::result::Result<(), Box<dyn std::error::Error>>;
 
 #[test]
 #[serial]
-fn edit_policy_table() -> Result<(), RuntimeError> {
+fn edit_policy_table() -> Result<(), des::net::Failure> {
     let mut sim = SimpleSim::default();
     sim.v6 = true;
     sim.node("alice", || async move {
         super::policy_reset()?;
 
-        ioctx().do_io(|ctx| {
+        ioctx().do_mutating(|ctx| {
             assert_eq!(ctx.ipv6.policies.table.len(), 9);
         });
 
@@ -24,7 +23,7 @@ fn edit_policy_table() -> Result<(), RuntimeError> {
         super::policy_add("2003:a:2::1234/64".parse().unwrap(), 100, 1)?;
         super::policy_add("2003:a:3::1234/64".parse().unwrap(), 100, 1)?;
 
-        ioctx().do_io(|ctx| {
+        ioctx().do_mutating(|ctx| {
             assert_eq!(ctx.ipv6.policies.table.len(), 12);
             assert_eq!(
                 ctx.ipv6.policies.lookup("2003:a:2::1234".parse().unwrap()),
@@ -37,7 +36,7 @@ fn edit_policy_table() -> Result<(), RuntimeError> {
 
         super::policy_remove("2003:a:2::1234/64".parse().unwrap())?;
 
-        ioctx().do_io(|ctx| {
+        ioctx().do_mutating(|ctx| {
             assert_eq!(ctx.ipv6.policies.table.len(), 11);
             assert_eq!(
                 ctx.ipv6.policies.lookup("2003:a:2::1234".parse().unwrap()),

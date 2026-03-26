@@ -1,6 +1,5 @@
 use std::time::Duration;
 
-use des::runtime::RuntimeError;
 use serial_test::serial;
 
 use crate::{
@@ -10,7 +9,7 @@ use crate::{
 
 #[test]
 #[serial]
-fn linger() -> Result<(), RuntimeError> {
+fn linger() -> Result<(), des::net::Failure> {
     let mut sim = SimpleSim::default();
     sim.node("192.168.2.101", || async move {
         let l = TcpListener::bind("0.0.0.0:80").await?;
@@ -40,7 +39,7 @@ fn linger() -> Result<(), RuntimeError> {
 
 #[test]
 #[serial]
-fn ttl() -> Result<(), RuntimeError> {
+fn ttl() -> Result<(), des::net::Failure> {
     let mut sim = SimpleSim::default();
     sim.node("192.168.2.101", || async move {
         let l = TcpListener::bind("0.0.0.0:80").await?;

@@ -60,7 +60,8 @@ pub struct RawV4SocketHandle {
 impl RawV4Socket {
     pub fn new(proto: u8) -> io::Result<Self> {
         let handle = ioctx();
-        let (fd, rx) = handle.do_failable(|ctx| ctx.ipv4_raw_socket_create(proto))?;
+        let (fd, rx) =
+            handle.do_mutating_on_active_module(|ctx| ctx.ipv4_raw_socket_create(proto))?;
         Ok(Self {
             handle,
             fd,
@@ -70,32 +71,34 @@ impl RawV4Socket {
     }
 
     pub fn bind(&self, addr: Ipv4Addr) -> io::Result<()> {
-        self.handle
-            .do_failable(|ctx| ctx.socket_bind(self.fd, SocketAddr::new(addr.into(), 0)))?;
+        self.handle.do_mutating_on_active_module(|ctx| {
+            ctx.socket_bind(self.fd, SocketAddr::new(addr.into(), 0))
+        })?;
         Ok(())
     }
 
     pub fn connect(&self, addr: Ipv4Addr) -> io::Result<()> {
-        self.handle
-            .do_failable(|ctx| ctx.socket_set_peer(self.fd, SocketAddr::new(addr.into(), 0)))
+        self.handle.do_mutating_on_active_module(|ctx| {
+            ctx.socket_set_peer(self.fd, SocketAddr::new(addr.into(), 0))
+        })
     }
 
     /// Returns the local address that this socket is bound to.
     pub fn local_addr(&self) -> io::Result<Ipv4Addr> {
         self.handle
-            .do_io(|ctx| ctx.socket_get_addr(self.fd))
+            .do_mutating(|ctx| ctx.socket_get_addr(self.fd))
             .map(|sock| as_ipv4(sock.ip()))
     }
 
     /// Returns the peer address that this socket is bound to.
     pub fn peer_addr(&self) -> io::Result<Ipv4Addr> {
         self.handle
-            .do_io(|ctx| ctx.socket_get_peer(self.fd))
+            .do_mutating(|ctx| ctx.socket_get_peer(self.fd))
             .map(|sock| as_ipv4(sock.ip()))
     }
 
     pub fn set_all_icmp(&mut self) -> io::Result<()> {
-        self.handle.do_failable(|ctx| {
+        self.handle.do_mutating_on_active_module(|ctx| {
             let handle = ctx
                 .ipv4
                 .sockets
@@ -160,7 +163,8 @@ impl RawV4Socket {
             dst,
             content: Bytes::copy_from_slice(buf),
         };
-        self.handle.do_failable(|ctx| ctx.ipv4_send(None, pkt))?;
+        self.handle
+            .do_mutating_on_active_module(|ctx| ctx.ipv4_send(None, pkt))?;
         Ok(buf.len())
     }
 
@@ -200,7 +204,7 @@ impl Future for WriteInterest {
         self: std::pin::Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
     ) -> std::task::Poll<Self::Output> {
-        self.handle.do_io(|ctx| {
+        self.handle.do_mutating(|ctx| {
             let ifid = ctx.iface_for_write_intention(self.fd)?;
             let iface = ctx.ifaces.get_mut(&ifid).unwrap();
             let socket = ctx.ipv4.sockets.get_mut(&self.fd).unwrap();

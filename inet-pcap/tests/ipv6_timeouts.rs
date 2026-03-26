@@ -1,14 +1,11 @@
-use des::{
-    net::{Sim, module::Module},
-    registry,
-    runtime::{Builder, RuntimeError},
-};
+use des::net::module::Module;
+
 use inet::{
     env::RoutingPort,
     interface::{InterfaceDef, NetworkDevice},
     ioctx,
     ipv6::{router, util::setup_router},
-    utils::{self, getaddrinfo},
+    utils::{SimpleSim, getaddrinfo},
 };
 use inet_pcap::pcap;
 use serial_test::serial;
@@ -26,7 +23,7 @@ impl Module for Expect3Addrs {
             .unwrap();
     }
 
-    fn at_sim_end(&mut self) -> Result<(), RuntimeError> {
+    fn at_sim_end(&mut self) -> Result<(), des::net::Error> {
         let addrs = getaddrinfo().unwrap();
         assert_eq!(addrs.len(), 3, "see: {addrs:?}");
         Ok(())
@@ -45,7 +42,7 @@ impl Module for Expect3Then1Addrs {
             .unwrap();
     }
 
-    fn at_sim_end(&mut self) -> Result<(), RuntimeError> {
+    fn at_sim_end(&mut self) -> Result<(), des::net::Error> {
         let addrs = getaddrinfo().unwrap();
         assert_eq!(addrs.len(), 1);
         Ok(())
@@ -94,52 +91,30 @@ impl Module for RouterWithoutAdv {
     }
 }
 
-type Switch = utils::LinkLayerSwitch;
-
 #[test]
 #[serial]
-fn ipv6_timeouts_with_ra() -> Result<(), RuntimeError> {
+fn ipv6_timeouts_with_ra() -> Result<(), des::net::Failure> {
     // des::tracing::init();
 
-    type Router = RouterWithAdv;
-    type HostAlice = Expect3Addrs;
-    type HostBob = Expect3Addrs;
+    let mut sim = SimpleSim::default();
+    sim.module("alice", Expect3Addrs);
+    sim.module("bob", Expect3Addrs);
+    sim.module("router", RouterWithAdv);
 
-    let app = Sim::new(())
-        .with_stack(inet::init)
-        .with_ndl(
-            "tests/ipv6.yml",
-            registry![HostAlice, HostBob, Router, Switch, else _],
-        )
-        .unwrap();
-
-    let rt = Builder::seeded(123)
-        // .max_itr(30)
-        .max_time(10_000.0.into())
-        .build(app.freeze());
-    rt.run().map(|_| ())
+    sim.run_max_time(10.0)?;
+    Ok(())
 }
 
 #[test]
 #[serial]
-fn ipv6_timeouts_without_ra() -> Result<(), RuntimeError> {
+fn ipv6_timeouts_without_ra() -> Result<(), des::net::Failure> {
     // des::tracing::init();
 
-    type Router = RouterWithoutAdv;
-    type HostAlice = Expect3Then1Addrs;
-    type HostBob = Expect3Then1Addrs;
+    let mut sim = SimpleSim::default();
+    sim.module("alice", Expect3Then1Addrs);
+    sim.module("bob", Expect3Then1Addrs);
+    sim.module("router", RouterWithoutAdv);
 
-    let app = Sim::new(())
-        .with_stack(inet::init)
-        .with_ndl(
-            "tests/ipv6.yml",
-            registry![HostAlice, HostBob, Router, Switch, else _],
-        )
-        .unwrap();
-
-    let rt = Builder::seeded(123)
-        // .max_itr(30)
-        .max_time(10_000.0.into())
-        .build(app.freeze());
-    rt.run().map(|_| ())
+    sim.run_max_time(10.0)?;
+    Ok(())
 }

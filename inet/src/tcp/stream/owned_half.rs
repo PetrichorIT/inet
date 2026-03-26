@@ -57,7 +57,7 @@ impl OwnedReadHalf {
             match self
                 .inner
                 .handle
-                .do_io(|ctx| ctx.tcp_peek(self.inner.fd, buf))
+                .do_mutating(|ctx| ctx.tcp_peek(self.inner.fd, buf))
             {
                 Ok(n) => return Ok(n),
                 Err(e) if e.kind() == ErrorKind::WouldBlock => continue,
@@ -70,14 +70,14 @@ impl OwnedReadHalf {
     pub fn local_addr(&self) -> Result<SocketAddr, Error> {
         self.inner
             .handle
-            .do_io(|ctx| ctx.socket_get_addr(self.inner.fd))
+            .do_mutating(|ctx| ctx.socket_get_addr(self.inner.fd))
     }
 
     /// Returns the peer address that this stream is bound to.
     pub fn peer_addr(&self) -> Result<SocketAddr, Error> {
         self.inner
             .handle
-            .do_io(|ctx| ctx.socket_get_peer(self.inner.fd))
+            .do_mutating(|ctx| ctx.socket_get_peer(self.inner.fd))
     }
 
     /// Poll Peek
@@ -88,7 +88,7 @@ impl OwnedReadHalf {
     ) -> Poll<Result<usize, Error>> {
         self.inner
             .handle
-            .do_io(|ctx| ctx.tcp_poll_peek(self.inner.fd, cx, buf))
+            .do_mutating(|ctx| ctx.tcp_poll_peek(self.inner.fd, cx, buf))
     }
 
     /// Waits for any of the requested ready states.
@@ -119,7 +119,7 @@ impl OwnedReadHalf {
     pub fn try_read(&self, buf: &mut [u8]) -> Result<usize, Error> {
         self.inner
             .handle
-            .do_io(|ctx| ctx.tcp_read(self.inner.fd, buf))
+            .do_mutating(|ctx| ctx.tcp_read(self.inner.fd, buf))
     }
 
     /// DEPRECATED
@@ -165,14 +165,14 @@ impl OwnedWriteHalf {
     pub fn local_addr(&self) -> Result<SocketAddr, Error> {
         self.inner
             .handle
-            .do_io(|ctx| ctx.socket_get_addr(self.inner.fd))
+            .do_mutating(|ctx| ctx.socket_get_addr(self.inner.fd))
     }
 
     /// Returns the peer address that this stream is bound to.
     pub fn peer_addr(&self) -> Result<SocketAddr, Error> {
         self.inner
             .handle
-            .do_io(|ctx| ctx.socket_get_peer(self.inner.fd))
+            .do_mutating(|ctx| ctx.socket_get_peer(self.inner.fd))
     }
 
     /// Waits for any of the requested ready states.
@@ -200,7 +200,7 @@ impl OwnedWriteHalf {
     pub fn try_write(&self, buf: &[u8]) -> Result<usize, Error> {
         self.inner
             .handle
-            .do_io(|ctx| ctx.tcp_write(self.inner.fd, buf))
+            .do_mutating(|ctx| ctx.tcp_write(self.inner.fd, buf))
     }
 
     /// Write vectored
@@ -225,7 +225,7 @@ impl AsyncRead for OwnedReadHalf {
         cx: &mut std::task::Context<'_>,
         buf: &mut tokio::io::ReadBuf<'_>,
     ) -> std::task::Poll<std::io::Result<()>> {
-        self.inner.handle.do_io(|ctx| {
+        self.inner.handle.do_mutating(|ctx| {
             ctx.tcp_poll_read(self.inner.fd, cx, buf)
                 .map(|rdy| rdy.map(|n| buf.advance(n)))
         })
@@ -240,7 +240,7 @@ impl AsyncWrite for OwnedWriteHalf {
     ) -> std::task::Poll<Result<usize, Error>> {
         self.inner
             .handle
-            .do_io(|ctx| ctx.tcp_poll_write(self.inner.fd, cx, buf))
+            .do_mutating(|ctx| ctx.tcp_poll_write(self.inner.fd, cx, buf))
     }
     fn poll_flush(
         self: std::pin::Pin<&mut Self>,
@@ -248,7 +248,7 @@ impl AsyncWrite for OwnedWriteHalf {
     ) -> std::task::Poll<Result<(), std::io::Error>> {
         self.inner
             .handle
-            .do_io(|ctx| ctx.tcp_flush(self.inner.fd, cx))
+            .do_mutating(|ctx| ctx.tcp_flush(self.inner.fd, cx))
     }
     fn poll_shutdown(
         self: std::pin::Pin<&mut Self>,

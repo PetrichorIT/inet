@@ -15,7 +15,7 @@ use des::{prelude::*, time::sleep};
 
 #[test]
 #[serial]
-fn deny_broadcast_without_option() -> Result<(), RuntimeError> {
+fn deny_broadcast_without_option() -> Result<(), des::net::Failure> {
     let mut sim = SimpleSim::default();
     sim.node_require_join("alice", || async move {
         let udp = UdpSocket::bind("0.0.0.0:0").await?;
@@ -33,7 +33,7 @@ fn deny_broadcast_without_option() -> Result<(), RuntimeError> {
 
 #[test]
 #[serial]
-fn default_no_broadcast() -> Result<(), RuntimeError> {
+fn default_no_broadcast() -> Result<(), des::net::Failure> {
     let mut sim = SimpleSim::default();
     sim.node_require_join("alice", || async move {
         let udp = UdpSocket::bind("0.0.0.0:0").await?;
@@ -47,7 +47,7 @@ fn default_no_broadcast() -> Result<(), RuntimeError> {
 
 #[test]
 #[serial]
-fn broadcast_no_loopback() -> Result<(), RuntimeError> {
+fn broadcast_no_loopback() -> Result<(), des::net::Failure> {
     let mut sim = SimpleSim::default();
 
     let nodes = vec![
@@ -111,7 +111,7 @@ fn broadcast_no_loopback() -> Result<(), RuntimeError> {
 
 #[test]
 #[serial]
-fn broadcast_with_loopback() -> Result<(), RuntimeError> {
+fn broadcast_with_loopback() -> Result<(), des::net::Failure> {
     // des::tracing::init();
 
     let mut sim = SimpleSim::default();
@@ -174,7 +174,7 @@ fn broadcast_with_loopback() -> Result<(), RuntimeError> {
 /// TODO: This is not correct, behaviour a global addr should be assigned if possible
 #[test]
 #[serial]
-fn broadcast_loopback_assigns_lo_addr() -> Result<(), RuntimeError> {
+fn broadcast_loopback_assigns_lo_addr() -> Result<(), des::net::Failure> {
     // des::tracing::init();
 
     let mut sim = SimpleSim::default();

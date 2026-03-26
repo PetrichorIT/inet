@@ -1,17 +1,13 @@
 use std::{fs::File, time::Duration};
 
-use des::{
-    net::{Sim, module::Module},
-    registry,
-    runtime::{Builder, RuntimeError},
-};
+use des::net::module::Module;
 use inet::{
     env::RoutingPort,
     interface::{InterfaceDef, NetworkDevice},
     ioctx,
     ipv6::util::setup_router,
     tcp::{TcpListener, TcpStream},
-    utils,
+    utils::SimpleSim,
 };
 use inet_pcap::pcap;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -80,23 +76,15 @@ impl Module for Router {
     }
 }
 
-type Switch = utils::LinkLayerSwitch;
-
 #[test]
-fn ipv6_tcp() -> Result<(), RuntimeError> {
+fn ipv6_tcp() -> Result<(), des::net::Failure> {
     // des::tracing::init();
 
-    let app = Sim::new(())
-        .with_stack(inet::init)
-        .with_ndl(
-            "tests/ipv6.yml",
-            registry![HostAlice, HostBob, Router, Switch, else _],
-        )
-        .unwrap();
+    let mut sim = SimpleSim::default();
+    sim.module("alice", HostAlice);
+    sim.module("bob", HostBob);
+    sim.module("router", Router);
 
-    let rt = Builder::seeded(123)
-        // .max_itr(30)
-        .max_time(10.0.into())
-        .build(app.freeze());
-    rt.run().map(|_| ())
+    sim.run_max_time(10.0)?;
+    Ok(())
 }

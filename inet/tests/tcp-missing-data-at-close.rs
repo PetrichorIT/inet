@@ -1,5 +1,6 @@
 use bytes_io::FromBytes;
-use des::{registry, time::sleep};
+use des::time::sleep;
+use des_ndl::{Ndl, registry};
 use std::{
     str::FromStr,
     sync::{
@@ -128,7 +129,7 @@ impl Module for TcpServer {
         tracing::error!("HM?");
     }
 
-    fn at_sim_end(&mut self) -> Result<(), RuntimeError> {
+    fn at_sim_end(&mut self) -> Result<(), des::net::Error> {
         use inet::socket::bsd_socket_info;
 
         assert!(self.done.load(SeqCst));
@@ -188,7 +189,7 @@ impl Module for TcpClient {
         });
     }
 
-    fn at_sim_end(&mut self) -> Result<(), RuntimeError> {
+    fn at_sim_end(&mut self) -> Result<(), des::net::Error> {
         use inet::socket::bsd_socket_info;
 
         assert!(self.done.load(SeqCst));
@@ -199,14 +200,18 @@ impl Module for TcpClient {
 
 #[test]
 #[serial_test::serial]
-fn tcp_missing_data_at_close() -> Result<(), RuntimeError> {
+fn tcp_missing_data_at_close() -> Result<(), Box<dyn std::error::Error>> {
     // des::tracing::init();
 
-    let def = serde_yml::from_str(include_str!("tcp.yml"))?;
+    let def = serde_norway::from_str(include_str!("tcp.yml"))?;
     let mut app = Sim::new(()).with_stack(inet::init);
-    app.nodes_from_ndl(&def, registry![Link, TcpServer, TcpClient, else _])?;
+    app.node(
+        "",
+        Ndl::new(&mut registry![Link, TcpServer, TcpClient, else _], &def)?,
+    )?;
     let rt = Builder::seeded(1263431312323)
         .max_time(20.0.into())
         .build(app.freeze());
-    rt.run().map(|_| ())
+    let _ = rt.run().as_result()?;
+    Ok(())
 }

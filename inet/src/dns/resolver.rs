@@ -188,7 +188,7 @@ impl sealed::ToSocketAddrsPriv for (&str, u16) {
             return Ok(vec![SocketAddr::new(ip, self.1)].into_iter());
         };
 
-        let f = handle.do_io(|ctx| ctx.dns);
+        let f = handle.do_mutating(|ctx| ctx.dns);
         let addrs = f(self.0, self.1).await?;
         Ok(addrs.into_iter())
     }
@@ -215,16 +215,14 @@ impl sealed::ToSocketAddrsPriv for (String, u16) {
 
 #[cfg(test)]
 mod tests {
-    use std::{net::IpAddr, panic, str::FromStr};
-
-    use des::runtime::RuntimeError;
     use serial_test::serial;
+    use std::{net::IpAddr, panic, str::FromStr};
 
     use crate::{dns::lookup_host, utils::SimpleSim};
 
     #[test]
     #[serial]
-    fn sample_resolution_without_dns() -> Result<(), RuntimeError> {
+    fn sample_resolution_without_dns() -> Result<(), des::net::Failure> {
         let mut sim = SimpleSim::default();
         sim.node_require_join("192.168.2.101", || async move {
             let _ = lookup_host((IpAddr::from_str("192.168.2.1").unwrap(), 80)).await?;
@@ -241,7 +239,7 @@ mod tests {
 
     #[test]
     #[serial]
-    fn invalid_port() -> Result<(), RuntimeError> {
+    fn invalid_port() -> Result<(), des::net::Failure> {
         let mut sim = SimpleSim::default();
         sim.node_require_join("192.168.2.101", || async move {
             match lookup_host("192.168.2.10".to_string()).await {
@@ -265,7 +263,7 @@ mod tests {
 
     #[test]
     #[serial]
-    fn no_resolution_without_dns_resolver() -> Result<(), RuntimeError> {
+    fn no_resolution_without_dns_resolver() -> Result<(), des::net::Failure> {
         let mut sim = SimpleSim::default();
         sim.node_require_join("192.168.2.101", || async move {
             match lookup_host("www.test.org:80").await {
@@ -281,7 +279,7 @@ mod tests {
 
     #[test]
     #[serial]
-    fn node_name_based_resolution() -> Result<(), RuntimeError> {
+    fn node_name_based_resolution() -> Result<(), des::net::Failure> {
         let mut sim = SimpleSim::default();
         sim.node_require_join("bob", || async move { Ok(()) });
         sim.node_require_join("alice", || async move {

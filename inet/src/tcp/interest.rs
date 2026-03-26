@@ -42,7 +42,7 @@ impl Future for TcpInterest {
         self: std::pin::Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
     ) -> std::task::Poll<Self::Output> {
-        self.handle.do_io(|ctx| {
+        self.handle.do_mutating(|ctx| {
             let Some(handle) = ctx.tcp.streams.get_mut(&self.fd) else {
                 return Poll::Ready(Err(Error::new(
                     ErrorKind::InvalidInput,

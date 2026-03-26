@@ -30,7 +30,7 @@ impl UdpSocket {
     /// The port allocated can be queried via the `local_addr` method.
     pub async fn bind(addr: impl ToSocketAddrs) -> Result<UdpSocket> {
         let addrs = lookup_host(addr).await?;
-        IOHandle::current().do_io(|ctx| {
+        IOHandle::current().do_mutating(|ctx| {
             let mut last_err = None;
             for addr in addrs {
                 match ctx.udp_bind(addr) {
@@ -47,19 +47,19 @@ impl UdpSocket {
 
     /// Returns the local address that this socket is bound to.
     pub fn local_addr(&self) -> Result<SocketAddr> {
-        self.handle.do_io(|ctx| ctx.socket_get_addr(self.fd))
+        self.handle.do_mutating(|ctx| ctx.socket_get_addr(self.fd))
     }
 
     /// Returns the peer address that this socket is bound to.
     pub fn peer_addr(&self) -> Result<SocketAddr> {
-        self.handle.do_io(|ctx| ctx.socket_get_peer(self.fd))
+        self.handle.do_mutating(|ctx| ctx.socket_get_peer(self.fd))
     }
 
     /// Connects the UDP socket setting the default destination for send() and
     /// limiting packets that are read via recv from the address specified in `addr`.
     pub async fn connect<A: ToSocketAddrs>(&self, addr: A) -> Result<()> {
         let addrs = lookup_host(addr).await?;
-        IOHandle::current().do_io(|ctx| {
+        IOHandle::current().do_mutating(|ctx| {
             let mut last_err = None;
             for peer in addrs {
                 match ctx.udp_connect(self.fd, peer) {
@@ -114,7 +114,9 @@ impl UdpSocket {
             if let Some(e) = self.take_error()? {
                 return Err(e);
             }
-            let result = self.handle.do_io(|ctx| ctx.udp_send_to(self.fd, peer, buf));
+            let result = self
+                .handle
+                .do_mutating(|ctx| ctx.udp_send_to(self.fd, peer, buf));
 
             match result {
                 Ok(v) => return Ok(v),
@@ -130,7 +132,8 @@ impl UdpSocket {
     /// This function is usually paired with writable().
     pub fn try_send(&self, buf: &[u8]) -> Result<usize> {
         let peer = self.peer_addr()?;
-        self.handle.do_io(|ctx| ctx.udp_send_to(self.fd, peer, buf))
+        self.handle
+            .do_mutating(|ctx| ctx.udp_send_to(self.fd, peer, buf))
     }
 
     /// Sends data on the socket to the given address. On success, returns the number of bytes written.
@@ -147,7 +150,7 @@ impl UdpSocket {
             self.writable().await?;
             let result = self
                 .handle
-                .do_io(|ctx| ctx.udp_send_to(self.fd, first, buf));
+                .do_mutating(|ctx| ctx.udp_send_to(self.fd, first, buf));
 
             match result {
                 Ok(v) => return Ok(v),
@@ -163,7 +166,7 @@ impl UdpSocket {
     /// This function is usually paired with writable().
     pub fn try_send_to(&self, buf: &[u8], target: SocketAddr) -> Result<usize> {
         self.handle
-            .do_io(|ctx| ctx.udp_send_to(self.fd, target, buf))?;
+            .do_mutating(|ctx| ctx.udp_send_to(self.fd, target, buf))?;
         Ok(buf.len())
     }
 
@@ -186,7 +189,7 @@ impl UdpSocket {
             self.readable().await?;
             match self
                 .handle
-                .do_io(|ctx| ctx.udp_recv(self.fd, Some(peer), buf))
+                .do_mutating(|ctx| ctx.udp_recv(self.fd, Some(peer), buf))
             {
                 Ok((n, _)) => return Ok(n),
                 Err(e) if e.kind() == ErrorKind::WouldBlock => {}
@@ -204,7 +207,7 @@ impl UdpSocket {
             self.readable().await?;
             match self
                 .handle
-                .do_io(|ctx| ctx.udp_recv_buf(self.fd, Some(peer), buf))
+                .do_mutating(|ctx| ctx.udp_recv_buf(self.fd, Some(peer), buf))
             {
                 Ok((n, _)) => return Ok(n),
                 Err(e) if e.kind() == ErrorKind::WouldBlock => {}
@@ -224,7 +227,7 @@ impl UdpSocket {
             let peer = self.peer_addr()?;
             match self
                 .handle
-                .do_io(|ctx| ctx.udp_recv(self.fd, Some(peer), buf))
+                .do_mutating(|ctx| ctx.udp_recv(self.fd, Some(peer), buf))
             {
                 Ok((n, _)) => return Ok(n),
                 Err(e) if e.kind() == ErrorKind::ConnectionRefused => {}
@@ -243,7 +246,7 @@ impl UdpSocket {
             let peer = self.peer_addr()?;
             match self
                 .handle
-                .do_io(|ctx| ctx.udp_recv_buf(self.fd, Some(peer), buf))
+                .do_mutating(|ctx| ctx.udp_recv_buf(self.fd, Some(peer), buf))
             {
                 Ok((n, _)) => return Ok(n),
                 Err(e) if e.kind() == ErrorKind::ConnectionRefused => {}
@@ -264,7 +267,10 @@ impl UdpSocket {
 
         loop {
             self.readable().await?;
-            match self.handle.do_io(|ctx| ctx.udp_recv(self.fd, None, buf)) {
+            match self
+                .handle
+                .do_mutating(|ctx| ctx.udp_recv(self.fd, None, buf))
+            {
                 Ok((n, src)) => return Ok((n, src)),
                 Err(e) if e.kind() == ErrorKind::WouldBlock => {}
                 Err(e) if e.kind() == ErrorKind::ConnectionRefused => {}
@@ -285,7 +291,10 @@ impl UdpSocket {
         }
 
         loop {
-            match self.handle.do_io(|ctx| ctx.udp_recv(self.fd, None, buf)) {
+            match self
+                .handle
+                .do_mutating(|ctx| ctx.udp_recv(self.fd, None, buf))
+            {
                 Ok((n, src)) => return Ok((n, src)),
                 Err(e) if e.kind() == ErrorKind::ConnectionRefused => {}
                 Err(e) => return Err(e),
@@ -307,7 +316,7 @@ impl UdpSocket {
             self.readable().await?;
             match self
                 .handle
-                .do_io(|ctx| ctx.udp_recv_buf(self.fd, None, buf))
+                .do_mutating(|ctx| ctx.udp_recv_buf(self.fd, None, buf))
             {
                 Ok((n, src)) => return Ok((n, src)),
                 Err(e) if e.kind() == ErrorKind::WouldBlock => {}
@@ -331,7 +340,7 @@ impl UdpSocket {
         loop {
             match self
                 .handle
-                .do_io(|ctx| ctx.udp_recv_buf(self.fd, None, buf))
+                .do_mutating(|ctx| ctx.udp_recv_buf(self.fd, None, buf))
             {
                 Ok((n, src)) => return Ok((n, src)),
                 Err(e) if e.kind() == ErrorKind::ConnectionRefused => {}
@@ -346,7 +355,7 @@ impl UdpSocket {
             self.readable().await?;
             match self
                 .handle
-                .do_io(|ctx| ctx.udp_peek(self.fd, Some(peer), buf))
+                .do_mutating(|ctx| ctx.udp_peek(self.fd, Some(peer), buf))
             {
                 Ok((n, _)) => return Ok(n),
                 Err(e) if e.kind() == ErrorKind::WouldBlock => {}
@@ -361,7 +370,7 @@ impl UdpSocket {
             let peer = self.peer_addr()?;
             match self
                 .handle
-                .do_io(|ctx| ctx.udp_peek(self.fd, Some(peer), buf))
+                .do_mutating(|ctx| ctx.udp_peek(self.fd, Some(peer), buf))
             {
                 Ok((n, _)) => return Ok(n),
                 Err(e) if e.kind() == ErrorKind::ConnectionRefused => {}
@@ -376,7 +385,10 @@ impl UdpSocket {
         }
         loop {
             self.readable().await?;
-            match self.handle.do_io(|ctx| ctx.udp_peek(self.fd, None, buf)) {
+            match self
+                .handle
+                .do_mutating(|ctx| ctx.udp_peek(self.fd, None, buf))
+            {
                 Ok((n, src)) => return Ok((n, src)),
                 Err(e) if e.kind() == ErrorKind::WouldBlock => {}
                 Err(e) if e.kind() == ErrorKind::ConnectionRefused => {}
@@ -390,7 +402,10 @@ impl UdpSocket {
             return self.try_peek(buf).map(|n| (n, peer));
         }
         loop {
-            match self.handle.do_io(|ctx| ctx.udp_peek(self.fd, None, buf)) {
+            match self
+                .handle
+                .do_mutating(|ctx| ctx.udp_peek(self.fd, None, buf))
+            {
                 Ok((n, src)) => return Ok((n, src)),
                 Err(e) if e.kind() == ErrorKind::ConnectionRefused => {}
                 Err(e) => return Err(e),
@@ -403,7 +418,7 @@ impl UdpSocket {
             self.readable().await?;
             match self
                 .handle
-                .do_io(|ctx| ctx.udp_peek(self.fd, None, &mut []))
+                .do_mutating(|ctx| ctx.udp_peek(self.fd, None, &mut []))
             {
                 Ok((_, src)) => return Ok(src),
                 Err(e) if e.kind() == ErrorKind::WouldBlock => {}
@@ -417,7 +432,7 @@ impl UdpSocket {
         loop {
             match self
                 .handle
-                .do_io(|ctx| ctx.udp_peek(self.fd, None, &mut []))
+                .do_mutating(|ctx| ctx.udp_peek(self.fd, None, &mut []))
             {
                 Ok((_, src)) => return Ok(src),
                 Err(e) if e.kind() == ErrorKind::ConnectionRefused => {}
@@ -431,14 +446,14 @@ impl UdpSocket {
     /// For more information about this option, see [set_broadcast](UdpSocket::set_broadcast)
     pub fn broadcast(&self) -> Result<bool> {
         self.handle
-            .do_io(|ctx| Ok(ctx.udp.get_mut(self.fd)?.broadcast))
+            .do_mutating(|ctx| Ok(ctx.udp.get_mut(self.fd)?.broadcast))
     }
 
     /// Sets the value of the SO_BROADCAST option for this socket.
     ///
     /// When enabled, this socket is allowed to send packets to a broadcast address.
     pub fn set_broadcast(&self, on: bool) -> Result<()> {
-        self.handle.do_io(|ctx| {
+        self.handle.do_mutating(|ctx| {
             ctx.udp.get_mut(self.fd)?.broadcast = on;
             Ok(())
         })
@@ -446,12 +461,12 @@ impl UdpSocket {
 
     pub fn join_multicast_v6(&self, addr: Ipv6Addr, interface: Option<IfId>) -> Result<()> {
         self.handle
-            .do_failable(|ctx| ctx.udp_join_multicast_v6(self.fd, addr, interface))
+            .do_mutating_on_active_module(|ctx| ctx.udp_join_multicast_v6(self.fd, addr, interface))
     }
 
     pub fn leave_multicast_v6(&self, addr: Ipv6Addr, _: Option<IfId>) -> Result<()> {
         self.handle
-            .do_failable(|ctx| ctx.udp_leave_multicast_v6(self.fd, addr))
+            .do_mutating_on_active_module(|ctx| ctx.udp_leave_multicast_v6(self.fd, addr))
     }
 
     /// Gets the value of the IP_TTL option for this socket.
@@ -459,26 +474,27 @@ impl UdpSocket {
     /// For more information about this option, see [set_ttl](UdpSocket::set_ttl).
     ///
     pub fn ttl(&self) -> Result<u8> {
-        self.handle.do_io(|ctx| Ok(ctx.udp.get_mut(self.fd)?.ttl))
+        self.handle
+            .do_mutating(|ctx| Ok(ctx.udp.get_mut(self.fd)?.ttl))
     }
 
     /// Sets the value for the IP_TTL option on this socket.
     ///
     /// This value sets the time-to-live field that is used in every packet sent from this socket.
     pub fn set_ttl(&self, ttl: u8) -> Result<()> {
-        self.handle.do_io(|ctx| {
+        self.handle.do_mutating(|ctx| {
             ctx.udp.get_mut(self.fd)?.ttl = ttl;
             Ok(())
         })
     }
 
     pub fn device(&self) -> Result<Option<InterfaceName>> {
-        self.handle.do_io(|ctx| ctx.socket_device(self.fd))
+        self.handle.do_mutating(|ctx| ctx.socket_device(self.fd))
     }
 
     pub fn take_error(&self) -> Result<Option<Error>> {
         self.handle
-            .do_io(|ctx: &mut IOContext| ctx.udp_take_error(self.fd))
+            .do_mutating(|ctx: &mut IOContext| ctx.udp_take_error(self.fd))
     }
 }
 

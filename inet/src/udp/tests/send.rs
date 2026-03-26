@@ -1,13 +1,12 @@
 use std::io::ErrorKind;
 
-use des::runtime::RuntimeError;
 use serial_test::serial;
 
 use crate::{UdpSocket, utils::SimpleSim};
 
 #[test]
 #[serial]
-fn send_failure_ip_missmatch() -> Result<(), RuntimeError> {
+fn send_failure_ip_missmatch() -> Result<(), des::net::Failure> {
     let mut sim = SimpleSim::default();
     sim.node("192.168.2.1", || async move {
         let sock = UdpSocket::bind("0.0.0.0:0").await?;

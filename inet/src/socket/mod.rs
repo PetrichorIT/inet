@@ -508,15 +508,16 @@ impl IOContext {
 
 #[cfg(test)]
 mod tests {
+    use des::net::ObjectPath;
+
     use super::*;
 
     use crate::interface::{InterfaceDef, NetworkDevice};
-    use des::prelude::ModuleId;
     use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
 
     #[test]
     fn create_supported() {
-        let mut ctx = IOContext::new(ModuleId::NULL);
+        let mut ctx = IOContext::new(ObjectPath::default());
         for (domain, typ) in IOContext::POSIX_ALLOWED_COMBI {
             let sock = ctx.socket_create(domain, typ, 0);
             assert!(sock.is_ok());
@@ -525,7 +526,7 @@ mod tests {
 
     #[test]
     fn create_not_supported() {
-        let mut ctx = IOContext::new(ModuleId::NULL);
+        let mut ctx = IOContext::new(ObjectPath::default());
         assert_eq!(
             ctx.socket_create(AF_UNIX, SOCK_RDM, 0)
                 .expect_err("must fail")
@@ -536,7 +537,7 @@ mod tests {
 
     #[test]
     fn duplicate() -> Result<()> {
-        let mut ctx = IOContext::new(ModuleId::NULL);
+        let mut ctx = IOContext::new(ObjectPath::default());
         let fd = ctx.socket_create(AF_INET, SOCK_DGRAM, 0)?;
         let dup = ctx.socket_duplicate(fd)?;
 
@@ -553,7 +554,7 @@ mod tests {
 
     #[test]
     fn duplicate_socket_does_not_exist() -> Result<()> {
-        let mut ctx = IOContext::new(ModuleId::NULL);
+        let mut ctx = IOContext::new(ObjectPath::default());
         let fd = ctx.socket_create(AF_INET, SOCK_DGRAM, 0)?;
         let dup = ctx.socket_duplicate(fd + 1);
         assert_eq!(dup.unwrap_err().kind(), ErrorKind::InvalidInput);
@@ -563,7 +564,7 @@ mod tests {
 
     #[test]
     fn close() -> Result<()> {
-        let mut ctx = IOContext::new(ModuleId::NULL);
+        let mut ctx = IOContext::new(ObjectPath::default());
         let fd = ctx.socket_create(AF_INET, SOCK_DGRAM, 0)?;
         assert!(ctx.sockets.get(fd).is_ok());
         ctx.socket_close(fd)?;
@@ -573,7 +574,7 @@ mod tests {
 
     #[test]
     fn close_socket_does_not_exist() -> Result<()> {
-        let mut ctx = IOContext::new(ModuleId::NULL);
+        let mut ctx = IOContext::new(ObjectPath::default());
         let fd = ctx.socket_create(AF_INET, SOCK_DGRAM, 0)?;
         assert!(ctx.sockets.get(fd).is_ok());
         let error = ctx.socket_close(fd + 1).expect_err("must be an error");
@@ -591,7 +592,7 @@ mod tests {
 
     #[test]
     fn bind_specified() -> Result<()> {
-        let mut ctx = IOContext::new(ModuleId::NULL);
+        let mut ctx = IOContext::new(ObjectPath::default());
         ctx.mock_add_interface(
             InterfaceDef::new("en0", NetworkDevice::loopback())
                 .ip(Ipv4Addr::new(192, 168, 2, 101).into()),
@@ -624,7 +625,7 @@ mod tests {
 
     #[test]
     fn bind_specifed_socket_does_not_exist() -> Result<()> {
-        let mut ctx = IOContext::new(ModuleId::NULL);
+        let mut ctx = IOContext::new(ObjectPath::default());
         ctx.mock_add_interface(
             InterfaceDef::new("en0", NetworkDevice::loopback())
                 .ip(Ipv4Addr::new(192, 168, 2, 101).into()),
@@ -640,7 +641,7 @@ mod tests {
 
     #[test]
     fn bind_specifed_address_already_exist() -> Result<()> {
-        let mut ctx = IOContext::new(ModuleId::NULL);
+        let mut ctx = IOContext::new(ObjectPath::default());
         ctx.mock_add_interface(
             InterfaceDef::new("en0", NetworkDevice::loopback())
                 .ip(Ipv4Addr::new(192, 168, 2, 101).into()),
@@ -659,7 +660,7 @@ mod tests {
 
     #[test]
     fn bind_specifed_address_not_available() -> Result<()> {
-        let mut ctx = IOContext::new(ModuleId::NULL);
+        let mut ctx = IOContext::new(ObjectPath::default());
         ctx.mock_add_interface(
             InterfaceDef::new("en0", NetworkDevice::loopback())
                 .ip(Ipv4Addr::new(192, 168, 2, 101).into()),
@@ -675,7 +676,7 @@ mod tests {
 
     #[test]
     fn bind_unspecifed() -> Result<()> {
-        let mut ctx = IOContext::new(ModuleId::NULL);
+        let mut ctx = IOContext::new(ObjectPath::default());
         ctx.mock_add_interface(
             InterfaceDef::new("en0", NetworkDevice::loopback())
                 .ip(Ipv4Addr::new(192, 168, 2, 101).into()),
@@ -697,7 +698,7 @@ mod tests {
 
     #[test]
     fn bind_unspecified_socket_does_not_exist() -> Result<()> {
-        let mut ctx = IOContext::new(ModuleId::NULL);
+        let mut ctx = IOContext::new(ObjectPath::default());
         ctx.mock_add_interface(
             InterfaceDef::new("en0", NetworkDevice::loopback())
                 .ip(Ipv4Addr::new(192, 168, 2, 101).into()),
@@ -713,7 +714,7 @@ mod tests {
 
     #[test]
     fn bind_unspecified_address_not_available() -> Result<()> {
-        let mut ctx = IOContext::new(ModuleId::NULL);
+        let mut ctx = IOContext::new(ObjectPath::default());
         ctx.mock_add_interface(InterfaceDef::ethv6_autocfg(NetworkDevice::loopback()))?;
 
         let fd = ctx.socket_create(AF_INET, SOCK_DGRAM, 0)?;
@@ -726,7 +727,7 @@ mod tests {
 
     #[test]
     fn bind_unspecified_address_already_in_use() -> Result<()> {
-        let mut ctx = IOContext::new(ModuleId::NULL);
+        let mut ctx = IOContext::new(ObjectPath::default());
         ctx.mock_add_interface(
             InterfaceDef::new("en0", NetworkDevice::loopback())
                 .ip(Ipv4Addr::new(192, 168, 2, 101).into()),
@@ -744,7 +745,7 @@ mod tests {
 
     #[test]
     fn bind_different_sockets_bind_to_same_port() -> Result<()> {
-        let mut ctx = IOContext::new(ModuleId::NULL);
+        let mut ctx = IOContext::new(ObjectPath::default());
         ctx.mock_add_interface(
             InterfaceDef::new("en0", NetworkDevice::loopback())
                 .ip(Ipv4Addr::new(192, 168, 2, 101).into()),
@@ -765,7 +766,7 @@ mod tests {
 
     #[test]
     fn set_peer() -> Result<()> {
-        let mut ctx = IOContext::new(ModuleId::NULL);
+        let mut ctx = IOContext::new(ObjectPath::default());
         ctx.mock_add_interface(
             InterfaceDef::new("en0", NetworkDevice::loopback())
                 .ip(Ipv4Addr::new(192, 168, 2, 101).into()),
@@ -787,7 +788,7 @@ mod tests {
 
     #[test]
     fn set_peer_ip_missmatch() -> Result<()> {
-        let mut ctx = IOContext::new(ModuleId::NULL);
+        let mut ctx = IOContext::new(ObjectPath::default());
         ctx.mock_add_interface(
             InterfaceDef::new("en0", NetworkDevice::loopback())
                 .ip(Ipv4Addr::new(192, 168, 2, 101).into()),
@@ -807,7 +808,7 @@ mod tests {
 
     #[test]
     fn get_peer_no_peer() -> Result<()> {
-        let mut ctx = IOContext::new(ModuleId::NULL);
+        let mut ctx = IOContext::new(ObjectPath::default());
         ctx.mock_add_interface(
             InterfaceDef::new("en0", NetworkDevice::loopback())
                 .ip(Ipv4Addr::new(192, 168, 2, 101).into()),

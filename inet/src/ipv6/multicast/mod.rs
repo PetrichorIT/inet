@@ -48,19 +48,19 @@ pub fn undesignate_mdl(ifid: IfId) -> io::Result<()> {
 
 impl IOHandle {
     pub fn ipv6_join_multicast_group(&self, addr: Ipv6Addr, ifid: Option<IfId>) -> io::Result<()> {
-        self.do_failable(|ctx| ctx.ipv6_join_multicast_group(addr, ifid))
+        self.do_mutating_on_active_module(|ctx| ctx.ipv6_join_multicast_group(addr, ifid))
     }
 
     pub fn ipv6_leave_multicast_group(&self, addr: Ipv6Addr) -> io::Result<()> {
-        self.do_failable(|ctx| ctx.ipv6_leave_multicast_group(addr))
+        self.do_mutating_on_active_module(|ctx| ctx.ipv6_leave_multicast_group(addr))
     }
 
     pub fn ipv6_designate_mdl(&self, ifid: IfId) -> io::Result<()> {
-        self.do_failable(|ctx| ctx.designate_ipv6_mld_querier(ifid))
+        self.do_mutating_on_active_module(|ctx| ctx.designate_ipv6_mld_querier(ifid))
     }
 
     pub fn ipv6_undesignate_mdl(&self, ifid: IfId) -> io::Result<()> {
-        self.do_failable(|ctx| ctx.undesignate_ipv6_mld_querier(ifid))
+        self.do_mutating_on_active_module(|ctx| ctx.undesignate_ipv6_mld_querier(ifid))
     }
 }
 

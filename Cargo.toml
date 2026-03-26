@@ -13,3 +13,4 @@ resolver = "3"
 [patch.crates-io]
 # des = { git = "https://github.com/PetrichorIT/des", branch = "master" }
 des = { path = "../des/des" }
+des-ndl = { path = "../des/des-ndl" }

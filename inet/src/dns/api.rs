@@ -39,7 +39,7 @@ pub fn set_dns_resolver(resolver: DnsResolver) -> Result<()> {
 
 impl IOHandle {
     pub fn set_dns_resolver(&self, resolver: DnsResolver) -> Result<()> {
-        self.do_failable(|ctx| ctx.set_dns_resolver(resolver))
+        self.do_mutating_on_active_module(|ctx| ctx.set_dns_resolver(resolver))
     }
 }
 

@@ -17,7 +17,7 @@ use types::ip::{IPV6_MINIMUM_MTU, Ipv6AddrExt};
 
 #[test]
 #[serial]
-fn test() -> Result<(), RuntimeError> {
+fn test() -> Result<(), des::net::Failure> {
     // des::tracing::init();
 
     let mut sim = Sim::new(()).with_stack(inet::init);
@@ -28,7 +28,7 @@ fn test() -> Result<(), RuntimeError> {
             sleep(Duration::from_secs(3)).await;
 
             let target_addr: Ipv6Addr = globals()
-                .get(&"bob".into())
+                .get(&"bob")
                 .unwrap()
                 .prop("addr")
                 .unwrap()
@@ -129,5 +129,6 @@ fn test() -> Result<(), RuntimeError> {
         .max_time(20.0.into())
         .build(sim.freeze())
         .run()
+        .as_result()
         .map(|_| ())
 }

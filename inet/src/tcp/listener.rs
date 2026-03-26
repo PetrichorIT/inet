@@ -117,7 +117,7 @@ impl TcpListener {
     /// This function sets the SO_REUSEADDR option on the socket.
     pub async fn bind<A: ToSocketAddrs>(addr: A) -> Result<TcpListener, Error> {
         let addrs = lookup_host(addr).await?;
-        ioctx().do_io(|ctx| {
+        ioctx().do_mutating(|ctx| {
             let mut last_err = None;
 
             for addr in addrs {
@@ -154,13 +154,13 @@ impl TcpListener {
 
     /// Returns the local address that this socket is bound to.
     pub fn local_addr(&self) -> Result<SocketAddr, Error> {
-        self.handle.do_io(|ctx| ctx.socket_get_addr(self.fd))
+        self.handle.do_mutating(|ctx| ctx.socket_get_addr(self.fd))
     }
     /// Gets the value of the IP_TTL option for this socket.
     ///
     /// For more information about this option, see [set_ttl](TcpListener::set_ttl).
     pub fn ttl(&self) -> Result<u32, Error> {
-        self.handle.do_io(|ctx| {
+        self.handle.do_mutating(|ctx| {
             if let Some(handle) = ctx.tcp.listeners.get(&self.fd) {
                 Ok(handle.config.ttl as u32)
             } else {
@@ -173,7 +173,7 @@ impl TcpListener {
     ///
     /// This value sets the time-to-live field that is used in every packet sent from this socket.
     pub fn set_ttl(&self, ttl: u32) -> Result<(), Error> {
-        self.handle.do_io(|ctx| {
+        self.handle.do_mutating(|ctx| {
             if let Some(handle) = ctx.tcp.listeners.get_mut(&self.fd) {
                 handle.config.ttl = u8::try_from(ttl).expect("u8");
                 Ok(())

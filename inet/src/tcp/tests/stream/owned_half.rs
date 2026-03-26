@@ -4,7 +4,6 @@ use std::{
     task::{Context, Poll},
 };
 
-use des::runtime::RuntimeError;
 use serial_test::serial;
 use tokio::io::ReadBuf;
 
@@ -15,7 +14,7 @@ use crate::{
 
 #[test]
 #[serial]
-fn reunite() -> Result<(), RuntimeError> {
+fn reunite() -> Result<(), des::net::Failure> {
     let mut sim = SimpleSim::default();
 
     sim.node("192.168.2.111", || async move {
@@ -50,7 +49,7 @@ fn reunite() -> Result<(), RuntimeError> {
 
 #[test]
 #[serial]
-fn parallel_read_and_write() -> Result<(), RuntimeError> {
+fn parallel_read_and_write() -> Result<(), des::net::Failure> {
     let mut sim = SimpleSim::default();
 
     sim.node("192.168.2.111", || async move {
@@ -87,7 +86,7 @@ fn parallel_read_and_write() -> Result<(), RuntimeError> {
 
 #[test]
 #[serial]
-fn peeking() -> Result<(), RuntimeError> {
+fn peeking() -> Result<(), des::net::Failure> {
     let mut sim = SimpleSim::default();
 
     sim.node("192.168.2.111", || async move {

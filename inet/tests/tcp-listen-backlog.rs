@@ -6,7 +6,8 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
 };
 
-use des::{prelude::*, registry};
+use des::prelude::*;
+use des_ndl::{Ndl, registry};
 use inet::{
     interface::{InterfaceDef, NetworkDevice},
     ioctx,
@@ -40,7 +41,7 @@ impl Module for Client {
         });
     }
 
-    fn at_sim_end(&mut self) -> Result<(), RuntimeError> {
+    fn at_sim_end(&mut self) -> Result<(), des::net::Error> {
         assert!(self.done.load(Ordering::SeqCst));
         Ok(())
     }
@@ -77,25 +78,22 @@ impl Module for Server {
         });
     }
 
-    fn at_sim_end(&mut self) -> Result<(), RuntimeError> {
+    fn at_sim_end(&mut self) -> Result<(), des::net::Error> {
         assert!(self.done.load(Ordering::SeqCst));
         Ok(())
     }
 }
 
 #[test]
-fn tcp_listen_backlog() {
+fn tcp_listen_backlog() -> Result<(), Box<dyn std::error::Error>> {
     // des::tracing::init();
 
-    let app = Sim::new(())
-        .with_stack(inet::init)
-        .with_ndl(
-            "tests/tcp-multi-accept.yml",
-            registry![Server, Client, else _],
-        )
-        .map_err(|e| println!("{e}"))
-        .unwrap();
+    let mut app = Sim::new(()).with_stack(inet::init);
+    let def = serde_norway::from_str(include_str!("tcp-multi-accept.yml"))?;
+    app.node("", Ndl::new(&mut registry![Server, Client, else _], &def)?)?;
+
     let rt = Builder::seeded(123).build(app.freeze());
-    let (_, t, _) = rt.run().unwrap();
-    assert!(t > 3.0.into());
+    let r = rt.run().assert_no_err();
+    assert!(r.time > 3.0.into());
+    Ok(())
 }

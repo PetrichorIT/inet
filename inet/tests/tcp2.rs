@@ -1,6 +1,7 @@
 use std::{error::Error, net::Ipv4Addr, time::Duration};
 
-use des::{net::Sim, prelude::Module, registry, runtime::Builder, time::sleep};
+use des::{net::Sim, prelude::Module, runtime::Builder, time::sleep};
+use des_ndl::{Ndl, registry};
 use inet::{
     interface::{InterfaceDef, NetworkDevice},
     ioctx,
@@ -66,15 +67,15 @@ impl Module for Server {
 fn main() -> Result<(), Box<dyn Error>> {
     // des::tracing::init();
 
-    let sim = Sim::new(())
-        .with_stack(inet::init)
-        .with_ndl("tests/tcp2.yml", registry![Client, Server, else _])?;
+    let mut app = Sim::new(()).with_stack(inet::init);
+    let def = serde_norway::from_str(include_str!("tcp2.yml"))?;
+    app.node("", Ndl::new(&mut registry![Client, Server, else _], &def)?)?;
 
     let _ = Builder::seeded(123)
         .max_time(100.0.into())
-        .build(sim.freeze())
+        .build(app.freeze())
         .run()
-        .unwrap();
+        .assert_no_err();
 
     Ok(())
 }

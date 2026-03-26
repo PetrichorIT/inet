@@ -1,6 +1,6 @@
 use std::{io, time::Duration};
 
-use des::{prelude::Message, runtime::RuntimeError, time::sleep};
+use des::{prelude::Message, runtime::des::net::Error, time::sleep};
 use inet::{
     env::RoutingPort,
     interface::{InterfaceDef, NetworkDevice},
@@ -38,7 +38,7 @@ async fn bob(_: Receiver<Message>) -> io::Result<()> {
     Ok(())
 }
 
-fn main() -> Result<(), RuntimeError> {
+fn main() -> Result<(), des::net::Failure> {
     // des::tracing::init();
 
     let mut sim = SimpleSim::default();
