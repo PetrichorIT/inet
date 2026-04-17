@@ -9,7 +9,7 @@ type ResultDyn = std::result::Result<(), Box<dyn std::error::Error>>;
 
 #[test]
 #[serial]
-fn edit_policy_table() -> Result<(), des::net::Failure> {
+fn edit_policy_table() -> Result<(), des::Failure> {
     let mut sim = SimpleSim::default();
     sim.v6 = true;
     sim.node("alice", || async move {

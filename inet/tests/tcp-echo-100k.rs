@@ -87,7 +87,7 @@ impl Module for TcpServer {
         tracing::error!("All packet should have been caught by the plugins");
     }
 
-    fn at_sim_end(&mut self) -> Result<(), des::net::Error> {
+    fn at_sim_end(&mut self) -> Result<(), des::Error> {
         assert!(self.done.load(SeqCst));
 
         let fd: Fd = self.fd.load(SeqCst);
@@ -151,7 +151,7 @@ impl Module for TcpClient {
         panic!("All packet should have been caught by the plugins")
     }
 
-    fn at_sim_end(&mut self) -> Result<(), des::net::Error> {
+    fn at_sim_end(&mut self) -> Result<(), des::Error> {
         assert!(self.done.load(SeqCst));
 
         let fd: Fd = self.fd.load(SeqCst);
@@ -166,16 +166,16 @@ impl Module for TcpClient {
 #[test]
 #[serial]
 fn tcp_echo_100k() -> Result<(), Box<dyn std::error::Error>> {
-    let mut app = Sim::new(()).with_stack(inet::init);
+    let mut sim = Sim::new(()).with_stack(inet::init);
     let def = serde_norway::from_str(include_str!("tcp.yml"))?;
-    app.node(
+    sim.node(
         "",
         Ndl::new(&mut registry![Link, TcpServer, TcpClient, else _], &def)?,
     )?;
 
-    let rt = Builder::seeded(123).build(app.freeze());
+    let rt = sim.seeded(123).build();
     let r = rt.run().assert_no_err();
     assert_eq!(r.time.as_secs(), 6 + 10); // there is something wrong here
-    assert!(r.profiler.event_count < 8000);
+    assert!(r.app.num_events_dispatched() < 8000);
     Ok(())
 }

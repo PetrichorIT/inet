@@ -157,9 +157,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     app.node("", Ndl::new(&mut registry![Client, Server, else _], &ndl)?)?;
 
-    let rt = Builder::seeded(123)
-        .max_time(50.0.into())
-        .build(app.freeze());
-    let _ = rt.run().as_result()?;
+    let rt = app.seeded(123).max_time(50.0.into()).build();
+    let _ = rt.run().into_result()?;
     Ok(())
 }

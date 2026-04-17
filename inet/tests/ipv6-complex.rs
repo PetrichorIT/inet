@@ -2,8 +2,9 @@ use std::{io, iter::repeat_with};
 
 use bytes_io::BytesMut;
 use des::{
-    net::{globals, handlers::AsyncHandler},
+    globals,
     prelude::{ChannelDropBehaviour, DatarateChannelMetrics, *},
+    runtime::handlers::AsyncHandler,
     runtime::rng,
     time::sleep,
 };
@@ -46,7 +47,7 @@ const WAN: DatarateChannelMetrics = DatarateChannelMetrics::new(
 /// H6 -------+
 ///
 #[test]
-fn run() -> Result<(), des::net::Failure> {
+fn run() -> Result<(), des::Failure> {
     // des::tracing::init();
 
     if cfg!(not(feature = "props")) {
@@ -266,11 +267,12 @@ fn run() -> Result<(), des::net::Failure> {
         Some(DatarateChannel::new(LAN)),
     );
 
-    let _ = Builder::seeded(213)
+    let _ = sim
+        .seeded(213)
         .max_time(100.0.into())
-        .build(sim.freeze())
+        .build()
         .run()
-        .as_result()?;
+        .into_result()?;
 
     Ok(())
 }

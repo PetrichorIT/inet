@@ -6,12 +6,11 @@ use std::{
 };
 
 use des::{
-    net::{
-        Failure, IntoModuleTree, Sim, SimBuilder, handlers::AsyncHandler,
-        processing::ProcessingStack,
-    },
+    Failure, Sim, SimBuilder,
+    gate::IntoGate,
     prelude::{ChannelDropBehaviour, DatarateChannel, DatarateChannelMetrics, Message, current},
-    runtime::Builder,
+    processing::ProcessingStack,
+    runtime::{IntoModuleTree, handlers::AsyncHandler},
 };
 use tokio::sync::mpsc::Receiver;
 
@@ -175,17 +174,13 @@ impl SimpleSim {
     }
 
     pub fn run(self) -> Result<(), Failure> {
-        let rt = Builder::seeded(123)
-            .max_time(100.0.into())
-            .build(self.into_inner());
-        rt.run().as_result().map(|_| ())
+        let rt = self.sim.seeded(123).max_time(100.0.into()).build();
+        rt.run().into_result().map(|_| ())
     }
 
     pub fn run_max_time(self, f: f64) -> Result<(), Failure> {
-        let rt = Builder::seeded(123)
-            .max_time(f.into())
-            .build(self.into_inner());
-        rt.run().as_result().map(|_| ())
+        let rt = self.sim.seeded(123).max_time(f.into()).build();
+        rt.run().into_result().map(|_| ())
     }
 }
 

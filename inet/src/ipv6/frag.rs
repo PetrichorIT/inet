@@ -118,7 +118,7 @@ mod tests {
 
     use bytes_io::{Bytes, FromBytes};
     use des::{
-        net::globals,
+        globals,
         prelude::{Message, current, send},
         time::sleep,
     };
@@ -139,7 +139,7 @@ mod tests {
 
     #[test]
     #[serial]
-    fn recv_very_large_fragment() -> Result<(), des::net::Failure> {
+    fn recv_very_large_fragment() -> Result<(), des::Failure> {
         // des::tracing::init();
 
         let mut sim = SimpleSim::default();
@@ -168,7 +168,7 @@ mod tests {
 
     #[test]
     #[serial]
-    fn fragmentation_timeout_after_60s() -> Result<(), des::net::Failure> {
+    fn fragmentation_timeout_after_60s() -> Result<(), des::Failure> {
         // des::tracing::init();
 
         let mut sim = SimpleSim::default();

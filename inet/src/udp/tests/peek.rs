@@ -10,7 +10,7 @@ use crate::{UdpSocket, utils::SimpleSim};
 
 #[test]
 #[serial]
-fn peek_from_preserves_packets() -> Result<(), des::net::Failure> {
+fn peek_from_preserves_packets() -> Result<(), des::Failure> {
     let mut sim = SimpleSim::default();
 
     sim.node_require_join("192.168.2.100", || async move {
@@ -48,7 +48,7 @@ fn peek_from_preserves_packets() -> Result<(), des::net::Failure> {
 
 #[test]
 #[serial]
-fn peek_on_connected() -> Result<(), des::net::Failure> {
+fn peek_on_connected() -> Result<(), des::Failure> {
     let mut sim = SimpleSim::default();
     sim.node("192.168.2.101", || async move {
         let sock = UdpSocket::bind("0.0.0.0:80").await?;
@@ -76,7 +76,7 @@ fn peek_on_connected() -> Result<(), des::net::Failure> {
 
 #[test]
 #[serial]
-fn peek_sender_on_connected() -> Result<(), des::net::Failure> {
+fn peek_sender_on_connected() -> Result<(), des::Failure> {
     let mut sim = SimpleSim::default();
     sim.node("192.168.2.101", || async move {
         let sock = UdpSocket::bind("0.0.0.0:80").await?;

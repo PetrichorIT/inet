@@ -1,4 +1,4 @@
-use des::{net::module::try_current, time::SimTime};
+use des::{module::try_current, time::SimTime};
 use rand::distr::Uniform;
 use serde::{Deserialize, Serialize};
 use std::{io, net::Ipv6Addr, time::Duration};

@@ -7,7 +7,7 @@ use crate::{UdpSocket, utils::SimpleSim};
 
 #[test]
 #[serial]
-fn select_recv_two_sockets() -> Result<(), des::net::Failure> {
+fn select_recv_two_sockets() -> Result<(), des::Failure> {
     let mut sim = SimpleSim::default();
     sim.node_require_join("192.168.2.100", || async move {
         let a = UdpSocket::bind("0.0.0.0:100").await?;
@@ -54,7 +54,7 @@ fn select_recv_two_sockets() -> Result<(), des::net::Failure> {
 
 #[test]
 #[serial]
-fn select_recv_send() -> Result<(), des::net::Failure> {
+fn select_recv_send() -> Result<(), des::Failure> {
     let mut sim = SimpleSim::default();
     sim.metrics.bitrate = 5_000;
     sim.metrics.latency = Duration::from_micros(5);
@@ -109,7 +109,7 @@ fn select_recv_send() -> Result<(), des::net::Failure> {
 
 #[test]
 #[serial]
-fn select_send_send() -> Result<(), des::net::Failure> {
+fn select_send_send() -> Result<(), des::Failure> {
     let mut sim = SimpleSim::default();
     sim.metrics.bitrate = 5_000;
     sim.metrics.latency = Duration::from_micros(5);

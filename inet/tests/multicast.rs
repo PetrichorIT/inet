@@ -7,7 +7,7 @@ use inet::{
 use std::{net::Ipv6Addr, time::Duration};
 
 #[test]
-fn run() -> Result<(), des::net::Failure> {
+fn run() -> Result<(), des::Failure> {
     // des::tracing::init();
     let mut sim = SimpleSim::new(inet::init);
 

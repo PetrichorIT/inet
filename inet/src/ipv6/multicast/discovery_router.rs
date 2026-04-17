@@ -384,31 +384,28 @@ impl IOContext {
 
 #[cfg(test)]
 mod tests {
-    use des::runtime::{Application, Builder};
+    use des::runtime::{Sim, SimLifecycle};
     use serial_test::serial;
 
     use super::*;
 
-    fn rng_sim(f: impl FnOnce() -> io::Result<()>) -> Result<(), des::net::Failure> {
+    fn rng_sim(f: impl FnOnce() -> io::Result<()>) -> Result<(), des::Failure> {
         struct App<F: FnOnce() -> io::Result<()>>(Option<F>);
-        impl<F: FnOnce() -> io::Result<()>> Application for App<F> {
-            type Error = des::net::Failure;
-            type EventSet = ();
-            fn at_sim_end(
-                runtime: &mut des::prelude::Runtime<Self>,
-            ) -> Result<(), des::net::Failure>
+        impl<F: FnOnce() -> io::Result<()>> SimLifecycle for App<F> {
+            fn at_sim_end(runtime: &mut Sim<Self>) -> Result<(), des::Failure>
             where
-                Self: Application,
+                Self: SimLifecycle,
             {
-                (runtime.app.0.take().unwrap())()?;
+                (runtime.inner.0.take().unwrap())()?;
                 Ok(())
             }
         }
 
-        Builder::seeded(123)
-            .build(App(Some(f)))
+        Sim::new(App(Some(f)))
+            .seeded(123)
+            .build()
             .run()
-            .as_result()
+            .into_result()
             .map(|_| ())
     }
 
@@ -416,7 +413,7 @@ mod tests {
 
     #[test]
     #[serial]
-    fn on_gen_query_expired_for_querier() -> Result<(), des::net::Failure> {
+    fn on_gen_query_expired_for_querier() -> Result<(), des::Failure> {
         rng_sim(|| {
             let mut state = RouterState {
                 role: Role::Querier,
@@ -442,7 +439,7 @@ mod tests {
 
     #[test]
     #[serial]
-    fn on_lower_ip_query_for_querier() -> Result<(), des::net::Failure> {
+    fn on_lower_ip_query_for_querier() -> Result<(), des::Failure> {
         rng_sim(|| {
             let mut state = RouterState {
                 role: Role::Querier,
@@ -470,7 +467,7 @@ mod tests {
 
     #[test]
     #[serial]
-    fn on_lower_ip_query_for_non_querier() -> Result<(), des::net::Failure> {
+    fn on_lower_ip_query_for_non_querier() -> Result<(), des::Failure> {
         rng_sim(|| {
             let mut state = RouterState {
                 role: Role::NonQuerier,
@@ -498,7 +495,7 @@ mod tests {
 
     #[test]
     #[serial]
-    fn on_other_querier_expired_for_non_querier() -> Result<(), des::net::Failure> {
+    fn on_other_querier_expired_for_non_querier() -> Result<(), des::Failure> {
         rng_sim(|| {
             let mut state = RouterState {
                 role: Role::NonQuerier,
@@ -526,7 +523,7 @@ mod tests {
 
     #[test]
     #[serial]
-    fn group_no_listeners_on_report() -> Result<(), des::net::Failure> {
+    fn group_no_listeners_on_report() -> Result<(), des::Failure> {
         rng_sim(|| {
             let mut state = GroupState::NoListenersPresent;
             let mut actions = Vec::new();
@@ -544,7 +541,7 @@ mod tests {
 
     #[test]
     #[serial]
-    fn group_listeners_on_report() -> Result<(), des::net::Failure> {
+    fn group_listeners_on_report() -> Result<(), des::Failure> {
         rng_sim(|| {
             let mut state = GroupState::ListenersPresent;
             let mut actions = Vec::new();
@@ -562,7 +559,7 @@ mod tests {
 
     #[test]
     #[serial]
-    fn group_listeners_on_timer_expired() -> Result<(), des::net::Failure> {
+    fn group_listeners_on_timer_expired() -> Result<(), des::Failure> {
         rng_sim(|| {
             let mut state = GroupState::ListenersPresent;
             let mut actions = Vec::new();
@@ -579,7 +576,7 @@ mod tests {
 
     #[test]
     #[serial]
-    fn group_listeners_on_done() -> Result<(), des::net::Failure> {
+    fn group_listeners_on_done() -> Result<(), des::Failure> {
         rng_sim(|| {
             let mut state = GroupState::ListenersPresent;
             let mut actions = Vec::new();
@@ -612,7 +609,7 @@ mod tests {
 
     #[test]
     #[serial]
-    fn group_checking_on_report() -> Result<(), des::net::Failure> {
+    fn group_checking_on_report() -> Result<(), des::Failure> {
         rng_sim(|| {
             let mut state = GroupState::CheckingListeners;
             let mut actions = Vec::new();
@@ -644,7 +641,7 @@ mod tests {
 
     #[test]
     #[serial]
-    fn group_checking_on_retransmit_expired() -> Result<(), des::net::Failure> {
+    fn group_checking_on_retransmit_expired() -> Result<(), des::Failure> {
         rng_sim(|| {
             let mut state = GroupState::CheckingListeners;
             let mut actions = Vec::new();
@@ -683,7 +680,7 @@ mod tests {
 
     #[test]
     #[serial]
-    fn group_checking_on_timer_expired() -> Result<(), des::net::Failure> {
+    fn group_checking_on_timer_expired() -> Result<(), des::Failure> {
         rng_sim(|| {
             let mut state = GroupState::CheckingListeners;
             let mut actions = Vec::new();

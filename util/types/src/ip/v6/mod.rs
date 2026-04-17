@@ -2,7 +2,7 @@ use bytes_io::{
     BE, BufMut, Bytes, BytesMut, BytesReader, BytesWriter, FromBytes, ReadBytesExt, ToBytes,
     WriteBytesExt,
 };
-use des::net::message::MessageBody;
+use des::message::MessageBody;
 use std::{
     io::{self, Error, ErrorKind, Write},
     iter::once,

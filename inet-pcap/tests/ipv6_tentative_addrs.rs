@@ -1,6 +1,6 @@
 use std::fs::File;
 
-use des::net::module::Module;
+use des::module::Module;
 
 use inet::{
     env::RoutingPort,
@@ -23,7 +23,7 @@ impl Module for HostAlice {
             .unwrap();
     }
 
-    fn at_sim_end(&mut self) -> Result<(), des::net::Error> {
+    fn at_sim_end(&mut self) -> Result<(), des::Error> {
         let addrs = getaddrinfo().unwrap();
         assert_eq!(addrs.len(), 3);
         Ok(())
@@ -42,7 +42,7 @@ impl Module for HostBob {
             .unwrap();
     }
 
-    fn at_sim_end(&mut self) -> Result<(), des::net::Error> {
+    fn at_sim_end(&mut self) -> Result<(), des::Error> {
         let addrs = getaddrinfo().unwrap();
         assert_eq!(addrs.len(), 3);
         Ok(())
@@ -69,7 +69,7 @@ impl Module for Router {
 }
 
 #[test]
-fn ipv6_tentative_addrs() -> Result<(), des::net::Failure> {
+fn ipv6_tentative_addrs() -> Result<(), des::Failure> {
     // des::tracing::init();
 
     let mut sim = SimpleSim::default();

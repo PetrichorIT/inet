@@ -508,7 +508,7 @@ impl IOContext {
 
 #[cfg(test)]
 mod tests {
-    use des::net::ObjectPath;
+    use des::ObjectPath;
 
     use super::*;
 

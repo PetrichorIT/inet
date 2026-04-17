@@ -13,7 +13,7 @@ use super::*;
 
 #[test]
 #[serial]
-fn host_unsolicited_report() -> Result<(), des::net::Failure> {
+fn host_unsolicited_report() -> Result<(), des::Failure> {
     let mut sim = SimpleSim::default();
     sim.node_require_join("fe80::1", || async move {
         designate_mdl(IfId::new("en0"))?;
@@ -33,7 +33,7 @@ fn host_unsolicited_report() -> Result<(), des::net::Failure> {
 
 #[test]
 #[serial]
-fn host_leave_scope_ends_group() -> Result<(), des::net::Failure> {
+fn host_leave_scope_ends_group() -> Result<(), des::Failure> {
     let mut sim = SimpleSim::default();
     sim.node_require_join("fe80::1", || async move {
         designate_mdl(IfId::new("en0"))?;
@@ -62,7 +62,7 @@ fn host_leave_scope_ends_group() -> Result<(), des::net::Failure> {
 
 #[test]
 #[serial]
-fn host_leave_scope_group_remains() -> Result<(), des::net::Failure> {
+fn host_leave_scope_group_remains() -> Result<(), des::Failure> {
     let mut sim = SimpleSim::default();
     sim.node_require_join("fe80::1", || async move {
         designate_mdl(IfId::new("en0"))?;

@@ -1,4 +1,4 @@
-use des::prelude::*;
+use des::{MessageBody, prelude::*};
 use serde::{Deserialize, Serialize};
 use std::{
     ffi::CStr,

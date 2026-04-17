@@ -5,7 +5,7 @@ use crate::{
     interface::device::driver::{EthernetDeviceDriver, LoopbackDeviceDriver},
 };
 use des::{
-    net::module::current,
+    module::current,
     prelude::{GateRef, Message},
     time::SimTime,
 };

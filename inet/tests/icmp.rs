@@ -1,4 +1,4 @@
-use des::{net::handlers::AsyncHandler, prelude::*, time::sleep};
+use des::{prelude::*, runtime::handlers::AsyncHandler, time::sleep};
 use inet::{
     interface::{IfId, InterfaceDef, NetworkDevice},
     ioctx,
@@ -13,7 +13,7 @@ use types::{
 
 #[test]
 #[serial]
-fn icmp_drop_packet_too_big() -> Result<(), des::net::Failure> {
+fn icmp_drop_packet_too_big() -> Result<(), des::Failure> {
     // des::tracing::init();
 
     let mut sim = Sim::new(()).with_stack(inet::init);
@@ -101,10 +101,10 @@ fn icmp_drop_packet_too_big() -> Result<(), des::net::Failure> {
     p1.connect_with(p1_t, Some(DatarateChannel::new(metrics)));
     p2.connect_with(p2_t, Some(DatarateChannel::new(metrics)));
 
-    Builder::seeded(123)
+    sim.seeded(123)
         .max_time(5.0.into())
-        .build(sim.freeze())
+        .build()
         .run()
-        .as_result()
+        .into_result()
         .map(|_| ())
 }

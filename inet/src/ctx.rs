@@ -1,5 +1,5 @@
 use des::{
-    net::ObjectPath,
+    ObjectPath,
     prelude::{Header, Message},
 };
 use std::{

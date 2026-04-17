@@ -1,9 +1,10 @@
 use std::{io, net::Ipv4Addr, time::Duration};
 
 use des::{
-    net::{Sim, handlers::AsyncHandler},
+    Sim,
+    gate::IntoGate,
     prelude::{ChannelDropBehaviour, DatarateChannel, DatarateChannelMetrics, Message, current},
-    runtime::Builder,
+    runtime::handlers::AsyncHandler,
     time::sleep_until,
 };
 use inet::{
@@ -125,7 +126,7 @@ dst-router.lan: 100.6.6.0/24
 
 #[test]
 #[serial]
-fn run() -> Result<(), des::net::Failure> {
+fn run() -> Result<(), des::Failure> {
     des::tracing::init();
 
     let mut sim = Sim::new(()).with_stack(inet::init);
@@ -155,10 +156,10 @@ fn run() -> Result<(), des::net::Failure> {
     sim.gate("router-c", "fwd")
         .connect_with(sim.gate("dst-router", "bwd"), lan());
 
-    Builder::seeded(123)
+    sim.seeded(123)
         .max_time(100.0.into())
-        .build(sim.freeze())
+        .build()
         .run()
-        .as_result()
+        .into_result()
         .map(|_| ())
 }

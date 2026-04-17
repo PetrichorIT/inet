@@ -13,7 +13,7 @@ use crate::{
 
 #[test]
 #[serial]
-fn as_ref() -> Result<(), des::net::Failure> {
+fn as_ref() -> Result<(), des::Failure> {
     let mut sim = SimpleSim::default();
 
     fn req_actual_str(_s: &TcpStream) {}
@@ -35,7 +35,7 @@ fn as_ref() -> Result<(), des::net::Failure> {
 
 #[test]
 #[serial]
-fn parallel_read_and_write() -> Result<(), des::net::Failure> {
+fn parallel_read_and_write() -> Result<(), des::Failure> {
     let mut sim = SimpleSim::default();
 
     sim.node("192.168.2.111", || async move {
@@ -73,7 +73,7 @@ fn parallel_read_and_write() -> Result<(), des::net::Failure> {
 
 #[test]
 #[serial]
-fn peeking() -> Result<(), des::net::Failure> {
+fn peeking() -> Result<(), des::Failure> {
     let mut sim = SimpleSim::default();
 
     sim.node("192.168.2.111", || async move {

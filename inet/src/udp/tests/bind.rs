@@ -1,4 +1,4 @@
-use des::{net::handlers::AsyncHandler, prelude::*, time::sleep};
+use des::{prelude::*, runtime::handlers::AsyncHandler, time::sleep};
 use serial_test::serial;
 
 use crate::{
@@ -17,7 +17,7 @@ const CHANNEL: DatarateChannelMetrics = DatarateChannelMetrics::new(
 
 #[test]
 #[serial]
-fn specific_bind_recv_restrictivly() -> Result<(), des::net::Failure> {
+fn specific_bind_recv_restrictivly() -> Result<(), des::Failure> {
     let mut sim = Sim::new(()).with_stack(crate::init);
     sim.node(
         "receiver",
@@ -87,17 +87,17 @@ fn specific_bind_recv_restrictivly() -> Result<(), des::net::Failure> {
         Some(DatarateChannel::new(CHANNEL)),
     );
 
-    Builder::seeded(132)
+    sim.seeded(132)
         .max_time(100.0.into())
-        .build(sim.freeze())
+        .build()
         .run()
-        .as_result()
+        .into_result()
         .map(|_| ())
 }
 
 #[test]
 #[serial]
-fn zero_bind_recv_all() -> Result<(), des::net::Failure> {
+fn zero_bind_recv_all() -> Result<(), des::Failure> {
     let mut sim = Sim::new(()).with_stack(crate::init);
     sim.node(
         "receiver",
@@ -168,17 +168,17 @@ fn zero_bind_recv_all() -> Result<(), des::net::Failure> {
         Some(DatarateChannel::new(CHANNEL)),
     );
 
-    Builder::seeded(132)
+    sim.seeded(132)
         .max_time(100.0.into())
-        .build(sim.freeze())
+        .build()
         .run()
-        .as_result()
+        .into_result()
         .map(|_| ())
 }
 
 #[test]
 #[serial]
-fn bind_no_addrs() -> Result<(), des::net::Failure> {
+fn bind_no_addrs() -> Result<(), des::Failure> {
     let mut sim = SimpleSim::default();
     sim.node_require_join("192.168.2.101", || async move {
         let set: &[SocketAddr] = &[];

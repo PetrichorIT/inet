@@ -1,12 +1,13 @@
 use std::{net::Ipv4Addr, sync::Arc, time::Duration};
 
 use des::{
-    net::{
-        Sim,
-        handlers::{AsyncHandler, HandlerFn},
-    },
+    Sim,
+    gate::IntoGate,
     prelude::{ChannelDropBehaviour, DatarateChannel, DatarateChannelMetrics, send},
-    runtime::{Builder, random},
+    runtime::{
+        handlers::{AsyncHandler, HandlerFn},
+        random,
+    },
     time::SimTime,
 };
 use rand::{RngCore, rng};
@@ -25,7 +26,7 @@ use crate::{
 
 #[serial]
 #[test]
-fn peeking_stream() -> Result<(), des::net::Failure> {
+fn peeking_stream() -> Result<(), des::Failure> {
     let mut sim = SimpleSim::default();
     sim.node_require_join("192.168.2.101", || async move {
         let (mut accepted, _) = TcpListener::bind("0.0.0.0:80").await?.accept().await?;
@@ -54,7 +55,7 @@ fn peeking_stream() -> Result<(), des::net::Failure> {
 
 #[test]
 #[serial]
-fn interest_based_writing() -> Result<(), des::net::Failure> {
+fn interest_based_writing() -> Result<(), des::Failure> {
     let mut sim = SimpleSim::default();
     sim.node("192.168.2.101", || async move {
         let (accepted, _) = TcpListener::bind("0.0.0.0:80").await?.accept().await?;
@@ -158,10 +159,7 @@ fn large_stream() {
         ))),
     );
 
-    let _ = Builder::seeded(123)
-        .max_time(1000.0.into())
-        .build(sim.freeze())
-        .run();
+    let _ = sim.seeded(123).max_time(1000.0.into()).build().run();
 
     // Event Count
     // 8MB - max 536 bytes per packet
@@ -291,10 +289,7 @@ fn lossful_stream() {
         ))),
     );
 
-    let _ = Builder::seeded(123)
-        .max_time(100.0.into())
-        .build(sim.freeze())
-        .run();
+    let _ = sim.seeded(123).max_time(100.0.into()).build().run();
 
     // DROP #1: ArpResponse
     // Drop #2: SYN

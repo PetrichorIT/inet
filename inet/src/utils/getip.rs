@@ -93,7 +93,7 @@ mod tests {
 
     #[test]
     #[serial]
-    fn get_mac_addr() -> Result<(), des::net::Failure> {
+    fn get_mac_addr() -> Result<(), des::Failure> {
         let mut sim = SimpleSim::default();
         sim.raw("alice", |_| async move {
             assert_eq!(None, get_mac_address()?);

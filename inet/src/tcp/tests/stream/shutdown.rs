@@ -1,9 +1,10 @@
 use std::{net::Ipv4Addr, time::Duration};
 
 use des::{
-    net::{Sim, handlers::AsyncHandler},
+    Sim,
+    gate::IntoGate,
     prelude::{ChannelDropBehaviour, DatarateChannel, DatarateChannelMetrics},
-    runtime::Builder,
+    runtime::handlers::AsyncHandler,
 };
 use serial_test::serial;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -84,6 +85,6 @@ fn test_tcp_removes_tcb() {
         ))),
     );
 
-    let rt = Builder::seeded(123).build(sim.freeze());
+    let rt = sim.seeded(123).build();
     let _ = rt.run().assert_no_err();
 }

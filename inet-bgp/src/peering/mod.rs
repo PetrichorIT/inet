@@ -1,5 +1,5 @@
 use bytes_io::ToBytes;
-use des::{prelude::*, time::sleep};
+use des::{prelude::*, random, time::sleep};
 use inet::tcp::TcpStream;
 use std::{
     io::{Error, ErrorKind, Result},

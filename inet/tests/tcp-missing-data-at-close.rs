@@ -129,7 +129,7 @@ impl Module for TcpServer {
         tracing::error!("HM?");
     }
 
-    fn at_sim_end(&mut self) -> Result<(), des::net::Error> {
+    fn at_sim_end(&mut self) -> Result<(), des::Error> {
         use inet::socket::bsd_socket_info;
 
         assert!(self.done.load(SeqCst));
@@ -189,7 +189,7 @@ impl Module for TcpClient {
         });
     }
 
-    fn at_sim_end(&mut self) -> Result<(), des::net::Error> {
+    fn at_sim_end(&mut self) -> Result<(), des::Error> {
         use inet::socket::bsd_socket_info;
 
         assert!(self.done.load(SeqCst));
@@ -204,14 +204,12 @@ fn tcp_missing_data_at_close() -> Result<(), Box<dyn std::error::Error>> {
     // des::tracing::init();
 
     let def = serde_norway::from_str(include_str!("tcp.yml"))?;
-    let mut app = Sim::new(()).with_stack(inet::init);
-    app.node(
+    let mut sim = Sim::new(()).with_stack(inet::init);
+    sim.node(
         "",
         Ndl::new(&mut registry![Link, TcpServer, TcpClient, else _], &def)?,
     )?;
-    let rt = Builder::seeded(1263431312323)
-        .max_time(20.0.into())
-        .build(app.freeze());
-    let _ = rt.run().as_result()?;
+    let rt = sim.seeded(1263431312323).max_time(20.0.into()).build();
+    let _ = rt.run().into_result()?;
     Ok(())
 }

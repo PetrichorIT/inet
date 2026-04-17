@@ -5,7 +5,7 @@ use std::{
     str::FromStr,
 };
 
-use des::{prelude::*, time::sleep};
+use des::{prelude::*, random, time::sleep};
 use inet::{
     tcp::{TcpListener, TcpStream},
     utils::SimpleSim,
@@ -43,7 +43,7 @@ const DOMAINS: [&str; 15] = [
 ];
 
 #[test]
-fn run() -> Result<(), des::net::Failure> {
+fn run() -> Result<(), des::Failure> {
     let zonefiles = read_dir("tests/zonefiles")?
         .flatten()
         .flat_map(|path| {

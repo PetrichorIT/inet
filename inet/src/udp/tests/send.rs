@@ -6,7 +6,7 @@ use crate::{UdpSocket, utils::SimpleSim};
 
 #[test]
 #[serial]
-fn send_failure_ip_missmatch() -> Result<(), des::net::Failure> {
+fn send_failure_ip_missmatch() -> Result<(), des::Failure> {
     let mut sim = SimpleSim::default();
     sim.node("192.168.2.1", || async move {
         let sock = UdpSocket::bind("0.0.0.0:0").await?;

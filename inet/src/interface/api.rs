@@ -12,7 +12,7 @@ use crate::{
     },
     ipv6::{multicast::NodeEvent, ndp::QueryType},
 };
-use des::{net::module::current, time::SimTime};
+use des::{module::current, time::SimTime};
 use std::{
     io::{self, Error, ErrorKind},
     net::{IpAddr, Ipv4Addr, Ipv6Addr},

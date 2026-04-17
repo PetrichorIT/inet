@@ -1,7 +1,7 @@
 use std::net::Ipv6Addr;
 
 use des::{
-    net::message::{Message, schedule_at},
+    message::{Message, schedule_at},
     time::SimTime,
 };
 use types::ip::Ipv6Prefix;

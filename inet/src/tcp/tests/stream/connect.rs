@@ -4,11 +4,7 @@ use std::{
     time::Duration,
 };
 
-use des::{
-    net::{Sim, handlers::AsyncHandler},
-    runtime::Builder,
-    time::SimTime,
-};
+use des::{Sim, runtime::handlers::AsyncHandler, time::SimTime};
 use serial_test::serial;
 
 use crate::{
@@ -37,10 +33,11 @@ fn connect_without_interface() {
         .require_join(),
     );
 
-    let _ = Builder::seeded(123)
+    let _ = sim
+        .seeded(123)
         .max_time(100.0.into())
         .max_itr(100)
-        .build(sim.freeze())
+        .build()
         .run();
 }
 
@@ -192,7 +189,7 @@ fn connect_syn_timeout_no_rst() {
 
 #[serial]
 #[test]
-fn connect_fails_no_addr() -> Result<(), des::net::Failure> {
+fn connect_fails_no_addr() -> Result<(), des::Failure> {
     let mut sim = SimpleSim::default();
     sim.node_require_join("192.168.2.101", || async move {
         let error = TcpStream::connect::<&[SocketAddr]>(&[])
@@ -207,7 +204,7 @@ fn connect_fails_no_addr() -> Result<(), des::net::Failure> {
 
 #[serial]
 #[test]
-fn connect_fails_after_all_addr() -> Result<(), des::net::Failure> {
+fn connect_fails_after_all_addr() -> Result<(), des::Failure> {
     let mut sim = SimpleSim::default();
     sim.node_require_join("192.168.2.101", || async move {
         let error = TcpStream::connect(("2003:a:1::3123", 0))
@@ -296,7 +293,7 @@ fn connect_success_without_accept() {
 
 #[serial]
 #[test]
-fn connect_introduces_local_specified_addr_v4() -> Result<(), des::net::Failure> {
+fn connect_introduces_local_specified_addr_v4() -> Result<(), des::Failure> {
     let mut sim = SimpleSim::new(crate::init);
     sim.node_require_join("100.0.0.42", || async move {
         let stream = TcpStream::connect("100.0.0.69:8000").await?;
@@ -318,7 +315,7 @@ fn connect_introduces_local_specified_addr_v4() -> Result<(), des::net::Failure>
 
 #[serial]
 #[test]
-fn connect_introduces_local_specified_addr_v6() -> Result<(), des::net::Failure> {
+fn connect_introduces_local_specified_addr_v6() -> Result<(), des::Failure> {
     let mut sim = SimpleSim::new(crate::init);
     sim.node_require_join("fe80::1", || async move {
         let stream = TcpStream::connect("[fe80::2]:8000").await?;

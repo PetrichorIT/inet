@@ -8,7 +8,7 @@ use std::{
     },
 };
 
-use des::net::module::try_current;
+use des::module::try_current;
 use serde::{Deserialize, Serialize};
 use tokio::sync::{Mutex, mpsc};
 use valuable::Valuable;

@@ -2,9 +2,8 @@ use std::{net::Ipv6Addr, time::Duration};
 
 use bytes_io::{FromBytes, ToBytes};
 use des::{
-    net::Sim,
+    Sim,
     prelude::{Module, current},
-    runtime::Builder,
     time::sleep,
 };
 use des_ndl::{Ndl, registry};
@@ -133,10 +132,11 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         Ndl::new(&mut registry![Client, Server, Switch, Router,else _], &ndl)?,
     )?;
 
-    let _ = Builder::seeded(123)
+    let _ = sim
+        .seeded(123)
         .max_time(10.0.into())
-        .build(sim.freeze())
+        .build()
         .run()
-        .as_result()?;
+        .into_result()?;
     Ok(())
 }

@@ -14,7 +14,7 @@ use crate::{
 
 #[test]
 #[serial]
-fn reunite() -> Result<(), des::net::Failure> {
+fn reunite() -> Result<(), des::Failure> {
     let mut sim = SimpleSim::default();
 
     sim.node("192.168.2.111", || async move {
@@ -49,7 +49,7 @@ fn reunite() -> Result<(), des::net::Failure> {
 
 #[test]
 #[serial]
-fn parallel_read_and_write() -> Result<(), des::net::Failure> {
+fn parallel_read_and_write() -> Result<(), des::Failure> {
     let mut sim = SimpleSim::default();
 
     sim.node("192.168.2.111", || async move {
@@ -86,7 +86,7 @@ fn parallel_read_and_write() -> Result<(), des::net::Failure> {
 
 #[test]
 #[serial]
-fn peeking() -> Result<(), des::net::Failure> {
+fn peeking() -> Result<(), des::Failure> {
     let mut sim = SimpleSim::default();
 
     sim.node("192.168.2.111", || async move {

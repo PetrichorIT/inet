@@ -3,10 +3,7 @@ use std::{net::IpAddr, sync::Arc};
 use crate::IOHandle;
 
 use super::IOContext;
-use des::{
-    net::{module::current, processing::ProcessingElement},
-    prelude::Message,
-};
+use des::{module::current, prelude::Message, processing::ProcessingElement};
 
 /// A plugin managing IO primitives provided by inet.
 pub struct IOPlugin {

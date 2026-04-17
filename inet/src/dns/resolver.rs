@@ -3,7 +3,7 @@ use std::io::{Error, ErrorKind, Result};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
 use std::pin::Pin;
 
-use des::net::globals;
+use des::globals;
 
 use crate::{IOHandle, IOPlugin};
 
@@ -222,7 +222,7 @@ mod tests {
 
     #[test]
     #[serial]
-    fn sample_resolution_without_dns() -> Result<(), des::net::Failure> {
+    fn sample_resolution_without_dns() -> Result<(), des::Failure> {
         let mut sim = SimpleSim::default();
         sim.node_require_join("192.168.2.101", || async move {
             let _ = lookup_host((IpAddr::from_str("192.168.2.1").unwrap(), 80)).await?;
@@ -239,7 +239,7 @@ mod tests {
 
     #[test]
     #[serial]
-    fn invalid_port() -> Result<(), des::net::Failure> {
+    fn invalid_port() -> Result<(), des::Failure> {
         let mut sim = SimpleSim::default();
         sim.node_require_join("192.168.2.101", || async move {
             match lookup_host("192.168.2.10".to_string()).await {
@@ -263,7 +263,7 @@ mod tests {
 
     #[test]
     #[serial]
-    fn no_resolution_without_dns_resolver() -> Result<(), des::net::Failure> {
+    fn no_resolution_without_dns_resolver() -> Result<(), des::Failure> {
         let mut sim = SimpleSim::default();
         sim.node_require_join("192.168.2.101", || async move {
             match lookup_host("www.test.org:80").await {
@@ -279,7 +279,7 @@ mod tests {
 
     #[test]
     #[serial]
-    fn node_name_based_resolution() -> Result<(), des::net::Failure> {
+    fn node_name_based_resolution() -> Result<(), des::Failure> {
         let mut sim = SimpleSim::default();
         sim.node_require_join("bob", || async move { Ok(()) });
         sim.node_require_join("alice", || async move {

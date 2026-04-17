@@ -1,10 +1,8 @@
 use std::{io::Error, net::Ipv4Addr, time::Duration};
 
 use des::{
-    net::{Sim, channel::DatarateChannel, handlers::AsyncHandler},
-    prelude::DatarateChannelMetrics,
-    runtime::Builder,
-    time::sleep,
+    Sim, channel::DatarateChannel, gate::IntoGate, prelude::DatarateChannelMetrics,
+    runtime::handlers::AsyncHandler, time::sleep,
 };
 use inet::{
     interface::{InterfaceDef, InterfaceName, NetworkDevice},
@@ -151,10 +149,11 @@ fn semi_passiv_estab() {
         })),
     );
 
-    let _ = Builder::seeded(123)
+    let _ = sim
+        .seeded(123)
         .max_time(500.0.into())
         .max_itr(10_000)
-        .build(sim.freeze())
+        .build()
         .run();
 }
 
@@ -294,10 +293,11 @@ fn semi_passiv_estab_delayed_client() {
         })),
     );
 
-    let _ = Builder::seeded(123)
+    let _ = sim
+        .seeded(123)
         .max_time(500.0.into())
         .max_itr(10_000)
-        .build(sim.freeze())
+        .build()
         .run();
 }
 
@@ -438,9 +438,10 @@ fn semi_passiv_estab_delayed_open() {
         })),
     );
 
-    let _ = Builder::seeded(123)
+    let _ = sim
+        .seeded(123)
         .max_time(500.0.into())
         .max_itr(10_000)
-        .build(sim.freeze())
+        .build()
         .run();
 }

@@ -1,9 +1,9 @@
 use std::{io, time::Duration};
 
 use des::{
-    net::SimBuilder,
+    SimBuilder,
+    gate::IntoGate,
     prelude::{ChannelDropBehaviour, DatarateChannel, DatarateChannelMetrics},
-    runtime::Builder,
 };
 use tokio::io::AsyncReadExt;
 
@@ -54,9 +54,10 @@ fn run_default_sim(mut sim: SimBuilder<()>) {
         ))),
     );
 
-    let _ = Builder::seeded(123)
+    let _ = sim
+        .seeded(123)
         .max_time(100.0.into())
         .max_itr(100)
-        .build(sim.freeze())
+        .build()
         .run();
 }

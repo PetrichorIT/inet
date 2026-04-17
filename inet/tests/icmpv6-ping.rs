@@ -4,7 +4,7 @@ use std::{
     time::Duration,
 };
 
-use des::{net::globals, prelude::Message, time::sleep};
+use des::{globals, prelude::Message, time::sleep};
 use inet::{
     IOPlugin,
     env::RoutingPort,
@@ -81,7 +81,7 @@ async fn router(_rx: Receiver<Message>) -> io::Result<()> {
 
 #[test]
 #[serial]
-fn icmpv6_ping_success() -> Result<(), des::net::Failure> {
+fn icmpv6_ping_success() -> Result<(), des::Failure> {
     // des::tracing::init();
 
     let mut sim = SimpleSim::default();
@@ -94,7 +94,7 @@ fn icmpv6_ping_success() -> Result<(), des::net::Failure> {
 
 #[test]
 #[serial]
-fn icmpv6_ping_failure() -> Result<(), des::net::Failure> {
+fn icmpv6_ping_failure() -> Result<(), des::Failure> {
     // des::tracing::init();
 
     let mut sim = SimpleSim::default();

@@ -1,9 +1,10 @@
 use std::{io::ErrorKind, net::Ipv4Addr, time::Duration};
 
 use des::{
-    net::{Sim, handlers::AsyncHandler},
+    Sim,
+    gate::IntoGate,
     prelude::{ChannelDropBehaviour, DatarateChannel, DatarateChannelMetrics},
-    runtime::Builder,
+    runtime::handlers::AsyncHandler,
 };
 use serial_test::serial;
 
@@ -53,9 +54,10 @@ fn connect_no_local_ip_version() {
         ))),
     );
 
-    let _ = Builder::seeded(123)
+    let _ = sim
+        .seeded(123)
         .max_time(100.0.into())
         .max_itr(100)
-        .build(sim.freeze())
+        .build()
         .run();
 }

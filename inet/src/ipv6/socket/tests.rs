@@ -24,7 +24,7 @@ fn as_ipv6(ip: IpAddr) -> Ipv6Addr {
 
 #[test]
 #[serial]
-fn repr_as_bsd_sockets() -> Result<(), des::net::Failure> {
+fn repr_as_bsd_sockets() -> Result<(), des::Failure> {
     let mut sim = SimpleSim::default();
     sim.node_require_join("fe80::abcd", || async move {
         let sock1 = RawV6Socket::new(42)?;
@@ -70,7 +70,7 @@ fn repr_as_bsd_sockets() -> Result<(), des::net::Failure> {
 
 #[test]
 #[serial]
-fn bound_socket_is_selective() -> Result<(), des::net::Failure> {
+fn bound_socket_is_selective() -> Result<(), des::Failure> {
     // des::tracing::init();
 
     let mut sim = SimpleSim::default();

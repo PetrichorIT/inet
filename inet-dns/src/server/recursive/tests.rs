@@ -1,10 +1,6 @@
 use std::{net::Ipv4Addr, str::FromStr};
 
-use des::{
-    net::{handlers::AsyncHandler, Sim},
-    runtime::Builder,
-    time::sleep,
-};
+use des::{Sim, runtime::handlers::AsyncHandler, time::sleep};
 use serial_test::serial;
 
 use crate::{
@@ -61,13 +57,15 @@ fn referral_anwser_finishes_transaction() {
 
             let resp = QueryResponse {
                 questions: vec![question.clone()],
-                anwsers: vec![AResourceRecord {
-                    name: "alice.example.org.".parse()?,
-                    ttl: 7000,
-                    class: ResourceRecordClass::IN,
-                    addr: Ipv4Addr::new(1, 2, 3, 4),
-                }
-                .into()],
+                anwsers: vec![
+                    AResourceRecord {
+                        name: "alice.example.org.".parse()?,
+                        ttl: 7000,
+                        class: ResourceRecordClass::IN,
+                        addr: Ipv4Addr::new(1, 2, 3, 4),
+                    }
+                    .into(),
+                ],
                 ..Default::default()
             };
             server.incoming(
@@ -100,10 +98,7 @@ fn referral_anwser_finishes_transaction() {
             Ok(())
         }),
     );
-    let _ = Builder::seeded(123)
-        .max_time(100.0.into())
-        .build(sim.freeze())
-        .run();
+    let _ = sim.seeded(123).max_time(100.0.into()).build().run();
 }
 
 #[test]
@@ -186,10 +181,7 @@ fn referred_error_will_be_propagated() {
             Ok(())
         }),
     );
-    let _ = Builder::seeded(123)
-        .max_time(100.0.into())
-        .build(sim.freeze())
-        .run();
+    let _ = sim.seeded(123).max_time(100.0.into()).build().run();
 }
 
 #[test]
@@ -238,10 +230,7 @@ fn timeout_will_end_in_error() {
             Ok(())
         }),
     );
-    let _ = Builder::seeded(123)
-        .max_time(100.0.into())
-        .build(sim.freeze())
-        .run();
+    let _ = sim.seeded(123).max_time(100.0.into()).build().run();
 }
 
 const ZONEFILE_EXAMPLE_ORG: &str = include_str!("../../examples/example.org.zone");
@@ -281,8 +270,5 @@ fn timeout_will_retransmit_to_other_ns() {
             Ok(())
         }),
     );
-    let _ = Builder::seeded(123)
-        .max_time(100.0.into())
-        .build(sim.freeze())
-        .run();
+    let _ = sim.seeded(123).max_time(100.0.into()).build().run();
 }

@@ -4,7 +4,7 @@ use inet::{UdpSocket, utils::SimpleSim};
 use inet_pcap::pcap;
 
 #[test]
-fn run() -> Result<(), des::net::Failure> {
+fn run() -> Result<(), des::Failure> {
     let mut sim = SimpleSim::default();
     sim.v6 = true;
     let large_bytes = rand::random::<[u8; 10_000]>();

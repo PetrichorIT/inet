@@ -1,4 +1,4 @@
-use des::{net::module::try_current, time::SimTime};
+use des::{module::try_current, time::SimTime};
 use fxhash::{FxBuildHasher, FxHashMap};
 use serde::{Deserialize, Serialize};
 use std::{collections::VecDeque, fmt, net::Ipv6Addr, ops, time::Duration};

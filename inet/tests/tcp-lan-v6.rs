@@ -3,7 +3,7 @@ use std::sync::{
     atomic::{AtomicUsize, Ordering},
 };
 
-use des::{net::globals, prelude::*, time::sleep};
+use des::{globals, prelude::*, time::sleep};
 use des_ndl::{Ndl, registry};
 use inet::{
     interface::{InterfaceDef, NetworkDevice},
@@ -82,7 +82,7 @@ impl Module for Node {
         2
     }
 
-    fn at_sim_end(&mut self) -> Result<(), des::net::Error> {
+    fn at_sim_end(&mut self) -> Result<(), des::Error> {
         assert_eq!(self.done.load(Ordering::SeqCst), 2);
         Ok(())
     }
@@ -125,13 +125,13 @@ impl Module for Main {
 fn tcp_lan_v6() -> Result<(), Box<dyn std::error::Error>> {
     // des::tracing::init();
 
-    let mut app = Sim::new(())
+    let mut sim = Sim::new(())
         .with_stack(inet::init)
         .with_cfg(include_str!("tcp-lan/v6.par.yml"));
     let def = serde_norway::from_str(include_str!("tcp-lan/main.yml"))?;
-    app.node("", Ndl::new(&mut registry![Node, Switch, Main], &def)?)?;
+    sim.node("", Ndl::new(&mut registry![Node, Switch, Main], &def)?)?;
 
-    let rt = Builder::seeded(123).build(app.freeze());
-    rt.run().as_result().map(|_| ())?;
+    let rt = sim.seeded(123).build();
+    rt.run().into_result().map(|_| ())?;
     Ok(())
 }

@@ -23,7 +23,7 @@ cfg_dhcp! {
     pub mod dhcp;
 }
 
-use des::net::{
+use des::{
     ObjectPath,
     processing::{ProcessingStack, TimeDriver, TokioRuntime},
 };

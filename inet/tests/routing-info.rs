@@ -73,15 +73,13 @@ impl Module for Main {
 fn routing_info() -> Result<(), Box<dyn std::error::Error>> {
     // des::tracing::init();
 
-    let mut app = Sim::new(()).with_stack(inet::init);
+    let mut sim = Sim::new(()).with_stack(inet::init);
     let def = serde_norway::from_str(include_str!("triangle.yml"))?;
-    app.node("", Ndl::new(&mut registry![A, B, C, Main], &def)?)?;
+    sim.node("", Ndl::new(&mut registry![A, B, C, Main], &def)?)?;
 
-    let rt = Builder::seeded(123)
-        .max_time(100.0.into())
-        .build(app.freeze());
+    let rt = sim.seeded(123).max_time(100.0.into()).build();
     let res = rt.run().assert_no_err();
-    assert_eq!(res.profiler.event_count, 4);
+    assert_eq!(res.app.num_events_dispatched(), 4);
 
     Ok(())
 }

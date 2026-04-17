@@ -6,7 +6,7 @@ use std::{
 
 use bitflags::bitflags;
 use des::{
-    net::message::{Message, schedule_in},
+    message::{Message, schedule_in},
     prelude::Header,
 };
 use fxhash::{FxHashMap, hash};

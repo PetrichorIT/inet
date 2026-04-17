@@ -2,12 +2,13 @@ use std::{fs::File, net::Ipv4Addr, sync::Arc, time::Duration};
 
 use bytes_io::FromBytes;
 use des::{
-    net::{
-        Sim,
-        handlers::{AsyncHandler, HandlerFn},
-    },
+    Sim,
+    gate::IntoGate,
     prelude::{ChannelDropBehaviour, DatarateChannel, DatarateChannelMetrics, send},
-    runtime::{Builder, random},
+    runtime::{
+        handlers::{AsyncHandler, HandlerFn},
+        random,
+    },
 };
 use inet::{
     interface::{InterfaceDef, NetworkDevice},
@@ -140,8 +141,6 @@ fn lossfull_stream() {
         ))),
     );
 
-    let rt = Builder::seeded(123)
-        .max_time(1000.0.into())
-        .build(sim.freeze());
+    let rt = sim.seeded(123).max_time(1000.0.into()).build();
     let _ = rt.run().assert_no_err();
 }

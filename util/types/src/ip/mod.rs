@@ -1,7 +1,7 @@
 //! Internet-Protocol.
 
 use bytes_io::Bytes;
-use des::net::message::MessageKind;
+use des::message::MessageKind;
 use std::{
     hash::Hash,
     net::{IpAddr, Ipv4Addr, Ipv6Addr},

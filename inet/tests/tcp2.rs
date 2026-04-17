@@ -1,6 +1,6 @@
 use std::{error::Error, net::Ipv4Addr, time::Duration};
 
-use des::{net::Sim, prelude::Module, runtime::Builder, time::sleep};
+use des::{Sim, prelude::Module, time::sleep};
 use des_ndl::{Ndl, registry};
 use inet::{
     interface::{InterfaceDef, NetworkDevice},
@@ -67,13 +67,14 @@ impl Module for Server {
 fn main() -> Result<(), Box<dyn Error>> {
     // des::tracing::init();
 
-    let mut app = Sim::new(()).with_stack(inet::init);
+    let mut sim = Sim::new(()).with_stack(inet::init);
     let def = serde_norway::from_str(include_str!("tcp2.yml"))?;
-    app.node("", Ndl::new(&mut registry![Client, Server, else _], &def)?)?;
+    sim.node("", Ndl::new(&mut registry![Client, Server, else _], &def)?)?;
 
-    let _ = Builder::seeded(123)
+    let _ = sim
+        .seeded(123)
         .max_time(100.0.into())
-        .build(app.freeze())
+        .build()
         .run()
         .assert_no_err();
 

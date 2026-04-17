@@ -1,7 +1,7 @@
 use std::{fs::File, io::Error, net::Ipv6Addr, time::Duration};
 
 use bytes_io::ToBytes;
-use des::net::module::Module;
+use des::module::Module;
 
 use inet::{
     UdpSocket,

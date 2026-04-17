@@ -261,37 +261,34 @@ impl IOContext {
 
 #[cfg(test)]
 mod tests {
-    use des::runtime::{Application, Builder};
+    use des::{Sim, runtime::SimLifecycle};
     use serial_test::serial;
 
     use super::*;
 
-    fn rng_sim(f: impl FnOnce() -> io::Result<()>) -> Result<(), des::net::Failure> {
+    fn rng_sim(f: impl FnOnce() -> io::Result<()>) -> Result<(), des::Failure> {
         struct App<F: FnOnce() -> io::Result<()>>(Option<F>);
-        impl<F: FnOnce() -> io::Result<()>> Application for App<F> {
-            type Error = des::net::Failure;
-            type EventSet = ();
-            fn at_sim_end(
-                runtime: &mut des::prelude::Runtime<Self>,
-            ) -> Result<(), des::net::Failure>
+        impl<F: FnOnce() -> io::Result<()>> SimLifecycle for App<F> {
+            fn at_sim_end(runtime: &mut Sim<Self>) -> Result<(), des::Failure>
             where
-                Self: Application,
+                Self: SimLifecycle,
             {
-                (runtime.app.0.take().unwrap())()?;
+                (runtime.inner.0.take().unwrap())()?;
                 Ok(())
             }
         }
 
-        Builder::seeded(123)
-            .build(App(Some(f)))
+        Sim::new(App(Some(f)))
+            .seeded(123)
+            .build()
             .run()
-            .as_result()
+            .into_result()
             .map(|_| ())
     }
 
     #[test]
     #[serial]
-    fn on_start_listening_new() -> Result<(), des::net::Failure> {
+    fn on_start_listening_new() -> Result<(), des::Failure> {
         rng_sim(|| {
             let mut state = NodeState::NonListener;
             let mut actions = Vec::new();
@@ -311,7 +308,7 @@ mod tests {
 
     #[test]
     #[serial]
-    fn on_stop_delayed_listener() -> Result<(), des::net::Failure> {
+    fn on_stop_delayed_listener() -> Result<(), des::Failure> {
         rng_sim(|| {
             // NO FLAG
             let mut state = NodeState::DelayedListener(false, 100.0.into());
@@ -344,7 +341,7 @@ mod tests {
 
     #[test]
     #[serial]
-    fn on_stop_idle_listener() -> Result<(), des::net::Failure> {
+    fn on_stop_idle_listener() -> Result<(), des::Failure> {
         rng_sim(|| {
             // NO FLAG
             let mut state = NodeState::IdleListener(false);
@@ -375,7 +372,7 @@ mod tests {
 
     #[test]
     #[serial]
-    fn on_query_delayed_listener() -> Result<(), des::net::Failure> {
+    fn on_query_delayed_listener() -> Result<(), des::Failure> {
         rng_sim(|| {
             // Max resp time < current time
             let mut state = NodeState::DelayedListener(false, 11.0.into());
@@ -418,7 +415,7 @@ mod tests {
 
     #[test]
     #[serial]
-    fn on_query_idle_listener() -> Result<(), des::net::Failure> {
+    fn on_query_idle_listener() -> Result<(), des::Failure> {
         rng_sim(|| {
             let mut state = NodeState::IdleListener(true);
             let mut actions = Vec::new();
@@ -443,7 +440,7 @@ mod tests {
 
     #[test]
     #[serial]
-    fn on_report_delayed_listener() -> Result<(), des::net::Failure> {
+    fn on_report_delayed_listener() -> Result<(), des::Failure> {
         rng_sim(|| {
             let mut state = NodeState::DelayedListener(true, 100.0.into());
             let mut actions = Vec::new();
@@ -468,7 +465,7 @@ mod tests {
 
     #[test]
     #[serial]
-    fn on_report_timeout() -> Result<(), des::net::Failure> {
+    fn on_report_timeout() -> Result<(), des::Failure> {
         rng_sim(|| {
             let mut state = NodeState::DelayedListener(true, 100.0.into());
             let mut actions = Vec::new();

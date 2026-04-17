@@ -1,4 +1,4 @@
-use des::net::module::try_current;
+use des::module::try_current;
 use serde::{Deserialize, Serialize};
 use valuable::Valuable;
 

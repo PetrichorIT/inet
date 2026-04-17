@@ -1,6 +1,6 @@
 use std::{fs::File, time::Duration};
 
-use des::net::module::Module;
+use des::module::Module;
 use inet::{
     env::RoutingPort,
     interface::{InterfaceDef, NetworkDevice},
@@ -77,7 +77,7 @@ impl Module for Router {
 }
 
 #[test]
-fn ipv6_tcp() -> Result<(), des::net::Failure> {
+fn ipv6_tcp() -> Result<(), des::Failure> {
     // des::tracing::init();
 
     let mut sim = SimpleSim::default();

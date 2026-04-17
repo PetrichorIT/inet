@@ -1,12 +1,9 @@
 #![cfg(feature = "props")]
 use std::{io, net::Ipv6Addr, time::Duration};
 
-use des::{
-    net::{
-        Sim, globals,
-        module::{Module, current},
-    },
-    runtime::Builder,
+use des::net::{
+    Sim, globals,
+    module::{Module, current},
 };
 use des_ndl::{Ndl, registry};
 use inet::{
@@ -141,9 +138,7 @@ fn ipv6_two_nets() -> Result<(), Box<dyn std::error::Error>> {
         Ndl::new(&mut registry![Host, Switch, Router, else _], &def)?,
     )?;
 
-    let rt = Builder::seeded(123)
-        .max_time(10.0.into())
-        .build(sim.freeze());
-    let _ = rt.run().as_result()?;
+    let rt = sim.seeded(123).max_time(10.0.into()).build();
+    let _ = rt.run().into_result()?;
     Ok(())
 }

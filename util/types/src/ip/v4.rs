@@ -1,7 +1,7 @@
 use bytes_io::{
     BE, Bytes, BytesReader, BytesWriter, FromBytes, ReadBytesExt, ToBytes, WriteBytesExt,
 };
-use des::net::message::MessageBody;
+use des::message::MessageBody;
 use serde::{Deserialize, Deserializer, Serialize};
 use std::{
     cmp::Ordering,

@@ -1,10 +1,8 @@
 use std::time::Duration;
 
 use des::{
-    net::{
-        globals,
-        module::{Prop, PropType},
-    },
+    globals,
+    module::{Prop, PropType},
     prelude::current,
     runtime::random,
     time::sleep,
@@ -25,7 +23,7 @@ mod send;
 
 #[test]
 #[serial]
-fn ping_pong() -> Result<(), des::net::Failure> {
+fn ping_pong() -> Result<(), des::Failure> {
     let mut sim = SimpleSim::default();
     sim.node("192.168.2.100", || async move {
         let out = std::iter::repeat_with(|| random())
@@ -91,7 +89,7 @@ impl PropType for UdpSocket {
 
 #[test]
 #[serial]
-fn inspect_foreign_io_object() -> Result<(), des::net::Failure> {
+fn inspect_foreign_io_object() -> Result<(), des::Failure> {
     let mut sim = SimpleSim::default();
     sim.node("192.168.2.100", || async move {
         let sock = UdpSocket::bind("0.0.0.0:0").await?;
@@ -120,7 +118,7 @@ fn inspect_foreign_io_object() -> Result<(), des::net::Failure> {
 
 #[test]
 #[serial]
-fn default_ttl() -> Result<(), des::net::Failure> {
+fn default_ttl() -> Result<(), des::Failure> {
     let mut sim = SimpleSim::default();
     sim.node("alice", || async move {
         let sock = UdpSocket::bind("0.0.0.0:0").await?;

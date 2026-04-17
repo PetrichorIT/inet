@@ -8,11 +8,7 @@ pub use self::stream::*;
 mod tests {
     use super::*;
 
-    use des::{
-        net::{handlers::AsyncHandler, Sim},
-        runtime::{random, Builder},
-        time::sleep,
-    };
+    use des::{Sim, runtime::handlers::AsyncHandler, runtime::random, time::sleep};
     use serial_test::serial;
     use std::{iter::repeat_with, time::Duration};
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -60,10 +56,7 @@ mod tests {
             .require_join(),
         );
 
-        let _ = Builder::seeded(123)
-            .max_time(100.0.into())
-            .build(sim.freeze())
-            .run();
+        let _ = sim.seeded(123).max_time(100.0.into()).build().run();
     }
 
     #[serial]
@@ -110,10 +103,7 @@ mod tests {
             .require_join(),
         );
 
-        let _ = Builder::seeded(123)
-            .max_time(100.0.into())
-            .build(sim.freeze())
-            .run();
+        let _ = sim.seeded(123).max_time(100.0.into()).build().run();
     }
 
     #[serial]
@@ -154,9 +144,6 @@ mod tests {
             .require_join(),
         );
 
-        let _ = Builder::seeded(123)
-            .max_time(100.0.into())
-            .build(sim.freeze())
-            .run();
+        let _ = sim.seeded(123).max_time(100.0.into()).build().run();
     }
 }

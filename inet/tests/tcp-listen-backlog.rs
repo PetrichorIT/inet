@@ -41,7 +41,7 @@ impl Module for Client {
         });
     }
 
-    fn at_sim_end(&mut self) -> Result<(), des::net::Error> {
+    fn at_sim_end(&mut self) -> Result<(), des::Error> {
         assert!(self.done.load(Ordering::SeqCst));
         Ok(())
     }
@@ -78,7 +78,7 @@ impl Module for Server {
         });
     }
 
-    fn at_sim_end(&mut self) -> Result<(), des::net::Error> {
+    fn at_sim_end(&mut self) -> Result<(), des::Error> {
         assert!(self.done.load(Ordering::SeqCst));
         Ok(())
     }
@@ -88,11 +88,11 @@ impl Module for Server {
 fn tcp_listen_backlog() -> Result<(), Box<dyn std::error::Error>> {
     // des::tracing::init();
 
-    let mut app = Sim::new(()).with_stack(inet::init);
+    let mut sim = Sim::new(()).with_stack(inet::init);
     let def = serde_norway::from_str(include_str!("tcp-multi-accept.yml"))?;
-    app.node("", Ndl::new(&mut registry![Server, Client, else _], &def)?)?;
+    sim.node("", Ndl::new(&mut registry![Server, Client, else _], &def)?)?;
 
-    let rt = Builder::seeded(123).build(app.freeze());
+    let rt = sim.seeded(123).build();
     let r = rt.run().assert_no_err();
     assert!(r.time > 3.0.into());
     Ok(())

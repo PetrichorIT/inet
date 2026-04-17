@@ -35,7 +35,7 @@ impl Module for OneAttemptClient {
         });
     }
 
-    fn at_sim_end(&mut self) -> Result<(), des::net::Error> {
+    fn at_sim_end(&mut self) -> Result<(), des::Error> {
         assert!(self.done.load(Ordering::SeqCst));
         Ok(())
     }
@@ -69,7 +69,7 @@ impl<const EXPECT: bool> Module for MultipleAttemptClient<EXPECT> {
         });
     }
 
-    fn at_sim_end(&mut self) -> Result<(), des::net::Error> {
+    fn at_sim_end(&mut self) -> Result<(), des::Error> {
         assert!(self.done.load(Ordering::SeqCst));
         Ok(())
     }
@@ -118,13 +118,13 @@ fn tcp_rst_for_closed_port() -> Result<(), Box<dyn std::error::Error>> {
     type Server = EmptyServer;
     type Client = OneAttemptClient;
 
-    let mut app = Sim::new(()).with_stack(inet::init);
+    let mut sim = Sim::new(()).with_stack(inet::init);
     let def = serde_norway::from_str(include_str!("tcp2.yml"))?;
-    app.node("", Ndl::new(&mut registry![Client, Server, else _], &def)?)?;
+    sim.node("", Ndl::new(&mut registry![Client, Server, else _], &def)?)?;
 
-    let rt = Builder::seeded(233).build(app.freeze());
+    let rt = sim.seeded(233).build();
 
-    rt.run().as_result().map(|_| ())?;
+    rt.run().into_result().map(|_| ())?;
     Ok(())
 }
 
@@ -134,13 +134,13 @@ fn tcp_rst_on_multiple_tries() -> Result<(), Box<dyn std::error::Error>> {
     type Server = EmptyServer;
     type Client = MultipleAttemptClient<false>;
 
-    let mut app = Sim::new(()).with_stack(inet::init);
+    let mut sim = Sim::new(()).with_stack(inet::init);
     let def = serde_norway::from_str(include_str!("tcp2.yml"))?;
-    app.node("", Ndl::new(&mut registry![Client, Server, else _], &def)?)?;
+    sim.node("", Ndl::new(&mut registry![Client, Server, else _], &def)?)?;
 
-    let rt = Builder::seeded(233).build(app.freeze());
+    let rt = sim.seeded(233).build();
 
-    rt.run().as_result().map(|_| ())?;
+    rt.run().into_result().map(|_| ())?;
     Ok(())
 }
 
@@ -150,12 +150,12 @@ fn tcp_rst_on_multiple_tries_with_success() -> Result<(), Box<dyn std::error::Er
     type Server = BoundServer;
     type Client = MultipleAttemptClient<true>;
 
-    let mut app = Sim::new(()).with_stack(inet::init);
+    let mut sim = Sim::new(()).with_stack(inet::init);
     let def = serde_norway::from_str(include_str!("tcp2.yml"))?;
-    app.node("", Ndl::new(&mut registry![Client, Server, else _], &def)?)?;
+    sim.node("", Ndl::new(&mut registry![Client, Server, else _], &def)?)?;
 
-    let rt = Builder::seeded(233).build(app.freeze());
+    let rt = sim.seeded(233).build();
 
-    rt.run().as_result().map(|_| ())?;
+    rt.run().into_result().map(|_| ())?;
     Ok(())
 }

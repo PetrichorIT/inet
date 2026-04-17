@@ -10,7 +10,7 @@ use crate::{
 
 #[test]
 #[serial]
-fn create_socket_v4_host() -> Result<(), des::net::Failure> {
+fn create_socket_v4_host() -> Result<(), des::Failure> {
     let mut sim = SimpleSim::default();
     sim.node_require_join("192.168.2.101", || async move {
         let v4 = TcpSocket::new_v4()?;
@@ -27,7 +27,7 @@ fn create_socket_v4_host() -> Result<(), des::net::Failure> {
 
 #[test]
 #[serial]
-fn create_socket_v6_host() -> Result<(), des::net::Failure> {
+fn create_socket_v6_host() -> Result<(), des::Failure> {
     let mut sim = SimpleSim::default();
     sim.node_require_join("2003:a:1::1", || async move {
         let v4 = TcpSocket::new_v4()?;
@@ -44,7 +44,7 @@ fn create_socket_v6_host() -> Result<(), des::net::Failure> {
 
 #[test]
 #[serial]
-fn socketopt() -> Result<(), des::net::Failure> {
+fn socketopt() -> Result<(), des::Failure> {
     let mut sim = SimpleSim::default();
     sim.node_require_join("192.168.2.101", || async move {
         let v4 = TcpSocket::new_v4()?;
@@ -85,7 +85,7 @@ fn socketopt() -> Result<(), des::net::Failure> {
 
 #[test]
 #[serial]
-fn close_unconverted_socket() -> Result<(), des::net::Failure> {
+fn close_unconverted_socket() -> Result<(), des::Failure> {
     let mut sim = SimpleSim::default();
     sim.node_require_join("192.168.2.101", || async move {
         let v4 = TcpSocket::new_v4()?;
@@ -101,7 +101,7 @@ fn close_unconverted_socket() -> Result<(), des::net::Failure> {
 
 #[test]
 #[serial]
-fn bind_wrong_addr_fam() -> Result<(), des::net::Failure> {
+fn bind_wrong_addr_fam() -> Result<(), des::Failure> {
     let mut sim = SimpleSim::default();
     sim.node_require_join("192.168.2.101", || async move {
         let v4 = TcpSocket::new_v4()?;

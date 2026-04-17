@@ -7,9 +7,11 @@ use std::{
 };
 
 use des::{
-    net::{Sim, handlers::AsyncHandler},
+    Sim,
+    gate::IntoGate,
     prelude::{DatarateChannel, DatarateChannelMetrics},
-    runtime::{Builder, random},
+    random,
+    runtime::handlers::AsyncHandler,
     time::sleep,
 };
 use inet::{
@@ -166,10 +168,11 @@ fn simulatneous_estab() {
         let mut hasher = DefaultHasher::new();
         seed.hash(&mut hasher);
 
-        let _ = Builder::seeded(hasher.finish())
+        let _ = sim
+            .seeded(hasher.finish())
             .max_time(500.0.into())
             .max_itr(10_000)
-            .build(sim.freeze())
+            .build()
             .run();
     }
 }
@@ -313,10 +316,11 @@ fn synced_estab() {
         let mut hasher = DefaultHasher::new();
         seed.hash(&mut hasher);
 
-        let _ = Builder::seeded(hasher.finish())
+        let _ = sim
+            .seeded(hasher.finish())
             .max_time(500.0.into())
             .max_itr(10_000)
-            .build(sim.freeze())
+            .build()
             .run();
     }
 }

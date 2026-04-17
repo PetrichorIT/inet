@@ -1,8 +1,8 @@
 //! An interfaces for capturing packets, akin to libpcap.
 
 use crate::interface::InterfaceController;
-use des::net::ObjectPath;
-use des::net::module::current;
+use des::ObjectPath;
+use des::module::current;
 use des::prelude::Message;
 use std::cell::RefCell;
 use std::io::Result;

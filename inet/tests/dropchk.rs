@@ -1,15 +1,12 @@
 use std::{future::pending, sync::atomic::AtomicBool};
 
-use des::{
-    net::{Sim, handlers::AsyncHandler},
-    runtime::Builder,
-};
+use des::{Sim, runtime::handlers::AsyncHandler};
 use inet::ioctx;
 use serial_test::serial;
 
 #[test]
 #[serial]
-fn io_context_is_dropped() -> Result<(), des::net::Failure> {
+fn io_context_is_dropped() -> Result<(), des::Failure> {
     static DONE: AtomicBool = AtomicBool::new(false);
 
     #[derive(Default)]
@@ -34,11 +31,11 @@ fn io_context_is_dropped() -> Result<(), des::net::Failure> {
         }),
     );
     drop(
-        Builder::seeded(123)
+        sim.seeded(123)
             .max_time(10.0.into())
-            .build(sim.freeze())
+            .build()
             .run()
-            .as_result()?,
+            .into_result()?,
     );
 
     assert!(DONE.load(std::sync::atomic::Ordering::SeqCst));

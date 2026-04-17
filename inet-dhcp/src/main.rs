@@ -5,7 +5,7 @@ use inet::{UdpSocket, types::iface::MacAddress, utils::SimpleSim};
 use inet_dhcp::{DhcpOption, DhcpPacket};
 use inet_tuntap::ptun;
 
-fn main() -> Result<(), des::net::Failure> {
+fn main() -> Result<(), des::Failure> {
     des::tracing::init();
 
     let mut sim = SimpleSim::default();

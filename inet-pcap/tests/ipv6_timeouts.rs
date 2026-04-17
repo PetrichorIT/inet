@@ -1,4 +1,4 @@
-use des::net::module::Module;
+use des::module::Module;
 
 use inet::{
     env::RoutingPort,
@@ -23,7 +23,7 @@ impl Module for Expect3Addrs {
             .unwrap();
     }
 
-    fn at_sim_end(&mut self) -> Result<(), des::net::Error> {
+    fn at_sim_end(&mut self) -> Result<(), des::Error> {
         let addrs = getaddrinfo().unwrap();
         assert_eq!(addrs.len(), 3, "see: {addrs:?}");
         Ok(())
@@ -42,7 +42,7 @@ impl Module for Expect3Then1Addrs {
             .unwrap();
     }
 
-    fn at_sim_end(&mut self) -> Result<(), des::net::Error> {
+    fn at_sim_end(&mut self) -> Result<(), des::Error> {
         let addrs = getaddrinfo().unwrap();
         assert_eq!(addrs.len(), 1);
         Ok(())
@@ -93,7 +93,7 @@ impl Module for RouterWithoutAdv {
 
 #[test]
 #[serial]
-fn ipv6_timeouts_with_ra() -> Result<(), des::net::Failure> {
+fn ipv6_timeouts_with_ra() -> Result<(), des::Failure> {
     // des::tracing::init();
 
     let mut sim = SimpleSim::default();
@@ -107,7 +107,7 @@ fn ipv6_timeouts_with_ra() -> Result<(), des::net::Failure> {
 
 #[test]
 #[serial]
-fn ipv6_timeouts_without_ra() -> Result<(), des::net::Failure> {
+fn ipv6_timeouts_without_ra() -> Result<(), des::Failure> {
     // des::tracing::init();
 
     let mut sim = SimpleSim::default();

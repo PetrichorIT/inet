@@ -9,7 +9,7 @@ use crate::{
 
 #[test]
 #[serial]
-fn linger() -> Result<(), des::net::Failure> {
+fn linger() -> Result<(), des::Failure> {
     let mut sim = SimpleSim::default();
     sim.node("192.168.2.101", || async move {
         let l = TcpListener::bind("0.0.0.0:80").await?;
@@ -39,7 +39,7 @@ fn linger() -> Result<(), des::net::Failure> {
 
 #[test]
 #[serial]
-fn ttl() -> Result<(), des::net::Failure> {
+fn ttl() -> Result<(), des::Failure> {
     let mut sim = SimpleSim::default();
     sim.node("192.168.2.101", || async move {
         let l = TcpListener::bind("0.0.0.0:80").await?;

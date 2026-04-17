@@ -85,9 +85,10 @@ mod tests {
     use std::time::Duration;
 
     use des::{
-        net::{Sim, handlers::AsyncHandler},
+        Sim,
+        gate::IntoGate,
         prelude::{ChannelDropBehaviour, DatarateChannel, DatarateChannelMetrics},
-        runtime::Builder,
+        runtime::handlers::AsyncHandler,
         time::sleep,
     };
     use serial_test::serial;
@@ -110,7 +111,7 @@ mod tests {
 
     #[test]
     #[serial]
-    fn simple_bridging() -> Result<(), des::net::Failure> {
+    fn simple_bridging() -> Result<(), des::Failure> {
         // des::tracing::init();
 
         let mut sim = Sim::new(()).with_stack(crate::stack(sim_internal_dns_resolve));
@@ -188,10 +189,6 @@ mod tests {
         sim.gate("charlie", "port")
             .connect_with(sim.gate("bridge", "port-c"), lan());
 
-        Builder::seeded(132)
-            .build(sim.freeze())
-            .run()
-            .as_result()
-            .map(|_| ())
+        sim.seeded(132).build().run().into_result().map(|_| ())
     }
 }

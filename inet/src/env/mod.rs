@@ -1,5 +1,5 @@
 //! Routing utility and networking layer processing.
-use des::net::gate::GateKind;
+use des::gate::GateKind;
 use des::prelude::*;
 
 pub mod fs;

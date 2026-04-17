@@ -134,7 +134,7 @@ mod tests {
 
     #[test]
     #[serial]
-    fn test_netstat() -> Result<(), des::net::Failure> {
+    fn test_netstat() -> Result<(), des::Failure> {
         let mut sim = SimpleSim::default();
         sim.node("192.168.2.1", || async move {
             let udp_sock1 = UdpSocket::bind("0.0.0.0:80").await?;

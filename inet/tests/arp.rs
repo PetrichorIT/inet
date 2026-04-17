@@ -1,4 +1,4 @@
-use des::{net::globals, prelude::*, time::sleep};
+use des::{globals, prelude::*, random, time::sleep};
 use inet::{
     interface::{InterfaceDef, NetworkDevice},
     ioctx,
@@ -10,7 +10,7 @@ use types::ip::Ipv4Packet;
 
 #[test]
 #[serial]
-fn v4() -> Result<(), des::net::Failure> {
+fn v4() -> Result<(), des::Failure> {
     // des::tracing::init();
 
     let mut sim = SimpleSim::default();

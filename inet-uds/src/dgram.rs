@@ -312,11 +312,7 @@ mod tests {
 
     use super::*;
 
-    use des::{
-        net::{Sim, handlers::AsyncHandler},
-        runtime::{Builder, random},
-        time::sleep,
-    };
+    use des::{Sim, runtime::handlers::AsyncHandler, runtime::random, time::sleep};
     use serial_test::serial;
 
     #[serial]
@@ -336,10 +332,7 @@ mod tests {
             }),
         );
 
-        let _ = Builder::seeded(123)
-            .max_time(100.0.into())
-            .build(sim.freeze())
-            .run();
+        let _ = sim.seeded(123).max_time(100.0.into()).build().run();
     }
 
     #[serial]
@@ -358,17 +351,14 @@ mod tests {
             }),
         );
 
-        let _ = Builder::seeded(123)
-            .max_time(100.0.into())
-            .build(sim.freeze())
-            .run();
+        let _ = sim.seeded(123).max_time(100.0.into()).build().run();
     }
 
     #[serial]
     #[test]
-    fn unamed_pair_connectivity() -> Result<(), des::net::Failure> {
-        let mut app = Sim::new(()).with_stack(inet::init);
-        app.node(
+    fn unamed_pair_connectivity() -> Result<(), des::Failure> {
+        let mut sim = Sim::new(()).with_stack(inet::init);
+        sim.node(
             "main",
             AsyncHandler::io(|_| async move {
                 let (a, b) = UnixDatagram::pair().unwrap();
@@ -402,17 +392,17 @@ mod tests {
             })
             .require_join(),
         );
-        Builder::seeded(123)
+        sim.seeded(123)
             .max_time(100.0.into())
-            .build(app.freeze())
+            .build()
             .run()
-            .as_result()
+            .into_result()
             .map(|_| ())
     }
 
     #[serial]
     #[test]
-    fn connected_can_transmit_datagrams() -> Result<(), des::net::Failure> {
+    fn connected_can_transmit_datagrams() -> Result<(), des::Failure> {
         let mut sim = Sim::new(()).with_stack(inet::init);
 
         sim.node(
@@ -435,19 +425,19 @@ mod tests {
             }),
         );
 
-        Builder::seeded(123)
+        sim.seeded(123)
             .max_time(100.0.into())
-            .build(sim.freeze())
+            .build()
             .run()
-            .as_result()
+            .into_result()
             .map(|_| ())
     }
 
     #[serial]
     #[test]
-    fn named_connectivity() -> Result<(), des::net::Failure> {
-        let mut app = Sim::new(()).with_stack(inet::init);
-        app.node(
+    fn named_connectivity() -> Result<(), des::Failure> {
+        let mut sim = Sim::new(()).with_stack(inet::init);
+        sim.node(
             "main",
             AsyncHandler::io(|_| async move {
                 let h1 = tokio::spawn(async move {
@@ -506,17 +496,15 @@ mod tests {
             })
             .require_join(),
         );
-        let rt = Builder::seeded(123)
-            .max_time(100.0.into())
-            .build(app.freeze());
-        rt.run().as_result().map(|_| ())
+        let rt = sim.seeded(123).max_time(100.0.into()).build();
+        rt.run().into_result().map(|_| ())
     }
 
     #[serial]
     #[test]
     fn named_tempdir() {
-        let mut app = Sim::new(()).with_stack(inet::init);
-        app.node(
+        let mut sim = Sim::new(()).with_stack(inet::init);
+        sim.node(
             "main",
             AsyncHandler::io(|_| async move {
                 let tmp = inet::env::fs::tempdir().unwrap();
@@ -542,9 +530,6 @@ mod tests {
             })
             .require_join(),
         );
-        let _ = Builder::seeded(123)
-            .max_time(100.0.into())
-            .build(app.freeze())
-            .run();
+        let _ = sim.seeded(123).max_time(100.0.into()).build().run();
     }
 }

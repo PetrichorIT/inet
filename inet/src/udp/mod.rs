@@ -2,7 +2,7 @@
 use super::{IOContext, socket::*};
 use crate::{interface::IfId, ipv6::Ipv6SendFlags};
 use bytes_io::{BufMut, FromBytes, ToBytes};
-use des::net::module::try_current;
+use des::module::try_current;
 use fxhash::{FxHashMap, FxHashSet};
 use serde::{Deserialize, Serialize};
 use std::{

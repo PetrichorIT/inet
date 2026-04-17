@@ -18,7 +18,7 @@ use super::*;
 
 #[test]
 #[serial]
-fn detect_other_querier() -> Result<(), des::net::Failure> {
+fn detect_other_querier() -> Result<(), des::Failure> {
     let mut sim = SimpleSim::default();
     sim.node_require_join("fe80::1", || async move {
         designate_mdl(IfId::new("en0"))?;
@@ -45,7 +45,7 @@ fn detect_other_querier() -> Result<(), des::net::Failure> {
 
 #[test]
 #[serial]
-fn other_querier_remains_in_scope() -> Result<(), des::net::Failure> {
+fn other_querier_remains_in_scope() -> Result<(), des::Failure> {
     let mut sim = SimpleSim::default();
     sim.node_require_join("fe80::1", || async move {
         designate_mdl(IfId::new("en0"))?;
@@ -80,7 +80,7 @@ fn other_querier_remains_in_scope() -> Result<(), des::net::Failure> {
 
 #[test]
 #[serial]
-fn other_querier_goes_out_of_scope() -> Result<(), des::net::Failure> {
+fn other_querier_goes_out_of_scope() -> Result<(), des::Failure> {
     let mut sim = SimpleSim::default();
     sim.node_require_join("fe80::1", || async move {
         designate_mdl(IfId::new("en0"))?;
@@ -117,7 +117,7 @@ fn other_querier_goes_out_of_scope() -> Result<(), des::net::Failure> {
 
 #[test]
 #[serial]
-fn sends_regular_queries() -> Result<(), des::net::Failure> {
+fn sends_regular_queries() -> Result<(), des::Failure> {
     let mut sim = SimpleSim::default();
     sim.node_require_join("fe80::1", || async move {
         designate_mdl(IfId::new("en0"))?;
@@ -203,7 +203,7 @@ fn sends_regular_queries() -> Result<(), des::net::Failure> {
 
 #[test]
 #[serial]
-fn update_db_on_received_reports() -> Result<(), des::net::Failure> {
+fn update_db_on_received_reports() -> Result<(), des::Failure> {
     let mut sim = SimpleSim::default();
     sim.node_require_join("fe80::1", || async move {
         designate_mdl(IfId::new("en0"))?;
