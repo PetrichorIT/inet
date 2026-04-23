@@ -37,6 +37,11 @@ impl Ipv6Packet {
     pub const MIN_HEADER_SIZE: usize = 40;
 
     /// Assume all same identification
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the fragments do not form a valid packet.
+    #[allow(clippy::missing_panics_doc)]
     pub fn from_fragments(fragments: &mut [Ipv6Packet]) -> io::Result<Ipv6Packet> {
         fragments.sort_by_key(|pkt| pkt.if_fragment_header(|h| h.fragment_offset).unwrap_or(0));
 
@@ -129,6 +134,11 @@ impl Ipv6Packet {
             })
     }
 
+    /// Fragments the packet into fragments that fit within the given MTU.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the MTU is less than the minimum IPv6 MTU (1280 bytes).
     pub fn fragment_to_mtu(&self, mtu: usize, identification: u32) -> Vec<Ipv6Packet> {
         assert!(mtu >= IPV6_MINIMUM_MTU);
         let mtu = mtu - (mtu % 8); // < enforces that all encoding belong to a 8 octet boundary
@@ -152,17 +162,16 @@ impl Ipv6Packet {
                 .iter()
                 .position(|h| matches!(h, Ipv6ExtensionHeader::HopByHopOptions(_)));
             match (r_header, hbh_header) {
-                (None, None) => (Vec::new(), self.extension_headers.clone()),
                 (Some(i), None) => (
                     self.extension_headers[..=i].to_vec(),
                     self.extension_headers[(i + 1)..].to_vec(),
                 ),
                 (None, Some(i)) => (vec![self.extension_headers[i].clone()], {
-                    let mut buf = self.extension_headers.clone().to_vec();
+                    let mut buf = self.extension_headers.clone();
                     buf.remove(i);
                     buf
                 }),
-                (Some(_), Some(_)) => (Vec::new(), self.extension_headers.clone()), // FIXME: is that even allowed
+                _ => (Vec::new(), self.extension_headers.clone()), // FIXME: is that even allowed
             }
         };
 

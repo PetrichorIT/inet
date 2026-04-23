@@ -15,6 +15,8 @@ use crate::{UdpSocket, utils::SimpleSim};
 #[test]
 #[serial]
 fn ipv4() -> Result<(), des::Failure> {
+    // des::tracing::init();
+
     let mut sim = SimpleSim::default();
 
     let nodes = vec![

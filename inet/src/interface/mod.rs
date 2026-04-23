@@ -375,9 +375,7 @@ impl IOContext {
     }
 
     fn device_for_message(&self, msg: &Message) -> Option<&InterfaceController> {
-        self.ifaces
-            .values()
-            .find(|iface| iface.device.matches(&msg))
+        self.ifaces.values().find(|iface| iface.device.matches(msg))
     }
 
     pub(super) fn get_iface(&self, ifid: IfId) -> io::Result<&InterfaceController> {

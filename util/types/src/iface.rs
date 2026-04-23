@@ -22,6 +22,7 @@ impl MacAddress {
     pub const IPV4_MULTICAST: MacAddress = MacAddress([0x01, 0, 0x5e, 0, 0, 0]);
     pub const IPV4_MULTICAST_MASK: MacAddress = MacAddress([0xff, 0xff, 0xff, 0x80, 0, 0]);
 
+    #[must_use]
     pub const fn new(bytes: [u8; 6]) -> Self {
         Self(bytes)
     }

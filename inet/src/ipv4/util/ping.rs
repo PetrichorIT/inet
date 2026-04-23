@@ -85,21 +85,19 @@ pub async fn ping_with(addr: Ipv4Addr, n: usize) -> io::Result<Ping> {
 
             let pkt = pkt?;
             let icmp = IcmpV4Packet::peek_from(pkt.content)?;
-            match icmp.typ {
-                IcmpV4Type::EchoReply {
-                    identifier,
-                    sequence,
-                } => {
-                    let is_valid = identifier == my_identifier && sequence == i as u16;
-                    if !is_valid {
-                        continue;
-                    }
-
-                    let rtt = send_time.elapsed();
-                    results.push(Some(rtt));
-                    break;
+            if let IcmpV4Type::EchoReply {
+                identifier,
+                sequence,
+            } = icmp.typ
+            {
+                let is_valid = identifier == my_identifier && sequence == i as u16;
+                if !is_valid {
+                    continue;
                 }
-                _ => {}
+
+                let rtt = send_time.elapsed();
+                results.push(Some(rtt));
+                break;
             }
         }
     }
@@ -110,18 +108,15 @@ pub async fn ping_with(addr: Ipv4Addr, n: usize) -> io::Result<Ping> {
     let mut n = 0u32;
 
     for &value in &results {
-        match value {
-            Some(rtt) => {
-                if rtt < time_min {
-                    time_min = rtt;
-                }
-                if rtt > time_max {
-                    time_max = rtt
-                }
-                acc += rtt;
-                n += 1;
+        if let Some(rtt) = value {
+            if rtt < time_min {
+                time_min = rtt;
             }
-            None => {}
+            if rtt > time_max {
+                time_max = rtt
+            }
+            acc += rtt;
+            n += 1;
         }
     }
 

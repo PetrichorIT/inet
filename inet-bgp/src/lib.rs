@@ -139,6 +139,11 @@ impl BgpDeamon {
     }
 
     #[tracing::instrument(name = "bgp", skip_all)]
+    #[allow(
+        clippy::missing_panics_doc,
+        clippy::missing_errors_doc,
+        clippy::too_many_lines
+    )]
     pub async fn deploy(mut self) -> Result<DepolyedBgpDeamon> {
         let table_id = add_routing_table()?;
 

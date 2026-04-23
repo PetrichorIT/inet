@@ -103,7 +103,7 @@ impl Drop for TunDevice {
     fn drop(&mut self) {
         eprintln!(
             "** closing tun device {}",
-            self.writer.name().unwrap_or(String::new())
+            self.writer.name().unwrap_or_default()
         );
         thread::sleep(Duration::from_secs(1));
         let _ = self.writer.send(&[]);

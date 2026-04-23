@@ -1,5 +1,9 @@
 #![warn(clippy::pedantic)]
-#![allow(async_fn_in_trait)]
+#![allow(
+    async_fn_in_trait,
+    clippy::missing_errors_doc,
+    clippy::cast_possible_truncation
+)]
 //! The Routing Information Protocol (RIP)
 
 use bytes_io::{FromBytes, ToBytes};
@@ -506,6 +510,11 @@ impl<AddrFam: DistanceVectorAddrFamily> RipRouter<AddrFam> {
         changes.push(dv);
     }
 
+    /// Runs the routing deamon
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if something goes wrong.
     pub async fn run(self) -> io::Result<()> {
         self.run_inner().await.inspect_err(|e| {
             tracing::error!("Error running RIP: {}", e);
@@ -554,14 +563,13 @@ impl<AddrFam: DistanceVectorAddrFamily> RipRouter<AddrFam> {
             };
 
             let neighbor_addr = AddrFam::from_ip(from.ip());
-            let (incoming_iface, is_new) = self
-                .neighbors
-                .get(&neighbor_addr)
-                .map(|neighbor| (neighbor.iface, false))
-                .unwrap_or_else(|| {
+            let (incoming_iface, is_new) = self.neighbors.get(&neighbor_addr).map_or_else(
+                || {
                     let cur = Current::fetch();
                     (cur.ifid, true)
-                });
+                },
+                |neighbor| (neighbor.iface, false),
+            );
 
             let packet = AddrFam::Packet::peek_from(&buf[..n])?;
             // tracing::info!("recv {packet:?} from {from}");
@@ -621,7 +629,7 @@ impl<AddrFam: DistanceVectorAddrFamily> RipRouter<AddrFam> {
         for (target, requests) in updates {
             let pkts = AddrFam::dvs_to_packet(&requests, RipCommand::Request);
             // FIXME: 0 port
-            AddrFam::send_to(&sock, &pkts, (target, 0)).await?;
+            AddrFam::send_to(sock, &pkts, (target, 0)).await?;
         }
 
         let min = self
@@ -696,7 +704,7 @@ impl<AddrFam: DistanceVectorAddrFamily> RipRouter<AddrFam> {
                             entry.metric += 1;
                             entry.deadline = SimTime::now() + self.cfg.entry_lifetime;
                             entry.update_time = SimTime::now() + self.cfg.entry_update_interval;
-                            AddrFam::add_routing_entry(&entry, &incoming.to_string())?;
+                            AddrFam::add_routing_entry(entry, &incoming.to_string())?;
                             changes.push(entry.clone());
                         } else if entry.metric == dv.metric && entry.next_hop == dv.next_hop {
                             // (2b) Update entry with same route
@@ -741,7 +749,7 @@ pub trait DistanceVectorAddrFamily: IpAddrLike {
 
     fn make_full_dvs_req(router: Self, subnet: Self::Prefix) -> Self::Packet;
 
-    fn dvs_to_packet<'a>(dvs: &[DistanceVector<Self>], command: RipCommand) -> Vec<Self::Packet>;
+    fn dvs_to_packet(dvs: &[DistanceVector<Self>], command: RipCommand) -> Vec<Self::Packet>;
 }
 
 impl DistanceVectorAddrFamily for Ipv4Addr {
@@ -750,7 +758,7 @@ impl DistanceVectorAddrFamily for Ipv4Addr {
     fn from_ip(ip: IpAddr) -> Self {
         match ip {
             IpAddr::V4(v4) => v4,
-            _ => unreachable!(),
+            IpAddr::V6(_) => unreachable!(),
         }
     }
 
@@ -843,8 +851,8 @@ impl DistanceVectorAddrFamily for Ipv6Addr {
 
     fn from_ip(ip: IpAddr) -> Self {
         match ip {
+            IpAddr::V4(_) => unreachable!(),
             IpAddr::V6(v6) => v6,
-            _ => unreachable!(),
         }
     }
 
@@ -892,7 +900,7 @@ impl DistanceVectorAddrFamily for Ipv6Addr {
                 } else {
                     entry.next_hop
                 },
-                metric: entry.metrics as u32,
+                metric: u32::from(entry.metrics),
                 deadline: SimTime::ZERO,
                 update_time: SimTime::ZERO,
             })

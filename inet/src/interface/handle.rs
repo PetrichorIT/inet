@@ -38,7 +38,7 @@ impl InterfaceHandle {
     }
 
     async fn wait_for(&mut self, mut f: impl FnMut(&InterfaceEvent) -> bool) {
-        while !f(&*self.rx.borrow_and_update()) {
+        while !f(&self.rx.borrow_and_update()) {
             self.rx.changed().await.expect("must not fail")
         }
     }

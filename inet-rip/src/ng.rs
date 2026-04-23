@@ -23,6 +23,7 @@ pub struct RipNgEntry {
 }
 
 impl RipNgEntry {
+    #[must_use]
     pub const fn is_next_hop_entry(&self) -> bool {
         self.metrics == 0xff
     }

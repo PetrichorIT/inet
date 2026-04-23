@@ -88,11 +88,11 @@ impl Pcap {
     }
 
     fn close(&mut self, id: &ObjectPath) {
-        self.mapping.retain(|e| &e.0 != id);
+        self.mapping.retain(|e| e.0 != id);
     }
 
     fn deamon(&mut self, id: &ObjectPath) -> Option<&mut dyn PcapSubscriber> {
-        match self.mapping.binary_search_by(|e| e.0.cmp(&id)) {
+        match self.mapping.binary_search_by(|e| e.0.cmp(id)) {
             Ok(i) => Some(&mut *self.mapping[i].1),
             Err(_) => None,
         }

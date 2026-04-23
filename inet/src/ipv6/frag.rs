@@ -82,15 +82,12 @@ impl FragmentStore {
     // -> if not present, no ICMP
     pub fn timeout(&mut self, identification: u32) -> Option<Ipv6Packet> {
         let entry = self.mapping.remove(&identification)?;
-        for pkt in entry.packets {
-            if pkt.extension_headers.iter().any(|h| match h {
+        entry.packets.into_iter().find(|pkt| {
+            pkt.extension_headers.iter().any(|h| match h {
                 Ipv6ExtensionHeader::Fragment(frag) => frag.fragment_offset == 0,
                 _ => false,
-            }) {
-                return Some(pkt);
-            }
-        }
-        None
+            })
+        })
     }
 }
 

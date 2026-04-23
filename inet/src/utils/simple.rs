@@ -90,7 +90,7 @@ impl SimpleSim {
     pub fn module<M: IntoModuleTree>(&mut self, name: &str, module: M) {
         self.sim.node(name, module);
         self.sim.gate(name, "port").connect_with(
-            self.sim.gate("switch", &format!("port-${name}")),
+            self.sim.gate_cluster("switch", "port"),
             Some(DatarateChannel::new(self.metrics)),
         );
     }
@@ -127,7 +127,7 @@ impl SimpleSim {
             }),
         );
         self.sim.gate(&key, "port").connect_with(
-            self.sim.gate("switch", &format!("port-${key}")),
+            self.sim.gate_cluster("switch", "port"),
             Some(DatarateChannel::new(self.metrics)),
         );
     }
@@ -155,8 +155,9 @@ impl SimpleSim {
             })
             .require_join(),
         );
+
         self.sim.gate(&key, "port").connect_with(
-            self.sim.gate("switch", &format!("port-${key}")),
+            self.sim.gate_cluster("switch", "port"), // could be done with an abstract gate, but this is more descriptive
             Some(DatarateChannel::new(self.metrics)),
         );
     }

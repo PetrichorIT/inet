@@ -53,6 +53,12 @@ impl<E: Default + Any> ExtensionHandle<E> {
     }
 }
 
+impl<E: Default + Any> Default for ExtensionHandle<E> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[derive(Default)]
 pub struct Extensions {
     mapping: FxHashMap<TypeId, Box<dyn Any>>,

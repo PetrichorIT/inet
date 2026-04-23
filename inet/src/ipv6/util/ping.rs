@@ -60,18 +60,16 @@ pub async fn ping_with(addr: Ipv6Addr, n: usize) -> io::Result<Ping> {
 
             let pkt = pkt?;
             let icmp = IcmpV6Packet::peek_from(pkt.content)?;
-            match icmp {
-                IcmpV6Packet::EchoReply(reply) => {
-                    let is_valid = reply == echo;
-                    if !is_valid {
-                        continue;
-                    }
 
-                    let rtt = send_time.elapsed();
-                    results.push(Some(rtt));
-                    break;
+            if let IcmpV6Packet::EchoReply(reply) = icmp {
+                let is_valid = reply == echo;
+                if !is_valid {
+                    continue;
                 }
-                _ => {}
+
+                let rtt = send_time.elapsed();
+                results.push(Some(rtt));
+                break;
             }
         }
     }
@@ -82,18 +80,15 @@ pub async fn ping_with(addr: Ipv6Addr, n: usize) -> io::Result<Ping> {
     let mut n = 0u32;
 
     for &value in &results {
-        match value {
-            Some(rtt) => {
-                if rtt < time_min {
-                    time_min = rtt;
-                }
-                if rtt > time_max {
-                    time_max = rtt
-                }
-                acc += rtt;
-                n += 1;
+        if let Some(rtt) = value {
+            if rtt < time_min {
+                time_min = rtt;
             }
-            None => {}
+            if rtt > time_max {
+                time_max = rtt
+            }
+            acc += rtt;
+            n += 1;
         }
     }
 
