@@ -22,8 +22,8 @@ pub struct OspfPacket {
     pub content: OspfPacketType,
 }
 
-type RouterId = u32;
-type AreaId = u32;
+pub type RouterId = u32;
+pub type AreaId = u32;
 
 const KIND_HELLO: u8 = 1;
 const KIND_DATABASE_DESCRIPTION: u8 = 2;
@@ -127,9 +127,9 @@ impl FromBytes for OspfPacket {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OspfHelloPacket {
     pub interface_id: u32,
-    pub hello_interval: Duration,
-    pub options: OspfOptions,
     pub router_priority: u8,
+    pub options: OspfOptions,
+    pub hello_interval: Duration,
     pub router_dead_interval: Duration,
     pub designated_router_id: RouterId,
     pub backup_router_id: RouterId,

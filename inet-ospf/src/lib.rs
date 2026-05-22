@@ -1,7 +1,35 @@
 #![warn(clippy::pedantic)]
 #![allow(clippy::cast_possible_truncation)]
 
+use inet::interface::InterfaceHandle;
+use petgraph::Graph;
+
+use crate::packet::{AreaId, Ipv6Prefix, NetworkLsa, RouterId, RouterLsa};
+
 pub mod packet;
+
+pub struct Deamon {}
+
+pub struct Area {
+    pub id: AreaId,
+    pub ranges: Vec<Ipv6Prefix>,
+    pub interfaces: Vec<InterfaceHandle>,
+    pub router_lsas: Vec<RouterLsa>,
+    pub network_lsas: Vec<NetworkLsa>,
+    // pub summary_lsas: Vec<Summay>,
+    pub tree: Graph<RouterId, ()>,
+    pub transit_capable: bool,
+    pub external_routing_capability: bool,
+    pub stub_default_cost: u32,
+}
+
+pub struct Config {
+    pub area_id: AreaId,
+}
+
+impl Deamon {
+    pub async fn create(cfg: Config) {}
+}
 
 #[cfg(test)]
 mod tests {

@@ -11,3 +11,4 @@ macros = { path = "../util/macros" }
 inet = { path = "../inet" }
 bitflags = "2.9.0"
 rand = "*"
+petgraph = "0.8.3"
