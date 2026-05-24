@@ -1,6 +1,7 @@
 use std::{
     io::{self, Write},
     net::Ipv6Addr,
+    ops::{Deref, DerefMut},
     time::Duration,
 };
 
@@ -12,12 +13,17 @@ use super::{Ipv6Prefix, OspfOptions, RouterId};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Lsa {
+    pub header: LsaHeader,
+    pub content: LsaKind,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LsaHeader {
     pub ls_age: Duration,
     pub link_state_id: u32,
     pub advertising_router: u32,
     pub ls_seq_no: u32,
     pub flags: LasTypeFlags,
-    pub content: LsaKind,
 }
 
 impl Lsa {
@@ -26,6 +32,19 @@ impl Lsa {
             flags: self.flags,
             code: self.content.typ(),
         }
+    }
+}
+
+impl Deref for Lsa {
+    type Target = LsaHeader;
+    fn deref(&self) -> &Self::Target {
+        &self.header
+    }
+}
+
+impl DerefMut for Lsa {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.header
     }
 }
 
@@ -90,12 +109,14 @@ impl FromBytes for Lsa {
         })?;
 
         Ok(Lsa {
-            ls_age,
-            link_state_id,
-            advertising_router,
-            ls_seq_no,
+            header: LsaHeader {
+                ls_age,
+                link_state_id,
+                advertising_router,
+                ls_seq_no,
+                flags: typ.flags,
+            },
             content,
-            flags: typ.flags,
         })
     }
 }
@@ -135,7 +156,7 @@ impl FromBytes for LsaType {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct LsaOnlyHeader {
+pub struct LsaDetachedHeader {
     pub ls_age: Duration,
     pub typ: LsaType,
 
@@ -147,9 +168,9 @@ pub struct LsaOnlyHeader {
     pub length: u16,
 }
 
-impl From<Lsa> for LsaOnlyHeader {
+impl From<Lsa> for LsaDetachedHeader {
     fn from(lsa: Lsa) -> Self {
-        LsaOnlyHeader {
+        LsaDetachedHeader {
             ls_age: lsa.ls_age,
             typ: lsa.typ(),
             link_state_id: lsa.link_state_id,
@@ -160,7 +181,7 @@ impl From<Lsa> for LsaOnlyHeader {
     }
 }
 
-impl ToBytes for LsaOnlyHeader {
+impl ToBytes for LsaDetachedHeader {
     type Error = io::Error;
     fn to_bytes(&self, writer: &mut BytesWriter) -> Result<(), Self::Error> {
         writer.write_u16::<BE>(self.ls_age.as_secs() as u16)?;
@@ -176,7 +197,7 @@ impl ToBytes for LsaOnlyHeader {
     }
 }
 
-impl FromBytes for LsaOnlyHeader {
+impl FromBytes for LsaDetachedHeader {
     type Error = io::Error;
     fn from_bytes(stream: &mut BytesReader) -> Result<Self, Self::Error> {
         let ls_age = Duration::from_secs(u64::from(stream.read_u16::<BE>()?));
@@ -189,7 +210,7 @@ impl FromBytes for LsaOnlyHeader {
         let _ = stream.read_u16::<BE>()?; // checksum
         let length = stream.read_u16::<BE>()?;
 
-        Ok(LsaOnlyHeader {
+        Ok(LsaDetachedHeader {
             ls_age,
             typ,
             link_state_id,
@@ -555,11 +576,13 @@ mod tests {
     impl Lsa {
         pub fn random() -> Self {
             Lsa {
-                ls_age: Duration::from_secs(rng().random::<u64>() % 200),
-                link_state_id: rng().random::<u32>(),
-                advertising_router: rng().random::<u32>(),
-                ls_seq_no: rng().random::<u32>(),
-                flags: LasTypeFlags::S1,
+                header: LsaHeader {
+                    ls_age: Duration::from_secs(rng().random::<u64>() % 200),
+                    link_state_id: rng().random::<u32>(),
+                    advertising_router: rng().random::<u32>(),
+                    ls_seq_no: rng().random::<u32>(),
+                    flags: LasTypeFlags::S1,
+                },
                 content: match [1, 2, 3, 4, 5, 8][rng().random::<u16>() as usize % 6] {
                     KIND_ROUTER_LSA => LsaKind::RouterLsa(RouterLsa::random()),
                     KIND_NETWORK_LSA => LsaKind::NetworkLsa(NetworkLsa::random()),
@@ -586,15 +609,15 @@ mod tests {
         assert_encoding_e2e(&fuzzed);
     }
 
-    impl LsaOnlyHeader {
+    impl LsaDetachedHeader {
         pub fn random() -> Self {
-            LsaOnlyHeader::from(Lsa::random())
+            LsaDetachedHeader::from(Lsa::random())
         }
     }
 
     #[test]
     fn e2e_encoding_lsa_only_header() {
-        let fuzzed = std::iter::repeat_with(LsaOnlyHeader::random)
+        let fuzzed = std::iter::repeat_with(LsaDetachedHeader::random)
             .take(100)
             .collect::<Vec<_>>();
 

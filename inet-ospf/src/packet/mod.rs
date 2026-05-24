@@ -131,8 +131,8 @@ pub struct OspfHelloPacket {
     pub options: OspfOptions,
     pub hello_interval: Duration,
     pub router_dead_interval: Duration,
-    pub designated_router_id: RouterId,
-    pub backup_router_id: RouterId,
+    pub designated_router_id: Option<RouterId>,
+    pub backup_router_id: Option<RouterId>,
     pub neighbor_ids: Vec<RouterId>,
 }
 
@@ -147,8 +147,8 @@ impl ToBytes for OspfHelloPacket {
         writer.write_u16::<BE>(self.hello_interval.as_secs() as u16)?;
         writer.write_u16::<BE>(self.router_dead_interval.as_secs() as u16)?;
 
-        writer.write_u32::<BE>(self.designated_router_id)?;
-        writer.write_u32::<BE>(self.backup_router_id)?;
+        writer.write_u32::<BE>(self.designated_router_id.unwrap_or(0))?;
+        writer.write_u32::<BE>(self.backup_router_id.unwrap_or(0))?;
 
         for id in &self.neighbor_ids {
             writer.write_u32::<BE>(*id)?;
@@ -180,8 +180,16 @@ impl FromBytes for OspfHelloPacket {
             options,
             router_priority,
             router_dead_interval,
-            designated_router_id,
-            backup_router_id,
+            designated_router_id: if designated_router_id > 0 {
+                Some(designated_router_id)
+            } else {
+                None
+            },
+            backup_router_id: if backup_router_id > 0 {
+                Some(backup_router_id)
+            } else {
+                None
+            },
             neighbor_ids,
         })
     }
@@ -192,14 +200,14 @@ pub struct OspfDatabaseDescriptionPacket {
     pub interface_mtu: u16,
     pub options: OspfOptions,
     pub db_options: OspfDatabaseDescriptionOptions,
-    pub dd_sequence_number: u32,
-    pub lsas: Vec<LsaOnlyHeader>,
+    pub dd_seqno: u32,
+    pub lsas: Vec<LsaDetachedHeader>,
 }
 
 bitflags! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
     pub struct OspfDatabaseDescriptionOptions: u16 {
-        const MASTER_SLAVE  = 0b0000_0001;
+        const MASTER  = 0b0000_0001;
         const MORE          = 0b0000_0010;
         const INIT          = 0b0000_0100;
     }
@@ -211,7 +219,7 @@ impl ToBytes for OspfDatabaseDescriptionPacket {
         writer.write_u32::<BE>(self.options.bits())?;
         writer.write_u16::<BE>(self.interface_mtu)?;
         writer.write_u16::<BE>(self.db_options.bits())?;
-        writer.write_u32::<BE>(self.dd_sequence_number)?;
+        writer.write_u32::<BE>(self.dd_seqno)?;
         for lsa in &self.lsas {
             lsa.to_bytes(writer)?;
         }
@@ -231,13 +239,13 @@ impl FromBytes for OspfDatabaseDescriptionPacket {
 
         let mut lsas = Vec::new();
         while stream.has_remaining() {
-            lsas.push(LsaOnlyHeader::from_bytes(stream)?);
+            lsas.push(LsaDetachedHeader::from_bytes(stream)?);
         }
         Ok(OspfDatabaseDescriptionPacket {
             interface_mtu,
             options,
             db_options,
-            dd_sequence_number,
+            dd_seqno: dd_sequence_number,
             lsas,
         })
     }
@@ -316,7 +324,7 @@ impl FromBytes for OspfLinkStateUpdatePacket {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OspfLinkStateAckPacket {
-    pub lsas: Vec<LsaOnlyHeader>, // with LsaKind::NoContent
+    pub lsas: Vec<LsaDetachedHeader>, // with LsaKind::NoContent
 }
 
 impl ToBytes for OspfLinkStateAckPacket {
@@ -334,7 +342,7 @@ impl FromBytes for OspfLinkStateAckPacket {
     fn from_bytes(reader: &mut BytesReader) -> Result<Self, Self::Error> {
         let mut lsas = Vec::new();
         while reader.has_remaining() {
-            lsas.push(LsaOnlyHeader::from_bytes(reader)?);
+            lsas.push(LsaDetachedHeader::from_bytes(reader)?);
         }
         Ok(Self { lsas })
     }
@@ -388,8 +396,8 @@ mod test {
                 options: OspfOptions::from_bits_truncate(rng().random()),
                 router_dead_interval: Duration::from_secs(rng().random::<u64>() % 200),
                 router_priority: rng().random(),
-                designated_router_id: rng().random(),
-                backup_router_id: rng().random(),
+                designated_router_id: Some(1 + rng().random::<u32>() % 1000),
+                backup_router_id: Some(1 + rng().random::<u32>() % 1000),
                 neighbor_ids: std::iter::repeat_with(|| rng().random())
                     .take((rng().random::<u8>() % 10) as usize)
                     .collect(),
@@ -411,8 +419,8 @@ mod test {
                 interface_mtu: rng().random(),
                 options: OspfOptions::from_bits_truncate(rng().random()),
                 db_options: OspfDatabaseDescriptionOptions::from_bits_truncate(rng().random()),
-                dd_sequence_number: rng().random(),
-                lsas: std::iter::repeat_with(LsaOnlyHeader::random)
+                dd_seqno: rng().random(),
+                lsas: std::iter::repeat_with(LsaDetachedHeader::random)
                     .take((rng().random::<u8>() % 3) as usize + 1)
                     .collect(),
             }
@@ -466,7 +474,7 @@ mod test {
     impl OspfLinkStateAckPacket {
         fn random() -> Self {
             OspfLinkStateAckPacket {
-                lsas: std::iter::repeat_with(LsaOnlyHeader::random)
+                lsas: std::iter::repeat_with(LsaDetachedHeader::random)
                     .take((rng().random::<u8>() % 5) as usize + 1)
                     .collect(),
             }

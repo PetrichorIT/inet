@@ -74,6 +74,7 @@ impl<W: BlockWriter<IfId>> LibPcapDeamon<W> {
                     iface.name.id(),
                     iface.device
                 )),
+                InterfaceDescriptionOption::TimeResolution(6),
             ],
         )
     }
@@ -81,7 +82,7 @@ impl<W: BlockWriter<IfId>> LibPcapDeamon<W> {
     fn write_packet(&mut self, ifid: IfId, msg: &Message) -> Result<()> {
         self.writer.add_packet(
             &ifid,
-            u64::try_from(SimTime::now().as_millis()).expect("can no longer repr timestamü"),
+            u64::try_from(SimTime::now().as_micros()).expect("can no longer repr timestamü"),
             msg.header.src,
             msg.header.dst,
             msg.header.kind,

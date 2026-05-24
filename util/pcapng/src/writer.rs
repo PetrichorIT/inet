@@ -127,7 +127,7 @@ impl<W: Write, I: PartialEq + Clone> BlockWriter<I> for DefaultBlockWriter<W, I>
     fn add_packet(
         &mut self,
         iface: &I,
-        ts: u64,
+        ts_micros: u64,
         eth_src: MacAddress,
         eth_dst: MacAddress,
         eth_kind: u16,
@@ -179,7 +179,7 @@ impl<W: Write, I: PartialEq + Clone> BlockWriter<I> for DefaultBlockWriter<W, I>
         let epb = EnhancedPacketBlock {
             interface_id: u32::try_from(interface_id)
                 .expect("number of interfaces exceeds u32::MAX"),
-            ts,
+            ts: ts_micros,
             org_len: u32::try_from(data.len()).expect("packets can only be u32::MAX bytes long"),
             data,
             options: flags.map_or(Vec::new(), |v| vec![EnhancedPacketOption::Flags(v)]),

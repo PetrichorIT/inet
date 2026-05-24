@@ -534,7 +534,9 @@ impl IOContext {
                 }
 
                 RouterAdvertismentUnsolicited { ifid } => {
-                    let cfg = self.ipv6.router_cfg.get(&ifid).unwrap();
+                    let Some(cfg) = self.ipv6.router_cfg.get(&ifid) else {
+                        continue;
+                    };
                     if cfg.adv_send_advertisments {
                         self.ipv6_icmp_send_router_adv(ifid, Ipv6Addr::MULTICAST_ALL_NODES)?;
                         self.ipv6_schedule_unsolicited_router_adv(ifid)?;

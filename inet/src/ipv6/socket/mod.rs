@@ -5,6 +5,7 @@ use std::{
 };
 
 use bytes_io::Bytes;
+use fxhash::FxHashSet;
 use tokio::sync::mpsc::{Receiver, Sender, channel, error::TryRecvError};
 use types::{icmpv6::IcmpV6Packet, ip::Ipv6Packet};
 
@@ -24,6 +25,7 @@ mod tests;
 pub struct RawV6Socket {
     handle: IOHandle,
     rx: Receiver<Envelope>,
+
     cfg: Config,
     fd: Fd,
 }
@@ -54,6 +56,7 @@ pub struct RawV6SocketHandle {
     local_addr: Ipv6Addr,
     tx: Sender<Envelope>,
     write_interests: Vec<Waker>,
+    multicast_listeners_v6: FxHashSet<Ipv6Addr>,
 }
 
 impl RawV6Socket {
@@ -190,6 +193,18 @@ impl RawV6Socket {
             })
             .and_then(|v| v.pkt_or_error)
     }
+
+    pub fn join_multicast(&mut self, addr: Ipv6Addr) -> io::Result<()> {
+        self.handle.do_mutating_on_active_module(|ctx| {
+            let socket = ctx.ipv6.sockets.get_mut(&self.fd).unwrap();
+            if !socket.multicast_listeners_v6.insert(addr) {
+                return Err(Error::new(ErrorKind::AddrInUse, "address already in use"));
+            }
+
+            // socket.publish();
+            ctx.ipv6_join_multicast_group(addr, None)
+        })
+    }
 }
 
 impl AsRawFd for RawV6Socket {
@@ -231,7 +246,10 @@ impl Future for WriteInterest {
 
 impl RawV6SocketHandle {
     pub(super) fn recv(&mut self, ifid: IfId, pkt: Ipv6Packet) {
-        let is_valid = self.local_addr.is_unspecified() || self.local_addr == pkt.dst;
+        let is_valid = self.local_addr.is_unspecified()
+            || self.local_addr == pkt.dst
+            || self.multicast_listeners_v6.contains(&pkt.dst);
+
         if !is_valid {
             return;
         }
@@ -302,6 +320,7 @@ impl IOContext {
                 all_icmp: false,
                 proto,
                 tx,
+                multicast_listeners_v6: FxHashSet::default(),
                 local_addr: Ipv6Addr::UNSPECIFIED,
                 write_interests: Vec::new(),
             },

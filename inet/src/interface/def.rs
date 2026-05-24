@@ -89,6 +89,11 @@ impl InterfaceDef {
         self
     }
 
+    pub fn router(mut self) -> Self {
+        self.flags.router = true;
+        self
+    }
+
     pub fn ip(self, addr: IpAddr) -> Self {
         match addr {
             IpAddr::V4(addr) => self.ipv4_raw(addr, DEFAULT_V4_MASK),
