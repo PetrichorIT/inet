@@ -5,14 +5,14 @@ use std::{
 
 use des::time::SimTime;
 use fxhash::{FxBuildHasher, FxHashMap};
-use inet::routing::RoutingTableId;
+use inet::ipv4::router::RoutingTableId;
 
 use crate::{
+    BgpNodeInformation,
     adj_in::{AdjIn, Peer, PeerId, Route, RouteId},
     adj_out::{AdjRIBOut, RIBEntry},
     kernel::Kernel,
     pkt::Nlri,
-    BgpNodeInformation,
 };
 
 pub struct LocRibWithKernel {
@@ -21,6 +21,7 @@ pub struct LocRibWithKernel {
 }
 
 impl LocRibWithKernel {
+    #[must_use]
     pub fn new(table_id: RoutingTableId, kernel: Box<dyn Kernel>) -> Self {
         Self {
             loc_rib: LocRib::new(table_id),
@@ -60,6 +61,7 @@ pub struct Meta {
 }
 
 impl LocRib {
+    #[must_use]
     pub fn new(table_id: RoutingTableId) -> LocRib {
         Self {
             dests: FxHashMap::with_hasher(FxBuildHasher::default()),
@@ -69,8 +71,9 @@ impl LocRib {
         }
     }
 
+    #[allow(clippy::missing_panics_doc)]
     pub fn status(&self) {
-        let dest = self.dests.iter().map(|v| v.clone()).collect::<Vec<_>>();
+        let dest = self.dests.iter().collect::<Vec<_>>();
         tracing::debug!("[ LOC RIB ]");
         for (d, (i, _)) in dest {
             let (r, p) = self.routes.get(i).unwrap();
@@ -84,10 +87,11 @@ impl LocRib {
         swp
     }
 
+    #[allow(clippy::missing_panics_doc)]
     pub fn add_dest(&mut self, dest: Nlri, route: &Route, peer: &Peer) {
-        if self.routes.get(&route.id).is_none() {
-            self.routes.insert(route.id, (route.clone(), peer.clone()));
-        }
+        self.routes
+            .entry(route.id)
+            .or_insert_with(|| (route.clone(), peer.clone()));
 
         self.dests.insert(
             dest,
@@ -121,7 +125,7 @@ impl LocRib {
     }
 
     /// Call this function if
-    /// - a dest from the adj_in is no longer rechable via a given peer,
+    /// - a dest from the `adj_in` is no longer rechable via a given peer,
     pub fn withdraw_canidate(&mut self, dest: &Nlri, dead_peer: &PeerId) {
         // (0) Check whether LOC even uses this route.
         let Some((_, peer)) = self.lookup(*dest) else {
@@ -156,33 +160,36 @@ impl LocRib {
         }
     }
 
+    #[must_use]
     pub fn lookup(&self, dest: Nlri) -> Option<&(Route, Peer)> {
         self.dests
             .get(&dest)
-            .map(|(id, _)| self.routes.get(id))
-            .flatten()
+            .and_then(|(id, _)| self.routes.get(id))
     }
 
     pub fn lookup_mut(&mut self, dest: Nlri) -> Option<&mut (Route, Peer)> {
         self.dests
             .get(&dest)
-            .map(|(id, _)| self.routes.get_mut(id))
-            .flatten()
+            .and_then(|(id, _)| self.routes.get_mut(id))
     }
 
     pub fn advertise_dest(&self, dest: Nlri, out: &mut AdjRIBOut) {
-        let Some((route, peer)) = self.lookup(dest) else { return };
+        let Some((route, peer)) = self.lookup(dest) else {
+            return;
+        };
         out.advertise_to_all(RIBEntry {
             nlri: vec![dest],
             next_hop: peer.next_hop,
             path: route.path.clone(),
             flag: false,
             ts: SimTime::now(),
-        })
+        });
     }
 
     pub fn withdraw_and_advertise_new(&self, dest: Nlri, out: &mut AdjRIBOut) {
-        let Some((route, peer)) = self.lookup(dest) else { return };
+        let Some((route, peer)) = self.lookup(dest) else {
+            return;
+        };
         out.withdraw_and_adverise(dest, route, peer);
     }
 

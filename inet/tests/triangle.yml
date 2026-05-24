@@ -1,0 +1,36 @@
+entry: Main
+modules:
+  C:
+    gates:
+    - port
+  Main:
+    gates:
+    - port[3]
+    submodules:
+      b: B
+      a: A
+      c: C
+    connections:
+    - peers:
+      - a/port
+      - port[0]
+      link: LAN
+    - peers:
+      - b/port
+      - port[1]
+      link: LAN
+    - peers:
+      - c/port
+      - port[2]
+      link: LAN
+  B:
+    gates:
+    - port
+  A:
+    gates:
+    - port
+links:
+  LAN:
+    latency: 0.05
+    jitter: 0.0
+    bitrate: 100000000

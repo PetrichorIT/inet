@@ -1,21 +1,17 @@
 [package]
 name = "inet-bgp"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
-[[bin]]
-name = "bgp-legacy"
-path = "bin/bgp.rs"
-
 
 [dependencies]
 tracing = "*"
 inet = { path = "../inet" }
 inet-pcap = { path = "../inet-pcap" }
 inet-rip = { path = "../inet-rip" }
-bytepack = { path = "../bytepack" }
+bytes-io = { path = "../util/bytes-io" }
+macros = { path = "../util/macros" }
 des = { version = "*", features = ["full"] }
 fxhash = "*"
 async-trait = "*"

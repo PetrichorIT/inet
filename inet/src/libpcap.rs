@@ -1,7 +1,9 @@
 //! An interfaces for capturing packets, akin to libpcap.
 
-use crate::interface::Interface;
-use des::prelude::{module_id, Message, ModuleId};
+use crate::interface::InterfaceController;
+use des::ObjectPath;
+use des::module::current;
+use des::prelude::Message;
 use std::cell::RefCell;
 use std::io::Result;
 
@@ -21,7 +23,7 @@ thread_local! {
 }
 
 struct Pcap {
-    mapping: Vec<(ModuleId, Box<dyn PcapSubscriber>)>,
+    mapping: Vec<(ObjectPath, Box<dyn PcapSubscriber>)>,
 }
 
 /// A mounting point for a module-local subscriber to
@@ -45,13 +47,6 @@ pub trait PcapSubscriber {
     fn open(&mut self) -> Result<()> {
         Ok(())
     }
-
-    /// A teardown handler called once, when the subscriber will be deactivated.
-    ///
-    /// The default configuration takes no actions.
-    fn close(&mut self) -> Result<()> {
-        Ok(())
-    }
 }
 
 /// Points in the packet flow, where libpcap may
@@ -71,7 +66,7 @@ pub struct PcapEnvelope<'a> {
     /// A reference to the captured packet
     pub message: &'a Message,
     /// The receiving / sending interface for the packet.
-    pub iface: &'a Interface,
+    pub iface: &'a InterfaceController,
 }
 
 impl Pcap {
@@ -81,36 +76,30 @@ impl Pcap {
         }
     }
 
-    fn register(&mut self, id: ModuleId, deamon: Box<dyn PcapSubscriber>) {
-        match self.mapping.binary_search_by(|e| e.0 .0.cmp(&id.0)) {
-            Ok(i) | Err(i) => self.mapping.insert(i, (id, deamon)),
+    fn register(&mut self, id: ObjectPath, deamon: Box<dyn PcapSubscriber>) {
+        match self.mapping.binary_search_by(|e| e.0.cmp(&id)) {
+            Ok(i) | Err(i) => self.mapping.insert(i, (id.clone(), deamon)),
         }
 
-        let Some(pcap) = self.deamon(id) else {
+        let Some(pcap) = self.deamon(&id) else {
             return;
         };
         try_warn!(pcap.open());
     }
 
-    fn close(&mut self, id: ModuleId) {
-        let Some(pcap) = self.deamon(id) else {
-            return;
-        };
-
-        try_warn!(pcap.close());
-
+    fn close(&mut self, id: &ObjectPath) {
         self.mapping.retain(|e| e.0 != id);
     }
 
-    fn deamon(&mut self, id: ModuleId) -> Option<&mut dyn PcapSubscriber> {
-        match self.mapping.binary_search_by(|e| e.0 .0.cmp(&id.0)) {
+    fn deamon(&mut self, id: &ObjectPath) -> Option<&mut dyn PcapSubscriber> {
+        match self.mapping.binary_search_by(|e| e.0.cmp(id)) {
             Ok(i) => Some(&mut *self.mapping[i].1),
             Err(_) => None,
         }
     }
 
-    fn capture(&mut self, id: ModuleId, envelope: PcapEnvelope<'_>) {
-        let Some(pcap) = self.deamon(id) else {
+    fn capture(&mut self, id: ObjectPath, envelope: PcapEnvelope<'_>) {
+        let Some(pcap) = self.deamon(&id) else {
             return;
         };
 
@@ -123,13 +112,13 @@ impl Pcap {
 /// Sets the PCAP subscriber for this network node.
 pub fn set_pcap_deamon(deamon: impl PcapSubscriber + 'static) {
     let deamon = Box::new(deamon);
-    LIBPCAP.with(|pcap| pcap.borrow_mut().register(module_id(), deamon));
+    LIBPCAP.with(|pcap| pcap.borrow_mut().register(current().path(), deamon));
 }
 
 pub(crate) fn capture(envelope: PcapEnvelope<'_>) {
-    LIBPCAP.with(|pcap| pcap.borrow_mut().capture(module_id(), envelope))
+    LIBPCAP.with(|pcap| pcap.borrow_mut().capture(current().path(), envelope))
 }
 
-pub(crate) fn close(id: ModuleId) {
-    LIBPCAP.with(|pcap| pcap.borrow_mut().close(id))
+pub(crate) fn close(id: ObjectPath) {
+    let _ = LIBPCAP.try_with(|pcap| pcap.borrow_mut().close(&id));
 }

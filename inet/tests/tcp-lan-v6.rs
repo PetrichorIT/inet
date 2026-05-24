@@ -1,64 +1,52 @@
-use des::{prelude::*, registry, time::sleep};
+use std::sync::{
+    Arc,
+    atomic::{AtomicUsize, Ordering},
+};
+
+use des::{globals, prelude::*, time::sleep};
+use des_ndl::{Ndl, registry};
 use inet::{
-    interface::{add_interface, Interface, NetworkDevice},
-    TcpListener, TcpStream,
+    interface::{InterfaceDef, NetworkDevice},
+    ioctx,
+    tcp::{TcpListener, TcpStream},
 };
-use inet_types::ip::Ipv4Packet;
-use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt},
-    task::JoinHandle,
-};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
+#[derive(Default)]
 struct Node {
-    handles: Vec<JoinHandle<()>>,
+    done: Arc<AtomicUsize>,
 }
-#[async_trait::async_trait]
-impl AsyncModule for Node {
-    fn new() -> Self {
-        Self {
-            handles: Vec::new(),
-        }
-    }
 
-    async fn at_sim_start(&mut self, s: usize) {
+impl Module for Node {
+    fn at_sim_start(&mut self, s: usize) {
         if s == 0 {
             // add_plugin(TcpDebugPlugin, 0);
             return;
         }
 
-        let ip = par("addr").unwrap().parse().unwrap();
-        add_interface(Interface::ethv6(NetworkDevice::eth(), ip)).unwrap();
+        let ip = current().prop::<IpAddr>("addr").unwrap().get().unwrap();
+        ioctx()
+            .add_interface(InterfaceDef::new("en0", NetworkDevice::eth()).ip(ip))
+            .unwrap();
 
-        let target: String = par("targets").unwrap().into_inner();
+        let target = current()
+            .prop::<Vec<u8>>("targets")
+            .unwrap()
+            .or_default()
+            .get();
         let targets = target
-            .trim()
-            .split(',')
-            .filter(|s| !s.is_empty())
-            .map(|v| {
-                Ipv6Addr::from([
-                    0xfe,
-                    0x80,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0xaa,
-                    v.parse::<u8>().unwrap(),
-                ])
-            })
+            .into_iter()
+            .map(|v| Ipv6Addr::from([0xfe, 0x80, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xaa, v]))
             .collect::<Vec<_>>();
 
-        let expected: usize = par("expected").unwrap().parse().unwrap();
+        let expected: usize = current()
+            .prop::<usize>("expected")
+            .unwrap()
+            .or_default()
+            .get();
 
-        self.handles.push(tokio::spawn(async move {
+        let done = self.done.clone();
+        tokio::spawn(async move {
             for target in targets {
                 sleep(Duration::from_secs_f64(random())).await;
                 let buf = [42; 42];
@@ -70,9 +58,11 @@ impl AsyncModule for Node {
                     .await
                     .unwrap();
             }
-        }));
+            done.fetch_add(1, Ordering::SeqCst);
+        });
 
-        self.handles.push(tokio::spawn(async move {
+        let done = self.done.clone();
+        tokio::spawn(async move {
             if expected == 0 {
                 return;
             }
@@ -84,75 +74,64 @@ impl AsyncModule for Node {
                 let n = stream.read(&mut buf).await.unwrap();
                 tracing::info!("recieved {n} bytes from {}", from.ip());
             }
-        }));
+            done.fetch_add(1, Ordering::SeqCst);
+        });
     }
 
     fn num_sim_start_stages(&self) -> usize {
         2
     }
 
-    async fn at_sim_end(&mut self) {
-        // for entry in arpa().unwrap() {
-        //     tracing::debug!("{entry}")
-        // }
-        for h in self.handles.drain(..) {
-            h.await.unwrap();
-        }
+    fn at_sim_end(&mut self) -> Result<(), des::Error> {
+        assert_eq!(self.done.load(Ordering::SeqCst), 2);
+        Ok(())
     }
 
-    async fn handle_message(&mut self, msg: Message) {
-        panic!(
-            "msg :: {} :: {} // {:?} -> {:?}",
-            msg.str(),
-            module_name(),
-            msg.content::<Ipv4Packet>().src,
-            msg.content::<Ipv4Packet>().dest
-        )
-    }
+    fn handle_message(&mut self, _: Message) {}
 }
 
 type Switch = inet::utils::LinkLayerSwitch;
 
+#[derive(Default)]
 struct Main;
-impl Module for Main {
-    fn new() -> Main {
-        Main
-    }
 
+impl Module for Main {
     fn at_sim_start(&mut self, _stage: usize) {
         let mut targets = Vec::new();
         for i in 0..5 {
-            let s = par_for("targets", &format!("node[{i}]"))
+            let s = globals()
+                .get(&format!("node[{i}]"))
                 .unwrap()
-                .into_inner();
-            targets.extend(
-                s.trim()
-                    .split(',')
-                    .filter(|s| !s.is_empty())
-                    .map(|v| v.parse::<u8>().unwrap()),
-            )
+                .prop::<Vec<u8>>("targets")
+                .unwrap()
+                .get()
+                .unwrap();
+            targets.extend(s);
         }
 
         for i in 0..5 {
             let c = targets.iter().filter(|e| **e == i).count();
-            let par = par_for("expected", &format!("node[{i}]"));
-            par.set(c).unwrap();
+            globals()
+                .get(&format!("node[{i}]"))
+                .unwrap()
+                .prop::<usize>("expected")
+                .unwrap()
+                .set(c);
         }
     }
 }
 
 #[test]
-fn tcp_lan_v6() {
-    inet::init();
-    // Logger::new()
-    // .interal_max_log_level(tracing::LevelFilter::Trace)
-    // .set_logger();
+fn tcp_lan_v6() -> Result<(), Box<dyn std::error::Error>> {
+    // des::tracing::init();
 
-    let app = NdlApplication::new("tests/tcp-lan/main.ndl", registry![Node, Switch, Main])
-        .map_err(|e| println!("{e}"))
-        .unwrap();
-    let mut app = NetworkApplication::new(app);
-    app.include_par_file("tests/tcp-lan/v6.par");
-    let rt = Builder::seeded(123).build(app);
-    let _ = rt.run();
+    let mut sim = Sim::new(())
+        .with_stack(inet::init)
+        .with_cfg(include_str!("tcp-lan/v6.par.yml"));
+    let def = serde_norway::from_str(include_str!("tcp-lan/main.yml"))?;
+    sim.node("", Ndl::new(&mut registry![Node, Switch, Main], &def)?)?;
+
+    let rt = sim.seeded(123).build();
+    rt.run().into_result().map(|_| ())?;
+    Ok(())
 }

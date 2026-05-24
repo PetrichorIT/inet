@@ -1,61 +1,68 @@
 //! Tests whether one active TcpListener::accept blocks
 //! any progress on any other handshakes
 
-use des::{prelude::*, registry};
-use inet::{
-    interface::{add_interface, Interface, NetworkDevice},
-    TcpSocket, TcpStream,
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
 };
-use tokio::{spawn, task::JoinHandle};
 
+use des::prelude::*;
+use des_ndl::{Ndl, registry};
+use inet::{
+    interface::{InterfaceDef, NetworkDevice},
+    ioctx,
+    tcp::{TcpSocket, TcpStream},
+};
+use tokio::spawn;
+
+#[derive(Default)]
 struct Client {
-    handle: Option<JoinHandle<()>>,
+    done: Arc<AtomicBool>,
 }
-#[async_trait::async_trait]
-impl AsyncModule for Client {
-    fn new() -> Self {
-        Self { handle: None }
-    }
 
-    async fn at_sim_start(&mut self, _: usize) {
-        add_interface(Interface::ethv4(
-            NetworkDevice::eth(),
-            Ipv4Addr::new(192, 168, 0, 1),
-        ))
-        .unwrap();
+impl Module for Client {
+    fn at_sim_start(&mut self, _: usize) {
+        ioctx()
+            .add_interface(
+                InterfaceDef::new("en0", NetworkDevice::eth())
+                    .ip(Ipv4Addr::new(192, 168, 0, 1).into()),
+            )
+            .unwrap();
 
-        self.handle = Some(spawn(async {
+        let done = self.done.clone();
+        spawn(async move {
             for _ in 0..10 {
                 spawn(async {
                     let sock = TcpStream::connect("192.168.0.2:80").await;
                     tracing::info!("{sock:?}");
                 });
             }
-        }));
+            done.store(true, Ordering::SeqCst);
+        });
     }
 
-    async fn at_sim_end(&mut self) {
-        self.handle.take().unwrap().await.unwrap();
+    fn at_sim_end(&mut self) -> Result<(), des::Error> {
+        assert!(self.done.load(Ordering::SeqCst));
+        Ok(())
     }
 }
 
+#[derive(Default)]
 struct Server {
-    handle: Option<JoinHandle<()>>,
+    done: Arc<AtomicBool>,
 }
-#[async_trait::async_trait]
-impl AsyncModule for Server {
-    fn new() -> Self {
-        Self { handle: None }
-    }
 
-    async fn at_sim_start(&mut self, _: usize) {
-        add_interface(Interface::ethv4(
-            NetworkDevice::eth(),
-            Ipv4Addr::new(192, 168, 0, 2),
-        ))
-        .unwrap();
+impl Module for Server {
+    fn at_sim_start(&mut self, _: usize) {
+        ioctx()
+            .add_interface(
+                InterfaceDef::new("en0", NetworkDevice::eth())
+                    .ip(Ipv4Addr::new(192, 168, 0, 2).into()),
+            )
+            .unwrap();
 
-        self.handle = Some(spawn(async {
+        let done = self.done.clone();
+        spawn(async move {
             let sock = TcpSocket::new_v4().unwrap();
             sock.bind("0.0.0.0:80".parse().unwrap()).unwrap();
             let lis = sock.listen(5).unwrap();
@@ -67,36 +74,26 @@ impl AsyncModule for Server {
                     break;
                 }
             }
-        }));
+            done.store(true, Ordering::SeqCst);
+        });
     }
 
-    async fn at_sim_end(&mut self) {
-        self.handle.take().unwrap().await.unwrap();
-    }
-}
-
-struct Main;
-impl Module for Main {
-    fn new() -> Main {
-        Main
+    fn at_sim_end(&mut self) -> Result<(), des::Error> {
+        assert!(self.done.load(Ordering::SeqCst));
+        Ok(())
     }
 }
 
 #[test]
-fn tcp_listen_backlog() {
-    inet::init();
+fn tcp_listen_backlog() -> Result<(), Box<dyn std::error::Error>> {
+    // des::tracing::init();
 
-    // Logger::new().set_logger();
+    let mut sim = Sim::new(()).with_stack(inet::init);
+    let def = serde_norway::from_str(include_str!("tcp-multi-accept.yml"))?;
+    sim.node("", Ndl::new(&mut registry![Server, Client, else _], &def)?)?;
 
-    let app = NetworkApplication::new(
-        NdlApplication::new(
-            "tests/tcp-multi-accept.ndl",
-            registry![Server, Main, Client],
-        )
-        .map_err(|e| println!("{e}"))
-        .unwrap(),
-    );
-    let rt = Builder::seeded(123).build(app);
-    let (_, t, _) = rt.run().unwrap();
-    assert!(t > 3.0.into());
+    let rt = sim.seeded(123).build();
+    let r = rt.run().assert_no_err();
+    assert!(r.time > 3.0.into());
+    Ok(())
 }

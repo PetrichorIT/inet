@@ -1,0 +1,22 @@
+entry: Main
+modules:
+  Pong:
+    gates:
+    - port
+  Ping:
+    gates:
+    - port
+  Main:
+    submodules:
+      ping: Ping
+      pong: Pong
+    connections:
+    - peers:
+      - ping/port
+      - pong/port
+      link: LANLink
+links:
+  LANLink:
+    latency: 0.05
+    jitter: 0.0
+    bitrate: 10000000

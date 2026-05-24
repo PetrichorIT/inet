@@ -1,5 +1,5 @@
 use crate::types::AsNumber;
-use inet::TcpStream;
+use inet::tcp::TcpStream;
 use std::{fmt::Debug, future::Future, io::Result, pin::Pin};
 
 use super::stream::BgpStream;
@@ -46,23 +46,12 @@ impl Debug for NeighborDeamonState {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct BgpPeeringCfg {
     pub colliosion_detect: bool,
     pub damp_peer_oscillation: bool,
     pub delay_open: bool,
     pub passiv_tcp_estab: bool,
     pub notif_without_open: bool,
-}
-
-impl Default for BgpPeeringCfg {
-    fn default() -> Self {
-        Self {
-            colliosion_detect: false,
-            damp_peer_oscillation: false,
-            delay_open: false,
-            passiv_tcp_estab: false,
-            notif_without_open: false,
-        }
-    }
 }

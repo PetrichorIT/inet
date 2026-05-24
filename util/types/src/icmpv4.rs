@@ -1,0 +1,435 @@
+use std::{
+    io::{Error, Write},
+    net::Ipv4Addr,
+};
+
+use bytes_io::{
+    BE, Bytes, BytesMut, BytesReader, BytesWriter, FromBytes, ReadBytesExt, ToBytes, WriteBytesExt,
+};
+use macros::repr_enum;
+
+use crate::ip::Ipv4Packet;
+
+/// An ICMP packet
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IcmpV4Packet {
+    pub typ: IcmpV4Type, // icmp info
+    pub content: Bytes,  // ip header + first 8 byte payload or padding
+}
+
+const PAYLOAD_LIMIT: usize = 20 + 64;
+
+impl IcmpV4Packet {
+    /// Creates a new `IcmpV4Packet`.
+    ///
+    /// # Panics
+    ///
+    /// This function panics, if the IP packet cannot be encoded.
+    #[must_use]
+    pub fn new(typ: IcmpV4Type, pkt: &Ipv4Packet) -> Self {
+        let mut content = pkt
+            .write_to_bytes_mut()
+            .expect("Failed to write incoming IP ???")
+            .freeze();
+        content.truncate(PAYLOAD_LIMIT);
+        Self { typ, content }
+    }
+
+    /// Returns the contained ip packet.
+    ///
+    /// # Errors
+    ///
+    /// Can return an error, if the parsing of the IP packet fails.
+    pub fn contained(&self) -> Result<Ipv4Packet, Error> {
+        // Override len with 8
+        let mut buffer = BytesMut::from(self.content.clone());
+        let len = buffer.len().min(PAYLOAD_LIMIT);
+        buffer[2] = 0;
+        buffer[3] = len as u8;
+        Ipv4Packet::read_from(&mut buffer)
+    }
+}
+
+impl ToBytes for IcmpV4Packet {
+    type Error = Error;
+    fn to_bytes(&self, bytestream: &mut BytesWriter) -> Result<(), Self::Error> {
+        self.typ.to_bytes(bytestream)?;
+        bytestream.write_all(&self.content)
+    }
+}
+
+impl FromBytes for IcmpV4Packet {
+    type Error = Error;
+    fn from_bytes(bytestream: &mut BytesReader) -> Result<Self, Self::Error> {
+        let typ = IcmpV4Type::from_bytes(bytestream)?;
+        let n = PAYLOAD_LIMIT.min(bytestream.remaining());
+        let content = bytestream.copy_to_bytes(n);
+        Ok(Self { typ, content })
+    }
+}
+
+// # Types
+
+pub const PROTO_ICMPV4: u8 = 1;
+
+/// The type of the ICMP control message
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[repr(u8)]
+pub enum IcmpV4Type {
+    EchoReply {
+        identifier: u16,
+        sequence: u16,
+    } = 0,
+    DestinationUnreachable {
+        next_hop_mtu: u16,
+        code: IcmpV4DestinationUnreachableCode,
+    } = 3,
+    SourceQuench = 4,
+    RedirectMessage {
+        addr: Ipv4Addr,
+        code: IcmpV4RedirectCode,
+    } = 5,
+    EchoRequest {
+        identifier: u16,
+        sequence: u16,
+    } = 8,
+    RouterAdvertisment = 9,
+    RouterSolicitation = 10,
+    TimeExceeded {
+        code: IcmpV4TimeExceededCode,
+    } = 11,
+    BadIpHeader {
+        code: IcmpV4BadIpHeaderCode,
+    } = 12,
+    Timestamp {
+        identifier: u16,
+        sequence: u16,
+        ts_org: u32,
+        ts_rcv: u32,
+        ts_transmit: u32,
+    } = 13,
+    TimestmapReply {
+        identifier: u16,
+        sequence: u16,
+        ts_org: u32,
+        ts_rcv: u32,
+        ts_transmit: u32,
+    } = 14,
+    #[deprecated]
+    InformationRequest = 15,
+    #[deprecated]
+    InformationReply = 16,
+    #[deprecated]
+    AddressMaskRequest = 17,
+    #[deprecated]
+    AddressMaskReply = 18,
+    ExtendedEchoRequest = 42,
+    ExtendedEchoReply = 43,
+}
+
+impl IcmpV4Type {
+    #[must_use]
+    pub const fn as_error_string(&self) -> &'static str {
+        use IcmpV4Type::DestinationUnreachable;
+
+        match self {
+            DestinationUnreachable { code, .. } => match code {
+                IcmpV4DestinationUnreachableCode::PortUnreachable => "port unreachable",
+                IcmpV4DestinationUnreachableCode::NetworkUnreachable => "network unreachable",
+                IcmpV4DestinationUnreachableCode::HostUnreachable => "host unreachable",
+                IcmpV4DestinationUnreachableCode::ProtocolUnreachable => "protocol unreachable",
+                IcmpV4DestinationUnreachableCode::DatagramToBig => "datagram to big",
+                IcmpV4DestinationUnreachableCode::SourceHostFailed => "src host failed",
+                _ => "not supported !",
+            },
+
+            _ => "<todo!> impl error string for icmp v4",
+        }
+    }
+}
+
+impl ToBytes for IcmpV4Type {
+    type Error = Error;
+    fn to_bytes(&self, stream: &mut BytesWriter) -> Result<(), Self::Error> {
+        match self {
+            Self::EchoReply {
+                identifier,
+                sequence,
+            } => {
+                stream.write_u8(0)?;
+                stream.write_u8(0)?;
+                stream.write_u16::<BE>(0)?;
+                stream.write_u16::<BE>(*identifier)?;
+                stream.write_u16::<BE>(*sequence)?;
+                Ok(())
+            }
+            Self::DestinationUnreachable { next_hop_mtu, code } => {
+                stream.write_u8(3)?;
+                stream.write_u8(code.to_raw_repr())?;
+                stream.write_u16::<BE>(0)?; // checksum
+                stream.write_u16::<BE>(0)?; // unused
+                stream.write_u16::<BE>(*next_hop_mtu)?;
+                Ok(())
+            }
+            Self::SourceQuench => {
+                stream.write_u8(4)?;
+                stream.write_u8(0)?;
+                stream.write_u16::<BE>(0)?; // checksum
+                stream.write_u32::<BE>(0)?; // unused
+                Ok(())
+            }
+            Self::RedirectMessage { addr, code } => {
+                stream.write_u8(5)?;
+                stream.write_u8(code.to_raw_repr())?;
+                stream.write_u16::<BE>(0)?; // checksum
+                stream.write_all(&addr.octets())?;
+                Ok(())
+            }
+            Self::EchoRequest {
+                identifier,
+                sequence,
+            } => {
+                stream.write_u8(8)?;
+                stream.write_u8(0)?;
+                stream.write_u16::<BE>(0)?; // checksum
+                stream.write_u16::<BE>(*identifier)?;
+                stream.write_u16::<BE>(*sequence)?;
+                Ok(())
+            }
+            Self::RouterAdvertisment => {
+                stream.write_u8(9)?;
+                stream.write_u8(0)?;
+                stream.write_u16::<BE>(0)?; // checksum
+                stream.write_u32::<BE>(0)?;
+                Ok(())
+            }
+            Self::RouterSolicitation => {
+                stream.write_u8(10)?;
+                stream.write_u8(0)?;
+                stream.write_u16::<BE>(0)?; // checksum
+                stream.write_u32::<BE>(0)?;
+                Ok(())
+            }
+            Self::TimeExceeded { code } => {
+                stream.write_u8(11)?;
+                stream.write_u8(code.to_raw_repr())?;
+                stream.write_u16::<BE>(0)?; // checksum
+                stream.write_u32::<BE>(0)?;
+                Ok(())
+            }
+            Self::BadIpHeader { code } => {
+                stream.write_u8(12)?;
+                stream.write_u8(code.to_raw_repr())?;
+                stream.write_u16::<BE>(0)?; // checksum
+                stream.write_u32::<BE>(0)?;
+                Ok(())
+            }
+            _ => todo!("{self:?}"),
+        }
+    }
+}
+
+impl FromBytes for IcmpV4Type {
+    type Error = Error;
+    fn from_bytes(stream: &mut BytesReader) -> Result<Self, Self::Error> {
+        let typ = stream.read_u8()?;
+        let code = stream.read_u8()?;
+        let _checksum = stream.read_u16::<BE>()?;
+
+        match typ {
+            0 => {
+                assert_eq!(code, 0, "Divergent code not allowed on echo reply");
+                let identifier = stream.read_u16::<BE>()?;
+                let sequence = stream.read_u16::<BE>()?;
+                Ok(Self::EchoReply {
+                    identifier,
+                    sequence,
+                })
+            }
+            3 => {
+                let _ = stream.read_u16::<BE>()?;
+                let next_hop_mtu = stream.read_u16::<BE>()?;
+                Ok(Self::DestinationUnreachable {
+                    next_hop_mtu,
+                    code: IcmpV4DestinationUnreachableCode::from_raw_repr(code)?,
+                })
+            }
+            4 => {
+                assert_eq!(code, 0, "Divergent code not allowed on source quench");
+                let _ = stream.read_u32::<BE>()?;
+                Ok(Self::SourceQuench)
+            }
+            5 => {
+                let addr = Ipv4Addr::from(stream.read_u32::<BE>()?);
+
+                Ok(Self::RedirectMessage {
+                    addr,
+                    code: IcmpV4RedirectCode::from_raw_repr(code)?,
+                })
+            }
+            8 => {
+                assert_eq!(code, 0, "Divergent code not allowed on echo request");
+                let identifier = stream.read_u16::<BE>()?;
+                let sequence = stream.read_u16::<BE>()?;
+                Ok(Self::EchoRequest {
+                    identifier,
+                    sequence,
+                })
+            }
+            9 => {
+                assert_eq!(code, 0, "Divergent code not allowed on route advertisment");
+                let _ = stream.read_u32::<BE>()?;
+                Ok(Self::RouterAdvertisment)
+            }
+            10 => {
+                assert_eq!(code, 0, "Divergent code not allowed on route solicitation");
+                let _ = stream.read_u32::<BE>()?;
+                Ok(Self::RouterSolicitation)
+            }
+            11 => {
+                let _ = stream.read_u32::<BE>()?;
+                Ok(Self::TimeExceeded {
+                    code: IcmpV4TimeExceededCode::from_raw_repr(code)?,
+                })
+            }
+            12 => {
+                let _ = stream.read_u32::<BE>()?;
+                Ok(Self::BadIpHeader {
+                    code: IcmpV4BadIpHeaderCode::from_raw_repr(code)?,
+                })
+            }
+            _ => todo!(),
+        }
+    }
+}
+
+// # Codes
+
+repr_enum! {
+     /// A reponse code to a ICMP redirect message.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+    pub enum IcmpV4RedirectCode {
+        type Repr = u8 where BigEndian;
+        RedirectForNetwork = 0,
+        RedirectForHost = 1,
+        RedirectForTypeOfServiceAndNetwork = 2,
+        RedirectForTypeOfServiceAndHost = 3,
+    }
+}
+
+repr_enum! {
+     /// A reponse code to a ICMP time exceeded message.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+    pub enum IcmpV4TimeExceededCode {
+        type Repr = u8 where BigEndian;
+        TimeToLifeInTransit = 0,
+        FragmentReassemblyTimeExceeded = 1,
+    }
+}
+
+repr_enum! {
+    /// A reponse code to a ICMP desintation unreachable message.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+    pub enum IcmpV4DestinationUnreachableCode {
+        type Repr = u8 where BigEndian;
+        NetworkUnreachable = 0,
+        HostUnreachable = 1,
+        ProtocolUnreachable = 2,
+        PortUnreachable = 3,
+        DatagramToBig = 4,
+        SourceRouteFailed = 5,
+        DestinationNetworkFailed = 6,
+        DestionationHostFailed = 7,
+        SourceHostFailed = 8,
+        DestinationNetworkProhibited = 9,
+        DestinationHostProhibited = 10,
+        NetworkUnreachableForTOS = 11,
+        HostUnreachableForTOS = 12,
+        CommunicationProhibited = 13,
+        HostPrecedenceViolation = 14,
+        PrecedenceCutoff = 15,
+    }
+}
+
+repr_enum! {
+     /// A reponse code to a ICMP desintation unreachable message.
+     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+    pub enum IcmpV4BadIpHeaderCode {
+        type Repr = u8 where BigEndian;
+        SeePointer = 0,
+        MissingRequiredOption = 1,
+        BadLength = 2,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use bytes_io::assert_encoding_e2e;
+
+    use super::*;
+
+    #[test]
+    fn e2e_encoding() {
+        assert_encoding_e2e(&[
+            // IcmpV4Type::TimestmapReply {
+            //     identifier: 14,
+            //     sequence: 1,
+            //     ts_org: 1,
+            //     ts_rcv: 1,
+            //     ts_transmit: 1,
+            // },
+            // IcmpV4Type::Timestamp {
+            //     identifier: 132,
+            //     sequence: 3,
+            //     ts_org: 34,
+            //     ts_rcv: 4,
+            //     ts_transmit: 55,
+            // },
+            IcmpV4Type::TimeExceeded {
+                code: IcmpV4TimeExceededCode::TimeToLifeInTransit,
+            },
+            IcmpV4Type::TimeExceeded {
+                code: IcmpV4TimeExceededCode::FragmentReassemblyTimeExceeded,
+            },
+            IcmpV4Type::SourceQuench,
+            IcmpV4Type::RouterSolicitation,
+            IcmpV4Type::RouterAdvertisment,
+            IcmpV4Type::RedirectMessage {
+                code: IcmpV4RedirectCode::RedirectForNetwork,
+                addr: Ipv4Addr::new(192, 168, 0, 1),
+            },
+            IcmpV4Type::RedirectMessage {
+                code: IcmpV4RedirectCode::RedirectForHost,
+                addr: Ipv4Addr::new(192, 168, 0, 2),
+            },
+            // IcmpV4Type::ExtendedEchoRequest,
+            // IcmpV4Type::ExtendedEchoReply,
+            IcmpV4Type::EchoRequest {
+                identifier: 1323,
+                sequence: 3123,
+            },
+            IcmpV4Type::EchoReply {
+                identifier: 1323,
+                sequence: 3123,
+            },
+            IcmpV4Type::DestinationUnreachable {
+                next_hop_mtu: 3123,
+                code: IcmpV4DestinationUnreachableCode::DestinationHostProhibited,
+            },
+            IcmpV4Type::DestinationUnreachable {
+                next_hop_mtu: 3123,
+                code: IcmpV4DestinationUnreachableCode::HostUnreachable,
+            },
+            IcmpV4Type::DestinationUnreachable {
+                next_hop_mtu: 3123,
+                code: IcmpV4DestinationUnreachableCode::SourceHostFailed,
+            },
+            IcmpV4Type::BadIpHeader {
+                code: IcmpV4BadIpHeaderCode::MissingRequiredOption,
+            },
+            IcmpV4Type::BadIpHeader {
+                code: IcmpV4BadIpHeaderCode::BadLength,
+            },
+        ]);
+    }
+}

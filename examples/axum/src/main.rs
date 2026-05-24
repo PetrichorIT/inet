@@ -1,6 +1,7 @@
 use axum::{extract::Path, response::Response, routing::get, Router};
 use connector::InetTcpStream;
-use des::{prelude::*, registry, tracing::Subscriber};
+use des::prelude::*;
+use des_ndl::{registry, Ndl};
 use hyper::{
     client,
     server::{self, accept::from_stream},
@@ -8,33 +9,27 @@ use hyper::{
     Body, Request, Uri,
 };
 use inet::{
-    interface::{add_interface, Interface, NetworkDevice},
-    TcpListener,
+    interface::{InterfaceDef, NetworkDevice},
+    ioctx,
+    tcp::TcpListener,
 };
-use inet_pcap::{pcap, PcapCapturePoints, PcapConfig, PcapFilters};
+use inet_pcap::pcap;
 use std::{convert::Infallible, fs::File};
 use tokio::spawn;
 
+#[derive(Default)]
 struct Client;
-#[async_trait::async_trait]
-impl AsyncModule for Client {
-    fn new() -> Self {
-        Self
-    }
 
-    async fn at_sim_start(&mut self, _: usize) {
-        add_interface(Interface::eth(
-            NetworkDevice::eth(),
-            Ipv4Addr::new(192, 168, 2, 101).into(),
-        ))
-        .unwrap();
+impl Module for Client {
+    fn at_sim_start(&mut self, _: usize) {
+        ioctx()
+            .add_interface(
+                InterfaceDef::new("en0", NetworkDevice::eth())
+                    .ip(Ipv4Addr::new(192, 168, 2, 101).into()),
+            )
+            .unwrap();
 
-        pcap(PcapConfig {
-            filters: PcapFilters::default(),
-            capture: PcapCapturePoints::All,
-            output: File::create("results/client.pcap").unwrap(),
-        })
-        .unwrap();
+        pcap(File::create("results/client.pcap").unwrap()).unwrap();
 
         spawn(async move {
             let client = client::Client::builder().build(connector::connector());
@@ -52,19 +47,17 @@ impl AsyncModule for Client {
     }
 }
 
+#[derive(Default)]
 struct Server;
-#[async_trait::async_trait]
-impl AsyncModule for Server {
-    fn new() -> Self {
-        Self
-    }
 
-    async fn at_sim_start(&mut self, _: usize) {
-        add_interface(Interface::eth(
-            NetworkDevice::eth(),
-            Ipv4Addr::new(192, 168, 2, 10).into(),
-        ))
-        .unwrap();
+impl Module for Server {
+    fn at_sim_start(&mut self, _: usize) {
+        ioctx()
+            .add_interface(
+                InterfaceDef::new("en0", NetworkDevice::eth())
+                    .ip(Ipv4Addr::new(192, 168, 2, 10).into()),
+            )
+            .unwrap();
 
         spawn(async move {
             let router = Router::new().route(
@@ -90,16 +83,9 @@ impl AsyncModule for Server {
     }
 }
 
-struct Main;
-impl Module for Main {
-    fn new() -> Self {
-        Self
-    }
-}
-
 mod connector {
     use std::future::Future;
-    use std::{mem::transmute, pin::Pin};
+    use std::pin::Pin;
 
     use hyper::client::connect::{Connected, Connection};
     use hyper::Uri;
@@ -114,20 +100,20 @@ mod connector {
     {
         tower::service_fn(|uri: Uri| {
             Box::pin(async move {
-                let conn = inet::TcpStream::connect(uri.authority().unwrap().as_str()).await?;
+                let conn = inet::tcp::TcpStream::connect(uri.authority().unwrap().as_str()).await?;
                 Ok::<_, std::io::Error>(InetTcpStream(conn))
             }) as Fut
         })
     }
 
-    pub struct InetTcpStream(pub inet::TcpStream);
+    pub struct InetTcpStream(pub inet::tcp::TcpStream);
     impl AsyncRead for InetTcpStream {
         fn poll_read(
             mut self: std::pin::Pin<&mut Self>,
             cx: &mut std::task::Context<'_>,
             buf: &mut tokio::io::ReadBuf<'_>,
         ) -> std::task::Poll<std::io::Result<()>> {
-            Pin::new(&mut self.0).poll_read(cx, unsafe { transmute(buf) })
+            Pin::new(&mut self.0).poll_read(cx, buf)
         }
     }
     impl AsyncWrite for InetTcpStream {
@@ -161,18 +147,17 @@ mod connector {
     }
 }
 
-fn main() {
-    inet::init();
+const NDL: &str = include_str!("../main.yml");
 
-    Subscriber::default()
-        // .interal_max_log_level(tracing::LevelFilter::Trace)
-        .init()
-        .unwrap();
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    des::tracing::init();
 
-    let app = NdlApplication::new("main.ndl", registry![Client, Server, Main])
-        .map_err(|e| println!("{e}"))
-        .unwrap();
-    let app = NetworkApplication::new(app);
-    let rt = Builder::seeded(123).max_time(50.0.into()).build(app);
-    let _ = rt.run();
+    let mut app = Sim::new(()).with_stack(inet::init);
+    let ndl = serde_yml::from_str(NDL)?;
+
+    app.node("", Ndl::new(&mut registry![Client, Server, else _], &ndl)?)?;
+
+    let rt = app.seeded(123).max_time(50.0.into()).build();
+    let _ = rt.run().into_result()?;
+    Ok(())
 }

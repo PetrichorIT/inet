@@ -1,15 +1,16 @@
+[profile.release]
+debug = true
+
 [workspace]
 members = [
     "inet",
-    "inet-bgp",
-    "inet-rip",
-    "inet-pcap",
-    "inet-types",
-    "inet-dns",
-    "bytepack",
+    "inet-*",
+    "util/*",
     "examples/*",
 ]
+resolver = "3"
 
 [patch.crates-io]
-# des = { git = "https://github.com/PetrichorIT/des", branch = "beta"}
+# des = { git = "https://github.com/PetrichorIT/des", branch = "master" }
 des = { path = "../des/des" }
+des-ndl = { path = "../des/des-ndl" }

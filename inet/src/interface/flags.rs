@@ -1,5 +1,10 @@
+use std::fmt::Display;
+
+use serde::{Deserialize, Serialize};
+use valuable::Valuable;
+
 /// Flags indicating the state and capabilities of a network interface
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Valuable)]
 #[allow(missing_docs)]
 pub struct InterfaceFlags {
     /// Whether the interface is connected
@@ -20,6 +25,10 @@ pub struct InterfaceFlags {
     pub simplex: bool,
     /// *Not currently in use*
     pub promisc: bool,
+    /// Whether the node is a router,
+    pub router: bool,
+    /// Wether this interface shoulc be Ipv6 configured
+    pub v6: bool,
 }
 
 impl InterfaceFlags {
@@ -35,11 +44,13 @@ impl InterfaceFlags {
             smart: false,
             simplex: false,
             promisc: false,
+            router: false,
+            v6: true,
         }
     }
 
     /// The flags for a simple interface
-    pub const fn en0() -> Self {
+    pub const fn en0(v6: bool) -> Self {
         Self {
             up: true,
             loopback: false,
@@ -50,41 +61,60 @@ impl InterfaceFlags {
             smart: true,
             simplex: true,
             promisc: false,
+            router: false,
+            v6,
         }
     }
 }
 
-impl std::fmt::Display for InterfaceFlags {
+impl Display for InterfaceFlags {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
-        write!(f, "flags=<")?;
-        if self.up {
-            write!(f, "UP")?
-        }
-        if self.loopback {
-            write!(f, "LOOPBACK")?
-        }
-        if self.running {
-            write!(f, "RUNNING")?
-        }
-        if self.multicast {
-            write!(f, "MULTICAST")?
-        }
-        if self.p2p {
-            write!(f, "POINTTOPOINT")?
-        }
-        if self.broadcast {
-            write!(f, "BROADCAST")?
-        }
-        if self.smart {
-            write!(f, "SMART")?
-        }
-        if self.simplex {
-            write!(f, "SIMPLEX")?
-        }
-        if self.promisc {
-            write!(f, "PROMISC")?
-        }
+        const FMT_STMT: [&str; 11] = [
+            "UP",
+            "LOOPBACK",
+            "RUNNING",
+            "MULTICAST",
+            "POINTTOPOINT",
+            "BROADCAST",
+            "SMART",
+            "SIMPLEX",
+            "PROMISC",
+            "ROUTER",
+            "V6",
+        ];
 
+        let flags = [
+            self.up,
+            self.loopback,
+            self.running,
+            self.multicast,
+            self.p2p,
+            self.broadcast,
+            self.smart,
+            self.simplex,
+            self.promisc,
+            self.router,
+            self.v6,
+        ];
+
+        write!(f, "flags=< ")?;
+        for (_, flag) in flags.iter().zip(FMT_STMT).filter(|(enabled, _)| **enabled) {
+            write!(f, "{flag} ")?;
+        }
         write!(f, ">")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn fmt() {
+        let flags = InterfaceFlags::en0(true);
+        assert_eq!(
+            flags.to_string(),
+            "flags=< UP RUNNING MULTICAST BROADCAST SMART SIMPLEX V6 >"
+        );
     }
 }

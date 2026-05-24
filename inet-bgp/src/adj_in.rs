@@ -5,12 +5,12 @@ use fxhash::{FxBuildHasher, FxHashMap, FxHashSet};
 use inet::interface::InterfaceName;
 
 use crate::{
+    BgpNodeInformation,
     pkt::{BgpPathAttribute, BgpPathAttributeKind, BgpUpdatePacket, Nlri},
     types::AsNumber,
-    BgpNodeInformation,
 };
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct AdjIn {
     routes_id: RouteId,
     dirty: bool,
@@ -38,6 +38,7 @@ pub struct Route {
 }
 
 impl Route {
+    #[must_use]
     pub fn as_path_len(&self) -> usize {
         self.path
             .iter()
@@ -66,6 +67,7 @@ impl Display for Peer {
 }
 
 impl AdjIn {
+    #[must_use]
     pub fn new() -> Self {
         Self {
             peers: FxHashMap::with_hasher(FxBuildHasher::default()),
@@ -76,16 +78,18 @@ impl AdjIn {
         }
     }
 
+    #[allow(clippy::missing_panics_doc)]
     pub fn status(&self) {
         tracing::debug!("[ BGP ADJ IN ]");
         for (peer, adj) in &self.peers {
             tracing::debug!("Peer({peer:?})");
-            for (dest, id) in adj.dests.iter().map(|v| v.clone()).collect::<Vec<_>>() {
+            for (dest, id) in adj.dests.iter().collect::<Vec<_>>() {
                 tracing::debug!(" {dest:?} via {} ({})", peer, adj.routes.get(id).unwrap());
             }
         }
     }
 
+    #[must_use]
     pub fn is_dirty(&self) -> bool {
         self.dirty
     }
@@ -111,6 +115,9 @@ impl AdjIn {
         );
     }
 
+    /// # Panics
+    ///
+    /// Panics if the peer does not exist.
     pub fn unregister(&mut self, peer: &BgpNodeInformation) {
         let adj_peer = self
             .peers
@@ -118,9 +125,12 @@ impl AdjIn {
             .expect("unregistered not existing");
 
         self.withdrawn
-            .extend(adj_peer.dests.keys().map(|d| (*d, adj_peer.peer.next_hop)))
+            .extend(adj_peer.dests.keys().map(|d| (*d, adj_peer.peer.next_hop)));
     }
 
+    /// # Panics
+    ///
+    /// Panics if the peer table does not exist.
     pub fn process(&mut self, update: BgpUpdatePacket, peer_addr: Ipv4Addr) {
         let Some(adj_table) = self.peers.get_mut(&peer_addr) else {
             todo!()
@@ -161,7 +171,7 @@ impl AdjIn {
                 route.ucount += 1;
 
                 let Some(old_route) = adj_table.routes.get_mut(&old_route_id) else {
-                    return
+                    return;
                 };
 
                 old_route.ucount = old_route.ucount.saturating_sub(1);
@@ -170,7 +180,7 @@ impl AdjIn {
                 }
             } else {
                 adj_table.dests.insert(nlri, id);
-                route.ucount += 1
+                route.ucount += 1;
             }
 
             self.updated.insert((nlri, adj_table.peer.next_hop));
@@ -182,53 +192,43 @@ impl AdjIn {
         }
     }
 
+    #[allow(clippy::missing_panics_doc)]
     pub fn routes_to(&self, dest: Nlri) -> impl Iterator<Item = (&Route, &Peer)> {
-        self.peers
-            .values()
-            .map(move |peer_adj| {
-                if let Some(route_id) = peer_adj.dests.get(&dest) {
-                    Some((
-                        peer_adj
-                            .routes
-                            .get(route_id)
-                            .expect("internal mapping error"),
-                        &peer_adj.peer,
-                    ))
-                } else {
-                    None
-                }
+        self.peers.values().filter_map(move |peer_adj| {
+            peer_adj.dests.get(&dest).map(|route_id| {
+                (
+                    peer_adj
+                        .routes
+                        .get(route_id)
+                        .expect("internal mapping error"),
+                    &peer_adj.peer,
+                )
             })
-            .flatten()
+        })
     }
 
+    #[allow(clippy::missing_panics_doc)]
     pub fn routes(&self) -> impl Iterator<Item = (&Nlri, &Route, &Peer)> {
-        self.peers
-            .values()
-            .map(|peer_adj| {
-                peer_adj.dests.iter().map(|(k, v)| {
-                    (
-                        k,
-                        peer_adj.routes.get(v).expect("internal mapping error"),
-                        &peer_adj.peer,
-                    )
-                })
+        self.peers.values().flat_map(|peer_adj| {
+            peer_adj.dests.iter().map(|(k, v)| {
+                (
+                    k,
+                    peer_adj.routes.get(v).expect("internal mapping error"),
+                    &peer_adj.peer,
+                )
             })
-            .flatten()
+        })
     }
 
+    #[allow(clippy::missing_panics_doc)]
     pub fn updated_routes(&self) -> impl Iterator<Item = (&Nlri, &Route, &Peer)> {
-        self.updated
-            .iter()
-            .map(|(dest, peer)| {
-                let Some(peer_adj) = self.peers.get(peer) else {
-                return None
-            };
-                let route_id = peer_adj.dests.get(dest).expect("failed");
-                let route = peer_adj.routes.get(&route_id).expect("failed");
+        self.updated.iter().filter_map(|(dest, peer)| {
+            let peer_adj = self.peers.get(peer)?;
+            let route_id = peer_adj.dests.get(dest).expect("failed");
+            let route = peer_adj.routes.get(route_id).expect("failed");
 
-                Some((dest, route, &peer_adj.peer))
-            })
-            .flatten()
+            Some((dest, route, &peer_adj.peer))
+        })
     }
 
     pub fn withdrawn_routes(&self) -> impl Iterator<Item = &(Nlri, PeerId)> {
@@ -237,12 +237,13 @@ impl AdjIn {
 }
 
 impl Route {
+    #[must_use]
     pub fn is_as_on_path(&self, as_num: AsNumber) -> bool {
         for attr in &self.path {
-            if let BgpPathAttributeKind::AsPath(ref as_attr) = attr.attr {
-                if as_attr.path.contains(&as_num) {
-                    return true;
-                }
+            if let BgpPathAttributeKind::AsPath(ref as_attr) = attr.attr
+                && as_attr.path.contains(&as_num)
+            {
+                return true;
             }
         }
 
@@ -254,7 +255,7 @@ impl Display for Route {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         for attr in &self.path {
             match &attr.attr {
-                BgpPathAttributeKind::Origin(origin) => write!(f, "ORIGIN({:?}),", origin),
+                BgpPathAttributeKind::Origin(origin) => write!(f, "ORIGIN({origin:?}),"),
                 BgpPathAttributeKind::AsPath(path) => write!(f, "ASPATH({:?}),", path.path),
                 BgpPathAttributeKind::NextHop(hop) => write!(f, "NEXT({:?}),", hop.hop),
             }?;

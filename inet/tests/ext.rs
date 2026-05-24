@@ -1,29 +1,33 @@
 use std::time::Duration;
 
-use des::{net::AsyncBuilder, runtime::Builder, time::sleep};
-use inet::extensions::{load_ext, with_ext};
+use des::{Sim, runtime::handlers::AsyncHandler, time::sleep};
+use inet::{extensions::ExtensionHandle, ioctx};
 
 #[test]
-fn basic_extension() {
-    inet::init();
-
+fn basic_extension() -> Result<(), des::Failure> {
+    #[derive(Default)]
     struct MyExt {
         value: usize,
     }
 
-    let mut sim = AsyncBuilder::new();
-    sim.node("mynode", |_| async move {
-        load_ext(MyExt { value: 42 });
-        sleep(Duration::from_secs(1)).await;
+    let mut sim = Sim::new(()).with_stack(inet::init);
+    sim.node(
+        "mynode",
+        AsyncHandler::new(|_| async move {
+            let ext = ExtensionHandle::<MyExt>::new();
+            assert_eq!(format!("{:?}", ioctx()), "IOHandle");
+            assert_eq!(format!("{ext:?}"), "ExtensionHandle");
 
-        with_ext::<MyExt>(|ext| {
-            assert_eq!(ext.value, 42);
-            println!("success")
-        });
+            ext.with(|e| *e = MyExt { value: 42 });
+            sleep(Duration::from_secs(1)).await;
 
-        Ok(())
-    });
+            ext.with(|ext| {
+                assert_eq!(ext.value, 42);
+                println!("success");
+            });
+        }),
+    );
 
-    let rt = Builder::new().build(sim.build());
-    let _ = rt.run().unwrap();
+    let rt = sim.seeded(123).build();
+    rt.run().into_result().map(|_| ())
 }

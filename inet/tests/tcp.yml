@@ -1,0 +1,36 @@
+entry: Main
+modules:
+  Link:
+    gates:
+    - lhs
+    - rhs
+  TcpServer:
+    gates:
+    - port
+  Main:
+    submodules:
+      mim: Link
+      client: TcpClient
+      server: TcpServer
+    connections:
+    - peers:
+      - server/port
+      - mim/rhs
+      link: LANLinkBuffed
+    - peers:
+      - client/port
+      - mim/lhs
+      link: LANLinkBuffed
+  TcpClient:
+    gates:
+    - port
+links:
+  LANLink:
+    latency: 0.03
+    jitter: 0.0
+    bitrate: 10000000
+  LANLinkBuffed:
+    latency: 0.03
+    jitter: 0.0
+    bitrate: 10000000
+    queuesize: '2048'

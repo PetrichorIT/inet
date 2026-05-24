@@ -1,33 +1,31 @@
-use bytepack::FromBytestream;
-use des::registry;
-use inet_types::{ip::Ipv4Packet, tcp::TcpPacket};
+use bytes_io::FromBytes;
+use des::time::sleep;
+use des_ndl::{Ndl, registry};
 use std::{
     str::FromStr,
     sync::{
-        atomic::{AtomicBool, AtomicU32, Ordering::SeqCst},
         Arc,
+        atomic::{AtomicBool, AtomicU32, Ordering::SeqCst},
     },
 };
+use types::{ip::Ipv4Packet, tcp::TcpPacket};
 
 use des::prelude::*;
-use inet::{interface::*, socket::AsRawFd, TcpSocket};
+use inet::{interface::*, ioctx, socket::AsRawFd, tcp::TcpSocket};
 
+#[derive(Default)]
 struct Link {}
 impl Module for Link {
-    fn new() -> Self {
-        Self {}
-    }
-
     fn handle_message(&mut self, msg: Message) {
         // random packet drop 10 %
-        if (random::<usize>() % 10) == 7 {
-            let ippacket = msg.content::<Ipv4Packet>();
-            let tcp = TcpPacket::from_slice(&ippacket.content).unwrap();
+        if (random::<u64>() as usize % 10) == 7 && msg.body.is::<Ipv4Packet>() {
+            let ippacket = msg.body.content::<Ipv4Packet>();
+            let tcp = TcpPacket::peek_from(&ippacket.content[..]).unwrap();
 
             tracing::error!(
-                "DROP {} --> {} :: Tcp {{ {} seq_no = {} ack_no = {} win = {} data = {} bytes }}",
+                "DROP {} --> {} :: Tcp {{ {:?} seq_no = {} ack_no = {} win = {} data = {} bytes }}",
                 ippacket.src,
-                ippacket.dest,
+                ippacket.dst,
                 tcp.flags,
                 tcp.seq_no,
                 tcp.ack_no,
@@ -38,33 +36,28 @@ impl Module for Link {
             return;
         }
 
-        match msg.header().last_gate.as_ref().map(|v| v.name()) {
-            Some("lhs_in") => send(msg, "rhs_out"),
-            Some("rhs_in") => send(msg, "lhs_out"),
+        let _ = match msg.header.last_gate.as_ref().map(|v| v.name()) {
+            Some("lhs") => send(msg, "rhs"),
+            Some("rhs") => send(msg, "lhs"),
             _ => todo!(),
-        }
+        };
     }
 }
 
+#[derive(Default)]
 struct TcpServer {
     done: Arc<AtomicBool>,
     fd: Arc<AtomicU32>,
 }
-#[async_trait::async_trait]
-impl AsyncModule for TcpServer {
-    fn new() -> Self {
-        Self {
-            done: Arc::new(AtomicBool::new(false)),
-            fd: Arc::new(AtomicU32::new(0)),
-        }
-    }
 
-    async fn at_sim_start(&mut self, _: usize) {
-        add_interface(Interface::ethv4(
-            NetworkDevice::eth(),
-            Ipv4Addr::new(69, 0, 0, 100),
-        ))
-        .unwrap();
+impl Module for TcpServer {
+    fn at_sim_start(&mut self, _: usize) {
+        ioctx()
+            .add_interface(
+                InterfaceDef::new("en0", NetworkDevice::eth())
+                    .ip(Ipv4Addr::new(69, 0, 0, 100).into()),
+            )
+            .unwrap();
 
         // inet::pcap::pcap(inet::pcap::PcapConfig {
         //     filters: inet::pcap::PcapFilters::default(),
@@ -78,6 +71,7 @@ impl AsyncModule for TcpServer {
 
         tokio::spawn(async move {
             let sock = TcpSocket::new_v4().unwrap();
+            sock.set_maximum_segement_size(536).unwrap();
             sock.bind(SocketAddr::from_str("0.0.0.0:2000").unwrap())
                 .unwrap();
 
@@ -102,7 +96,9 @@ impl AsyncModule for TcpServer {
             let mut buf = [0u8; 500];
             let mut acc = 0;
             loop {
-                let Ok(n) = stream.read(&mut buf).await else { break };
+                let Ok(n) = stream.read(&mut buf).await else {
+                    break;
+                };
                 tracing::info!("received {} bytes", n);
 
                 if n == 0 {
@@ -123,41 +119,39 @@ impl AsyncModule for TcpServer {
             drop(stream);
             drop(sock);
 
+            sleep(Duration::from_secs(10)).await;
+
             done.store(true, SeqCst);
         });
     }
 
-    async fn handle_message(&mut self, _: Message) {
+    fn handle_message(&mut self, _: Message) {
         tracing::error!("HM?");
     }
 
-    async fn at_sim_end(&mut self) {
+    fn at_sim_end(&mut self) -> Result<(), des::Error> {
         use inet::socket::bsd_socket_info;
 
         assert!(self.done.load(SeqCst));
         assert!(bsd_socket_info(self.fd.load(SeqCst)).is_err());
+        Ok(())
     }
 }
 
+#[derive(Default)]
 struct TcpClient {
     done: Arc<AtomicBool>,
     fd: Arc<AtomicU32>,
 }
-#[async_trait::async_trait]
-impl AsyncModule for TcpClient {
-    fn new() -> Self {
-        Self {
-            done: Arc::new(AtomicBool::new(false)),
-            fd: Arc::new(AtomicU32::new(0)),
-        }
-    }
 
-    async fn at_sim_start(&mut self, _: usize) {
-        add_interface(Interface::ethv4(
-            NetworkDevice::eth(),
-            Ipv4Addr::new(69, 0, 0, 200),
-        ))
-        .unwrap();
+impl Module for TcpClient {
+    fn at_sim_start(&mut self, _: usize) {
+        ioctx()
+            .add_interface(
+                InterfaceDef::new("en0", NetworkDevice::eth())
+                    .ip(Ipv4Addr::new(69, 0, 0, 200).into()),
+            )
+            .unwrap();
 
         // inet::pcap::pcap(inet::pcap::PcapConfig {
         //     filters: inet::pcap::PcapFilters::default(),
@@ -172,6 +166,7 @@ impl AsyncModule for TcpClient {
         tokio::spawn(async move {
             use tokio::io::AsyncWriteExt;
             let sock = TcpSocket::new_v4().unwrap();
+            sock.set_maximum_segement_size(536).unwrap();
             sock.set_send_buffer_size(1024).unwrap();
             sock.set_recv_buffer_size(1024).unwrap();
 
@@ -194,42 +189,27 @@ impl AsyncModule for TcpClient {
         });
     }
 
-    async fn handle_message(&mut self, _: Message) {
-        panic!()
-    }
-
-    async fn at_sim_end(&mut self) {
+    fn at_sim_end(&mut self) -> Result<(), des::Error> {
         use inet::socket::bsd_socket_info;
 
         assert!(self.done.load(SeqCst));
         assert!(bsd_socket_info(self.fd.load(SeqCst)).is_err());
-    }
-}
-
-struct Main;
-impl Module for Main {
-    fn new() -> Main {
-        Main
+        Ok(())
     }
 }
 
 #[test]
 #[serial_test::serial]
-fn tcp_missing_data_at_close() {
-    inet::init();
+fn tcp_missing_data_at_close() -> Result<(), Box<dyn std::error::Error>> {
+    // des::tracing::init();
 
-    // Subscriber::default()
-    //     .with_max_level(LevelFilter::TRACE)
-    //     .init()
-    //     .unwrap();
-
-    let app = NetworkApplication::new(
-        NdlApplication::new("tests/tcp.ndl", registry![Link, TcpServer, TcpClient, Main])
-            .map_err(|e| println!("{e}"))
-            .unwrap(),
-    );
-    let rt = Builder::seeded(1263431312323)
-        .max_time(10.0.into())
-        .build(app);
-    let _ = rt.run().unwrap();
+    let def = serde_norway::from_str(include_str!("tcp.yml"))?;
+    let mut sim = Sim::new(()).with_stack(inet::init);
+    sim.node(
+        "",
+        Ndl::new(&mut registry![Link, TcpServer, TcpClient, else _], &def)?,
+    )?;
+    let rt = sim.seeded(1263431312323).max_time(20.0.into()).build();
+    let _ = rt.run().into_result()?;
+    Ok(())
 }

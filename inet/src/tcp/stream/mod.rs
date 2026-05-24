@@ -1,0 +1,302 @@
+use super::{State, interest::TcpInterest};
+use crate::io::{Interest, Ready};
+use crate::{IOHandle, ioctx};
+use crate::{
+    dns::{ToSocketAddrs, lookup_host},
+    socket::{AsRawFd, Fd, FromRawFd, IntoRawFd},
+};
+use std::{
+    io::{Error, ErrorKind},
+    net::SocketAddr,
+    sync::Arc,
+    time::Duration,
+};
+use tokio::io::{AsyncRead, AsyncWrite};
+
+mod owned_half;
+pub use owned_half::*;
+
+mod ref_half;
+pub use ref_half::*;
+
+/// A TCP Stream.
+#[derive(Debug)]
+pub struct TcpStream {
+    pub(in crate::tcp) inner: Arc<Inner>,
+}
+
+#[derive(Debug)]
+pub(in crate::tcp) struct Inner {
+    pub fd: Fd,
+    pub handle: IOHandle,
+}
+
+impl TcpStream {
+    pub(crate) fn from_fd(fd: Fd, handle: IOHandle) -> Self {
+        Self {
+            inner: Arc::new(Inner { fd, handle }),
+        }
+    }
+
+    /// Opens a TCP connection to a remote host.
+    ///
+    /// addr is an address of the remote host.
+    /// Anything which implements the ToSocketAddrs trait can be supplied as the address.
+    /// If addr yields multiple addresses, connect will be attempted with each of the addresses
+    /// until a connection is successful. If none of the addresses result in a successful connection,
+    /// the error returned from the last connection attempt (the last address) is returned.
+    pub async fn connect<A: ToSocketAddrs>(addr: A) -> Result<TcpStream, Error> {
+        let addrs = lookup_host(addr).await?;
+        let handle = ioctx();
+        let mut last_err = None;
+
+        for peer in addrs {
+            let fd = handle.do_mutating(|ctx| ctx.tcp_connect(peer, None, None))?;
+
+            if handle.do_mutating(|ctx| ctx.tcp_connection(fd, |c| c.state != State::Estab))? {
+                let interest = TcpInterest::write(fd, handle.clone());
+                match interest.await.inspect_err(|_| {
+                    let _ = handle.do_mutating(|ctx| ctx.tcp_drop(fd));
+                }) {
+                    Ok(_) => {
+                        return Ok(TcpStream {
+                            inner: Arc::new(Inner { fd, handle }),
+                        });
+                    }
+                    Err(e) => {
+                        last_err = Some(e);
+                    }
+                };
+            }
+        }
+
+        Err(last_err.unwrap_or(Error::other("could not resolve to any address")))
+    }
+
+    /// Returns the local address that this stream is bound to.
+    pub fn local_addr(&self) -> Result<SocketAddr, Error> {
+        self.inner
+            .handle
+            .do_mutating(|ctx| ctx.socket_get_addr(self.inner.fd))
+    }
+
+    /// Returns the peer address that this stream is bound to.
+    pub fn peer_addr(&self) -> Result<SocketAddr, Error> {
+        self.inner
+            .handle
+            .do_mutating(|ctx| ctx.socket_get_peer(self.inner.fd))
+    }
+
+    /// Waits for any of the requested ready states.
+    ///
+    /// This function is usually paired with try_read() or try_write().
+    /// It can be used to concurrently read / write to the same socket on a single task
+    /// without splitting the socket.
+    pub async fn ready(&self, interest: Interest) -> Result<Ready, Error> {
+        let interest = TcpInterest::from_io(self.inner.fd, interest, self.inner.handle.clone());
+        interest.await
+    }
+
+    /// Waits for the socket to become readable.
+    ///
+    /// This function is equivalent to ready(Interest::READABLE) and is usually paired with try_read().
+    pub async fn readable(&self) -> Result<(), Error> {
+        self.ready(Interest::READABLE).await?;
+        Ok(())
+    }
+
+    /// Tries to read data from the stream into the provided buffer,
+    /// returning how many bytes were read.
+    ///
+    /// Receives any pending data from the socket but does not wait for new data to arrive.
+    /// On success, returns the number of bytes read.
+    /// Because try_read() is non-blocking, the buffer does not have to be stored by the async task
+    /// and can exist entirely on the stack.
+    pub fn try_read(&self, buf: &mut [u8]) -> Result<usize, Error> {
+        self.inner
+            .handle
+            .do_mutating(|ctx| ctx.tcp_read(self.inner.fd, buf))
+    }
+
+    /// Receives data on the socket from the remote address to which it is connected,
+    /// without removing that data from the queue.
+    /// On success, returns the number of bytes peeked.
+    ///
+    /// Successive calls return the same data.
+    /// This is accomplished by passing MSG_PEEK as a flag to the underlying recv system call.
+    pub async fn peek(&self, buf: &mut [u8]) -> Result<usize, Error> {
+        loop {
+            self.readable().await?;
+            match self
+                .inner
+                .handle
+                .do_mutating(|ctx| ctx.tcp_peek(self.inner.fd, buf))
+            {
+                Ok(n) => return Ok(n),
+                Err(e) if e.kind() == ErrorKind::WouldBlock => continue,
+                Err(e) => return Err(e),
+            }
+        }
+    }
+
+    /// Waits for the socket to become writable.
+    ///
+    /// This function is equivalent to `ready(Interest::WRITABLE)` and
+    /// is usually paired with `try_write()`.
+    pub async fn writable(&self) -> Result<(), Error> {
+        self.ready(Interest::WRITABLE).await?;
+        Ok(())
+    }
+
+    /// Try to write a buffer to the stream, returning how many bytes were written.
+    ///
+    /// The function will attempt to write the entire contents of `buf`,
+    /// but only part of the buffer may be written.
+    pub fn try_write(&self, buf: &[u8]) -> Result<usize, Error> {
+        self.inner
+            .handle
+            .do_mutating(|ctx| ctx.tcp_write(self.inner.fd, buf))
+    }
+
+    /// Reads the linger duration for this socket by getting the `SO_LINGER`
+    /// option.
+    ///
+    /// For more information about this option, see [`set_linger`].
+    ///
+    /// [`set_linger`]: TcpStream::set_linger
+    ///
+    pub fn linger(&self) -> Result<Option<Duration>, Error> {
+        self.inner
+            .handle
+            .do_mutating(|ctx| ctx.tcp_connection(self.inner.fd, |con| con.cfg.linger))
+    }
+
+    /// Sets the linger duration of this socket by setting the `SO_LINGER` option.
+    ///
+    /// This option controls the action taken when a stream has unsent messages and the stream is
+    /// closed. If `SO_LINGER` is set, the system shall block the process until it can transmit the
+    /// data or until the time expires.
+    ///
+    /// If `SO_LINGER` is not specified, and the stream is closed, the system handles the call in a
+    /// way that allows the process to continue as quickly as possible.
+    ///
+    pub fn set_linger(&self, dur: Option<Duration>) -> Result<(), Error> {
+        self.inner
+            .handle
+            .do_mutating(|ctx| ctx.tcp_connection(self.inner.fd, |con| con.cfg.linger = dur))
+    }
+
+    /// Gets the value of the `IP_TTL` option for this socket.
+    ///
+    /// For more information about this option, see [`set_ttl`].
+    ///
+    /// [`set_ttl`]: TcpStream::set_ttl
+    pub fn ttl(&self) -> Result<u32, Error> {
+        self.inner
+            .handle
+            .do_mutating(|ctx| ctx.tcp_connection(self.inner.fd, |con| con.cfg.ttl as u32))
+    }
+
+    /// Sets the value for the `IP_TTL` option on this socket.
+    ///
+    /// This value sets the time-to-live field that is used in every packet sent
+    /// from this socket.
+    ///
+    pub fn set_ttl(&self, ttl: u32) -> Result<(), Error> {
+        let ttl = u8::try_from(ttl).expect("invalid ttl value");
+        self.inner
+            .handle
+            .do_mutating(|ctx| ctx.tcp_connection(self.inner.fd, |con| con.cfg.ttl = ttl))
+    }
+
+    /// Splits a `TcpStream` into a read half and a write half, which can be used to read and write the stream concurrently.
+    ///
+    /// This method is more efficient than [into_split](TcpStream::into_split), but the halves cannot be moved into independently spawned tasks
+    pub fn split<'a>(&'a mut self) -> (ReadHalf<'a>, WriteHalf<'a>) {
+        (ReadHalf { stream: self }, WriteHalf { stream: self })
+    }
+
+    /// Splits a `TcpStream` into a read half and a write half, which can be used to read and write the stream concurrently.
+    ///
+    /// Unlike [split](TcpStream::split), the owned halves can be moved to separate tasks, however this comes at the cost of a heap allocation.
+    ///
+    /// Note: Dropping the write half will shut down the write half of the TCP stream. This is equivalent to calling shutdown() on the TcpStream.
+    pub fn into_split(self) -> (OwnedReadHalf, OwnedWriteHalf) {
+        (
+            OwnedReadHalf {
+                inner: self.inner.clone(),
+            },
+            OwnedWriteHalf { inner: self.inner },
+        )
+    }
+}
+
+impl AsyncRead for TcpStream {
+    fn poll_read(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &mut tokio::io::ReadBuf<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        self.inner.handle.do_mutating(|ctx| {
+            ctx.tcp_poll_read(self.inner.fd, cx, buf)
+                .map(|rdy| rdy.map(|n| buf.advance(n)))
+        })
+    }
+}
+
+impl AsyncWrite for TcpStream {
+    fn poll_write(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &[u8],
+    ) -> std::task::Poll<Result<usize, std::io::Error>> {
+        self.inner
+            .handle
+            .do_mutating(|ctx| ctx.tcp_poll_write(self.inner.fd, cx, buf))
+    }
+    fn poll_flush(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Result<(), std::io::Error>> {
+        self.inner
+            .handle
+            .do_mutating(|ctx| ctx.tcp_flush(self.inner.fd, cx))
+    }
+    fn poll_shutdown(
+        self: std::pin::Pin<&mut Self>,
+        _cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Result<(), std::io::Error>> {
+        std::task::Poll::Ready(Ok(()))
+    }
+}
+
+impl AsRawFd for TcpStream {
+    fn as_raw_fd(&self) -> Fd {
+        self.inner.fd
+    }
+}
+
+impl IntoRawFd for TcpStream {
+    fn into_raw_fd(self) -> Fd {
+        let fd = self.inner.fd;
+        std::mem::forget(self);
+        fd
+    }
+}
+
+impl FromRawFd for TcpStream {
+    fn from_raw_fd(fd: Fd) -> TcpStream {
+        TcpStream {
+            inner: Arc::new(Inner {
+                fd,
+                handle: IOHandle::current(),
+            }),
+        }
+    }
+}
+
+impl Drop for Inner {
+    fn drop(&mut self) {
+        self.handle.try_do_io(|ctx| ctx.tcp_close(self.fd));
+    }
+}

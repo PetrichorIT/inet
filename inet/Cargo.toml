@@ -1,26 +1,36 @@
 [package]
-edition = "2021"
+edition = "2024"
 name = "inet"
 version = "0.1.0"
 
 [features]
-full = ["uds", "dhcp"]
+full = ["dhcp"]
 
+props = []
 default = []
-uds = ["inet-types/uds"]
 dhcp = []
 libpcap = []
+test-util = []
+
 
 [dependencies]
 async-trait = "*"
 fxhash = "0.2.1"
 des = { version = "*", features = ["full"] }
-tokio = "*"
+tokio = "1.37.0"
 tracing = { version = "*" }
-bytes = "1.4.0"
-rand = "0.8.5"
-inet-types = { path = "../inet-types" }
-bytepack = { path = "../bytepack" }
+rand = "*"
+types = { path = "../util/types" }
+bytes-io = { path = "../util/bytes-io" }
+bitflags = ">2.6.0"
+serde = { version = "1.0", features = ["derive"] }
+valuable = { git = "https://github.com/PetrichorIT/valuable", branch = "owned", features = [
+    "derive",
+] }
+des-ndl = "*"
+
 
 [dev-dependencies]
 serial_test = "2.0.0"
+serde_norway = "*"
+pcapng = { path = "../util/pcapng", features = ["test-util"] }

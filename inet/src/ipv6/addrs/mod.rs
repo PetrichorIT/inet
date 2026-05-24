@@ -1,0 +1,535 @@
+//! IPv6 address configuration and utility types (RFC 6724)
+//!
+//! May be important:
+//! - RFC 4862
+//! - RFC 4291
+//! - RFC 8028
+//! - RFC 6204
+//! - RFC 5942
+
+use std::{
+    cmp::Ordering,
+    net::{IpAddr, Ipv6Addr},
+    ops,
+    str::FromStr,
+};
+
+use crate::{
+    ctx::IOContext,
+    interface::{IfId, IfSpec},
+};
+use types::ip::{Ipv6AddrExt, Ipv6LongestPrefixTable, Ipv6Prefix};
+
+mod api;
+pub use api::*;
+
+#[cfg(test)]
+mod tests;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PolicyTable {
+    table: Ipv6LongestPrefixTable<PolicyEntry>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+struct PolicyEntry {
+    #[allow(unused)]
+    precedence: usize,
+    label: usize,
+}
+
+impl PolicyTable {
+    fn add(&mut self, prefix: Ipv6Prefix, precedence: usize, label: usize) {
+        self.table.insert(prefix, PolicyEntry { precedence, label });
+    }
+
+    fn remove(&mut self, prefix: Ipv6Prefix) {
+        self.table.remove(prefix);
+    }
+
+    fn lookup(&self, addr: Ipv6Addr) -> Option<&PolicyEntry> {
+        self.table.lookup(addr)
+    }
+}
+
+impl Default for PolicyTable {
+    fn default() -> Self {
+        let mut table = Ipv6LongestPrefixTable::default();
+        table.insert(
+            Ipv6Prefix::new(Ipv6Addr::LOCALHOST, 128),
+            PolicyEntry {
+                precedence: 50,
+                label: 0,
+            },
+        );
+        table.insert(
+            Ipv6Prefix::new(Ipv6Addr::UNSPECIFIED, 0),
+            PolicyEntry {
+                precedence: 40,
+                label: 1,
+            },
+        );
+        table.insert(
+            Ipv6Prefix::new(Ipv6Addr::new(0, 0, 0, 0, 0, 0xffff, 0, 0), 96),
+            PolicyEntry {
+                precedence: 35,
+                label: 4,
+            },
+        );
+        table.insert(
+            Ipv6Prefix::new(Ipv6Addr::new(0x2002, 0, 0, 0, 0, 0, 0, 0), 16),
+            PolicyEntry {
+                precedence: 30,
+                label: 2,
+            },
+        );
+        table.insert(
+            Ipv6Prefix::new(Ipv6Addr::new(0x2001, 0, 0, 0, 0, 0, 0, 0), 32),
+            PolicyEntry {
+                precedence: 5,
+                label: 5,
+            },
+        );
+        table.insert(
+            Ipv6Prefix::new(Ipv6Addr::new(0xfc00, 0, 0, 0, 0, 0, 0, 0), 7),
+            PolicyEntry {
+                precedence: 3,
+                label: 13,
+            },
+        );
+        table.insert(
+            Ipv6Prefix::new(Ipv6Addr::UNSPECIFIED, 96),
+            PolicyEntry {
+                precedence: 1,
+                label: 3,
+            },
+        );
+        table.insert(
+            Ipv6Prefix::new(Ipv6Addr::new(0xfec0, 0, 0, 0, 0, 0, 0, 0), 10),
+            PolicyEntry {
+                precedence: 1,
+                label: 11,
+            },
+        );
+        table.insert(
+            Ipv6Prefix::new(Ipv6Addr::new(0x3ffe, 0, 0, 0, 0, 0, 0, 0), 16),
+            PolicyEntry {
+                precedence: 1,
+                label: 12,
+            },
+        );
+        Self { table }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub(super) struct SrcAddrCanidateSet {
+    addrs: Vec<CanidateAddr>,
+    dst: Ipv6Addr,
+    ifid: IfSpec,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CanidateAddr {
+    pub addr: Ipv6Addr,
+    pub ifid: IfId,
+    pub preferred: bool,  // according to RFC 4862
+    pub deprecated: bool, // according to RFC 4862
+    pub temporary: bool,
+    pub home_addr: bool,
+    pub care_of_addr: bool,
+}
+
+impl CanidateAddr {
+    pub const UNSPECIFED: CanidateAddr = CanidateAddr {
+        addr: Ipv6Addr::UNSPECIFIED,
+        ifid: IfId::UNKNOWN,
+        preferred: false,
+        deprecated: false,
+        temporary: false,
+        home_addr: false,
+        care_of_addr: false,
+    };
+}
+
+impl ops::Deref for CanidateAddr {
+    type Target = Ipv6Addr;
+    fn deref(&self) -> &Self::Target {
+        &self.addr
+    }
+}
+
+impl FromStr for CanidateAddr {
+    type Err = &'static str;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let mut parts = s.split(" ");
+        let addr: IpAddr = parts
+            .next()
+            .ok_or("cannot find addr part")?
+            .parse()
+            .map_err(|_| "addr parsing error")?;
+
+        let addr = match addr {
+            IpAddr::V4(v4) => v4.to_ipv6_mapped(),
+            IpAddr::V6(v6) => v6,
+        };
+
+        let mut canidate = CanidateAddr {
+            addr,
+            ifid: IfId::new(&addr.to_string()),
+            preferred: addr.to_ipv4().is_some(),
+            deprecated: false,
+            temporary: false,
+            home_addr: false,
+            care_of_addr: false,
+        };
+
+        for part in parts {
+            if part.starts_with('#') {
+                let iface = IfId::new(part.trim_start_matches('#'));
+                canidate.ifid = iface;
+                continue;
+            }
+
+            match part {
+                "(temporary)" => canidate.temporary = true,
+                "(perferred)" => canidate.preferred = true,
+                "(deprecated)" => canidate.deprecated = true,
+                "(care-of-addr)" => canidate.care_of_addr = true,
+                "(home-addr)" => canidate.home_addr = true,
+                _ => todo!(),
+            }
+        }
+
+        Ok(canidate)
+    }
+}
+
+impl IOContext {
+    pub(super) fn ipv6_src_addr_canidate_set(
+        &self,
+        dst: Ipv6Addr,
+        preferred_iface: IfSpec,
+    ) -> SrcAddrCanidateSet {
+        let mut addrs = if let Some(preferred_iface) = preferred_iface {
+            let iface = self.ifaces.get(&preferred_iface).unwrap();
+            iface
+                .bindings
+                .v6
+                .unicast
+                .iter()
+                .map(|v| v.to_canidate_addr(preferred_iface))
+                .collect()
+        } else {
+            // any interface
+            let mut addrs = Vec::new();
+            for iface in self.ifaces.values() {
+                for addr in &iface.bindings.v6.unicast {
+                    addrs.push(addr.to_canidate_addr(iface.id()));
+                }
+            }
+            addrs
+        };
+
+        // TODO:
+        // for multicast addrs or site local stuff, iface limitations
+
+        // For site local dst:
+        // Only include addrs assigned to the interface facing this site
+        if let Some(preferred_iface) = preferred_iface {
+            addrs.retain(|canidate| canidate.ifid == preferred_iface);
+        }
+
+        SrcAddrCanidateSet::new(addrs, dst, preferred_iface)
+    }
+}
+
+impl SrcAddrCanidateSet {
+    pub(super) fn new(addrs: Vec<CanidateAddr>, dst: Ipv6Addr, ifid: IfSpec) -> Self {
+        Self { addrs, dst, ifid }
+    }
+
+    pub(super) fn select(&self, policies: &PolicyTable) -> Option<CanidateAddr> {
+        self.addrs
+            .iter()
+            .max_by(|&&sa, &&sb| {
+                // Sorting according to RFC 6724
+
+                // Rule 0: use respect ip version
+                let sa_is_ipv4 = sa.to_ipv4().is_some();
+                let sb_is_ipv4 = sb.to_ipv4().is_some();
+                let dst_is_ipv4 = self.dst.to_ipv4().is_some();
+
+                if sa_is_ipv4 == dst_is_ipv4 && sb_is_ipv4 != dst_is_ipv4 {
+                    return Ordering::Greater;
+                }
+                if sb_is_ipv4 == dst_is_ipv4 && sa_is_ipv4 != dst_is_ipv4 {
+                    return Ordering::Less;
+                }
+
+                // Rule 1: Same address preference
+                if sa.addr == self.dst {
+                    return Ordering::Greater;
+                }
+                if sb.addr == self.dst {
+                    return Ordering::Less;
+                }
+
+                // Rule 2: prefer appropiate scope
+                if sa.scope() < sb.scope() {
+                    if sa.scope() < self.dst.scope() {
+                        return Ordering::Less;
+                    } else {
+                        return Ordering::Greater;
+                    }
+                }
+
+                if sb.scope() < sa.scope() {
+                    if sb.scope() < self.dst.scope() {
+                        return Ordering::Greater;
+                    } else {
+                        return Ordering::Less;
+                    }
+                }
+
+                // Rule 3: avoid deprecated addrs
+                if sa.deprecated && !sb.deprecated {
+                    return Ordering::Less;
+                }
+                if sb.deprecated && !sa.deprecated {
+                    return Ordering::Greater;
+                }
+
+                // Rule 4: prefer home addr
+                if sa.home_addr && sa.care_of_addr && !(sb.home_addr && sb.care_of_addr) {
+                    return Ordering::Greater;
+                }
+                if sb.home_addr && sb.care_of_addr && !(sa.home_addr && sa.care_of_addr) {
+                    return Ordering::Less;
+                }
+
+                // Rule 5: prefer outgoing iface
+                if sa.ifid == self.ifid && sb.ifid != self.ifid {
+                    return Ordering::Greater;
+                }
+
+                if sb.ifid == self.ifid && sa.ifid != self.ifid {
+                    return Ordering::Less;
+                }
+
+                // Rule 5.5: prefered advertised next hops
+                // TODO: impl
+
+                // Rule 6:
+                if let (Some(ap), Some(bp), Some(dstp)) = (
+                    policies.lookup(sa.addr),
+                    policies.lookup(sb.addr),
+                    policies.lookup(self.dst),
+                ) {
+                    if ap.label == dstp.label && bp.label != dstp.label {
+                        return Ordering::Greater;
+                    }
+
+                    if bp.label == dstp.label && ap.label != dstp.label {
+                        return Ordering::Less;
+                    }
+                }
+
+                // Rule 7: Prefer temporary addrs
+                if sa.temporary && !sb.temporary {
+                    return Ordering::Greater;
+                }
+                if sb.temporary && !sa.temporary {
+                    return Ordering::Less;
+                }
+
+                // Rule 8: longes prefix match
+                // TODO: prefix len info must be stored with the canidate set
+                let a_prefix = Ipv6Prefix::fit(sa.addr);
+                let b_prefix = Ipv6Prefix::fit(sb.addr);
+                match a_prefix
+                    .common_prefix_len(self.dst)
+                    .cmp(&b_prefix.common_prefix_len(self.dst))
+                {
+                    Ordering::Equal => {}
+                    other => return other,
+                }
+
+                Ordering::Equal
+            })
+            .cloned()
+    }
+}
+
+#[allow(unused)]
+#[derive(Debug, Clone)]
+pub(super) struct AddrSelection {
+    destinations: Vec<(Ipv6Addr, CanidateAddr, SrcAddrCanidateSet)>,
+}
+
+#[allow(unused)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct Selection {
+    src: Ipv6Addr,
+    src_ifid: IfId,
+    dst: Ipv6Addr,
+}
+
+#[allow(unused)]
+impl AddrSelection {
+    fn new(destinations: Vec<Ipv6Addr>, f: impl Fn(Ipv6Addr) -> SrcAddrCanidateSet) -> Self {
+        AddrSelection {
+            destinations: destinations
+                .into_iter()
+                .map(|dst| (dst, CanidateAddr::UNSPECIFED, f(dst)))
+                .collect(),
+        }
+    }
+
+    fn new_with_static(destinations: Vec<Ipv6Addr>, src_set: Vec<CanidateAddr>) -> Self {
+        AddrSelection {
+            destinations: destinations
+                .into_iter()
+                .map(|dst| {
+                    (
+                        dst,
+                        CanidateAddr::UNSPECIFED,
+                        SrcAddrCanidateSet {
+                            addrs: src_set.clone(),
+                            dst,
+                            ifid: None,
+                        },
+                    )
+                })
+                .collect(),
+        }
+    }
+
+    fn select_all(&mut self, policies: &PolicyTable) -> Vec<Selection> {
+        let mut selections = Vec::new();
+        while let Some(selection) = self.select(policies) {
+            selections.push(selection);
+        }
+        selections
+    }
+
+    fn select(&mut self, policies: &PolicyTable) -> Option<Selection> {
+        self.destinations.iter_mut().for_each(|tupel| {
+            tupel.1 = tupel.2.select(policies).unwrap_or(CanidateAddr::UNSPECIFED)
+        });
+
+        self.destinations
+            .extract_max_by(|&(da, sa, _), &(db, sb, _)| {
+                // Rule 1: Avoid unstable addrs
+                // TODO: lookup in destination cache
+                // TODO: src addrs checks
+
+                // Rule 2: Prefer matching scope
+
+                if da.scope() == sa.scope() && db.scope() != sb.scope() {
+                    return Ordering::Greater;
+                }
+                if db.scope() == sb.scope() && da.scope() != sa.scope() {
+                    return Ordering::Less;
+                }
+
+                // Rule 3: avoid depc addrs
+                if sa.deprecated && !sb.deprecated {
+                    return Ordering::Less;
+                }
+                if sb.deprecated && !sa.deprecated {
+                    return Ordering::Greater;
+                }
+
+                // Rule 4: Preferm home addr (equivalent to src-addr-select)
+                if sa.home_addr && sa.care_of_addr && !(sb.home_addr && sb.care_of_addr) {
+                    return Ordering::Greater;
+                }
+                if sb.home_addr && sb.care_of_addr && !(sa.home_addr && sa.care_of_addr) {
+                    return Ordering::Less;
+                }
+                // Rule 5: Prefer matching label
+                let (Some(dap), Some(sap), Some(dbp), Some(sbp)) = (
+                    policies.lookup(da),
+                    policies.lookup(sa.addr),
+                    policies.lookup(db),
+                    policies.lookup(sb.addr),
+                ) else {
+                    todo!()
+                };
+
+                if sap.label == dap.label && sbp.label != dbp.label {
+                    return Ordering::Greater;
+                }
+                if sbp.label == dbp.label && sap.label != dap.label {
+                    return Ordering::Less;
+                }
+
+                // Rule 6: Prefer higher precedence
+                if dap.precedence > dbp.precedence {
+                    return Ordering::Greater;
+                }
+                if dbp.precedence > dap.precedence {
+                    return Ordering::Less;
+                }
+
+                // Rule 7: prefer nativ mechanism
+                // TODO: impl
+
+                // Rule 8: Prefer small scope
+                // inv ordering, since smaller scopes are prefered
+                match db.scope().cmp(&da.scope()) {
+                    Ordering::Equal => {}
+                    other => return other,
+                }
+
+                // Rule 9: longest prefix
+                let sa_prefix = Ipv6Prefix::fit(sa.addr);
+                let sb_prefix = Ipv6Prefix::fit(sa.addr);
+
+                if sa_prefix.common_prefix_len(da) > sb_prefix.common_prefix_len(db) {
+                    return Ordering::Greater;
+                }
+                if sb_prefix.common_prefix_len(db) > sa_prefix.common_prefix_len(da) {
+                    return Ordering::Greater;
+                }
+
+                Ordering::Equal
+            })
+            .and_then(|(dst, src, _)| {
+                (src != CanidateAddr::UNSPECIFED).then_some(Selection {
+                    src: src.addr,
+                    src_ifid: src.ifid,
+                    dst,
+                })
+            })
+    }
+}
+
+#[allow(unused)]
+trait VecExt<T> {
+    fn extract_max_by<F>(&mut self, f: F) -> Option<T>
+    where
+        F: FnMut(&T, &T) -> Ordering;
+}
+
+impl<T> VecExt<T> for Vec<T> {
+    fn extract_max_by<F>(&mut self, mut f: F) -> Option<T>
+    where
+        F: FnMut(&T, &T) -> Ordering,
+    {
+        if self.is_empty() {
+            None
+        } else {
+            let mut idx = 0;
+            let mut max = &self[0];
+            for (i, cur) in self.iter().enumerate().skip(1) {
+                if f(max, cur) == Ordering::Less {
+                    max = cur;
+                    idx = i;
+                }
+            }
+            Some(self.remove(idx))
+        }
+    }
+}

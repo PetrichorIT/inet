@@ -1,119 +1,72 @@
-use des::{prelude::*, registry, time::sleep};
+use des::{globals, prelude::*, random, time::sleep};
 use inet::{
-    arp::arpa,
-    interface::{add_interface, Interface, NetworkDevice},
-    socket::RawIpSocket,
+    interface::{InterfaceDef, NetworkDevice},
+    ioctx,
+    ipv4::{arp::arpa, socket::RawV4Socket},
+    utils::SimpleSim,
 };
-use inet_types::ip::{IpPacket, Ipv4Packet, Ipv6Packet};
 use serial_test::serial;
-use tokio::spawn;
+use types::ip::Ipv4Packet;
 
-type Switch = inet::utils::LinkLayerSwitch;
+#[test]
+#[serial]
+fn v4() -> Result<(), des::Failure> {
+    // des::tracing::init();
 
-struct Node {
-    ip: IpAddr,
-}
-#[async_trait::async_trait]
-impl AsyncModule for Node {
-    fn new() -> Self {
-        Self {
-            ip: IpAddr::V4(Ipv4Addr::UNSPECIFIED),
-        }
-    }
+    let mut sim = SimpleSim::default();
+    sim.inner_mut().include_cfg(include_str!("arp/v4.par.yml"));
 
-    async fn at_sim_start(&mut self, _stage: usize) {
-        let ip = par("addr").unwrap().parse().unwrap();
-        add_interface(Interface::eth(NetworkDevice::eth(), ip)).unwrap();
-
-        self.ip = ip;
-
-        let mut valid_addrs = Vec::with_capacity(5);
-        for i in 0..5 {
-            let ip: IpAddr = par_for("addr", &format!("node[{i}]"))
-                .unwrap()
-                .parse()
+    for i in 0..5 {
+        sim.raw(&format!("node[{i}]"), |mut rx| async move {
+            let ip = current().prop::<Ipv4Addr>("addr").unwrap().get().unwrap();
+            ioctx()
+                .add_interface(InterfaceDef::new("en0", NetworkDevice::eth()).ipv4(ip))
                 .unwrap();
-            valid_addrs.push(ip)
-        }
 
-        spawn(async move {
-            let sock = if ip.is_ipv4() {
-                RawIpSocket::new_v4().unwrap()
-            } else {
-                RawIpSocket::new_v6().unwrap()
-            };
-            loop {
+            tokio::spawn(async move {
+                while let Some(msg) = rx.recv().await {
+                    if msg.body.is::<Ipv4Packet>() {
+                        let msg = msg.body.content::<Ipv4Packet>();
+                        assert_eq!(msg.dst, ip);
+                        tracing::info!("received message from {}", msg.src);
+                    }
+                }
+            });
+
+            let mut valid_addrs = Vec::new();
+            for i in 0..5 {
+                let ip = globals()
+                    .get(&format!("node[{i}]"))
+                    .unwrap()
+                    .prop::<Ipv4Addr>("addr")
+                    .unwrap()
+                    .get()
+                    .unwrap();
+                valid_addrs.push(ip)
+            }
+
+            let mut sock = RawV4Socket::new(0).unwrap();
+            let mut index = random::<u64>() as usize % 5;
+            while SimTime::now() < 5.0.into() {
                 sleep(Duration::from_secs_f64(random())).await;
 
-                let target = valid_addrs[random::<usize>() % 5];
+                let target = valid_addrs[index];
+                index = (index + 1) % 5;
                 if target == ip {
                     continue;
                 }
 
                 tracing::info!("sending packet to {}", target);
-                sock.try_send(IpPacket::new(ip, target, vec![42, 42]))
-                    .unwrap();
+                sock.bind(ip).unwrap();
+                sock.try_send_to(&[42, 42], target).unwrap();
             }
+
+            let arpa = arpa()?;
+            assert_eq!(arpa.len(), 6);
+
+            Ok(())
         });
     }
 
-    async fn handle_message(&mut self, msg: Message) {
-        if msg.can_cast::<Ipv4Packet>() {
-            let msg = msg.content::<Ipv4Packet>();
-            assert_eq!(msg.dest, self.ip);
-            tracing::info!("received message from {}", msg.src);
-        }
-
-        if msg.can_cast::<Ipv6Packet>() {
-            let msg = msg.content::<Ipv6Packet>();
-            assert_eq!(msg.dest, self.ip);
-            tracing::info!("received message from {}", msg.src);
-        }
-    }
-
-    async fn at_sim_end(&mut self) {
-        let r = arpa().unwrap();
-        assert_eq!(r.len(), 6);
-    }
-}
-
-struct Main;
-impl Module for Main {
-    fn new() -> Self {
-        Self
-    }
-}
-
-#[test]
-#[serial]
-fn v4() {
-    inet::init();
-    // Logger::new().set_logger();
-
-    let mut app = NetworkApplication::new(
-        NdlApplication::new("tests/arp/main.ndl", registry![Node, Switch, Main])
-            .map_err(|e| println!("{e}"))
-            .unwrap(),
-    );
-    app.include_par_file("tests/arp/v4.par");
-
-    let rt = Builder::seeded(123).max_itr(500).build(app);
-    let _ = rt.run().unwrap_premature_abort();
-}
-
-#[test]
-#[serial]
-fn v6() {
-    inet::init();
-    // Logger::new().set_logger();
-
-    let mut app = NetworkApplication::new(
-        NdlApplication::new("tests/arp/main.ndl", registry![Node, Switch, Main])
-            .map_err(|e| println!("{e}"))
-            .unwrap(),
-    );
-    app.include_par_file("tests/arp/v6.par");
-
-    let rt = Builder::seeded(123).max_itr(500).build(app);
-    let _ = rt.run().unwrap_premature_abort();
+    sim.run_max_time(10.0).map(|_| ())
 }

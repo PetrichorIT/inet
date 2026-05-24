@@ -1,3 +1,9 @@
+#![warn(clippy::pedantic)]
+#![allow(
+    clippy::needless_pass_by_value,
+    clippy::cast_possible_truncation,
+    clippy::single_match
+)]
 use std::{
     io::{Error, Result},
     net::{IpAddr, Ipv4Addr},
@@ -8,14 +14,14 @@ use adj_in::{AdjIn, Peer, Route};
 use adj_out::AdjRIBOut;
 use des::time::SimTime;
 use fxhash::{FxBuildHasher, FxHashMap};
-use inet::{interface::InterfaceName, routing::add_routing_table, TcpListener};
+use inet::{interface::InterfaceName, ipv4::router::add_routing_table, tcp::TcpListener};
 use kernel::{DefaultBgpKernel, Kernel};
 use loc_rib::LocRibWithKernel;
 use peering::{BgpPeeringCfg, NeighborDeamon, NeighborHandle};
 use pkt::{BgpUpdatePacket, Nlri};
 use tokio::{
     spawn,
-    sync::mpsc::{channel, Sender},
+    sync::mpsc::{Sender, channel},
     task::JoinHandle,
 };
 
@@ -93,6 +99,7 @@ pub enum NeighborEgressEvent {
 }
 
 impl BgpDeamon {
+    #[must_use]
     pub fn new(as_num: AsNumber, router_id: Ipv4Addr) -> Self {
         Self {
             as_num,
@@ -109,11 +116,13 @@ impl BgpDeamon {
         self.kernel = Some(Box::new(kernel));
     }
 
+    #[must_use]
     pub fn lan_iface(mut self, iface: &str) -> Self {
         self.local_iface = Some(InterfaceName::from(iface));
         self
     }
 
+    #[must_use]
     pub fn add_neighbor(mut self, addr: Ipv4Addr, as_num: AsNumber, iface: &str) -> Self {
         self.neighbors.push(BgpNodeInformation {
             addr,
@@ -123,12 +132,18 @@ impl BgpDeamon {
         self
     }
 
+    #[must_use]
     pub fn add_nlri(mut self, nlri: Nlri) -> Self {
         self.networks.push(nlri);
         self
     }
 
     #[tracing::instrument(name = "bgp", skip_all)]
+    #[allow(
+        clippy::missing_panics_doc,
+        clippy::missing_errors_doc,
+        clippy::too_many_lines
+    )]
     pub async fn deploy(mut self) -> Result<DepolyedBgpDeamon> {
         let table_id = add_routing_table()?;
 
@@ -186,7 +201,7 @@ impl BgpDeamon {
                         tracing::debug!("incoming connection ({:?} -> local:179)", from);
                         neighbor.send(stream).await.unwrap();
                     } else {
-                        tracing::warn!("incoming connection not directed at any bgp port")
+                        tracing::warn!("incoming connection not directed at any bgp port");
                     }
                 }
                 Ok::<_, Error>(())
@@ -198,7 +213,7 @@ impl BgpDeamon {
         let mtx2 = mtx.clone();
 
         let run_loop = spawn(async move {
-            let _ = listener_handle;
+            drop(listener_handle);
 
             let mut adj_in = AdjIn::new();
             let mut loc_rib = LocRibWithKernel::new(
@@ -233,9 +248,10 @@ impl BgpDeamon {
             }
 
             loop {
+                use NeighborEgressEvent::{Start, Stop};
+                use NeighborIngressEvent::{ConnectionEstablished, ConnectionLost, Update};
+
                 let _ = &mtx2; // ensure mtx2 is moved into the func, and keept alive to prevent None loops
-                use NeighborEgressEvent::*;
-                use NeighborIngressEvent::*;
 
                 if adj_in.is_dirty() {
                     let done = loc_rib.kernel_decision(&adj_in, &mut adj_out);
@@ -248,7 +264,7 @@ impl BgpDeamon {
                 let event = tokio::select! {
                     event = rx.recv() => event,
                     mng = mrx.recv() => {
-                        use BgpDeamonManagmentEvent::*;
+                        use BgpDeamonManagmentEvent::{StartPeering, StopPeering, Status};
                         match mng.unwrap() {
                             StopPeering(peer) => {
                                 let hndl = neighbor_send_handles
@@ -285,7 +301,7 @@ impl BgpDeamon {
                         }
                         continue;
                     }
-                    _ = adj_out.tick() => continue,
+                    () = adj_out.tick() => continue,
                 };
 
                 match event.unwrap() {
@@ -303,16 +319,16 @@ impl BgpDeamon {
                         assert!(done, "This could be a problem");
 
                         if done {
-                            adj_in.unset_dirty()
+                            adj_in.unset_dirty();
                         }
 
-                        let Some(hndl) =  neighbor_send_handles.get(&peer.addr) else {
+                        let Some(hndl) = neighbor_send_handles.get(&peer.addr) else {
                             todo!()
                         };
 
                         if hndl.up {
                             // should be restarted
-                            hndl.tx.send(Start).await.expect("failed to send")
+                            hndl.tx.send(Start).await.expect("failed to send");
                         }
                     }
                     Update(peer, update) => adj_in.process(update, peer),

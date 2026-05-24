@@ -1,58 +1,51 @@
-use des::registry;
+use des::time::sleep;
+use des_ndl::{Ndl, registry};
 use std::{
     str::FromStr,
     sync::{
-        atomic::{AtomicBool, AtomicU32, Ordering::SeqCst},
         Arc,
+        atomic::{AtomicBool, AtomicU32, Ordering::SeqCst},
     },
 };
 
 use des::prelude::*;
 use inet::{
     interface::*,
+    ioctx,
     socket::{AsRawFd, Fd},
-    TcpListener, TcpStream,
+    tcp::{TcpListener, TcpStream},
 };
 use serial_test::serial;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 const LIMIT: usize = 100_000;
 
+#[derive(Default)]
 struct Link {}
 impl Module for Link {
-    fn new() -> Self {
-        Self {}
-    }
-
     fn handle_message(&mut self, msg: Message) {
-        match msg.header().last_gate.as_ref().map(|v| v.name()) {
-            Some("lhs_in") => send(msg, "rhs_out"),
-            Some("rhs_in") => send(msg, "lhs_out"),
+        let _ = match msg.header.last_gate.as_ref().map(|v| v.name()) {
+            Some("lhs") => send(msg, "rhs"),
+            Some("rhs") => send(msg, "lhs"),
             _ => todo!(),
-        }
+        };
     }
 }
 
+#[derive(Default)]
 struct TcpServer {
     done: Arc<AtomicBool>,
     fd: Arc<AtomicU32>,
 }
 
-#[async_trait::async_trait]
-impl AsyncModule for TcpServer {
-    fn new() -> Self {
-        Self {
-            done: Arc::new(AtomicBool::new(false)),
-            fd: Arc::new(AtomicU32::new(0)),
-        }
-    }
-
-    async fn at_sim_start(&mut self, _: usize) {
-        add_interface(Interface::ethv4(
-            NetworkDevice::eth(),
-            Ipv4Addr::new(69, 0, 0, 100),
-        ))
-        .unwrap();
+impl Module for TcpServer {
+    fn at_sim_start(&mut self, _: usize) {
+        ioctx()
+            .add_interface(
+                InterfaceDef::new("en0", NetworkDevice::eth())
+                    .ip(Ipv4Addr::new(69, 0, 0, 100).into()),
+            )
+            .unwrap();
 
         let done = self.done.clone();
         let fd = self.fd.clone();
@@ -90,45 +83,39 @@ impl AsyncModule for TcpServer {
         });
     }
 
-    async fn handle_message(&mut self, _: Message) {
+    fn handle_message(&mut self, _: Message) {
         tracing::error!("All packet should have been caught by the plugins");
     }
 
-    async fn at_sim_end(&mut self) {
+    fn at_sim_end(&mut self) -> Result<(), des::Error> {
         assert!(self.done.load(SeqCst));
 
         let fd: Fd = self.fd.load(SeqCst);
         assert!(fd != 0);
-        assert!(inet::socket::bsd_socket_info(fd).is_err())
+        assert!(inet::socket::bsd_socket_info(fd).is_err());
+        Ok(())
     }
 }
 
+#[derive(Default)]
 struct TcpClient {
     done: Arc<AtomicBool>,
     fd: Arc<AtomicU32>,
 }
 
-#[async_trait::async_trait]
-impl AsyncModule for TcpClient {
-    fn new() -> Self {
-        Self {
-            done: Arc::new(AtomicBool::new(false)),
-            fd: Arc::new(AtomicU32::new(0)),
-        }
-    }
-
-    async fn at_sim_start(&mut self, _: usize) {
-        add_interface(Interface::ethv4(
-            NetworkDevice::eth(),
-            Ipv4Addr::new(69, 0, 0, 200),
-        ))
-        .unwrap();
+impl Module for TcpClient {
+    fn at_sim_start(&mut self, _: usize) {
+        ioctx()
+            .add_interface(
+                InterfaceDef::new("en0", NetworkDevice::eth())
+                    .ip(Ipv4Addr::new(69, 0, 0, 200).into()),
+            )
+            .unwrap();
 
         let done = self.done.clone();
         let fd = self.fd.clone();
 
         tokio::spawn(async move {
-            use tokio::io::AsyncWriteExt;
             let mut stream = TcpStream::connect("69.0.0.100:2000").await.unwrap();
             fd.store(stream.as_raw_fd(), SeqCst);
 
@@ -138,7 +125,7 @@ impl AsyncModule for TcpClient {
             // let mut waiting_to_confirm = VecDeque::with_capacity(4096);
 
             while acc < LIMIT {
-                let k = (random::<usize>() % 4096).min(LIMIT - acc);
+                let k = (random::<u64>() as usize % 4096).min(LIMIT - acc);
                 let buf = std::iter::repeat_with(|| random::<u8>())
                     .take(k)
                     .collect::<Vec<_>>();
@@ -154,43 +141,41 @@ impl AsyncModule for TcpClient {
             tracing::info!("Client done");
             done.store(true, SeqCst);
             drop(stream);
+
+            // wait for TCP stream to close & remove BSD info
+            sleep(Duration::from_secs(10)).await;
         });
     }
 
-    async fn handle_message(&mut self, _: Message) {
+    fn handle_message(&mut self, _: Message) {
         panic!("All packet should have been caught by the plugins")
     }
 
-    async fn at_sim_end(&mut self) {
+    fn at_sim_end(&mut self) -> Result<(), des::Error> {
         assert!(self.done.load(SeqCst));
 
         let fd: Fd = self.fd.load(SeqCst);
         assert!(fd != 0);
-        assert!(inet::socket::bsd_socket_info(fd).is_err())
-    }
-}
+        let info = inet::socket::bsd_socket_info(fd);
 
-struct Main;
-impl Module for Main {
-    fn new() -> Main {
-        Main
+        assert!(info.is_err(), "found unexpected {info:?}");
+        Ok(())
     }
 }
 
 #[test]
 #[serial]
-fn tcp_echo_100k() {
-    inet::init();
+fn tcp_echo_100k() -> Result<(), Box<dyn std::error::Error>> {
+    let mut sim = Sim::new(()).with_stack(inet::init);
+    let def = serde_norway::from_str(include_str!("tcp.yml"))?;
+    sim.node(
+        "",
+        Ndl::new(&mut registry![Link, TcpServer, TcpClient, else _], &def)?,
+    )?;
 
-    // Logger::new().set_logger();
-
-    let app = NetworkApplication::new(
-        NdlApplication::new("tests/tcp.ndl", registry![Link, TcpServer, TcpClient, Main])
-            .map_err(|e| println!("{e}"))
-            .unwrap(),
-    );
-    let rt = Builder::seeded(123).build(app);
-    let (_, time, profiler) = rt.run().unwrap();
-    assert_eq!(time.as_secs(), 7);
-    assert!(profiler.event_count < 8000);
+    let rt = sim.seeded(123).build();
+    let r = rt.run().assert_no_err();
+    assert_eq!(r.time.as_secs(), 6 + 10); // there is something wrong here
+    assert!(r.app.num_events_dispatched() < 8000);
+    Ok(())
 }

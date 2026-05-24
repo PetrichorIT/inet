@@ -1,15 +1,20 @@
+#![allow(clippy::unit_arg)]
+#![warn(clippy::dbg_macro)]
+
 #[macro_use]
 mod macros;
 
-pub mod arp;
 pub mod dns;
 pub mod extensions;
-pub mod icmp;
 pub mod interface;
 pub mod io;
-pub mod routing;
 pub mod socket;
 pub mod utils;
+
+pub mod env;
+
+pub mod ipv4;
+pub mod ipv6;
 
 cfg_libpcap! {
     pub mod libpcap;
@@ -19,18 +24,17 @@ cfg_dhcp! {
     pub mod dhcp;
 }
 
-cfg_uds! {
-    pub mod uds;
-    pub mod fs;
-}
-
-pub use inet_types as types;
+use des::{
+    ObjectPath,
+    processing::{ProcessingStack, TimeDriver, TokioRuntime},
+};
+use dns::DnsResolver;
+pub use types;
 
 mod udp;
 pub use udp::*;
 
 pub mod tcp;
-pub use tcp::api::{TcpListener, TcpSocket, TcpStream};
 
 mod plugin;
 pub use plugin::*;
@@ -39,13 +43,35 @@ mod ctx;
 pub use ctx::Current;
 use ctx::*;
 
+mod handle;
+pub use handle::{IOHandle, ioctx};
+
 /// Initaliztion function for inet-plugins.
 ///
 /// Call this function as the first step in your simulation (pre runtime creation)
-pub fn init() {
-    des::net::module::set_setup_fn(inet_init)
+#[must_use]
+pub fn init() -> ProcessingStack {
+    (
+        TimeDriver::default(),
+        IOPlugin::new(IOContext::new(ObjectPath::default())),
+        TokioRuntime::default(),
+    )
+        .into()
 }
 
-fn inet_init(this: &des::net::module::ModuleContext) {
-    this.add_plugin(IOPlugin::new(this.id()), 1);
+pub fn stack(
+    dns_hook: DnsResolver,
+    // on_startup: impl Fn() -> () + 'static,
+) -> Box<dyn Fn() -> ProcessingStack + 'static> {
+    // let on_startup = Arc::new(on_startup);
+    Box::new(move || {
+        let mut io = IOContext::new(ObjectPath::default());
+        io.dns = dns_hook;
+        (
+            TimeDriver::default(),
+            IOPlugin::new(io),
+            TokioRuntime::default(),
+        )
+            .into()
+    })
 }

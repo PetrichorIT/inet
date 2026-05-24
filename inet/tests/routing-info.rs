@@ -1,52 +1,43 @@
 use std::str::FromStr;
 
-use des::{prelude::*, registry};
+use des::prelude::*;
+use des_ndl::{Ndl, registry};
 use inet::{
-    interface::{add_interface, Interface, NetworkDevice},
-    routing::{RoutingInformation, RoutingPeer},
+    env::{RoutingInformation, RoutingPeer},
+    interface::{InterfaceDef, NetworkDevice},
+    ioctx,
 };
 
+#[derive(Default)]
 struct A;
+#[derive(Default)]
 struct B;
+#[derive(Default)]
 struct C;
+#[derive(Default)]
 struct Main;
 
 impl Module for A {
-    fn new() -> Self {
-        Self
-    }
-
     fn at_sim_start(&mut self, _stage: usize) {
-        add_interface(Interface::ethv4(
-            NetworkDevice::eth(),
-            Ipv4Addr::from_str("192.168.2.100").unwrap(),
-        ))
-        .unwrap();
+        ioctx()
+            .add_interface(
+                InterfaceDef::new("en0", NetworkDevice::eth()).ip("192.168.2.100".parse().unwrap()),
+            )
+            .unwrap();
     }
 }
 impl Module for B {
-    fn new() -> Self {
-        Self
-    }
-
     fn at_sim_start(&mut self, _stage: usize) {
-        add_interface(Interface::ethv4(
-            NetworkDevice::eth(),
-            Ipv4Addr::from_str("192.168.2.200").unwrap(),
-        ))
-        .unwrap();
+        ioctx()
+            .add_interface(
+                InterfaceDef::new("en0", NetworkDevice::eth()).ip("192.168.2.200".parse().unwrap()),
+            )
+            .unwrap();
     }
 }
-impl Module for C {
-    fn new() -> Self {
-        Self
-    }
-}
+impl Module for C {}
 
 impl Module for Main {
-    fn new() -> Self {
-        Self
-    }
     fn at_sim_start(&mut self, stage: usize) {
         if stage == 1 {
             let r = RoutingInformation::collect();
@@ -79,20 +70,16 @@ impl Module for Main {
 }
 
 #[test]
-fn routing_info() {
-    inet::init();
-    // Logger::new()
-    //     .interal_max_log_level(tracing::LevelFilter::Info)
-    //     .set_logger();
+fn routing_info() -> Result<(), Box<dyn std::error::Error>> {
+    // des::tracing::init();
 
-    let app = NetworkApplication::new(
-        NdlApplication::new("tests/triangle.ndl", registry![A, B, C, Main])
-            .map_err(|e| println!("{e}"))
-            .unwrap(),
-    );
-    let rt = Builder::seeded(123).max_time(100.0.into()).build(app);
-    match rt.run() {
-        RuntimeResult::EmptySimulation { .. } => {}
-        _ => panic!("unexpected runtime result"),
-    }
+    let mut sim = Sim::new(()).with_stack(inet::init);
+    let def = serde_norway::from_str(include_str!("triangle.yml"))?;
+    sim.node("", Ndl::new(&mut registry![A, B, C, Main], &def)?)?;
+
+    let rt = sim.seeded(123).max_time(100.0.into()).build();
+    let res = rt.run().assert_no_err();
+    assert_eq!(res.app.num_events_dispatched(), 4);
+
+    Ok(())
 }

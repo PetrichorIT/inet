@@ -1,0 +1,168 @@
+use des::{module::try_current, time::SimTime};
+use rand::distr::Uniform;
+use serde::{Deserialize, Serialize};
+use std::{io, net::Ipv6Addr, time::Duration};
+use types::{
+    icmpv6::{NDP_MAX_DELAY_BETWEEN_RAS, NDP_MIN_DELAY_BETWEEN_RAS},
+    ip::{Ipv6LongestPrefixTable, Ipv6Prefix},
+};
+use valuable::Valuable;
+
+use crate::{
+    ctx::IOContext,
+    interface::{IfId, IfSpec},
+};
+
+mod api;
+pub use api::*;
+
+use super::timer::TimerToken;
+
+pub struct RouterState {
+    pub last_adv_sent: SimTime,
+}
+
+impl RouterState {
+    pub fn new() -> Self {
+        Self {
+            last_adv_sent: SimTime::MAX,
+        }
+    }
+}
+
+impl Default for RouterState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// A prefix matching routing table
+#[derive(Debug, Default)]
+pub struct Router {
+    pub entries: Ipv6LongestPrefixTable<Entry>,
+}
+
+#[derive(Debug, Clone, Valuable, Serialize, Deserialize)]
+pub struct Entry {
+    pub prefix: Ipv6Prefix,
+    pub next_hop: Ipv6Addr,
+    pub ifid: IfId,
+    #[valuable(skip)]
+    pub expires: SimTime,
+}
+
+impl Router {
+    pub fn new() -> Self {
+        Router {
+            entries: Ipv6LongestPrefixTable::default(),
+        }
+    }
+
+    pub fn publish(&self) {
+        if cfg!(feature = "props") {
+            let Some(module) = try_current() else { return };
+            module
+                .prop::<Vec<Entry>>("inet.v6.router.entries")
+                .expect("typing failed")
+                .set(self.entries.as_ref().to_vec());
+        }
+    }
+
+    pub fn lookup(&self, dst: Ipv6Addr) -> Option<(Ipv6Addr, IfSpec)> {
+        if dst.is_multicast() {
+            return Some((dst, None));
+        }
+        self.entries
+            .iter()
+            .find(|e| e.prefix.contains(dst))
+            .map(|e| (e.next_hop, Some(e.ifid)))
+            .inspect(|e| {
+                tracing::trace!("choose route towards {dst} -> {} over {:?}", e.0, e.1);
+            })
+    }
+
+    pub fn add(&mut self, prefix: Ipv6Prefix, next_hop: Ipv6Addr, ifid: IfId, expires: SimTime) {
+        let entry = Entry {
+            prefix,
+            next_hop,
+            ifid,
+            expires,
+        };
+        self.entries.insert(prefix, entry);
+        self.publish();
+    }
+
+    pub fn time_out_entries(&mut self, until: SimTime) {
+        self.entries.retain(|_, entry| entry.expires > until);
+        self.publish();
+    }
+}
+
+impl IOContext {
+    pub fn ipv6_schedule_unsolicited_router_adv(&mut self, ifid: IfId) -> io::Result<()> {
+        let token = TimerToken::RouterAdvertismentUnsolicited { ifid };
+        if self.ipv6.timer.active(&token).is_none() {
+            let timeout = SimTime::now()
+                + Duration::from_secs_f64(des::runtime::sample(
+                    Uniform::new(
+                        NDP_MIN_DELAY_BETWEEN_RAS.as_secs_f64(),
+                        NDP_MAX_DELAY_BETWEEN_RAS.as_secs_f64(),
+                    )
+                    .unwrap(),
+                ));
+            self.ipv6.timer.schedule(token, timeout);
+        }
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use serial_test::serial;
+
+    use super::*;
+    use std::error::Error;
+
+    #[test]
+    #[serial]
+    fn router_times_out_entries() -> Result<(), Box<dyn Error>> {
+        let en0 = IfId::new("en0");
+        let en1 = IfId::new("en1");
+
+        let mut router = Router::new();
+        router.add(
+            "2003:1234::/64".parse()?,
+            "2003:1234::cbab:1234".parse()?,
+            en0,
+            100.0.into(),
+        );
+        router.add(
+            "2004:1234::/64".parse()?,
+            "2004:1234::cbab:1234".parse()?,
+            en1,
+            200.0.into(),
+        );
+        router.add(
+            "2005:1234::/64".parse()?,
+            "2005:1234::cbab:1234".parse()?,
+            en0,
+            SimTime::MAX,
+        );
+
+        router.time_out_entries(50.0.into());
+        assert_eq!(router.entries.len(), 3);
+        assert_eq!(
+            router.lookup("2003:1234::1234".parse()?),
+            Some(("2003:1234::cbab:1234".parse()?, Some(en0)))
+        );
+
+        router.time_out_entries(100.0.into());
+        assert_eq!(router.entries.len(), 2);
+        assert_eq!(router.lookup("2003:1234::1234".parse()?), None);
+
+        router.time_out_entries(1000.0.into());
+        assert_eq!(router.entries.len(), 1);
+
+        Ok(())
+    }
+}

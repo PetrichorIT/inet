@@ -1,0 +1,9 @@
+a1.prefix: "2003:a:1::/64"
+a2.prefix: "2003:a:2::/64"
+a3.prefix: "2003:a:3::/64"
+b1.prefix: "2003:b:1::/64"
+c1.prefix: "2003:c:1::/64"
+d1.prefix: "2003:d:1::/64"
+d2.prefix: "2003:d:2::/64"
+
+_.router.pcap: false

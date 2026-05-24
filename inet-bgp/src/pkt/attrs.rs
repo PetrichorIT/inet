@@ -3,10 +3,8 @@ use std::{
     net::Ipv4Addr,
 };
 
-use bytepack::{
-    raw_enum, BytestreamReader, BytestreamWriter, FromBytestream, ReadBytesExt, ToBytestream,
-    WriteBytesExt, BE,
-};
+use bytes_io::{BE, BytesReader, BytesWriter, FromBytes, ReadBytesExt, ToBytes, WriteBytesExt};
+use macros::repr_enum;
 
 use crate::types::AsNumber;
 
@@ -17,10 +15,10 @@ pub struct BgpPathAttribute {
     pub attr: BgpPathAttributeKind,
 }
 
-impl ToBytestream for BgpPathAttribute {
+impl ToBytes for BgpPathAttribute {
     type Error = Error;
-    fn to_bytestream(&self, stream: &mut BytestreamWriter) -> Result<(), Self::Error> {
-        self.flags.to_bytestream(stream)?;
+    fn to_bytes(&self, stream: &mut BytesWriter) -> Result<(), Self::Error> {
+        self.flags.to_bytes(stream)?;
         stream.write_u8(self.attr.kind())?;
 
         let len = self.attr.len();
@@ -30,45 +28,44 @@ impl ToBytestream for BgpPathAttribute {
             stream.write_u8(len as u8)?;
         }
 
-        self.attr.to_bytestream(stream)?;
+        self.attr.to_bytes(stream)?;
         Ok(())
     }
 }
 
-impl FromBytestream for BgpPathAttribute {
+impl FromBytes for BgpPathAttribute {
     type Error = Error;
-    fn from_bytestream(stream: &mut BytestreamReader) -> Result<Self, Self::Error> {
-        let flags = BgpPathAttributeFlags::from_bytestream(stream)?;
+    fn from_bytes(stream: &mut BytesReader) -> Result<Self, Self::Error> {
+        let flags = BgpPathAttributeFlags::from_bytes(stream)?;
         let kind = stream.read_u8()?;
         let len = if flags.extended_len {
             stream.read_u16::<BE>()? as usize
         } else {
             stream.read_u8()? as usize
         };
-        let mut substream = stream.extract(len)?;
-
-        let attr = match kind {
-            1 => BgpPathAttributeKind::Origin(BgpPathAttributeOrigin::from_raw_repr(
-                substream.read_u8()?,
-            )?),
-            2 if len > 0 => BgpPathAttributeKind::AsPath(BgpPathAttributeAsPath::from_bytestream(
-                &mut substream,
-            )?),
-            2 if len == 0 => BgpPathAttributeKind::AsPath(BgpPathAttributeAsPath {
+        let attr = stream.extract(len, |substream| match kind {
+            1 => Ok(BgpPathAttributeKind::Origin(
+                BgpPathAttributeOrigin::from_raw_repr(substream.read_u8()?)?,
+            )),
+            2 if len > 0 => Ok(BgpPathAttributeKind::AsPath(
+                BgpPathAttributeAsPath::from_bytes(substream)?,
+            )),
+            2 if len == 0 => Ok(BgpPathAttributeKind::AsPath(BgpPathAttributeAsPath {
                 typ: BgpPathAttributeAsPathTyp::AsSequence,
                 path: Vec::new(),
-            }),
-            3 => BgpPathAttributeKind::NextHop(BgpPathAttributeNextHop::from_bytestream(
-                &mut substream,
-            )?),
+            })),
+            3 => Ok(BgpPathAttributeKind::NextHop(
+                BgpPathAttributeNextHop::from_bytes(substream)?,
+            )),
             _ => todo!(),
-        };
+        })?;
 
         Ok(BgpPathAttribute { flags, attr })
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct BgpPathAttributeFlags {
     pub optional: bool, // MSB
     pub transitiv: bool,
@@ -77,9 +74,9 @@ pub struct BgpPathAttributeFlags {
     /* 4 LSB unused */
 }
 
-impl ToBytestream for BgpPathAttributeFlags {
+impl ToBytes for BgpPathAttributeFlags {
     type Error = Error;
-    fn to_bytestream(&self, bytestream: &mut BytestreamWriter) -> Result<(), Self::Error> {
+    fn to_bytes(&self, bytestream: &mut BytesWriter) -> Result<(), Self::Error> {
         let mut byte = 0u8;
         if self.optional {
             byte |= 0b1000_0000;
@@ -98,9 +95,9 @@ impl ToBytestream for BgpPathAttributeFlags {
     }
 }
 
-impl FromBytestream for BgpPathAttributeFlags {
+impl FromBytes for BgpPathAttributeFlags {
     type Error = Error;
-    fn from_bytestream(bytestream: &mut BytestreamReader) -> Result<Self, Self::Error> {
+    fn from_bytes(bytestream: &mut BytesReader) -> Result<Self, Self::Error> {
         let byte = bytestream.read_u8()?;
         Ok(Self {
             optional: byte & 0b1000_0000 != 0,
@@ -147,18 +144,18 @@ impl BgpPathAttributeKind {
     }
 }
 
-impl ToBytestream for BgpPathAttributeKind {
+impl ToBytes for BgpPathAttributeKind {
     type Error = Error;
-    fn to_bytestream(&self, bytestream: &mut BytestreamWriter) -> Result<(), Self::Error> {
+    fn to_bytes(&self, bytestream: &mut BytesWriter) -> Result<(), Self::Error> {
         match self {
             Self::Origin(origin) => bytestream.write_u8(origin.to_raw_repr()),
-            Self::AsPath(path) => path.to_bytestream(bytestream),
-            Self::NextHop(next_hop) => next_hop.to_bytestream(bytestream),
+            Self::AsPath(path) => path.to_bytes(bytestream),
+            Self::NextHop(next_hop) => next_hop.to_bytes(bytestream),
         }
     }
 }
 
-raw_enum! {
+repr_enum! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub enum BgpPathAttributeOrigin {
         type Repr = u8 where ByteOrder::BigEndian;
@@ -175,23 +172,23 @@ pub struct BgpPathAttributeAsPath {
     pub path: Vec<AsNumber>,
 }
 
-impl ToBytestream for BgpPathAttributeAsPath {
+impl ToBytes for BgpPathAttributeAsPath {
     type Error = Error;
-    fn to_bytestream(&self, bytestream: &mut BytestreamWriter) -> Result<(), Self::Error> {
+    fn to_bytes(&self, bytestream: &mut BytesWriter) -> Result<(), Self::Error> {
         if !self.path.is_empty() {
             bytestream.write_u8(self.typ.to_raw_repr())?;
             bytestream.write_u8(self.path.len() as u8)?;
             for seg in &self.path {
-                bytestream.write_u32::<BE>(*seg as u32)?;
+                bytestream.write_u32::<BE>(u32::from(*seg))?;
             }
         }
         Ok(())
     }
 }
 
-impl FromBytestream for BgpPathAttributeAsPath {
+impl FromBytes for BgpPathAttributeAsPath {
     type Error = Error;
-    fn from_bytestream(bytestream: &mut BytestreamReader) -> Result<Self, Self::Error> {
+    fn from_bytes(bytestream: &mut BytesReader) -> Result<Self, Self::Error> {
         let typ = bytestream.read_u8()?;
         let typ = match typ {
             1 => BgpPathAttributeAsPathTyp::AsSet,
@@ -203,13 +200,13 @@ impl FromBytestream for BgpPathAttributeAsPath {
         for _i in 0..len {
             // dbg!(as_num);02 02 00 00 fe 4c 00 00 fe b0
             let as_num = bytestream.read_u32::<BE>()?;
-            path.push(as_num as u16)
+            path.push(as_num as u16);
         }
         Ok(Self { typ, path })
     }
 }
 
-raw_enum! {
+repr_enum! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub enum BgpPathAttributeAsPathTyp {
         type Repr = u8 where ByteOrder::BigEndian;
@@ -224,18 +221,100 @@ pub struct BgpPathAttributeNextHop {
     pub hop: Ipv4Addr,
 }
 
-impl ToBytestream for BgpPathAttributeNextHop {
+impl ToBytes for BgpPathAttributeNextHop {
     type Error = Error;
-    fn to_bytestream(&self, bytestream: &mut BytestreamWriter) -> Result<(), Self::Error> {
+    fn to_bytes(&self, bytestream: &mut BytesWriter) -> Result<(), Self::Error> {
         bytestream.write_all(&self.hop.octets())
     }
 }
 
-impl FromBytestream for BgpPathAttributeNextHop {
+impl FromBytes for BgpPathAttributeNextHop {
     type Error = Error;
-    fn from_bytestream(bytestream: &mut BytestreamReader) -> Result<Self, Self::Error> {
+    fn from_bytes(bytestream: &mut BytesReader) -> Result<Self, Self::Error> {
         Ok(BgpPathAttributeNextHop {
             hop: Ipv4Addr::from(bytestream.read_u32::<BE>()?),
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use bytes_io::assert_encoding_e2e;
+
+    use super::*;
+
+    #[test]
+    fn e2e_encoding_path_attr() {
+        assert_encoding_e2e(&[
+            BgpPathAttribute {
+                flags: BgpPathAttributeFlags::default(),
+                attr: BgpPathAttributeKind::Origin(BgpPathAttributeOrigin::Egp),
+            },
+            BgpPathAttribute {
+                flags: BgpPathAttributeFlags::default(),
+                attr: BgpPathAttributeKind::Origin(BgpPathAttributeOrigin::Igp),
+            },
+            BgpPathAttribute {
+                flags: BgpPathAttributeFlags::default(),
+                attr: BgpPathAttributeKind::Origin(BgpPathAttributeOrigin::Incomplete),
+            },
+            //
+            BgpPathAttribute {
+                flags: BgpPathAttributeFlags::default(),
+                attr: BgpPathAttributeKind::AsPath(BgpPathAttributeAsPath {
+                    typ: BgpPathAttributeAsPathTyp::AsSequence,
+                    path: vec![13123, 3123, 123],
+                }),
+            },
+            //
+            BgpPathAttribute {
+                flags: BgpPathAttributeFlags::default(),
+                attr: BgpPathAttributeKind::NextHop(BgpPathAttributeNextHop {
+                    hop: Ipv4Addr::new(123, 3, 31, 4),
+                }),
+            },
+            BgpPathAttribute {
+                flags: BgpPathAttributeFlags::default(),
+                attr: BgpPathAttributeKind::NextHop(BgpPathAttributeNextHop {
+                    hop: Ipv4Addr::new(3, 13, 231, 4),
+                }),
+            },
+        ]);
+    }
+
+    #[test]
+    fn e2e_encoding_path_attr_flags() {
+        assert_encoding_e2e(&[
+            BgpPathAttributeFlags {
+                optional: true,
+                transitiv: false,
+                partial: false,
+                extended_len: true,
+            },
+            BgpPathAttributeFlags {
+                optional: false,
+                transitiv: true,
+                partial: false,
+                extended_len: true,
+            },
+        ]);
+    }
+
+    #[test]
+    fn e2e_encoding_path_attr_as_path() {
+        assert_encoding_e2e(&[
+            BgpPathAttributeAsPath {
+                typ: BgpPathAttributeAsPathTyp::AsSequence,
+                path: vec![1, 2, 3],
+            },
+            BgpPathAttributeAsPath {
+                typ: BgpPathAttributeAsPathTyp::AsSet,
+                path: vec![1, 4440, 1414, 4],
+            },
+            BgpPathAttributeAsPath {
+                typ: BgpPathAttributeAsPathTyp::AsSet,
+                path: vec![4],
+            },
+        ]);
     }
 }

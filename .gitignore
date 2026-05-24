@@ -4,3 +4,5 @@
 /results
 out
 .vscode
+.log
+tarpaulin-report.html

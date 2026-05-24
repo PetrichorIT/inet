@@ -1,0 +1,22 @@
+entry: Main
+modules:
+  Server:
+    gates:
+    - port
+  Main:
+    submodules:
+      client: Client
+      server: Server
+    connections:
+    - peers:
+      - client/port
+      - server/port
+      link: Link
+  Client:
+    gates:
+    - port
+links:
+  Link:
+    latency: 0.03
+    jitter: 0.0
+    bitrate: 10000000

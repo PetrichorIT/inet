@@ -1,0 +1,64 @@
+use std::io;
+
+use super::{RawResourceRecord, ResourceRecord, ResourceRecordClass};
+use crate::core::{DnsString, ZonefileLineRecord};
+use bytes_io::{FromBytes, ToBytes};
+
+/// A resource record representing a canonical name mapping.
+///
+/// This record type is used to map a domain name to another domain name.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CNameResourceRecord {
+    pub name: DnsString,
+    pub ttl: u32,
+    pub class: ResourceRecordClass,
+    pub target: DnsString,
+}
+
+impl TryFrom<ZonefileLineRecord> for CNameResourceRecord {
+    type Error = io::Error;
+    fn try_from(raw: ZonefileLineRecord) -> Result<Self, Self::Error> {
+        Ok(Self {
+            name: raw.name.clone(),
+            ttl: raw.ttl,
+            class: raw.class,
+            target: DnsString::from_zonefile(&raw.rdata, &raw.origin)?,
+        })
+    }
+}
+
+impl TryFrom<RawResourceRecord> for CNameResourceRecord {
+    type Error = io::Error;
+    fn try_from(raw: RawResourceRecord) -> Result<Self, Self::Error> {
+        Ok(Self {
+            name: raw.name,
+            ttl: raw.ttl,
+            class: raw.class,
+            target: DnsString::peek_from(&raw.rdata[..])?,
+        })
+    }
+}
+
+impl ResourceRecord for CNameResourceRecord {
+    fn name(&self) -> &DnsString {
+        &self.name
+    }
+    fn ttl(&self) -> Option<u32> {
+        Some(self.ttl)
+    }
+    fn typ(&self) -> super::ResourceRecordTyp {
+        super::ResourceRecordTyp::CNAME
+    }
+    fn class(&self) -> Option<ResourceRecordClass> {
+        Some(self.class)
+    }
+    fn rdata(&self) -> Vec<u8> {
+        self.target.write_to_vec().expect("invalid parsing failure")
+    }
+    fn rdata_fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.target)
+    }
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+}

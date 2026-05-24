@@ -8,3 +8,6 @@ pub use self::switch::*;
 
 mod getip;
 pub use self::getip::*;
+
+mod simple;
+pub use self::simple::SimpleSim;

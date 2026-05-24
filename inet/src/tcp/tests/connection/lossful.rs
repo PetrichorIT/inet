@@ -1,0 +1,88 @@
+use super::{TcpTestUnit, WIN_4KB, tx};
+use rand::{RngCore, rng};
+use std::{
+    io,
+    net::{Ipv4Addr, SocketAddr},
+};
+
+impl TcpTestUnit {
+    pub fn pipe_lossful(&mut self, peer: &mut Self, n: usize, drop: &[usize]) -> io::Result<()> {
+        let n = n.min(tx(&mut self.con).len());
+        for (i, pkt) in tx(&mut self.con).drain(..n).enumerate() {
+            if drop.contains(&i) {
+                continue;
+            }
+            peer.incoming(pkt)?;
+        }
+        Ok(())
+    }
+}
+
+#[test]
+fn loss_of_data_packets() -> io::Result<()> {
+    // des::tracing::init();
+
+    let mut client = TcpTestUnit::new(
+        SocketAddr::new(Ipv4Addr::new(10, 0, 1, 104).into(), 80), // local
+        SocketAddr::new(Ipv4Addr::new(20, 0, 2, 204).into(), 1808), // peer
+    );
+    let mut server = TcpTestUnit::new(
+        SocketAddr::new(Ipv4Addr::new(20, 0, 2, 204).into(), 1808), // local
+        SocketAddr::new(Ipv4Addr::new(10, 0, 1, 104).into(), 80),   // peer
+    );
+    client.cfg.send_buffer_cap = (WIN_4KB * 4) as usize;
+    server.cfg.recv_buffer_cap = (WIN_4KB * 4) as usize;
+    client.cfg.enable_congestion_control = true;
+    server.cfg.enable_congestion_control = true;
+
+    client.handshake_pipe(&mut server)?;
+
+    const TOTAL: usize = WIN_4KB as usize * 4;
+    let mut bytes = vec![0; TOTAL];
+    rng().fill_bytes(&mut bytes);
+
+    let n = client.write(&bytes)?;
+    assert_eq!(n, TOTAL);
+
+    for t in [0.5, 1.0, 1.5, 2.0, 2.5, 3.0] {
+        tracing::error!(t, "T");
+        client.tick()?;
+        client.pipe(&mut server, 100)?;
+
+        client.set_time(t);
+        server.set_time(t);
+
+        server.read(&mut vec![0; WIN_4KB as usize])?;
+
+        server.tick()?;
+        server.pipe(&mut client, 100)?;
+
+        assert_eq!(client.snd.bytes_in_tx_buffer(), 0);
+    }
+
+    tracing::debug!("=== real test case begins ===");
+
+    let num_packets = 1 + 2 + 4 + 5 + 6 + 7;
+    let num_send = num_packets * 536;
+
+    assert_eq!(
+        client.unsend_bytes_in_tx_buffer(),
+        (TOTAL - num_send) as u32
+    );
+    assert_eq!(client.snd.c.cwnd, 8 * 536);
+
+    client.tick()?;
+    client.pipe_lossful(&mut server, 100, &[1])?;
+
+    client.set_time(10.0);
+    server.set_time(10.0);
+
+    // buffer packets have been dropped
+    server.tick()?;
+    assert_eq!(server.incoming.pkts, []);
+
+    // pipe new packets
+    client.tick()?;
+    client.pipe(&mut server, 100)?;
+    Ok(())
+}

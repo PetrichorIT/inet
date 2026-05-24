@@ -1,140 +1,66 @@
 use std::{
     future::Future,
-    io::{Error, ErrorKind, Result},
-    task::{Poll, Waker},
+    io::{Error, ErrorKind},
+    task::Poll,
 };
 
-use super::types::TcpState;
-use crate::io::{Interest, Ready};
-use crate::{socket::Fd, IOContext};
+use crate::socket::Fd;
+use crate::{
+    IOHandle,
+    io::{self, Ready},
+};
 
-#[derive(Debug, Clone)]
-pub(crate) enum TcpInterest {
-    // TcpAccept(Fd),
-    // TcpConnect(Fd),
-    TcpRead(Fd),
-    TcpWrite(Fd),
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct TcpInterestGuard {
-    pub(crate) interest: TcpInterest,
-    pub(crate) waker: Waker,
+#[derive(Clone, Debug)]
+pub(super) struct TcpInterest {
+    pub fd: Fd,
+    pub handle: IOHandle,
+    pub interest: io::Interest,
 }
 
 impl TcpInterest {
-    pub(crate) fn from_tokio(fd: Fd, interest: Interest) -> Self {
-        if interest.is_readable() {
-            return TcpInterest::TcpRead(fd);
+    pub(super) fn write(fd: Fd, handle: IOHandle) -> Self {
+        Self {
+            fd,
+            handle,
+            interest: io::Interest::WRITABLE,
         }
-        if interest.is_writable() {
-            return TcpInterest::TcpWrite(fd);
-        }
-
-        unimplemented!()
     }
-}
 
-impl TcpInterestGuard {
-    pub(super) fn wake(self) {
-        self.waker.wake()
+    pub(crate) fn from_io(fd: Fd, interest: io::Interest, handle: IOHandle) -> Self {
+        Self {
+            fd,
+            handle,
+            interest,
+        }
     }
 }
 
 impl Future for TcpInterest {
-    type Output = Result<Ready>;
+    type Output = Result<Ready, Error>;
 
     fn poll(
         self: std::pin::Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
     ) -> std::task::Poll<Self::Output> {
-        match *self {
-            // == TCP ==
-            // TcpInterest::TcpAccept(fd) => IOContext::with_current(|ctx| {
-            //     if let Some(handle) = ctx.tcp.binds.get_mut(&fd) {
-            //         if handle.incoming.is_empty() {
-            //             handle.interests.push(TcpInterestGuard {
-            //                 interest: self.clone(),
-            //                 waker: cx.waker().clone(),
-            //             });
-            //             Poll::Pending
-            //         } else {
-            //             Poll::Ready(Ok(Ready::ALL))
-            //         }
-            //     } else {
-            //         Poll::Ready(Err(Error::new(
-            //             ErrorKind::Other,
-            //             "Simulation context has dropped TcpListener",
-            //         )))
-            //     }
-            // }),
+        self.handle.do_mutating(|ctx| {
+            let Some(handle) = ctx.tcp.streams.get_mut(&self.fd) else {
+                return Poll::Ready(Err(Error::new(
+                    ErrorKind::InvalidInput,
+                    "socket dropped - invalid fd",
+                )));
+            };
 
-            // TcpInterest::TcpEstablished(fd) => IOContext::with_current(|ctx| {
-            //     let Some(handle) = ctx.tcp.streams.get_mut(&fd) else {
-            //         return Poll::Ready(Err(Error::new(
-            //             ErrorKind::InvalidInput,
-            //             "socket dropped - invalid fd",
-            //         )));
-            //     };
+            if let Some(err) = handle.interface.error() {
+                return Poll::Ready(Err(err));
+            }
 
-            //     if handle.syn_resend_counter >= 3 {
-            //         return Poll::Ready(Err(Error::new(
-            //             ErrorKind::NotFound,
-            //             "host not found - syn exceeded",
-            //         )));
-            //     }
-
-            //     if handle.state as u8 >= TcpState::Established as u8 {
-            //         Poll::Ready(Ok(Ready::ALL))
-            //     } else {
-            //         handle.established_interest = Some(cx.waker().clone());
-
-            //         Poll::Pending
-            //     }
-            // }),
-            TcpInterest::TcpRead(fd) => IOContext::with_current(|ctx| {
-                let Some(handle) = ctx.tcp.streams.get_mut(&fd) else {
-                    return Poll::Ready(Err(Error::new(
-                        ErrorKind::InvalidInput,
-                        "socket dropped - invalid fd",
-                    )));
-                };
-
-                if handle.rx_buffer.len_continous() > 0 {
-                    Poll::Ready(Ok(Ready::READABLE))
-                } else {
-                    if handle.no_more_data_closed() {
-                        return Poll::Ready(Err(Error::new(ErrorKind::Other, "socket closed")));
-                    }
-
-                    handle.rx_read_interests.push(TcpInterestGuard {
-                        interest: self.clone(),
-                        waker: cx.waker().clone(),
-                    });
-                    Poll::Pending
-                }
-            }),
-
-            TcpInterest::TcpWrite(fd) => IOContext::with_current(|ctx| {
-                let Some(handle) = ctx.tcp.streams.get_mut(&fd) else {
-                    return Poll::Ready(Err(Error::new(
-                        ErrorKind::InvalidInput,
-                        "socket dropped - invalid fd",
-                    )));
-                };
-
-                if handle.tx_buffer.rem() > 0 {
-                    Poll::Ready(Ok(Ready::WRITABLE))
-                } else {
-                    handle.tx_write_interests.push(TcpInterestGuard {
-                        interest: self.clone(),
-                        waker: cx.waker().clone(),
-                    });
-                    Poll::Pending
-                }
-            }),
-
-            _ => Poll::Pending,
-        }
+            if handle.can_service(self.interest) {
+                Poll::Ready(Ok(Ready::from_interest(self.interest)))
+            } else {
+                // TODO: Maybe Err no more data
+                handle.interface.register(self.interest, cx);
+                Poll::Pending
+            }
+        })
     }
 }

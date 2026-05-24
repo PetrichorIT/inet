@@ -1,0 +1,38 @@
+entry: Main
+modules:
+  HostAlice:
+    gates:
+    - port
+  HostBob:
+    gates:
+    - port
+  Router:
+    gates:
+    - port
+  Switch:
+    gates:
+    - port[3]
+  Main:
+    submodules:
+      bob: HostBob
+      alice: HostAlice
+      router: Router
+      switch: Switch
+    connections:
+    - peers:
+      - alice/port
+      - switch/port[0]
+      link: LAN
+    - peers:
+      - bob/port
+      - switch/port[1]
+      link: LAN
+    - peers:
+      - router/port
+      - switch/port[2]
+      link: LAN
+links:
+  LAN:
+    latency: 0.005
+    jitter: 0.0
+    bitrate: 1000000

@@ -1,45 +1,55 @@
-use std::any::Any;
+use std::{net::IpAddr, sync::Arc};
+
+use crate::IOHandle;
 
 use super::IOContext;
-use des::{
-    net::plugin::Plugin,
-    prelude::{Message, ModuleId},
-};
+use des::{module::current, prelude::Message, processing::ProcessingElement};
 
 /// A plugin managing IO primitives provided by inet.
 pub struct IOPlugin {
-    ctx: Option<Box<IOContext>>,
-    prev: Option<Box<IOContext>>,
+    ctx: IOHandle,
+    prev: Option<IOHandle>,
 }
 
 impl IOPlugin {
     /// Creates a new plugin without defined network devices.
-    pub(super) fn new(id: ModuleId) -> Self {
+    pub(super) fn new(ctx: IOContext) -> Self {
         Self {
-            ctx: Some(Box::new(IOContext::new(id))),
+            ctx: ctx.make(),
             prev: None,
         }
     }
+
+    pub fn handle(&self) -> IOHandle {
+        self.ctx.clone()
+    }
 }
 
-impl Plugin for IOPlugin {
-    fn event_start(&mut self) {
-        let io = self.ctx.take().expect("Theft");
-        self.prev = IOContext::swap_in(Some(io));
-    }
+impl ProcessingElement for IOPlugin {
+    fn process_with(
+        &mut self,
+        msg: Option<Message>,
+        inner: &mut dyn FnMut(Option<Message>) -> Option<Message>,
+    ) -> Option<Message> {
+        let io = self.ctx.clone();
+        self.prev = IOHandle::swap_in(Some(io.clone()));
 
-    fn capture_incoming(&mut self, msg: Message) -> Option<Message> {
-        IOContext::with_current(|ctx| ctx.recv(msg))
-    }
+        let res = msg.and_then(|msg| io.do_mutating(|ctx| ctx.recv(msg)));
+        let res = inner(res);
 
-    fn event_end(&mut self) {
-        self.ctx = IOContext::swap_in(self.prev.take());
-        assert!(self.ctx.is_some());
-    }
+        io.do_mutating(|ctx| ctx.event_end());
 
-    fn state(&self) -> Box<dyn Any> {
-        let ip = self.ctx.as_ref().map(|ctx| ctx.get_ip()).flatten();
-        // tracing::info!("returning {:?} at ", ip);
-        Box::new(ip)
+        let received = IOHandle::swap_in(self.prev.take()).expect("illegal state");
+        assert!(Arc::ptr_eq(&self.ctx.0, &received.0));
+
+        let mut ctx = self.ctx.0.lock().expect("failed to get lock");
+        if ctx.meta_changed {
+            ctx.meta_changed = false;
+            if let Ok(mut prop) = current().prop::<Option<IpAddr>>("inet.meta") {
+                prop.set(ctx.get_ip());
+            }
+        }
+
+        res
     }
 }

@@ -1,0 +1,63 @@
+use std::{io::ErrorKind, net::Ipv4Addr, time::Duration};
+
+use des::{
+    Sim,
+    gate::IntoGate,
+    prelude::{ChannelDropBehaviour, DatarateChannel, DatarateChannelMetrics},
+    runtime::handlers::AsyncHandler,
+};
+use serial_test::serial;
+
+use inet::tcp::TcpStream;
+use inet::{
+    interface::{InterfaceDef, NetworkDevice},
+    ioctx,
+};
+
+#[serial]
+#[test]
+fn connect_no_local_ip_version() {
+    let mut sim = Sim::new(()).with_stack(inet::init);
+    sim.node(
+        "sender",
+        AsyncHandler::io(|_| async move {
+            ioctx().add_interface(
+                InterfaceDef::new("en0", NetworkDevice::eth())
+                    .ip(Ipv4Addr::new(42, 0, 0, 42).into()),
+            )?;
+
+            let stream = TcpStream::connect("2000:132:32::0:8000").await;
+            let err = stream.unwrap_err();
+            println!("{err}");
+            assert_eq!(err.kind(), ErrorKind::ConnectionRefused);
+
+            Ok(())
+        }),
+    );
+
+    sim.node(
+        "receiver",
+        AsyncHandler::new(|_| async move {
+            // NOP
+        }),
+    );
+
+    let a = sim.gate("sender", "port");
+    let b = sim.gate("receiver", "port");
+    a.connect_with(
+        b,
+        Some(DatarateChannel::new(DatarateChannelMetrics::new(
+            80000,
+            Duration::from_millis(200),
+            Duration::ZERO,
+            ChannelDropBehaviour::Queue(None),
+        ))),
+    );
+
+    let _ = sim
+        .seeded(123)
+        .max_time(100.0.into())
+        .max_itr(100)
+        .build()
+        .run();
+}

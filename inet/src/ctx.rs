@@ -1,64 +1,61 @@
-use crate::{
-    arp::ArpTable,
-    dns::{default_dns_resolve, DnsResolver},
-    extensions::Extensions,
-    icmp::Icmp,
-    interface::{IfId, Interface, LinkLayerResult, KIND_LINK_UPDATE},
-    routing::{FwdV4, Ipv6RoutingTable},
-    IOPlugin, Udp,
-};
 use des::{
-    net::plugin::PluginError,
-    prelude::{Message, ModuleId},
-};
-use fxhash::{FxBuildHasher, FxHashMap};
-use inet_types::{
-    icmp::PROTO_ICMP,
-    ip::{IpPacket, IpPacketRef, Ipv4Packet, Ipv6Packet, KIND_IPV4, KIND_IPV6},
+    ObjectPath,
+    prelude::{Header, Message},
 };
 use std::{
-    cell::RefCell,
-    io::{Error, ErrorKind, Result},
-    net::{IpAddr, Ipv4Addr},
+    fmt::Debug,
+    net::IpAddr,
     panic::UnwindSafe,
+    sync::{Arc, Mutex, Weak},
 };
 
-#[cfg(feature = "uds")]
-use crate::uds::Uds;
+use crate::{
+    Udp,
+    dns::{DnsResolver, default_dns_resolve},
+    env::fs::Fs,
+    extensions::Extensions,
+    handle::{IOHandle, IOHandleWeak},
+    interface::{ID_IPV6_TIMEOUT, IfId, Interfaces, KIND_LINK_UPDATE},
+    ioctx,
+    ipv4::Ipv4,
+    ipv6::Ipv6,
+    socket::{Fd, Sockets},
+    tcp::Tcp,
+};
 
-use super::{socket::*, tcp::Tcp};
-use inet_types::{tcp::PROTO_TCP, udp::PROTO_UDP};
-
-thread_local! {
-    static CURRENT: RefCell<Option<Box<IOContext>>> = const { RefCell::new(None) };
-}
+use types::{
+    arp::KIND_ARP,
+    ip::{IpPacket, IpPacketRef, KIND_IPV4, KIND_IPV6},
+    tcp::PROTO_TCP,
+    udp::PROTO_UDP,
+};
 
 pub(crate) struct IOContext {
-    #[allow(unused)]
-    pub(super) id: ModuleId,
-    pub(super) ifaces: FxHashMap<IfId, Interface>,
+    // Link-Layer
+    pub(super) path: ObjectPath,
+    pub(super) ifaces: Interfaces,
 
-    pub(super) arp: ArpTable,
-    pub(super) ipv4_fwd: FwdV4,
-    pub(super) ipv6router: Ipv6RoutingTable,
-    pub(super) icmp: Icmp,
+    // Networking Layer
+    pub(super) ipv4: Ipv4,
+    pub(super) ipv6: Ipv6,
 
-    pub(super) dns: DnsResolver,
-
+    // Transport Layer
     pub(super) sockets: Sockets,
     pub(super) udp: Udp,
     pub(super) tcp: Tcp,
 
-    #[cfg(feature = "uds")]
-    pub(super) uds: Uds,
-
-    pub(super) fd: Fd,
-    pub(super) port: u16,
-
+    // Application Layer
+    pub(super) dns: DnsResolver,
+    pub(super) fs: Fs,
     pub(super) extensions: Extensions,
 
     pub(super) current: Current,
+    pub(super) meta_changed: bool,
+
+    pub(super) handle: IOHandleWeak,
 }
+
+unsafe impl Send for IOContext {}
 
 #[derive(Debug, Clone)]
 pub struct Current {
@@ -67,262 +64,152 @@ pub struct Current {
 
 impl Current {
     pub fn fetch() -> Current {
-        IOContext::with_current(|ctx| ctx.current.clone())
+        ioctx().do_mutating(|ctx| ctx.current.clone())
     }
 }
 
 impl IOContext {
-    pub fn new(id: ModuleId) -> Self {
+    pub fn new(id: ObjectPath) -> Self {
         Self {
-            id,
-            ifaces: FxHashMap::with_hasher(FxBuildHasher::default()),
+            path: id,
+            ifaces: Interfaces::default(),
 
-            arp: ArpTable::new(),
-            ipv4_fwd: FwdV4::new(),
-            ipv6router: Ipv6RoutingTable::new(),
-            icmp: Icmp::new(),
+            ipv4: Ipv4::default(),
+            ipv6: Ipv6::default(),
 
             dns: default_dns_resolve,
+            sockets: Sockets::default(),
+            udp: Udp::default(),
+            tcp: Tcp::default(),
 
-            sockets: Sockets::new(),
-            udp: Udp::new(),
-            tcp: Tcp::new(),
+            fs: Fs::default(),
 
-            #[cfg(feature = "uds")]
-            uds: Uds::new(),
+            extensions: Extensions::default(),
+            current: Current {
+                ifid: IfId::UNKNOWN,
+            },
+            meta_changed: true,
 
-            extensions: Extensions::new(),
-
-            fd: 100,
-            port: 1024,
-
-            current: Current { ifid: IfId::NULL },
+            handle: Weak::new(),
         }
     }
 
-    pub(super) fn swap_in(ingoing: Option<Box<IOContext>>) -> Option<Box<IOContext>> {
-        CURRENT.with(|ctx| {
-            let mut ctx = ctx.borrow_mut();
-            let ret = ctx.take();
-            *ctx = ingoing;
-            ret
-        })
+    pub fn make(self) -> IOHandle {
+        let handle = Arc::new(Mutex::new(self));
+        let weak = Arc::downgrade(&handle);
+        handle.lock().expect("illegal state").handle = weak;
+        IOHandle(handle)
     }
 
-    pub(super) fn with_current<R>(f: impl FnOnce(&mut IOContext) -> R) -> R {
-        CURRENT.with(|cell| {
-            f(cell.borrow_mut().as_mut().unwrap_or_else(|| {
-                let error = PluginError::expected::<IOPlugin>();
-                panic!("Missing IOContext: {error}")
-            }))
-        })
-    }
-
-    pub(super) fn failable_api<T>(f: impl FnOnce(&mut IOContext) -> Result<T>) -> Result<T> {
-        CURRENT.with(|cell| {
-            let mut ctx = cell.borrow_mut();
-            let Some(ctx) = ctx.as_mut() else {
-                let error = PluginError::expected::<IOPlugin>();
-                return Err(Error::new(ErrorKind::Other, error))
-            };
-            f(ctx)
-        })
-    }
-
-    pub(super) fn try_with_current<R>(f: impl FnOnce(&mut IOContext) -> R) -> Option<R> {
-        match CURRENT.try_with(|cell| {
-            Some(f(cell
-                .try_borrow_mut()
-                .expect("BorrowMut at IOContext")
-                .as_mut()?))
-        }) {
-            Ok(v) => v,
-            Err(_) => None,
-        }
+    pub(super) fn handle(&self) -> IOHandle {
+        IOHandle(self.handle.upgrade().expect("illegal state"))
     }
 }
+
+pub struct PassThrough;
 
 impl IOContext {
     pub fn recv(&mut self, msg: Message) -> Option<Message> {
-        use LinkLayerResult::*;
-
         // Packets that are passed to the networking layer, are
         // not nessecarily addressed to any valid ip addr, but are valid for
         // the local MAC addr
+        let l1 = self.recv_physlayer(msg);
+        let msg = match l1 {
+            LayerResult::PassThrough(msg) => {
+                return Some(msg.with_extension(PassThrough));
+            }
+            LayerResult::Consumed => return None,
+            LayerResult::Forward(msg) => msg,
+        };
+
         let l2 = self.recv_linklayer(msg);
         let (msg, ifid) = match l2 {
-            PassThrough(msg) => return Some(msg),
-            Consumed() => return None,
-            NetworkingPacket(msg, ifid) => (msg, ifid),
-            Timeout(timeout) => return self.networking_layer_io_timeout(timeout),
+            LinkLayerResult::PassThrough(msg) => {
+                return Some(msg.with_extension(PassThrough));
+            }
+            LinkLayerResult::Consumed => return None,
+            LinkLayerResult::Forward((msg, ifid)) => (msg, ifid),
         };
 
         self.current.ifid = ifid;
 
-        let kind = msg.header().kind;
-        match kind {
-            KIND_IPV4 => {
-                let Some(ip) = msg.try_content::<Ipv4Packet>() else {
-                    tracing::error!("received eth-packet with kind=0x0800 (ip) but content was no ipv4-packet");
-                    return Some(msg)
-                };
-
-                let iface = self.ifaces.get(&ifid).unwrap();
-
-                // (0) Check whether the received ip packet is addressed for the local machine
-                let local_dest = ip.dest == Ipv4Addr::BROADCAST
-                    || iface
-                        .addrs
-                        .iter()
-                        .any(|addr| addr.matches_ip(IpAddr::V4(ip.dest)));
-
-                if !local_dest {
-                    // (0) Check TTL
-                    let mut pkt = ip.clone();
-                    pkt.ttl = pkt.ttl.saturating_sub(1);
-
-                    if pkt.ttl == 0 {
-                        tracing::warn!("dropping packet due to ttl");
-                        self.icmp_ttl_expired(ifid, ip);
-                        return None;
-                    }
-
-                    // (2) Reroute packet.
-                    match self.send_ip_packet(
-                        SocketIfaceBinding::Any(self.ifaces.keys().copied().collect()),
-                        IpPacket::V4(pkt),
-                        true,
-                    ) {
-                        Ok(()) => return None,
-                        Err(e) => {
-                            tracing::error!("Failed to forward packet due to internal err: {e}");
-                            self.icmp_routing_failed(e, ip);
-                            // Maybe return dropped packet ?
-                            return None;
-                        }
-                    };
-                }
-
-                match ip.proto {
-                    0 => Some(msg),
-                    PROTO_ICMP => {
-                        let consumed = self.recv_icmpv4_packet(ip, ifid);
-                        if consumed {
-                            None
-                        } else {
-                            Some(msg)
-                        }
-                    }
-                    PROTO_UDP => {
-                        let consumed = self.recv_udp_packet(IpPacketRef::V4(ip), ifid);
-                        if consumed {
-                            None
-                        } else {
-                            Some(msg)
-                        }
-                    }
-                    PROTO_TCP => {
-                        let consumed = self.capture_tcp_packet(IpPacketRef::V4(ip), ifid);
-                        if consumed {
-                            None
-                        } else {
-                            Some(msg)
-                        }
-                    }
-                    k => {
-                        if let Some(handle) = self.sockets.handlers.get(&(k, SocketDomain::AF_INET))
-                        {
-                            let _ = handle.1.try_send(IpPacket::V4(ip.clone()));
-                            return None;
-                        }
-                        panic!("internal error: unreachable code :: proto = {k}");
-                    }
-                }
+        let l3 = self.recv_network_layer(msg, ifid);
+        let (pkt, header) = match l3 {
+            NetworkLayerResult::PassThrough(msg) => {
+                return Some(msg.with_extension(PassThrough));
             }
-            KIND_IPV6 => {
-                let Some(ip) = msg.try_content::<Ipv6Packet>() else {
-                    tracing::error!("received eth-packet with kind=0x0800 (ip) but content was no ipv4-packet");
-                    return Some(msg)
-                };
+            NetworkLayerResult::Consumed => return None,
+            NetworkLayerResult::Forward((msg, header)) => (msg, header),
+        };
 
-                let iface = self.ifaces.get(&ifid).unwrap();
-
-                // (0) Check whether the received ip packet is addressed for the local machine
-                let local_dest = /*ip.dest ==  Ipv6Addr::BROADCAST
-                    || */iface
-                        .addrs
-                        .iter()
-                        .any(|addr| addr.matches_ip(IpAddr::V6(ip.dest)));
-                if !local_dest {
-                    // (0) Check TTL
-                    let mut pkt = ip.clone();
-                    pkt.hop_limit = pkt.hop_limit.saturating_sub(1);
-
-                    if pkt.hop_limit == 0 {
-                        tracing::warn!("dropping packet due to ttl");
-                        return None;
-                    }
-
-                    // (2) Reroute packet.
-                    match self.send_ip_packet(
-                        SocketIfaceBinding::Any(self.ifaces.keys().copied().collect()),
-                        IpPacket::V6(pkt),
-                        true,
-                    ) {
-                        Ok(()) => return None,
-                        Err(e) => panic!("not yet impl: forwarding without route: {}", e),
-                    };
-                }
-
-                match ip.next_header {
-                    0 => return Some(msg),
-                    PROTO_UDP => {
-                        let consumed = self.recv_udp_packet(IpPacketRef::V6(ip), ifid);
-                        if consumed {
-                            None
-                        } else {
-                            Some(msg)
-                        }
-                    }
-                    PROTO_TCP => {
-                        let consumed = self.capture_tcp_packet(IpPacketRef::V6(ip), ifid);
-                        if consumed {
-                            None
-                        } else {
-                            Some(msg)
-                        }
-                    }
-                    k => {
-                        if let Some(handle) =
-                            self.sockets.handlers.get(&(k, SocketDomain::AF_INET6))
-                        {
-                            let _ = handle.1.try_send(IpPacket::V6(ip.clone()));
-                            return None;
-                        }
-                        panic!("internal error: unreachable code :: proto = {k}");
-                    }
-                }
+        let consumed = match pkt.proto() {
+            PROTO_UDP => self.udp_on_packet(pkt.as_ref(), ifid),
+            PROTO_TCP => self.tcp_on_packet(pkt.as_ref(), ifid),
+            _ => {
+                // Transport layer packets that directed at valid addrs are allways consumed
+                true
             }
-            KIND_LINK_UPDATE => panic!("HUH"),
-            _ => Some(msg),
+        };
+
+        (!consumed).then(|| match pkt {
+            IpPacket::V4(v4) => Message::from_parts(header, Some(v4)),
+            IpPacket::V6(v6) => Message::from_parts(header, Some(v6)),
+        })
+    }
+
+    pub fn recv_network_layer(&mut self, msg: Message, ifid: IfId) -> NetworkLayerResult {
+        match msg.header.kind {
+            KIND_IPV4 => self.ipv4_recv(msg, ifid),
+            KIND_IPV6 => self.ipv6_recv(msg, ifid),
+            KIND_LINK_UPDATE => panic!("should not happen"),
+            _ => NetworkLayerResult::PassThrough(msg),
         }
     }
 
-    fn networking_layer_io_timeout(&mut self, msg: Message) -> Option<Message> {
-        let Some(fd) = msg.try_content::<Fd>() else {
+    pub fn event_end(&mut self) {
+        self.ipv6.timer.schedule_wakeup();
+        self.tcp_tick();
+    }
+
+    pub fn general_io_timeout(&mut self, msg: Message) -> Option<Message> {
+        if msg.header.id == KIND_ARP {
+            self.recv_arp_wakeup();
             return None;
-        };
+        }
 
-        let Some(socket) = self.sockets.get(fd) else {
-            return None
-        };
+        if msg.header.id == ID_IPV6_TIMEOUT {
+            if let Err(e) = self.ipv6_handle_timer(msg) {
+                tracing::error!("an error occured in the timer block: {e}");
+            }
+            return None;
+        }
 
-        if socket.typ == SocketType::SOCK_STREAM {
-            // TODO: If listeners have timesouts as well we must do something
-            self.tcp_timeout(*fd, msg)
+        let fd = *msg.body.try_content::<Fd>()?;
+
+        // TCP2 grouped wakeup
+        if fd == u32::MAX {
+            self.tcp_timeout();
+            return None;
         }
 
         None
+    }
+
+    pub fn get_path_mtu(&self, src: IpAddr, dst: IpAddr) -> usize {
+        match (src, dst) {
+            (IpAddr::V4(_), IpAddr::V4(dst)) => self.ipv4_get_local_mtu(dst),
+            (IpAddr::V6(src), IpAddr::V6(dst)) => self.ipv6_get_path_mtu(src, dst),
+            _ => panic!("unsupported address family"),
+        }
+    }
+
+    pub fn icmp_port_unreachable(&mut self, interface: IfId, pkt: IpPacketRef) {
+        match pkt {
+            IpPacketRef::V4(pkt) => self.ipv4_icmp_port_unreachable(interface, pkt),
+            IpPacketRef::V6(pkt) => self
+                .ipv6_icmp_send_port_unreachable(interface, pkt)
+                .expect("no fail"),
+        }
     }
 }
 
@@ -331,6 +218,17 @@ impl UnwindSafe for IOContext {}
 impl Drop for IOContext {
     fn drop(&mut self) {
         #[cfg(feature = "libpcap")]
-        crate::libpcap::close(self.id);
+        crate::libpcap::close(self.path.clone());
     }
 }
+
+#[derive(Debug, Clone)]
+pub enum LayerResult<T> {
+    PassThrough(Message),
+    Consumed,
+    Forward(T),
+}
+
+pub type PhysLayerResult = LayerResult<Message>;
+pub type LinkLayerResult = LayerResult<(Message, IfId)>;
+pub type NetworkLayerResult = LayerResult<(IpPacket, Header)>;

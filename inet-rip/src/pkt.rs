@@ -1,8 +1,5 @@
-use bytepack::raw_enum;
-use bytepack::{
-    BytestreamReader, BytestreamWriter, FromBytestream, ReadBytesExt, ToBytestream, WriteBytesExt,
-    BE,
-};
+use bytes_io::{BE, BytesReader, BytesWriter, FromBytes, ReadBytesExt, ToBytes, WriteBytesExt};
+use macros::repr_enum;
 use std::{io::Error, net::Ipv4Addr};
 
 /// A RIP packet.
@@ -14,7 +11,7 @@ pub struct RipPacket {
     pub entries: Vec<RipEntry>,
 }
 
-raw_enum! {
+repr_enum! {
     /// The kind of command, encoded in a RIP packet.
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
     pub enum RipCommand {
@@ -41,6 +38,7 @@ pub struct RipEntry {
 
 impl RipPacket {
     /// Writes a set of RIP entries to a RIP packet.
+    #[must_use]
     pub fn packets(command: RipCommand, mut entries: &[RipEntry]) -> Vec<RipPacket> {
         let mut r = Vec::with_capacity(entries.len() / 25 + 1);
         while !entries.is_empty() {
@@ -56,30 +54,30 @@ impl RipPacket {
     }
 }
 
-impl ToBytestream for RipPacket {
+impl ToBytes for RipPacket {
     type Error = Error;
-    fn to_bytestream(&self, stream: &mut BytestreamWriter) -> Result<(), Self::Error> {
+    fn to_bytes(&self, stream: &mut BytesWriter) -> Result<(), Self::Error> {
         stream.write_u8(self.command.to_raw_repr())?;
         stream.write_u8(2)?;
         stream.write_u16::<BE>(0)?;
         for entry in &self.entries {
-            entry.to_bytestream(stream)?;
+            entry.to_bytes(stream)?;
         }
         Ok(())
     }
 }
 
-impl FromBytestream for RipPacket {
+impl FromBytes for RipPacket {
     type Error = Error;
-    fn from_bytestream(stream: &mut BytestreamReader) -> Result<Self, Self::Error> {
+    fn from_bytes(stream: &mut BytesReader) -> Result<Self, Self::Error> {
         let command = RipCommand::from_raw_repr(stream.read_u8()?)?;
         let version = stream.read_u8()?;
         assert_eq!(version, 2);
         assert_eq!(0, stream.read_u16::<BE>()?);
 
         let mut entries = Vec::new();
-        while !stream.is_empty() {
-            entries.push(RipEntry::from_bytestream(stream)?);
+        while stream.has_remaining() {
+            entries.push(RipEntry::from_bytes(stream)?);
         }
         Ok(RipPacket { command, entries })
     }
@@ -88,9 +86,9 @@ impl FromBytestream for RipPacket {
 /// Address familiy `Ipv4/INET`.
 pub const AF_INET: u16 = 2;
 
-impl ToBytestream for RipEntry {
+impl ToBytes for RipEntry {
     type Error = Error;
-    fn to_bytestream(&self, stream: &mut BytestreamWriter) -> Result<(), Self::Error> {
+    fn to_bytes(&self, stream: &mut BytesWriter) -> Result<(), Self::Error> {
         stream.write_u16::<BE>(self.addr_fam)?;
         stream.write_u16::<BE>(0)?;
 
@@ -102,9 +100,9 @@ impl ToBytestream for RipEntry {
     }
 }
 
-impl FromBytestream for RipEntry {
+impl FromBytes for RipEntry {
     type Error = Error;
-    fn from_bytestream(stream: &mut BytestreamReader) -> Result<Self, Self::Error> {
+    fn from_bytes(stream: &mut BytesReader) -> Result<Self, Self::Error> {
         let addr_fam = stream.read_u16::<BE>()?;
         assert_eq!(0, stream.read_u16::<BE>()?);
         let target = Ipv4Addr::from(stream.read_u32::<BE>()?);
@@ -124,6 +122,8 @@ impl FromBytestream for RipEntry {
 
 #[cfg(test)]
 mod tests {
+    use bytes_io::assert_encoding_e2e;
+
     use super::*;
     use std::io::Result;
 
@@ -140,7 +140,7 @@ mod tests {
             }],
         };
 
-        let buf = pkt.to_vec()?;
+        let buf = pkt.write_to_vec()?;
         assert_eq!(
             buf,
             &[
@@ -167,7 +167,7 @@ mod tests {
             0x00, 0x00, 0x03, 0xeb, // metrics
         ];
 
-        let pkt = RipPacket::from_slice(buf)?;
+        let pkt = RipPacket::peek_from(&buf[..])?;
 
         assert_eq!(
             pkt,
@@ -202,11 +202,67 @@ mod tests {
             command: RipCommand::Request,
             entries,
         };
-        let buf = rip.to_vec()?;
+        let buf = rip.write_to_vec()?;
         assert_eq!(buf.len(), 4 + 20 * 20);
-        let rip2 = RipPacket::from_slice(&buf)?;
+        let rip2 = RipPacket::peek_from(&buf[..])?;
         assert_eq!(rip, rip2);
 
         Ok(())
+    }
+
+    #[test]
+    fn e2e_encoding_rip_entry() {
+        assert_encoding_e2e(&[
+            RipEntry {
+                addr_fam: AF_INET,
+                target: Ipv4Addr::new(6, 7, 8, 9),
+                mask: Ipv4Addr::new(255, 255, 0, 0),
+                next_hop: Ipv4Addr::new(10, 11, 12, 13),
+                metric: 1003,
+            },
+            RipEntry {
+                addr_fam: AF_INET,
+                target: Ipv4Addr::new(10, 11, 12, 13),
+                mask: Ipv4Addr::new(255, 255, 255, 0),
+                next_hop: Ipv4Addr::new(14, 15, 16, 17),
+                metric: 14,
+            },
+            RipEntry {
+                addr_fam: AF_INET,
+                target: Ipv4Addr::new(14, 15, 16, 17),
+                mask: Ipv4Addr::UNSPECIFIED,
+                next_hop: Ipv4Addr::new(18, 19, 20, 21),
+                metric: 10305,
+            },
+        ]);
+    }
+
+    #[test]
+    fn e2e_encoding_rip_packet() {
+        assert_encoding_e2e(&[
+            RipPacket {
+                command: RipCommand::Request,
+                entries: vec![
+                    RipEntry {
+                        addr_fam: AF_INET,
+                        target: Ipv4Addr::new(6, 7, 8, 9),
+                        mask: Ipv4Addr::new(255, 255, 0, 0),
+                        next_hop: Ipv4Addr::new(10, 11, 12, 13),
+                        metric: 1003,
+                    },
+                    RipEntry {
+                        addr_fam: AF_INET,
+                        target: Ipv4Addr::new(10, 11, 12, 13),
+                        mask: Ipv4Addr::new(255, 255, 255, 0),
+                        next_hop: Ipv4Addr::new(14, 15, 16, 17),
+                        metric: 14,
+                    },
+                ],
+            },
+            RipPacket {
+                command: RipCommand::Response,
+                entries: vec![],
+            },
+        ]);
     }
 }

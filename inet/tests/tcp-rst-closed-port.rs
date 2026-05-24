@@ -1,61 +1,62 @@
-use des::{prelude::*, registry, time::sleep};
-use inet::{
-    interface::{add_interface, Interface, NetworkDevice},
-    *,
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
 };
-use tokio::{spawn, task::JoinHandle};
 
+use des::{prelude::*, time::sleep};
+use des_ndl::{Ndl, registry};
+use inet::{
+    interface::{InterfaceDef, NetworkDevice},
+    ioctx,
+    tcp::{TcpListener, TcpStream},
+};
+use tokio::spawn;
+
+#[derive(Default)]
 struct OneAttemptClient {
-    handles: Vec<JoinHandle<()>>,
+    done: Arc<AtomicBool>,
 }
-#[async_trait::async_trait]
-impl AsyncModule for OneAttemptClient {
-    fn new() -> Self {
-        Self {
-            handles: Vec::new(),
-        }
-    }
 
-    async fn at_sim_start(&mut self, _: usize) {
-        add_interface(Interface::ethv4(
-            NetworkDevice::eth(),
-            Ipv4Addr::new(69, 0, 0, 100),
-        ))
-        .unwrap();
+impl Module for OneAttemptClient {
+    fn at_sim_start(&mut self, _: usize) {
+        ioctx()
+            .add_interface(
+                InterfaceDef::new("en0", NetworkDevice::eth())
+                    .ip(Ipv4Addr::new(69, 0, 0, 200).into()),
+            )
+            .unwrap();
 
-        self.handles.push(spawn(async move {
+        let done = self.done.clone();
+        spawn(async move {
             let sock = TcpStream::connect("69.0.0.69:8000").await;
             tracing::info!("{:?}", sock);
             assert!(sock.is_err());
-        }));
+            done.store(true, Ordering::SeqCst);
+        });
     }
 
-    async fn at_sim_end(&mut self) {
-        for h in self.handles.drain(..) {
-            h.await.unwrap();
-        }
+    fn at_sim_end(&mut self) -> Result<(), des::Error> {
+        assert!(self.done.load(Ordering::SeqCst));
+        Ok(())
     }
 }
 
+#[derive(Default)]
 struct MultipleAttemptClient<const EXPECT: bool> {
-    handles: Vec<JoinHandle<()>>,
+    done: Arc<AtomicBool>,
 }
-#[async_trait::async_trait]
-impl<const EXPECT: bool> AsyncModule for MultipleAttemptClient<EXPECT> {
-    fn new() -> Self {
-        Self {
-            handles: Vec::new(),
-        }
-    }
 
-    async fn at_sim_start(&mut self, _: usize) {
-        add_interface(Interface::ethv4(
-            NetworkDevice::eth(),
-            Ipv4Addr::new(69, 0, 0, 100),
-        ))
-        .unwrap();
+impl<const EXPECT: bool> Module for MultipleAttemptClient<EXPECT> {
+    fn at_sim_start(&mut self, _: usize) {
+        ioctx()
+            .add_interface(
+                InterfaceDef::new("en0", NetworkDevice::eth())
+                    .ip(Ipv4Addr::new(69, 0, 0, 100).into()),
+            )
+            .unwrap();
 
-        self.handles.push(spawn(async move {
+        let done = self.done.clone();
+        spawn(async move {
             let addrs: [SocketAddr; 3] = [
                 "69.0.0.69:8000".parse().unwrap(),
                 "69.0.0.69:9000".parse().unwrap(),
@@ -64,45 +65,41 @@ impl<const EXPECT: bool> AsyncModule for MultipleAttemptClient<EXPECT> {
             let sock = TcpStream::connect(&addrs[..]).await;
             tracing::info!("{:?}", sock);
             assert_eq!(sock.is_ok(), EXPECT);
-        }));
+            done.store(true, Ordering::SeqCst);
+        });
     }
 
-    async fn at_sim_end(&mut self) {
-        for h in self.handles.drain(..) {
-            h.await.unwrap();
-        }
+    fn at_sim_end(&mut self) -> Result<(), des::Error> {
+        assert!(self.done.load(Ordering::SeqCst));
+        Ok(())
     }
 }
 
+#[derive(Default)]
 struct EmptyServer {}
-#[async_trait::async_trait]
-impl AsyncModule for EmptyServer {
-    fn new() -> Self {
-        Self {}
-    }
 
-    async fn at_sim_start(&mut self, _: usize) {
-        add_interface(Interface::ethv4(
-            NetworkDevice::eth(),
-            Ipv4Addr::new(69, 0, 0, 69),
-        ))
-        .unwrap();
+impl Module for EmptyServer {
+    fn at_sim_start(&mut self, _: usize) {
+        ioctx()
+            .add_interface(
+                InterfaceDef::new("en0", NetworkDevice::eth())
+                    .ip(Ipv4Addr::new(69, 0, 0, 69).into()),
+            )
+            .unwrap();
     }
 }
 
+#[derive(Default)]
 struct BoundServer {}
-#[async_trait::async_trait]
-impl AsyncModule for BoundServer {
-    fn new() -> Self {
-        Self {}
-    }
 
-    async fn at_sim_start(&mut self, _: usize) {
-        add_interface(Interface::ethv4(
-            NetworkDevice::eth(),
-            Ipv4Addr::new(69, 0, 0, 69),
-        ))
-        .unwrap();
+impl Module for BoundServer {
+    fn at_sim_start(&mut self, _: usize) {
+        ioctx()
+            .add_interface(
+                InterfaceDef::new("en0", NetworkDevice::eth())
+                    .ip(Ipv4Addr::new(69, 0, 0, 69).into()),
+            )
+            .unwrap();
 
         spawn(async move {
             let sock = TcpListener::bind("0.0.0.0:10000").await.unwrap();
@@ -115,66 +112,50 @@ impl AsyncModule for BoundServer {
     }
 }
 
-struct Main;
-impl Module for Main {
-    fn new() -> Self {
-        Self
-    }
-}
-
 #[test]
 #[serial_test::serial]
-fn tcp_rst_for_closed_port() {
-    inet::init();
-
+fn tcp_rst_for_closed_port() -> Result<(), Box<dyn std::error::Error>> {
     type Server = EmptyServer;
     type Client = OneAttemptClient;
 
-    // Logger::new().set_logger();
+    let mut sim = Sim::new(()).with_stack(inet::init);
+    let def = serde_norway::from_str(include_str!("tcp2.yml"))?;
+    sim.node("", Ndl::new(&mut registry![Client, Server, else _], &def)?)?;
 
-    let app = NdlApplication::new("tests/tcp2.ndl", registry![Client, Server, Main])
-        .map_err(|e| println!("{e}"))
-        .unwrap();
-    let app = NetworkApplication::new(app);
-    let rt = Builder::seeded(233).build(app);
+    let rt = sim.seeded(233).build();
 
-    let _ = rt.run().unwrap();
+    rt.run().into_result().map(|_| ())?;
+    Ok(())
 }
 
 #[test]
 #[serial_test::serial]
-fn tcp_rst_on_multiple_tries() {
-    inet::init();
-
+fn tcp_rst_on_multiple_tries() -> Result<(), Box<dyn std::error::Error>> {
     type Server = EmptyServer;
     type Client = MultipleAttemptClient<false>;
 
-    // Logger::new().set_logger();
+    let mut sim = Sim::new(()).with_stack(inet::init);
+    let def = serde_norway::from_str(include_str!("tcp2.yml"))?;
+    sim.node("", Ndl::new(&mut registry![Client, Server, else _], &def)?)?;
 
-    let app = NdlApplication::new("tests/tcp2.ndl", registry![Client, Server, Main])
-        .map_err(|e| println!("{e}"))
-        .unwrap();
-    let app = NetworkApplication::new(app);
-    let rt = Builder::seeded(233).build(app);
+    let rt = sim.seeded(233).build();
 
-    let _ = rt.run().unwrap();
+    rt.run().into_result().map(|_| ())?;
+    Ok(())
 }
 
 #[test]
 #[serial_test::serial]
-fn tcp_rst_on_multiple_tries_with_success() {
-    inet::init();
-
+fn tcp_rst_on_multiple_tries_with_success() -> Result<(), Box<dyn std::error::Error>> {
     type Server = BoundServer;
     type Client = MultipleAttemptClient<true>;
 
-    // Logger::new().set_logger();
+    let mut sim = Sim::new(()).with_stack(inet::init);
+    let def = serde_norway::from_str(include_str!("tcp2.yml"))?;
+    sim.node("", Ndl::new(&mut registry![Client, Server, else _], &def)?)?;
 
-    let app = NdlApplication::new("tests/tcp2.ndl", registry![Client, Server, Main])
-        .map_err(|e| println!("{e}"))
-        .unwrap();
-    let app = NetworkApplication::new(app);
-    let rt = Builder::seeded(233).build(app);
+    let rt = sim.seeded(233).build();
 
-    let _ = rt.run().unwrap();
+    rt.run().into_result().map(|_| ())?;
+    Ok(())
 }

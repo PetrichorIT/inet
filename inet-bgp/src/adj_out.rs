@@ -4,10 +4,10 @@ use std::{future::pending, net::Ipv4Addr};
 use tokio::sync::mpsc::Sender;
 
 use crate::{
+    BgpNodeInformation, NeighborEgressEvent,
     adj_in::{Peer, Route},
     peering::NeighborHandle,
     pkt::{BgpPathAttributeNextHop, BgpPathAttributeOrigin, BgpUpdatePacket},
-    BgpNodeInformation, NeighborEgressEvent,
 };
 use crate::{
     pkt::{
@@ -32,6 +32,7 @@ struct AdjOut {
 }
 
 impl AdjRIBOut {
+    #[must_use]
     pub fn new(host_info: BgpNodeInformation) -> Self {
         Self {
             ribs: FxHashMap::with_hasher(FxBuildHasher::default()),
@@ -69,7 +70,9 @@ impl AdjRIBOut {
     }
 
     pub(super) fn advertise_to(&mut self, mut entry: RIBEntry, peer: Ipv4Addr) {
-        let Some(rib) = self.ribs.get_mut(&peer) else { todo!() };
+        let Some(rib) = self.ribs.get_mut(&peer) else {
+            todo!()
+        };
         if entry.is_as_on_path(rib.info.as_num) {
             return;
         }
@@ -148,6 +151,7 @@ impl AdjRIBOut {
         }
     }
 
+    #[allow(clippy::for_kv_map)]
     pub(super) async fn tick(&mut self) {
         // tracing::info!("tick");
 
@@ -197,6 +201,7 @@ impl AdjRIBOut {
     }
 }
 
+#[derive(Debug, Default)]
 pub struct RoutingInformationBase {
     mapping: Vec<RIBEntry>,
 }
@@ -211,16 +216,19 @@ pub struct RIBEntry {
 }
 
 impl RoutingInformationBase {
+    #[must_use]
     pub fn new() -> Self {
         Self {
             mapping: Vec::new(),
         }
     }
 
+    #[must_use]
     pub fn entries(&self) -> &[RIBEntry] {
         &self.mapping
     }
 
+    #[must_use]
     pub fn lookup(&self, nlri: Nlri) -> Option<&RIBEntry> {
         self.mapping.iter().find(|e| e.nlri.contains(&nlri))
     }
@@ -243,11 +251,12 @@ impl RoutingInformationBase {
     }
 
     pub fn add(&mut self, entry: RIBEntry) {
-        self.mapping.push(entry)
+        self.mapping.push(entry);
     }
 }
 
 impl RIBEntry {
+    #[must_use]
     pub fn to_update(&self) -> BgpUpdatePacket {
         let path_attributes = self.path.clone();
         BgpUpdatePacket {
@@ -257,6 +266,7 @@ impl RIBEntry {
         }
     }
 
+    #[must_use]
     pub fn to_withdraw(&self) -> BgpUpdatePacket {
         let path_attributes = self.path.clone();
         BgpUpdatePacket {
@@ -266,12 +276,13 @@ impl RIBEntry {
         }
     }
 
+    #[must_use]
     pub fn is_as_on_path(&self, as_num: AsNumber) -> bool {
         for attr in &self.path {
-            if let BgpPathAttributeKind::AsPath(ref as_attr) = attr.attr {
-                if as_attr.path.contains(&as_num) {
-                    return true;
-                }
+            if let BgpPathAttributeKind::AsPath(ref as_attr) = attr.attr
+                && as_attr.path.contains(&as_num)
+            {
+                return true;
             }
         }
 
@@ -279,7 +290,7 @@ impl RIBEntry {
     }
 
     pub fn set_next_hop(&mut self, next_hop: Ipv4Addr) {
-        for attr in self.path.iter_mut() {
+        for attr in &mut self.path {
             if let BgpPathAttributeKind::NextHop(ref mut hop) = attr.attr {
                 hop.hop = next_hop;
                 return;

@@ -1,0 +1,309 @@
+#![allow(clippy::similar_names)]
+
+use super::iface::MacAddress;
+use bytes_io::{BytesReader, BytesWriter, FromBytes, ReadBytesExt, ToBytes, WriteBytesExt, BE};
+use des::prelude::*;
+use macros::repr_enum;
+use std::io::Read;
+use std::{io::Write, net::Ipv4Addr};
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct ArpPacket {
+    pub htype: u16,
+    pub ptype: u16,
+    haddrlen: u8,
+    paddrlen: u8,
+    pub operation: ARPOperation,
+    raw: Vec<u8>,
+}
+
+impl ArpPacket {
+    // Read only
+
+    #[must_use]
+    pub fn is_ipv4_ethernet(&self) -> bool {
+        self.htype == 1 && self.ptype == 0x0800
+    }
+
+    #[must_use]
+    pub fn is_ipv6_ethernet(&self) -> bool {
+        self.htype == 1 && self.ptype == 0x86DD
+    }
+
+    #[must_use]
+    pub fn src_haddr(&self) -> &[u8] {
+        &self.raw[0..self.haddrlen as usize]
+    }
+
+    #[must_use]
+    pub fn src_paddr(&self) -> &[u8] {
+        let s = self.haddrlen as usize;
+        &self.raw[s..(s + self.paddrlen as usize)]
+    }
+
+    #[must_use]
+    pub fn dst_haddr(&self) -> &[u8] {
+        let s = (self.haddrlen + self.paddrlen) as usize;
+        &self.raw[s..(s + self.haddrlen as usize)]
+    }
+
+    #[must_use]
+    pub fn dst_paddr(&self) -> &[u8] {
+        let s = (2 * self.haddrlen + self.paddrlen) as usize;
+        &self.raw[s..(s + self.paddrlen as usize)]
+    }
+
+    // Ethernet
+
+    /// Returns the src MAC addr.
+    ///
+    /// # Panics
+    ///
+    /// This function panics, if the src addr is not a MAC.
+    #[must_use]
+    pub fn src_mac_addr(&self) -> MacAddress {
+        let bytes: [u8; 6] = self
+            .src_haddr()
+            .try_into()
+            .expect("Failed to cast as ethernet addr");
+        MacAddress::from(bytes)
+    }
+
+    /// Returns the dst MAC addr.
+    ///
+    /// # Panics
+    ///
+    /// This function panics, if the dst addr is not a MAC.
+    #[must_use]
+    pub fn dst_mac_addr(&self) -> MacAddress {
+        let bytes: [u8; 6] = self
+            .dst_haddr()
+            .try_into()
+            .expect("Failed to cast as ethernet addr");
+        MacAddress::from(bytes)
+    }
+
+    // Ip
+
+    #[must_use]
+    pub fn src_ip_addr(&self) -> IpAddr {
+        if self.is_ipv4_ethernet() {
+            self.src_ipv4_addr().into()
+        } else {
+            self.src_ipv6_addr().into()
+        }
+    }
+
+    #[must_use]
+    pub fn dst_ip_addr(&self) -> IpAddr {
+        if self.is_ipv4_ethernet() {
+            self.dst_ipv4_addr().into()
+        } else {
+            self.dst_ipv6_addr().into()
+        }
+    }
+
+    // Ipv4
+
+    /// Returns the src IP addr.
+    ///
+    /// # Panics
+    ///
+    /// This function panics, if the src addr is not IPv4.
+    #[must_use]
+    pub fn src_ipv4_addr(&self) -> Ipv4Addr {
+        let bytes: [u8; 4] = self
+            .src_paddr()
+            .try_into()
+            .expect("Failed to cast as ip addr");
+        Ipv4Addr::from(bytes)
+    }
+
+    /// Returns the dst IP addr.
+    ///
+    /// # Panics
+    ///
+    /// This function panics, if the dst addr is not IPv4.
+    #[must_use]
+    pub fn dst_ipv4_addr(&self) -> Ipv4Addr {
+        let bytes: [u8; 4] = self
+            .dst_paddr()
+            .try_into()
+            .expect("Failed to cast as ip addr");
+        Ipv4Addr::from(bytes)
+    }
+
+    // Ipv6
+
+    /// Returns the src IP addr.
+    ///
+    /// # Panics
+    ///
+    /// This function panics, if the src addr is not IPv6.
+    #[must_use]
+    pub fn src_ipv6_addr(&self) -> Ipv6Addr {
+        let bytes: [u8; 16] = self
+            .src_paddr()
+            .try_into()
+            .expect("Failed to cast as ip addr");
+        Ipv6Addr::from(bytes)
+    }
+
+    /// Returns the dst IP addr.
+    ///
+    /// # Panics
+    ///
+    /// This function panics, if the dst addr is not IPv6.
+    #[must_use]
+    pub fn dst_ipv6_addr(&self) -> Ipv6Addr {
+        let bytes: [u8; 16] = self
+            .dst_paddr()
+            .try_into()
+            .expect("Failed to cast as ip addr");
+        Ipv6Addr::from(bytes)
+    }
+
+    // Write interfaces
+
+    fn dst_paddr_mut(&mut self) -> &mut [u8] {
+        let s = (self.haddrlen + self.paddrlen) as usize;
+        &mut self.raw[s..(s + self.haddrlen as usize)]
+    }
+
+    #[must_use]
+    pub fn new_v4_request(src_haddr: MacAddress, src_paddr: Ipv4Addr, dst_paddr: Ipv4Addr) -> Self {
+        let mut raw = Vec::with_capacity(20);
+        raw.extend(src_haddr.as_slice());
+        raw.extend(src_paddr.octets());
+        raw.extend(MacAddress::NULL.as_slice());
+        raw.extend(dst_paddr.octets());
+        Self {
+            htype: 0x0001,
+            ptype: 0x0800,
+            haddrlen: 6,
+            paddrlen: 4,
+            operation: ARPOperation::Request,
+            raw,
+        }
+    }
+
+    #[must_use]
+    pub fn into_response(&self, dst_haddr: MacAddress) -> Self {
+        let mut resp = self.clone();
+        resp.operation = ARPOperation::Response;
+        let buf = resp.dst_paddr_mut();
+        buf[..6].copy_from_slice(&dst_haddr.as_slice()[..6]);
+        resp
+    }
+}
+
+impl ToBytes for ArpPacket {
+    type Error = std::io::Error;
+    fn to_bytes(&self, stream: &mut BytesWriter) -> Result<(), Self::Error> {
+        stream.write_u16::<BE>(self.htype)?;
+        stream.write_u16::<BE>(self.ptype)?;
+        stream.write_u8(self.haddrlen)?;
+        stream.write_u8(self.paddrlen)?;
+
+        self.operation.to_bytes(stream)?;
+        stream.write_all(&self.raw)
+    }
+}
+
+impl FromBytes for ArpPacket {
+    type Error = std::io::Error;
+    fn from_bytes(stream: &mut BytesReader) -> Result<Self, Self::Error> {
+        let htype = stream.read_u16::<BE>()?;
+        let ptype = stream.read_u16::<BE>()?;
+
+        let haddrlen = stream.read_u8()?;
+        let paddrlen = stream.read_u8()?;
+        let operation = ARPOperation::from_bytes(stream)?;
+
+        let len = 2 * haddrlen + 2 * paddrlen;
+        let mut buf = vec![0u8; len as usize];
+        stream.read_exact(&mut buf)?;
+
+        Ok(ArpPacket {
+            htype,
+            ptype,
+            haddrlen,
+            paddrlen,
+            operation,
+            raw: buf,
+        })
+    }
+}
+
+impl MessageBody for ArpPacket {
+    fn byte_len(&self) -> usize {
+        self.raw.len() + 8
+    }
+}
+
+pub const KIND_ARP: MessageKind = 0x0806;
+
+repr_enum! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+    pub enum ARPOperation {
+        type Repr = u16 where BE;
+
+        Request = 1,
+        Response = 2,
+    }
+}
+
+impl ToBytes for ARPOperation {
+    type Error = std::io::Error;
+    fn to_bytes(&self, stream: &mut BytesWriter) -> Result<(), Self::Error> {
+        stream.write_u16::<BE>(self.to_raw_repr())
+    }
+}
+
+impl FromBytes for ARPOperation {
+    type Error = std::io::Error;
+    fn from_bytes(stream: &mut BytesReader) -> Result<Self, Self::Error> {
+        let tag = stream.read_u16::<BE>()?;
+        Self::from_raw_repr(tag)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use bytes_io::assert_encoding_e2e;
+
+    use super::*;
+
+    #[test]
+    fn e2e_encoding() {
+        assert_encoding_e2e(&[ArpPacket::new_v4_request(
+            MacAddress::from([1, 2, 3, 4, 5, 6]),
+            Ipv4Addr::new(123, 4, 49, 3),
+            Ipv4Addr::new(49, 131, 4, 5),
+        )]);
+    }
+
+    #[test]
+    fn ipv4_ethernet_request() {
+        let r = ArpPacket::new_v4_request(
+            [1, 2, 3, 4, 5, 6].into(),
+            Ipv4Addr::new(1, 2, 3, 4),
+            Ipv4Addr::new(255, 254, 253, 252),
+        );
+
+        assert_eq!(r.htype, 1);
+        assert_eq!(r.ptype, 0x0800);
+        assert_eq!(r.src_mac_addr(), [1, 2, 3, 4, 5, 6].into());
+        assert_eq!(r.dst_mac_addr(), [0, 0, 0, 0, 0, 0].into());
+        assert_eq!(r.src_ipv4_addr(), Ipv4Addr::new(1, 2, 3, 4));
+        assert_eq!(r.dst_ipv4_addr(), Ipv4Addr::new(255, 254, 253, 252));
+
+        let r = ArpPacket::peek_from(&r.write_to_vec().unwrap()[..]).unwrap();
+        assert_eq!(r.htype, 1);
+        assert_eq!(r.ptype, 0x0800);
+        assert_eq!(r.src_mac_addr(), [1, 2, 3, 4, 5, 6].into());
+        assert_eq!(r.dst_mac_addr(), [0, 0, 0, 0, 0, 0].into());
+        assert_eq!(r.src_ipv4_addr(), Ipv4Addr::new(1, 2, 3, 4));
+        assert_eq!(r.dst_ipv4_addr(), Ipv4Addr::new(255, 254, 253, 252));
+    }
+}

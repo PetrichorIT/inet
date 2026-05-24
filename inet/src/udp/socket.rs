@@ -1,0 +1,511 @@
+use bytes_io::BufMut;
+
+use crate::IOHandle;
+use crate::interface::IfId;
+use crate::io::{Interest, Ready};
+use crate::{
+    IOContext,
+    dns::{ToSocketAddrs, lookup_host},
+    interface::InterfaceName,
+    socket::{AsRawFd, Fd},
+};
+use std::net::Ipv6Addr;
+use std::{
+    io::{Error, ErrorKind, Result},
+    net::SocketAddr,
+};
+
+use super::interest::UdpInterest;
+
+#[derive(Debug)]
+pub struct UdpSocket {
+    pub(super) handle: IOHandle,
+    pub(super) fd: Fd,
+}
+
+impl UdpSocket {
+    /// This function will create a new UDP socket and attempt to bind it to the `addr` provided.
+    ///
+    /// Binding with a port number of 0 will request that the OS assigns a port to this listener.
+    /// The port allocated can be queried via the `local_addr` method.
+    pub async fn bind(addr: impl ToSocketAddrs) -> Result<UdpSocket> {
+        let addrs = lookup_host(addr).await?;
+        IOHandle::current().do_mutating(|ctx| {
+            let mut last_err = None;
+            for addr in addrs {
+                match ctx.udp_bind(addr) {
+                    Ok(socket) => return Ok(socket),
+                    Err(e) => last_err = Some(e),
+                }
+            }
+
+            Err(last_err.unwrap_or_else(|| {
+                Error::new(ErrorKind::InvalidInput, "could not resolve to any address")
+            }))
+        })
+    }
+
+    /// Returns the local address that this socket is bound to.
+    pub fn local_addr(&self) -> Result<SocketAddr> {
+        self.handle.do_mutating(|ctx| ctx.socket_get_addr(self.fd))
+    }
+
+    /// Returns the peer address that this socket is bound to.
+    pub fn peer_addr(&self) -> Result<SocketAddr> {
+        self.handle.do_mutating(|ctx| ctx.socket_get_peer(self.fd))
+    }
+
+    /// Connects the UDP socket setting the default destination for send() and
+    /// limiting packets that are read via recv from the address specified in `addr`.
+    pub async fn connect<A: ToSocketAddrs>(&self, addr: A) -> Result<()> {
+        let addrs = lookup_host(addr).await?;
+        IOHandle::current().do_mutating(|ctx| {
+            let mut last_err = None;
+            for peer in addrs {
+                match ctx.udp_connect(self.fd, peer) {
+                    Ok(()) => return Ok(()),
+                    Err(e) => last_err = Some(e),
+                }
+            }
+            Err(last_err.unwrap_or_else(|| {
+                Error::new(ErrorKind::InvalidInput, "could not resolve to any address")
+            }))
+        })
+    }
+
+    /// Waits for any of the requested ready states.
+    ///
+    /// This function is usually paired with `try_recv()` or `try_send()`.
+    /// It can be used to concurrently recv / send to the same socket on a single task without
+    /// splitting the socket.
+    ///
+    /// The function may complete without the socket being ready.
+    /// This is a false-positive and attempting an operation will return with `io::ErrorKind::WouldBlock`.
+    pub async fn ready(&self, interest: Interest) -> Result<Ready> {
+        let io = UdpInterest {
+            fd: self.fd,
+            io_interest: interest,
+            handle: self.handle.clone(),
+        };
+
+        io.await
+    }
+
+    /// Waits for the socket to become writable.
+    ///
+    /// This function is equivalent to `ready(Interest::WRITABLE)` and is usually
+    /// paired with `try_send()` or `try_send_to()`.
+    ///
+    /// The function may complete without the socket being writable.
+    /// This is a false-positive and attempting a `try_send()` will return with `io::ErrorKind::WouldBlock`.
+    pub async fn writable(&self) -> Result<()> {
+        self.ready(Interest::WRITABLE).await?;
+        Ok(())
+    }
+
+    /// Sends data on the socket to the remote address that the socket is connected to.
+    ///
+    /// The [connect](UdpSocket::connect) method will connect this socket to a remote address.
+    /// This method will fail if the socket is not connected.
+    pub async fn send(&self, buf: &[u8]) -> Result<usize> {
+        loop {
+            self.writable().await?;
+            let peer = self.peer_addr()?;
+            if let Some(e) = self.take_error()? {
+                return Err(e);
+            }
+            let result = self
+                .handle
+                .do_mutating(|ctx| ctx.udp_send_to(self.fd, peer, buf));
+
+            match result {
+                Ok(v) => return Ok(v),
+                Err(e) if e.kind() == ErrorKind::WouldBlock => continue,
+                Err(e) => return Err(e),
+            }
+        }
+    }
+
+    /// Tries to send data on the socket to the remote address to which it is connected.
+    ///
+    /// When the socket buffer is full, Err(io::ErrorKind::WouldBlock) is returned.
+    /// This function is usually paired with writable().
+    pub fn try_send(&self, buf: &[u8]) -> Result<usize> {
+        let peer = self.peer_addr()?;
+        self.handle
+            .do_mutating(|ctx| ctx.udp_send_to(self.fd, peer, buf))
+    }
+
+    /// Sends data on the socket to the given address. On success, returns the number of bytes written.
+    ///
+    /// Address type can be any implementor of [ToSocketAddrs] trait. See its documentation for concrete examples.
+    ///
+    /// It is possible for `addr` to yield multiple addresses,
+    /// but `send_to` will only send data to the first address yielded by `addr`.
+    pub async fn send_to(&self, buf: &[u8], target: impl ToSocketAddrs) -> Result<usize> {
+        let addr = lookup_host(target).await;
+        let first = addr.unwrap().next().unwrap();
+
+        loop {
+            self.writable().await?;
+            let result = self
+                .handle
+                .do_mutating(|ctx| ctx.udp_send_to(self.fd, first, buf));
+
+            match result {
+                Ok(v) => return Ok(v),
+                Err(e) if e.kind() == ErrorKind::WouldBlock => continue,
+                Err(e) => return Err(e),
+            }
+        }
+    }
+
+    /// Tries to send data on the socket to the given address,
+    /// but if the send is blocked this will return right away.
+    ///
+    /// This function is usually paired with writable().
+    pub fn try_send_to(&self, buf: &[u8], target: SocketAddr) -> Result<usize> {
+        self.handle
+            .do_mutating(|ctx| ctx.udp_send_to(self.fd, target, buf))?;
+        Ok(buf.len())
+    }
+
+    /// Waits for the socket to become readable.
+    ///
+    /// This function is equivalent to `ready(Interest::READABLE)` and is usually paired with `try_recv()`.
+    ///
+    /// The function may complete without the socket being readable.
+    /// This is a false-positive and attempting a `try_recv()` will return with `io::ErrorKind::WouldBlock`.
+    pub async fn readable(&self) -> Result<()> {
+        self.ready(Interest::READABLE).await?;
+        Ok(())
+    }
+
+    /// Receives a single datagram message on the socket from the remote address to
+    /// which it is connected. On success, returns the number of bytes read.
+    pub async fn recv(&self, buf: &mut [u8]) -> Result<usize> {
+        let peer = self.peer_addr()?;
+        loop {
+            self.readable().await?;
+            match self
+                .handle
+                .do_mutating(|ctx| ctx.udp_recv(self.fd, Some(peer), buf))
+            {
+                Ok((n, _)) => return Ok(n),
+                Err(e) if e.kind() == ErrorKind::WouldBlock => {}
+                Err(e) if e.kind() == ErrorKind::ConnectionRefused => {}
+                Err(e) => return Err(e),
+            }
+        }
+    }
+
+    /// Receives a single datagram message on the socket from the remote address to
+    /// which it is connected. On success, returns the number of bytes read.
+    pub async fn recv_buf<B: BufMut>(&self, buf: &mut B) -> Result<usize> {
+        let peer = self.peer_addr()?;
+        loop {
+            self.readable().await?;
+            match self
+                .handle
+                .do_mutating(|ctx| ctx.udp_recv_buf(self.fd, Some(peer), buf))
+            {
+                Ok((n, _)) => return Ok(n),
+                Err(e) if e.kind() == ErrorKind::WouldBlock => {}
+                Err(e) if e.kind() == ErrorKind::ConnectionRefused => {}
+                Err(e) => return Err(e),
+            }
+        }
+    }
+
+    /// Tries to receive a single datagram message on the socket from the remote address to which it is connected.
+    /// On success, returns the number of bytes read.
+    ///
+    /// The function must be called with valid byte array buf of sufficient size to hold the message bytes.
+    /// If a message is too long to fit in the supplied buffer, excess bytes may be discarded.
+    pub fn try_recv(&self, buf: &mut [u8]) -> Result<usize> {
+        loop {
+            let peer = self.peer_addr()?;
+            match self
+                .handle
+                .do_mutating(|ctx| ctx.udp_recv(self.fd, Some(peer), buf))
+            {
+                Ok((n, _)) => return Ok(n),
+                Err(e) if e.kind() == ErrorKind::ConnectionRefused => {}
+                Err(e) => return Err(e),
+            }
+        }
+    }
+
+    /// Tries to receive a single datagram message on the socket from the remote address to which it is connected.
+    /// On success, returns the number of bytes read.
+    ///
+    /// The function must be called with valid byte array buf of sufficient size to hold the message bytes.
+    /// If a message is too long to fit in the supplied buffer, excess bytes may be discarded.
+    pub fn try_recv_buf<B: BufMut>(&self, buf: &mut B) -> Result<usize> {
+        loop {
+            let peer = self.peer_addr()?;
+            match self
+                .handle
+                .do_mutating(|ctx| ctx.udp_recv_buf(self.fd, Some(peer), buf))
+            {
+                Ok((n, _)) => return Ok(n),
+                Err(e) if e.kind() == ErrorKind::ConnectionRefused => {}
+                Err(e) => return Err(e),
+            }
+        }
+    }
+
+    /// Receives a single datagram message on the socket. On success,
+    /// returns the number of bytes read and the origin.
+    ///
+    /// The function must be called with valid byte array buf of sufficient size to hold the message bytes.
+    /// If a message is too long to fit in the supplied buffer, excess bytes may be discarded.
+    pub async fn recv_from(&self, buf: &mut [u8]) -> Result<(usize, SocketAddr)> {
+        if let Ok(peer) = self.peer_addr() {
+            return self.recv(buf).await.map(|n| (n, peer));
+        }
+
+        loop {
+            self.readable().await?;
+            match self
+                .handle
+                .do_mutating(|ctx| ctx.udp_recv(self.fd, None, buf))
+            {
+                Ok((n, src)) => return Ok((n, src)),
+                Err(e) if e.kind() == ErrorKind::WouldBlock => {}
+                Err(e) if e.kind() == ErrorKind::ConnectionRefused => {}
+                Err(e) => return Err(e),
+            }
+        }
+    }
+
+    /// Tries to receive a single datagram message on the socket.
+    /// On success, returns the number of bytes read and the origin.
+    ///
+    /// The function must be called with valid byte array buf of sufficient size
+    /// to hold the message bytes. If a message is too long to fit in the supplied buffer,
+    /// excess bytes may be discarded.
+    pub fn try_recv_from(&self, buf: &mut [u8]) -> Result<(usize, SocketAddr)> {
+        if let Ok(peer) = self.peer_addr() {
+            return self.try_recv(buf).map(|n| (n, peer));
+        }
+
+        loop {
+            match self
+                .handle
+                .do_mutating(|ctx| ctx.udp_recv(self.fd, None, buf))
+            {
+                Ok((n, src)) => return Ok((n, src)),
+                Err(e) if e.kind() == ErrorKind::ConnectionRefused => {}
+                Err(e) => return Err(e),
+            }
+        }
+    }
+
+    /// Receives a single datagram message on the socket. On success,
+    /// returns the number of bytes read and the origin.
+    ///
+    /// The function must be called with valid byte array buf of sufficient size to hold the message bytes.
+    /// If a message is too long to fit in the supplied buffer, excess bytes may be discarded.
+    pub async fn recv_buf_from<B: BufMut>(&self, buf: &mut B) -> Result<(usize, SocketAddr)> {
+        if let Ok(peer) = self.peer_addr() {
+            return self.recv_buf(buf).await.map(|n| (n, peer));
+        }
+
+        loop {
+            self.readable().await?;
+            match self
+                .handle
+                .do_mutating(|ctx| ctx.udp_recv_buf(self.fd, None, buf))
+            {
+                Ok((n, src)) => return Ok((n, src)),
+                Err(e) if e.kind() == ErrorKind::WouldBlock => {}
+                Err(e) if e.kind() == ErrorKind::ConnectionRefused => {}
+                Err(e) => return Err(e),
+            }
+        }
+    }
+
+    /// Tries to receive a single datagram message on the socket.
+    /// On success, returns the number of bytes read and the origin.
+    ///
+    /// The function must be called with valid byte array buf of sufficient size
+    /// to hold the message bytes. If a message is too long to fit in the supplied buffer,
+    /// excess bytes may be discarded.
+    pub fn try_recv_buf_from<B: BufMut>(&self, buf: &mut B) -> Result<(usize, SocketAddr)> {
+        if let Ok(peer) = self.peer_addr() {
+            return self.try_recv_buf(buf).map(|n| (n, peer));
+        }
+
+        loop {
+            match self
+                .handle
+                .do_mutating(|ctx| ctx.udp_recv_buf(self.fd, None, buf))
+            {
+                Ok((n, src)) => return Ok((n, src)),
+                Err(e) if e.kind() == ErrorKind::ConnectionRefused => {}
+                Err(e) => return Err(e),
+            }
+        }
+    }
+
+    pub async fn peek(&self, buf: &mut [u8]) -> Result<usize> {
+        loop {
+            let peer = self.peer_addr()?;
+            self.readable().await?;
+            match self
+                .handle
+                .do_mutating(|ctx| ctx.udp_peek(self.fd, Some(peer), buf))
+            {
+                Ok((n, _)) => return Ok(n),
+                Err(e) if e.kind() == ErrorKind::WouldBlock => {}
+                Err(e) if e.kind() == ErrorKind::ConnectionRefused => {}
+                Err(e) => return Err(e),
+            }
+        }
+    }
+
+    pub fn try_peek(&self, buf: &mut [u8]) -> Result<usize> {
+        loop {
+            let peer = self.peer_addr()?;
+            match self
+                .handle
+                .do_mutating(|ctx| ctx.udp_peek(self.fd, Some(peer), buf))
+            {
+                Ok((n, _)) => return Ok(n),
+                Err(e) if e.kind() == ErrorKind::ConnectionRefused => {}
+                Err(e) => return Err(e),
+            }
+        }
+    }
+
+    pub async fn peek_from(&self, buf: &mut [u8]) -> Result<(usize, SocketAddr)> {
+        if let Ok(peer) = self.peer_addr() {
+            return self.peek(buf).await.map(|n| (n, peer));
+        }
+        loop {
+            self.readable().await?;
+            match self
+                .handle
+                .do_mutating(|ctx| ctx.udp_peek(self.fd, None, buf))
+            {
+                Ok((n, src)) => return Ok((n, src)),
+                Err(e) if e.kind() == ErrorKind::WouldBlock => {}
+                Err(e) if e.kind() == ErrorKind::ConnectionRefused => {}
+                Err(e) => return Err(e),
+            }
+        }
+    }
+
+    pub fn try_peek_from(&self, buf: &mut [u8]) -> Result<(usize, SocketAddr)> {
+        if let Ok(peer) = self.peer_addr() {
+            return self.try_peek(buf).map(|n| (n, peer));
+        }
+        loop {
+            match self
+                .handle
+                .do_mutating(|ctx| ctx.udp_peek(self.fd, None, buf))
+            {
+                Ok((n, src)) => return Ok((n, src)),
+                Err(e) if e.kind() == ErrorKind::ConnectionRefused => {}
+                Err(e) => return Err(e),
+            }
+        }
+    }
+
+    pub async fn peek_sender(&self) -> Result<SocketAddr> {
+        loop {
+            self.readable().await?;
+            match self
+                .handle
+                .do_mutating(|ctx| ctx.udp_peek(self.fd, None, &mut []))
+            {
+                Ok((_, src)) => return Ok(src),
+                Err(e) if e.kind() == ErrorKind::WouldBlock => {}
+                Err(e) if e.kind() == ErrorKind::ConnectionRefused => {}
+                Err(e) => return Err(e),
+            }
+        }
+    }
+
+    pub fn try_peek_sender(&self) -> Result<SocketAddr> {
+        loop {
+            match self
+                .handle
+                .do_mutating(|ctx| ctx.udp_peek(self.fd, None, &mut []))
+            {
+                Ok((_, src)) => return Ok(src),
+                Err(e) if e.kind() == ErrorKind::ConnectionRefused => {}
+                Err(e) => return Err(e),
+            }
+        }
+    }
+
+    /// Gets the value of the `SO_BROADCAST option for this socket.
+    ///
+    /// For more information about this option, see [set_broadcast](UdpSocket::set_broadcast)
+    pub fn broadcast(&self) -> Result<bool> {
+        self.handle
+            .do_mutating(|ctx| Ok(ctx.udp.get_mut(self.fd)?.broadcast))
+    }
+
+    /// Sets the value of the SO_BROADCAST option for this socket.
+    ///
+    /// When enabled, this socket is allowed to send packets to a broadcast address.
+    pub fn set_broadcast(&self, on: bool) -> Result<()> {
+        self.handle.do_mutating(|ctx| {
+            ctx.udp.get_mut(self.fd)?.broadcast = on;
+            Ok(())
+        })
+    }
+
+    pub fn join_multicast_v6(&self, addr: Ipv6Addr, interface: Option<IfId>) -> Result<()> {
+        self.handle
+            .do_mutating_on_active_module(|ctx| ctx.udp_join_multicast_v6(self.fd, addr, interface))
+    }
+
+    pub fn leave_multicast_v6(&self, addr: Ipv6Addr, _: Option<IfId>) -> Result<()> {
+        self.handle
+            .do_mutating_on_active_module(|ctx| ctx.udp_leave_multicast_v6(self.fd, addr))
+    }
+
+    /// Gets the value of the IP_TTL option for this socket.
+    ///
+    /// For more information about this option, see [set_ttl](UdpSocket::set_ttl).
+    ///
+    pub fn ttl(&self) -> Result<u8> {
+        self.handle
+            .do_mutating(|ctx| Ok(ctx.udp.get_mut(self.fd)?.ttl))
+    }
+
+    /// Sets the value for the IP_TTL option on this socket.
+    ///
+    /// This value sets the time-to-live field that is used in every packet sent from this socket.
+    pub fn set_ttl(&self, ttl: u8) -> Result<()> {
+        self.handle.do_mutating(|ctx| {
+            ctx.udp.get_mut(self.fd)?.ttl = ttl;
+            Ok(())
+        })
+    }
+
+    pub fn device(&self) -> Result<Option<InterfaceName>> {
+        self.handle.do_mutating(|ctx| ctx.socket_device(self.fd))
+    }
+
+    pub fn take_error(&self) -> Result<Option<Error>> {
+        self.handle
+            .do_mutating(|ctx: &mut IOContext| ctx.udp_take_error(self.fd))
+    }
+}
+
+impl Drop for UdpSocket {
+    fn drop(&mut self) {
+        self.handle.try_do_io(|ctx| ctx.udp_drop(self.fd));
+    }
+}
+
+impl AsRawFd for UdpSocket {
+    fn as_raw_fd(&self) -> Fd {
+        self.fd
+    }
+}

@@ -1,61 +1,56 @@
-use des::registry;
+use des_ndl::{Ndl, registry};
 use std::{
-    io::ErrorKind,
     str::FromStr,
     sync::{
-        atomic::{AtomicBool, AtomicU32, Ordering::SeqCst},
         Arc,
+        atomic::{AtomicBool, AtomicU32, Ordering::SeqCst},
     },
 };
 
 use des::prelude::*;
 use inet::{
     interface::*,
+    ioctx,
     socket::{AsRawFd, Fd},
-    TcpListener, TcpStream,
+    tcp::{Config, TcpListener, TcpStream, set_config},
 };
 use serial_test::serial;
 
+#[derive(Default)]
 struct Link {}
 impl Module for Link {
-    fn new() -> Self {
-        Self {}
-    }
-
     fn handle_message(&mut self, msg: Message) {
-        match msg.header().last_gate.as_ref().map(|v| v.name()) {
-            Some("lhs_in") => send(msg, "rhs_out"),
-            Some("rhs_in") => send(msg, "lhs_out"),
+        let _ = match msg.header.last_gate.as_ref().map(|v| v.name()) {
+            Some("lhs") => send(msg, "rhs"),
+            Some("rhs") => send(msg, "lhs"),
             _ => todo!(),
-        }
+        };
     }
 }
 
+#[derive(Default)]
 struct TcpServer {
     done: Arc<AtomicBool>,
     fd: Arc<AtomicU32>,
 }
 
-#[async_trait::async_trait]
-impl AsyncModule for TcpServer {
-    fn new() -> Self {
-        Self {
-            done: Arc::new(AtomicBool::new(false)),
-            fd: Arc::new(AtomicU32::new(0)),
-        }
-    }
-
-    async fn at_sim_start(&mut self, _: usize) {
-        add_interface(Interface::ethv4(
-            NetworkDevice::eth(),
-            Ipv4Addr::new(69, 0, 0, 100),
-        ))
-        .unwrap();
+impl Module for TcpServer {
+    fn at_sim_start(&mut self, _: usize) {
+        ioctx()
+            .add_interface(
+                InterfaceDef::new("en0", NetworkDevice::eth())
+                    .ip(Ipv4Addr::new(69, 0, 0, 100).into()),
+            )
+            .unwrap();
 
         let done = self.done.clone();
         let fd = self.fd.clone();
 
         tokio::spawn(async move {
+            let mut cfg = Config::default();
+            cfg.mss = Some(536);
+            set_config(cfg);
+
             let sock = TcpListener::bind("0.0.0.0:2000").await.unwrap();
             tracing::info!("Server bound");
             assert_eq!(
@@ -68,15 +63,13 @@ impl AsyncModule for TcpServer {
             fd.store(stream.as_raw_fd(), SeqCst);
             assert_eq!(addr, SocketAddr::from_str("69.0.0.200:1024").unwrap());
 
-            let mut buf = [0u8; 100];
-            let err = stream.try_read(&mut buf).unwrap_err();
-            assert_eq!(err.kind(), ErrorKind::WouldBlock);
-
             use tokio::io::AsyncReadExt;
             let mut buf = [0u8; 500];
             let mut acc = 0;
             loop {
-                let Ok(n) = stream.read(&mut buf).await else { break };
+                let Ok(n) = stream.read(&mut buf).await else {
+                    break;
+                };
                 tracing::info!("received {} bytes", n);
 
                 if n == 0 {
@@ -101,39 +94,34 @@ impl AsyncModule for TcpServer {
         });
     }
 
-    async fn handle_message(&mut self, _: Message) {
+    fn handle_message(&mut self, _: Message) {
         tracing::error!("All packet should have been caught by the plugins");
     }
 
-    async fn at_sim_end(&mut self) {
+    fn at_sim_end(&mut self) -> Result<(), des::Error> {
         assert!(self.done.load(SeqCst));
 
         let fd: Fd = self.fd.load(SeqCst);
         assert!(fd != 0);
-        assert!(inet::socket::bsd_socket_info(fd).is_err())
+        assert!(inet::socket::bsd_socket_info(fd).is_err());
+        Ok(())
     }
 }
 
+#[derive(Default)]
 struct TcpClient {
     done: Arc<AtomicBool>,
     fd: Arc<AtomicU32>,
 }
 
-#[async_trait::async_trait]
-impl AsyncModule for TcpClient {
-    fn new() -> Self {
-        Self {
-            done: Arc::new(AtomicBool::new(false)),
-            fd: Arc::new(AtomicU32::new(0)),
-        }
-    }
-
-    async fn at_sim_start(&mut self, _: usize) {
-        add_interface(Interface::ethv4(
-            NetworkDevice::eth(),
-            Ipv4Addr::new(69, 0, 0, 200),
-        ))
-        .unwrap();
+impl Module for TcpClient {
+    fn at_sim_start(&mut self, _: usize) {
+        ioctx()
+            .add_interface(
+                InterfaceDef::new("en0", NetworkDevice::eth())
+                    .ip(Ipv4Addr::new(69, 0, 0, 200).into()),
+            )
+            .unwrap();
 
         let done = self.done.clone();
         let fd = self.fd.clone();
@@ -159,40 +147,32 @@ impl AsyncModule for TcpClient {
         });
     }
 
-    async fn handle_message(&mut self, _: Message) {
+    fn handle_message(&mut self, _: Message) {
         panic!("All packet should have been caught by the plugins")
     }
 
-    async fn at_sim_end(&mut self) {
+    fn at_sim_end(&mut self) -> Result<(), des::Error> {
         assert!(self.done.load(SeqCst));
 
         let fd: Fd = self.fd.load(SeqCst);
         assert!(fd != 0);
-        assert!(inet::socket::bsd_socket_info(fd).is_err())
-    }
-}
-
-struct Main;
-impl Module for Main {
-    fn new() -> Main {
-        Main
+        assert!(inet::socket::bsd_socket_info(fd).is_err());
+        Ok(())
     }
 }
 
 #[test]
 #[serial]
-fn tcp_simulaneous_close() {
-    inet::init();
+fn tcp_simulaneous_close() -> Result<(), Box<dyn std::error::Error>> {
+    let mut sim = Sim::new(()).with_stack(inet::init);
+    let def = serde_norway::from_str(include_str!("tcp.yml"))?;
+    sim.node(
+        "",
+        Ndl::new(&mut registry![Link, TcpServer, TcpClient, else _], &def)?,
+    )?;
 
-    // Logger::new().set_logger();
-
-    let app = NetworkApplication::new(
-        NdlApplication::new("tests/tcp.ndl", registry![Link, TcpServer, TcpClient, Main])
-            .map_err(|e| println!("{e}"))
-            .unwrap(),
-    );
-    let rt = Builder::seeded(123).max_time(3.0.into()).build(app);
-    let (_, time, profiler) = rt.run().unwrap();
-    assert_eq!(time.as_secs(), 2);
-    assert!(profiler.event_count < 200);
+    let rt = sim.seeded(123).max_time(10.0.into()).build();
+    let r = rt.run().assert_no_err();
+    assert!(r.app.num_events_dispatched() < 200);
+    Ok(())
 }

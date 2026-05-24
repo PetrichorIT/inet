@@ -1,0 +1,18 @@
+[package]
+name = "inet-uds"
+version = "0.1.0"
+edition = "2024"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+fxhash = "*"
+inet = { path = "../inet" }
+tokio = "*"
+rand = "*"
+bytes-io = { path = "../util/bytes-io" }
+des = { version = "*", features = ["full"] }
+tracing = "*"
+
+[dev-dependencies]
+serial_test = "*"

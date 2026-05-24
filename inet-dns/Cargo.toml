@@ -1,16 +1,23 @@
 [package]
 name = "inet-dns"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 tracing = "*"
 inet = { path = "../inet" }
-inet-types = { path = "../inet-types" }
-bytepack = { path = "../bytepack" }
+types = { path = "../util/types" }
+bytes-io = { path = "../util/bytes-io" }
+macros = { path = "../util/macros" }
 des = { version = "*", features = ["full"] }
 fxhash = "*"
 async-trait = "*"
 tokio = "*"
+rand = "*"
+bytes = "*"
+
+[dev-dependencies]
+inet = { path = "../inet", features = ["test-util"] }
+serial_test = "*"

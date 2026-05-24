@@ -1,0 +1,22 @@
+entry: Main
+modules:
+  Node:
+    gates:
+    - port
+  Switch:
+    gates:
+    - port[5]
+  Main:
+    submodules:
+      node[5]: Node
+      switch: Switch
+    connections:
+    - peers:
+      - node/port
+      - switch/port
+      link: LAN
+links:
+  LAN:
+    latency: 0.001
+    jitter: 0.0
+    bitrate: 10000000
